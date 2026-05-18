@@ -1,0 +1,53 @@
+# Go build output
+bin/
+build/
+dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+coverage/
+
+# Go workspace and tooling files
+go.work
+go.work.sum
+
+# Environment and local configuration
+.env
+.env.*
+!.env.example
+.local/
+
+# Logs and runtime files
+logs/
+*.log
+*.pid
+
+# Docker and local caches
+.docker/
+.cache/
+
+# Nuxt and Node output, kept here for future colocated frontend files
+node_modules/
+.nuxtrc
+.nuxt/
+.output/
+.nitro/
+.vite/
+*.tsbuildinfo
+.eslintcache
+.nyc_output/
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
