@@ -1,0 +1,75 @@
+import { defineVuetifyConfiguration } from 'vuetify-nuxt-module/custom-configuration'
+import { md3 } from 'vuetify/blueprints'
+
+const BNP_GREEN = '#00965E'
+
+export default defineVuetifyConfiguration({
+  blueprint: md3,
+  // prevent Vuetify Module from fetching unused `materialdesignicon.css` from cdn
+  icons: false,
+  // locale: {
+  //   locale: 'zhHans',
+  //   fallback: 'en',
+  // },
+  // localeMessages: ['zhHans', 'en'],
+  defaults: {
+    VSwitch: {
+      color: 'primary',
+    },
+    VDataTable: {
+      fixedHeader: true,
+      hover: true,
+    },
+    VCard: {
+      flat: true,
+      border: true,
+      rounded: 'lg',
+    },
+    VBtn: {
+      color: '',
+      rounded: 'lg',
+    },
+    VNavigationDrawer: {
+      VList: {
+        nav: true,
+        VListItem: {
+          rounded: 'lg',
+        },
+      },
+    },
+    VChip: { rounded: 'lg' },
+    VSelect: {
+      color: 'primary',
+    },
+    VTextarea: {
+      color: 'primary',
+    },
+    VTextField: {
+      color: 'primary',
+    },
+    VCheckbox: {
+      color: 'primary',
+    },
+    VCheckboxBtn: {
+      color: 'primary',
+    },
+    VProgressLinear: {
+      color: 'primary',
+    },
+    VMenu: {
+      VList: {
+        border: true,
+      },
+    },
+  },
+  display: {
+    mobileBreakpoint: 'sm',
+  },
+  theme: {
+    defaultTheme: 'light',
+    themes: {
+      light: { colors: { primary: BNP_GREEN } },
+      dark: { colors: { primary: BNP_GREEN } },
+    },
+  },
+})
