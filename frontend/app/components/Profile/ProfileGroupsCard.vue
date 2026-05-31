@@ -6,6 +6,10 @@ const props = defineProps<{
   groups: ProfileGroupSummary[]
   loading: boolean
 }>()
+
+const groupCountLabel = computed(() =>
+  props.groups.length === 1 ? '1 group' : `${props.groups.length} groups`,
+)
 </script>
 
 <template>
@@ -14,6 +18,12 @@ const props = defineProps<{
     title="Groups"
     subtitle="Access groups assigned to this account"
   >
+    <template #actions>
+      <v-chip label variant="tonal" color="primary" size="small">
+        {{ groupCountLabel }}
+      </v-chip>
+    </template>
+
     <div v-if="props.loading" class="profile-groups-card__loading">
       <v-progress-circular indeterminate color="primary" size="32" />
     </div>
@@ -28,24 +38,26 @@ const props = defineProps<{
       {{ props.error }}
     </v-alert>
 
-    <v-list
-      v-else-if="props.groups.length"
-      density="comfortable"
-      class="profile-groups-card__list"
-    >
-      <v-list-item
+    <div v-else-if="props.groups.length" class="profile-groups-card__list">
+      <article
         v-for="group in props.groups"
         :key="group.id"
-        :title="group.name"
-        :subtitle="group.description || 'No description'"
+        class="profile-groups-card__item"
       >
-        <template #prepend>
-          <v-avatar color="primary" variant="tonal" size="36">
-            <v-icon icon="mdi-account-group-outline" />
-          </v-avatar>
-        </template>
-      </v-list-item>
-    </v-list>
+        <v-avatar color="primary" variant="tonal" size="36">
+          <v-icon icon="mdi-shield-check-outline" />
+        </v-avatar>
+
+        <div class="profile-groups-card__copy">
+          <h3 class="profile-groups-card__name">
+            {{ group.displayName || group.name }}
+          </h3>
+          <p class="profile-groups-card__description">
+            {{ group.description || group.name }}
+          </p>
+        </div>
+      </article>
+    </div>
 
     <AppEmptyState
       v-else
@@ -65,6 +77,39 @@ const props = defineProps<{
 }
 
 .profile-groups-card__list {
-  padding: 8px;
+  display: grid;
+  gap: 10px;
+  padding: 0 24px 24px;
+}
+
+.profile-groups-card__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid rgba(var(--app-shell-border), 0.42);
+  border-radius: var(--app-card-radius);
+  background: rgba(var(--app-shell-surface-muted), 0.58);
+}
+
+.profile-groups-card__copy {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.profile-groups-card__name {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.95rem;
+  font-weight: 750;
+}
+
+.profile-groups-card__description {
+  margin: 0;
+  color: rgb(var(--app-shell-text-secondary));
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 </style>

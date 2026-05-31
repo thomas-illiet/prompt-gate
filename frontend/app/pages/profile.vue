@@ -63,19 +63,16 @@ const quickActions = [
   {
     icon: 'mdi-monitor-dashboard',
     title: 'Dashboard',
-    subtitle: 'Open usage overview',
     to: '/dashboard',
   },
   {
     icon: 'mdi-key-outline',
     title: 'Virtual keys',
-    subtitle: 'Manage personal access',
     to: '/tokens',
   },
   {
     icon: 'mdi-help-circle-outline',
     title: 'Setup guide',
-    subtitle: 'Configure clients',
     to: '/help',
   },
 ]
@@ -92,73 +89,33 @@ async function logout() {
 
 <template>
   <v-container fluid class="app-page profile-page">
-    <v-row>
-      <v-col cols="12">
-        <AppPageHero
-          icon="mdi-account-circle-outline"
-          kicker="Account"
-          title="Profile"
-          copy="Review your identity, access level, and current session details."
-          stat-label="Status"
-          :stat-value="statusLabel"
-        />
-      </v-col>
+    <div class="profile-page__header">
+      <div>
+        <p class="profile-page__kicker">Account</p>
+        <h1 class="profile-page__title">Profile</h1>
+        <p class="profile-page__subtitle">
+          Review your identity, access level, and current session details.
+        </p>
+      </div>
+    </div>
 
-      <v-col cols="12" lg="5">
+    <v-row>
+      <v-col cols="12" lg="8">
         <ProfileIdentityCard
           :display-email="displayEmail"
           :display-name="displayName"
           :display-username="displayUsername"
           :initials="initials"
+          :last-login-label="lastLoginLabel"
+          :role-color="displayRoleColor"
+          :role-label="displayRole"
+          :status-color="statusColor"
+          :status-label="statusLabel"
         />
       </v-col>
 
-      <v-col cols="12" md="6" lg="3">
-        <ProfileInfoCard
-          icon="mdi-shield-account-outline"
-          title="Access"
-          subtitle="Role and account state"
-        >
-          <v-list density="comfortable" class="profile-list">
-            <v-list-item title="Role">
-              <template #prepend>
-                <v-icon icon="mdi-account-key-outline" />
-              </template>
-              <template #append>
-                <v-chip label variant="tonal" :color="displayRoleColor">
-                  {{ displayRole }}
-                </v-chip>
-              </template>
-            </v-list-item>
-
-            <v-list-item title="Status">
-              <template #prepend>
-                <v-icon icon="mdi-check-decagram-outline" />
-              </template>
-              <template #append>
-                <v-chip label variant="tonal" :color="statusColor">
-                  {{ statusLabel }}
-                </v-chip>
-              </template>
-            </v-list-item>
-          </v-list>
-        </ProfileInfoCard>
-      </v-col>
-
-      <v-col cols="12" md="6" lg="4">
-        <ProfileInfoCard
-          icon="mdi-clock-outline"
-          title="Session"
-          subtitle="Latest known login"
-        >
-          <div class="profile-session">
-            <v-icon icon="mdi-login-variant" color="primary" size="40" />
-            <div>
-              <p>Last login</p>
-              <strong>{{ lastLoginLabel }}</strong>
-            </div>
-          </div>
-        </ProfileInfoCard>
+      <v-col cols="12" lg="4">
+        <ProfileQuickActions :actions="quickActions" @logout="logout" />
       </v-col>
 
       <v-col cols="12" lg="7">
@@ -170,26 +127,30 @@ async function logout() {
       </v-col>
 
       <v-col cols="12" lg="5">
-        <ProfileQuickActions :actions="quickActions" @logout="logout" />
-      </v-col>
-
-      <v-col cols="12">
         <ProfileInfoCard
           icon="mdi-card-account-details-outline"
           title="Technical details"
           subtitle="Identifiers used by authentication services"
         >
-          <v-list density="comfortable" class="profile-list">
-            <v-list-item v-for="detail in technicalDetails" :key="detail.label">
-              <template #prepend>
-                <v-icon :icon="detail.icon" />
-              </template>
-              <v-list-item-title>{{ detail.label }}</v-list-item-title>
-              <v-list-item-subtitle class="profile-list__value">
-                {{ detail.value }}
-              </v-list-item-subtitle>
-            </v-list-item>
-          </v-list>
+          <div class="profile-detail-list">
+            <div
+              v-for="detail in technicalDetails"
+              :key="detail.label"
+              class="profile-detail-list__item"
+            >
+              <v-avatar color="primary" variant="tonal" size="34">
+                <v-icon :icon="detail.icon" size="19" />
+              </v-avatar>
+              <div class="profile-detail-list__copy">
+                <span class="profile-detail-list__label">{{
+                  detail.label
+                }}</span>
+                <strong class="profile-detail-list__value">
+                  {{ detail.value }}
+                </strong>
+              </div>
+            </div>
+          </div>
         </ProfileInfoCard>
       </v-col>
     </v-row>
@@ -197,31 +158,76 @@ async function logout() {
 </template>
 
 <style scoped>
-.profile-session {
-  min-height: 160px;
+.profile-page__header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
+  justify-content: space-between;
   gap: 16px;
-  padding: 24px;
+  margin-bottom: 24px;
 }
 
-.profile-session p {
-  margin: 0 0 6px;
+.profile-page__kicker {
+  margin: 0 0 8px;
+  color: rgb(var(--app-shell-text-muted));
+  font-size: 0.78rem;
+  font-weight: 750;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.profile-page__title {
+  margin: 0;
+  font-size: 1.55rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.profile-page__subtitle {
+  max-width: 44rem;
+  margin: 6px 0 0;
   color: rgb(var(--app-shell-text-secondary));
+  line-height: 1.6;
 }
 
-.profile-session strong {
-  display: block;
+.profile-detail-list {
+  display: grid;
+  gap: 10px;
+  padding: 0 24px 24px;
+}
+
+.profile-detail-list__item {
+  min-width: 0;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px;
+  border: 1px solid rgba(var(--app-shell-border), 0.42);
+  border-radius: var(--app-card-radius);
+  background: rgba(var(--app-shell-surface-muted), 0.58);
+}
+
+.profile-detail-list__copy {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.profile-detail-list__label {
+  color: rgb(var(--app-shell-text-secondary));
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+.profile-detail-list__value {
   overflow-wrap: anywhere;
-  font-size: 1.2rem;
+  font-size: 0.95rem;
+  line-height: 1.4;
 }
 
-.profile-list {
-  padding: 8px;
-}
-
-.profile-list__value {
-  overflow-wrap: anywhere;
-  white-space: normal;
+@media (max-width: 720px) {
+  .profile-page__header {
+    align-items: stretch;
+    flex-direction: column;
+  }
 }
 </style>

@@ -12,6 +12,10 @@ const props = defineProps<{
     :title="props.title"
     :subtitle="props.subtitle"
   >
+    <template v-if="$slots.actions" #actions>
+      <slot name="actions" />
+    </template>
+
     <slot />
   </AppSectionCard>
 </template>
