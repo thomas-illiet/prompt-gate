@@ -88,7 +88,7 @@ drawerState.value = lgAndUp.value && width.value !== 1280
         <v-list-item class="pa-1 drawer-brand">
           <template #prepend>
             <v-icon
-              icon="custom:vitify-nuxt"
+              icon="custom:promptgate-mark"
               size="x-large"
               class="drawer-header-icon"
               color="primary"

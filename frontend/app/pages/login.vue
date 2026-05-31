@@ -67,7 +67,11 @@ async function signIn() {
             <div class="login-copy">
               <div class="login-mark">
                 <v-avatar size="78" class="login-mark-avatar">
-                  <v-icon icon="custom:vitify-nuxt" size="42" color="primary" />
+                  <v-icon
+                    icon="custom:promptgate-mark"
+                    size="42"
+                    color="primary"
+                  />
                 </v-avatar>
               </div>
               <p class="login-kicker">Built for developers</p>

@@ -7,12 +7,12 @@ definePageMeta({
 <template>
   <v-container fluid class="app-page not-found-page">
     <AppSectionCard
-      icon="custom:nustar"
+      icon="custom:not-found-signal"
       title="Page not found"
       subtitle="HTTP 404"
     >
       <AppEmptyState
-        icon="custom:nustar"
+        icon="custom:not-found-signal"
         title="Whoops, 404"
         text="This route has no signal. Head back to a live workspace view."
       >
