@@ -107,6 +107,45 @@ flowchart LR
     Proxy --> MCP["MCP servers"]
 ```
 
+## Screenshots
+
+These populated states use representative local data so the core product
+surfaces are easier to review at a glance.
+
+### Dashboard
+
+![Prompt Gate dashboard with usage KPIs and activity charts](docs/assets/screenshots/dashboard.png)
+
+Usage totals, request volume, token trends, and top model/provider breakdowns.
+
+### Virtual Keys
+
+![Prompt Gate virtual keys table with active keys](docs/assets/screenshots/virtual-keys.png)
+
+Personal virtual key inventory with status, creation dates, expiry dates, and
+row actions.
+
+### Prompt History
+
+![Prompt Gate prompt history table with providers and token counts](docs/assets/screenshots/prompt-history.png)
+
+Recorded proxy prompts with provider, model, token usage, duration, and
+timestamp context.
+
+### Setup Guide
+
+![Prompt Gate setup guide showing provider and model configuration](docs/assets/screenshots/setup-guide.png)
+
+Client setup flow for selecting providers, matching routes, and copying
+ready-to-use snippets.
+
+### Firewall
+
+![Prompt Gate firewall table with allow and deny rules](docs/assets/screenshots/firewall.png)
+
+Admin rule ordering for IPv4 and CIDR access decisions before proxy traffic is
+accepted.
+
 ## Documentation
 
 Start with the documentation index, then jump into the area you are working on:
