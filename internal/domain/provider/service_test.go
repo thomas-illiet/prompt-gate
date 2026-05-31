@@ -128,6 +128,70 @@ func TestHelpSetupKeepsProviderWhenModelsFail(t *testing.T) {
 	}
 }
 
+func TestHelpSetupForProviderNamesFiltersProvidersAndModels(t *testing.T) {
+	service, _ := newTestService(t)
+	ctx := context.Background()
+	var allowedFetches int
+	var deniedFetches int
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/allowed/v1/models":
+			allowedFetches++
+			_, _ = w.Write([]byte(`{"data":[{"id":"gpt-5-mini"},{"id":"gpt-4.1"}]}`))
+		case "/denied/v1/models":
+			deniedFetches++
+			_, _ = w.Write([]byte(`{"data":[{"id":"gpt-5-mini"}]}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(upstream.Close)
+
+	if _, err := service.CreateProvider(ctx, CreateProviderInput{
+		Name:    "openai-allowed",
+		Type:    ProviderTypeOpenAI,
+		BaseURL: upstream.URL + "/allowed/v1",
+		Enabled: true,
+	}); err != nil {
+		t.Fatalf("create allowed provider: %v", err)
+	}
+	if _, err := service.CreateProvider(ctx, CreateProviderInput{
+		Name:    "openai-denied",
+		Type:    ProviderTypeOpenAI,
+		BaseURL: upstream.URL + "/denied/v1",
+		Enabled: true,
+	}); err != nil {
+		t.Fatalf("create denied provider: %v", err)
+	}
+
+	setup, err := service.HelpSetupForProviderNames(
+		ctx,
+		"https://proxy.example.com",
+		[]string{"openai-allowed"},
+		func(providerName, model string) bool {
+			return providerName == "openai-allowed" && strings.HasPrefix(model, "gpt-5")
+		},
+	)
+	if err != nil {
+		t.Fatalf("help setup: %v", err)
+	}
+
+	if allowedFetches != 1 {
+		t.Fatalf("expected one allowed provider fetch, got %d", allowedFetches)
+	}
+	if deniedFetches != 0 {
+		t.Fatalf("expected denied provider not to be fetched, got %d", deniedFetches)
+	}
+	if len(setup.Providers) != 1 {
+		t.Fatalf("expected one provider, got %#v", setup.Providers)
+	}
+	got := setup.Providers[0].Models
+	if len(got) != 1 || got[0] != "gpt-5-mini" {
+		t.Fatalf("expected filtered models, got %#v", got)
+	}
+}
+
 // TestCreateProviderEncryptsAPIKeyAndRedactsResponse verifies provider secrets are encrypted and hidden.
 func TestCreateProviderEncryptsAPIKeyAndRedactsResponse(t *testing.T) {
 	service, db := newTestService(t)

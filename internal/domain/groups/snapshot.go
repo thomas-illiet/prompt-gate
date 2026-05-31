@@ -89,31 +89,9 @@ func (s *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 
 	users := map[string]UserAccess{}
 	for _, group := range records {
-		providerNames := []string{}
-		for _, item := range group.Providers {
-			if !item.Enabled {
-				continue
-			}
-			if _, ok := knownProviderSet[item.Name]; ok {
-				providerNames = append(providerNames, item.Name)
-			}
-		}
-		modelPatterns := make([]string, 0, len(group.ModelPatterns))
-		for _, pattern := range group.ModelPatterns {
-			modelPatterns = append(modelPatterns, pattern.Pattern)
-		}
-		if len(modelPatterns) == 0 {
-			modelPatterns = []string{defaultAllModelsPattern}
-		}
+		rule := groupAccessRule(group, knownProviderSet)
 		for _, member := range group.Members {
-			access := users[member.ID]
-			access.Providers = append(access.Providers, providerNames...)
-			access.ModelPatterns = append(access.ModelPatterns, modelPatterns...)
-			access.Rules = append(access.Rules, AccessRule{
-				Providers:     providerNames,
-				ModelPatterns: modelPatterns,
-			})
-			users[member.ID] = normalizeUserAccess(access)
+			users[member.ID] = appendUserAccessRule(users[member.ID], rule)
 		}
 	}
 
@@ -121,6 +99,31 @@ func (s *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 		KnownProviders: knownProviders,
 		Users:          users,
 	}, nil
+}
+
+// UserAccess returns the access-group grants for one user.
+func (s *Service) UserAccess(ctx context.Context, userID string) (UserAccess, error) {
+	userID = strings.TrimSpace(userID)
+	if err := s.ensureUserExists(ctx, s.db, userID); err != nil {
+		return UserAccess{}, err
+	}
+
+	var records []Group
+	if err := s.db.WithContext(ctx).
+		Joins("JOIN access_group_members ON access_group_members.group_id = access_groups.id").
+		Where("access_group_members.user_id = ?", userID).
+		Preload("Providers").
+		Preload("ModelPatterns").
+		Order("access_groups.name ASC").
+		Find(&records).Error; err != nil {
+		return UserAccess{}, fmt.Errorf("load user access groups: %w", err)
+	}
+
+	access := UserAccess{}
+	for _, group := range records {
+		access = appendUserAccessRule(access, groupAccessRule(group, nil))
+	}
+	return normalizeUserAccess(access), nil
 }
 
 func (s *SnapshotStore) Refresh(ctx context.Context) error {
@@ -206,6 +209,19 @@ func (s *SnapshotStore) Allows(userID, providerName, model string) bool {
 	if !ok {
 		return false
 	}
+	return compiledUserAccessAllows(access, providerName, model)
+}
+
+// Allows reports whether this user access permits a provider/model pair.
+func (access UserAccess) Allows(providerName, model string) bool {
+	compiled, err := compileUserAccess(access)
+	if err != nil {
+		return false
+	}
+	return compiledUserAccessAllows(compiled, providerName, model)
+}
+
+func compiledUserAccessAllows(access compiledUserAccess, providerName, model string) bool {
 	if model == "" {
 		return false
 	}
@@ -225,6 +241,43 @@ func (s *SnapshotStore) Allows(userID, providerName, model string) bool {
 		}
 	}
 	return false
+}
+
+func groupAccessRule(group Group, knownProviderSet map[string]struct{}) AccessRule {
+	providerNames := []string{}
+	for _, item := range group.Providers {
+		if !item.Enabled {
+			continue
+		}
+		if knownProviderSet != nil {
+			if _, ok := knownProviderSet[item.Name]; !ok {
+				continue
+			}
+		}
+		providerNames = append(providerNames, item.Name)
+	}
+	modelPatterns := make([]string, 0, len(group.ModelPatterns))
+	for _, pattern := range group.ModelPatterns {
+		modelPatterns = append(modelPatterns, pattern.Pattern)
+	}
+	if len(modelPatterns) == 0 {
+		modelPatterns = []string{defaultAllModelsPattern}
+	}
+	return normalizeAccessRule(AccessRule{
+		Providers:     providerNames,
+		ModelPatterns: modelPatterns,
+	})
+}
+
+func appendUserAccessRule(access UserAccess, rule AccessRule) UserAccess {
+	rule = normalizeAccessRule(rule)
+	if len(rule.Providers) == 0 {
+		return normalizeUserAccess(access)
+	}
+	access.Providers = append(access.Providers, rule.Providers...)
+	access.ModelPatterns = append(access.ModelPatterns, rule.ModelPatterns...)
+	access.Rules = append(access.Rules, rule)
+	return normalizeUserAccess(access)
 }
 
 func compileAccessRule(rule AccessRule) (compiledAccessRule, error) {
@@ -268,6 +321,20 @@ func compileAccessRules(access UserAccess) ([]compiledAccessRule, error) {
 		compiled = append(compiled, next)
 	}
 	return compiled, nil
+}
+
+func compileUserAccess(access UserAccess) (compiledUserAccess, error) {
+	normalized := normalizeUserAccess(access)
+	providers, patterns := aggregateAccess(normalized)
+	rules, err := compileAccessRules(normalized)
+	if err != nil {
+		return compiledUserAccess{}, err
+	}
+	return compiledUserAccess{
+		providers: providers,
+		patterns:  patterns,
+		rules:     rules,
+	}, nil
 }
 
 func aggregateAccess(access UserAccess) (map[string]struct{}, []string) {
@@ -323,17 +390,11 @@ func compileSnapshot(snapshot Snapshot) (compiledSnapshot, error) {
 	}
 	users := make(map[string]compiledUserAccess, len(snapshot.Users))
 	for userID, access := range snapshot.Users {
-		normalized := normalizeUserAccess(access)
-		providers, patterns := aggregateAccess(normalized)
-		rules, err := compileAccessRules(normalized)
+		compiledAccess, err := compileUserAccess(access)
 		if err != nil {
 			return compiledSnapshot{}, err
 		}
-		users[userID] = compiledUserAccess{
-			providers: providers,
-			patterns:  patterns,
-			rules:     rules,
-		}
+		users[userID] = compiledAccess
 	}
 	return compiledSnapshot{
 		knownProviders: knownProviders,

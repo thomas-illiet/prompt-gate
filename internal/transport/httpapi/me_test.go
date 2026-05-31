@@ -176,31 +176,62 @@ func TestHandleCurrentUserPromptsRejectsInvalidPagination(t *testing.T) {
 	}
 }
 
-func TestHandleHelpSetupReturnsRedactedProviderMetadata(t *testing.T) {
-	providerService := newHTTPProviderService(t)
+func TestHandleHelpSetupReturnsUserScopedRedactedProviderMetadata(t *testing.T) {
+	providerService, groupService, db := newHTTPSetupServices(t)
 	ctx := context.Background()
+	profile := testUserProfile()
+	createHTTPUser(t, db, profile)
+	var openAIRequests int
+	var anthropicRequests int
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v1/models" {
-			http.NotFound(w, r)
-			return
-		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"data":[{"id":"gpt-5-mini"}]}`))
+		switch r.URL.Path {
+		case "/openai/v1/models":
+			openAIRequests++
+			_, _ = w.Write([]byte(`{"data":[{"id":"gpt-5-mini"},{"id":"gpt-4.1"}]}`))
+		case "/anthropic/v1/models":
+			anthropicRequests++
+			_, _ = w.Write([]byte(`{"data":[{"id":"claude-sonnet-4"}]}`))
+		default:
+			http.NotFound(w, r)
+		}
 	}))
 	t.Cleanup(upstream.Close)
 
-	if _, err := providerService.CreateProvider(ctx, provider.CreateProviderInput{
+	openAIProvider, err := providerService.CreateProvider(ctx, provider.CreateProviderInput{
 		Name:    "openai-main",
 		Type:    provider.ProviderTypeOpenAI,
-		BaseURL: upstream.URL + "/v1",
+		BaseURL: upstream.URL + "/openai/v1",
 		APIKey:  "sk-secret",
 		Enabled: true,
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatalf("create provider: %v", err)
+	}
+	if _, err := providerService.CreateProvider(ctx, provider.CreateProviderInput{
+		Name:    "anthropic-main",
+		Type:    provider.ProviderTypeAnthropic,
+		BaseURL: upstream.URL + "/anthropic",
+		APIKey:  "sk-ant-secret",
+		Enabled: true,
+	}); err != nil {
+		t.Fatalf("create denied provider: %v", err)
+	}
+	group, err := groupService.CreateGroup(ctx, groups.CreateGroupInput{
+		Name:          "engineering",
+		DisplayName:   "Engineering",
+		ProviderIDs:   []string{openAIProvider.ID.String()},
+		ModelPatterns: []string{`^gpt-5`},
+	})
+	if err != nil {
+		t.Fatalf("create group: %v", err)
+	}
+	if err := groupService.AddMember(ctx, group.ID.String(), profile.ID); err != nil {
+		t.Fatalf("add member: %v", err)
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/me/help/setup", nil)
-	req = req.WithContext(auth.ContextWithUser(context.Background(), testUserProfile()))
+	req = req.WithContext(auth.ContextWithUser(context.Background(), profile))
 	recorder := httptest.NewRecorder()
 
 	server{
@@ -208,6 +239,7 @@ func TestHandleHelpSetupReturnsRedactedProviderMetadata(t *testing.T) {
 			ProxyBaseURL: "https://proxy.example.com",
 		},
 		providers: providerService,
+		groups:    groupService,
 	}.handleHelpSetup(recorder, req)
 
 	if recorder.Code != http.StatusOK {
@@ -221,8 +253,17 @@ func TestHandleHelpSetupReturnsRedactedProviderMetadata(t *testing.T) {
 	if body.ProxyBaseURL != "https://proxy.example.com" {
 		t.Fatalf("unexpected proxy base URL: %q", body.ProxyBaseURL)
 	}
+	if openAIRequests != 1 {
+		t.Fatalf("expected one authorized provider fetch, got %d", openAIRequests)
+	}
+	if anthropicRequests != 0 {
+		t.Fatalf("expected unauthorized provider not to be fetched, got %d", anthropicRequests)
+	}
 	if len(body.Providers) != 1 {
 		t.Fatalf("expected one provider, got %#v", body.Providers)
+	}
+	if body.Providers[0].Name != "openai-main" {
+		t.Fatalf("unexpected provider: %#v", body.Providers[0])
 	}
 	if body.Providers[0].OpenAIBaseURL != "https://proxy.example.com/openai-main/v1" {
 		t.Fatalf("unexpected OpenAI base URL: %q", body.Providers[0].OpenAIBaseURL)
@@ -230,12 +271,61 @@ func TestHandleHelpSetupReturnsRedactedProviderMetadata(t *testing.T) {
 	if len(body.Providers[0].Models) != 1 || body.Providers[0].Models[0] != "gpt-5-mini" {
 		t.Fatalf("unexpected models: %#v", body.Providers[0].Models)
 	}
-	if strings.Contains(recorder.Body.String(), "sk-secret") {
+	if strings.Contains(recorder.Body.String(), "sk-secret") || strings.Contains(recorder.Body.String(), "sk-ant-secret") {
 		t.Fatalf("response leaked provider API key: %s", recorder.Body.String())
 	}
 }
 
-func newHTTPProviderService(t *testing.T) *provider.Service {
+func TestHandleHelpSetupReturnsEmptyProvidersWithoutGroupAccess(t *testing.T) {
+	providerService, groupService, db := newHTTPSetupServices(t)
+	ctx := context.Background()
+	profile := testUserProfile()
+	createHTTPUser(t, db, profile)
+	var upstreamRequests int
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		upstreamRequests++
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"id":"gpt-5-mini"}]}`))
+	}))
+	t.Cleanup(upstream.Close)
+
+	if _, err := providerService.CreateProvider(ctx, provider.CreateProviderInput{
+		Name:    "openai-main",
+		Type:    provider.ProviderTypeOpenAI,
+		BaseURL: upstream.URL + "/v1",
+		Enabled: true,
+	}); err != nil {
+		t.Fatalf("create provider: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/me/help/setup", nil)
+	req = req.WithContext(auth.ContextWithUser(context.Background(), profile))
+	recorder := httptest.NewRecorder()
+
+	server{
+		config: config.Config{
+			ProxyBaseURL: "https://proxy.example.com",
+		},
+		providers: providerService,
+		groups:    groupService,
+	}.handleHelpSetup(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", recorder.Code, recorder.Body.String())
+	}
+	if upstreamRequests != 0 {
+		t.Fatalf("expected no upstream model requests, got %d", upstreamRequests)
+	}
+	var body provider.HelpSetupResponse
+	if err := json.NewDecoder(recorder.Body).Decode(&body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if len(body.Providers) != 0 {
+		t.Fatalf("expected no scoped providers, got %#v", body.Providers)
+	}
+}
+
+func newHTTPSetupServices(t *testing.T) (*provider.Service, *groups.Service, *gorm.DB) {
 	t.Helper()
 
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
@@ -246,11 +336,37 @@ func newHTTPProviderService(t *testing.T) *provider.Service {
 	if err != nil {
 		t.Fatalf("new cipher: %v", err)
 	}
-	service := provider.NewService(db, cipher)
-	if err := service.AutoMigrate(context.Background()); err != nil {
+	providerService := provider.NewService(db, cipher)
+	if err := db.AutoMigrate(&users.User{}); err != nil {
+		t.Fatalf("migrate users: %v", err)
+	}
+	if err := providerService.AutoMigrate(context.Background()); err != nil {
 		t.Fatalf("migrate providers: %v", err)
 	}
-	return service
+	groupService := groups.NewService(db)
+	if err := groupService.AutoMigrate(context.Background()); err != nil {
+		t.Fatalf("migrate groups: %v", err)
+	}
+	return providerService, groupService, db
+}
+
+func createHTTPUser(t *testing.T, db *gorm.DB, profile auth.UserProfile) {
+	t.Helper()
+
+	user := users.User{
+		ID:                profile.ID,
+		ExternalSub:       profile.Sub,
+		Email:             profile.Email,
+		PreferredUsername: profile.PreferredUsername,
+		Name:              profile.Name,
+		Type:              profile.Type,
+		Role:              profile.Role,
+		IsActive:          profile.IsActive,
+		LastLoginAt:       profile.LastLoginAt,
+	}
+	if err := db.Create(&user).Error; err != nil {
+		t.Fatalf("create user: %v", err)
+	}
 }
 
 func newHTTPGroupService(t *testing.T) (*groups.Service, *gorm.DB) {

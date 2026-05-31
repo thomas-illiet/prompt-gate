@@ -196,7 +196,8 @@ func (s server) handleCurrentUserGroups(w http.ResponseWriter, r *http.Request) 
 
 // handleHelpSetup returns provider setup metadata for authenticated users.
 func (s server) handleHelpSetup(w http.ResponseWriter, r *http.Request) {
-	if _, ok := auth.UserFromContext(r.Context()); !ok {
+	user, ok := auth.UserFromContext(r.Context())
+	if !ok {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "missing user in context"})
 		return
 	}
@@ -204,8 +205,23 @@ func (s server) handleHelpSetup(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "provider service unavailable"})
 		return
 	}
+	if s.groups == nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "groups service unavailable"})
+		return
+	}
 
-	setup, err := s.providers.HelpSetup(r.Context(), s.config.ProxyBaseURL)
+	access, err := s.groups.UserAccess(r.Context(), user.ID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "load_user_access_failed"})
+		return
+	}
+
+	setup, err := s.providers.HelpSetupForProviderNames(
+		r.Context(),
+		s.config.ProxyBaseURL,
+		access.Providers,
+		access.Allows,
+	)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return

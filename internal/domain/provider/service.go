@@ -130,6 +130,8 @@ type HelpSetupProvider struct {
 	ModelsError      string       `json:"modelsError,omitempty"`
 }
 
+type HelpSetupModelAllowedFunc func(providerName, model string) bool
+
 type ModelCatalogProvider struct {
 	ID          uuid.UUID `json:"id"`
 	Name        string    `json:"name"`
@@ -195,13 +197,51 @@ func (s *Service) ListEnabled(ctx context.Context) ([]Provider, error) {
 	return records, nil
 }
 
+// ListEnabledByNames returns enabled providers matching the given provider names.
+func (s *Service) ListEnabledByNames(ctx context.Context, names []string) ([]Provider, error) {
+	names = normalizeProviderNames(names)
+	if len(names) == 0 {
+		return []Provider{}, nil
+	}
+	var records []Provider
+	if err := s.db.WithContext(ctx).
+		Where("enabled = ? AND name IN ?", true, names).
+		Order("name ASC").
+		Find(&records).Error; err != nil {
+		return nil, fmt.Errorf("list enabled providers by name: %w", err)
+	}
+	return records, nil
+}
+
 // HelpSetup returns enabled provider metadata and best-effort upstream model lists.
 func (s *Service) HelpSetup(ctx context.Context, proxyBaseURL string) (HelpSetupResponse, error) {
 	records, err := s.ListEnabled(ctx)
 	if err != nil {
 		return HelpSetupResponse{}, err
 	}
+	return s.helpSetupFromRecords(ctx, proxyBaseURL, records, nil), nil
+}
 
+// HelpSetupForProviderNames returns setup metadata scoped to selected enabled providers.
+func (s *Service) HelpSetupForProviderNames(
+	ctx context.Context,
+	proxyBaseURL string,
+	providerNames []string,
+	modelAllowed HelpSetupModelAllowedFunc,
+) (HelpSetupResponse, error) {
+	records, err := s.ListEnabledByNames(ctx, providerNames)
+	if err != nil {
+		return HelpSetupResponse{}, err
+	}
+	return s.helpSetupFromRecords(ctx, proxyBaseURL, records, modelAllowed), nil
+}
+
+func (s *Service) helpSetupFromRecords(
+	ctx context.Context,
+	proxyBaseURL string,
+	records []Provider,
+	modelAllowed HelpSetupModelAllowedFunc,
+) HelpSetupResponse {
 	proxyBaseURL = strings.TrimRight(strings.TrimSpace(proxyBaseURL), "/")
 	out := HelpSetupResponse{
 		ProxyBaseURL: proxyBaseURL,
@@ -227,12 +267,15 @@ func (s *Service) HelpSetup(ctx context.Context, proxyBaseURL string) (HelpSetup
 		if err != nil {
 			item.ModelsError = err.Error()
 		} else {
+			if modelAllowed != nil {
+				models = filterAllowedModels(record.Name, models, modelAllowed)
+			}
 			item.Models = models
 		}
 		out.Providers = append(out.Providers, item)
 	}
 
-	return out, nil
+	return out
 }
 
 // ModelCatalog returns best-effort upstream model lists for selected providers.
@@ -482,6 +525,33 @@ func (s *Service) modelCatalogRecords(ctx context.Context, providerIDs []string)
 		records = append(records, record)
 	}
 	return records, nil
+}
+
+func normalizeProviderNames(names []string) []string {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(names))
+	for _, name := range names {
+		name = normalizeName(name)
+		if name == "" {
+			continue
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		out = append(out, name)
+	}
+	return out
+}
+
+func filterAllowedModels(providerName string, models []string, modelAllowed HelpSetupModelAllowedFunc) []string {
+	out := make([]string, 0, len(models))
+	for _, model := range models {
+		if modelAllowed(providerName, model) {
+			out = append(out, model)
+		}
+	}
+	return out
 }
 
 // DecryptAPIKey decrypts the provider API key for proxy use.

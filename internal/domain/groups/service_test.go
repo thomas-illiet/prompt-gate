@@ -245,6 +245,103 @@ func TestSnapshotCombinesMultipleGroupsWithUnionSemantics(t *testing.T) {
 	}
 }
 
+func TestUserAccessHonorsProviderScopedModelRegex(t *testing.T) {
+	service, _, user, openai, anthropic := newGroupTestService(t)
+	ctx := context.Background()
+
+	group, err := service.CreateGroup(ctx, CreateGroupInput{
+		Name:          "engineering",
+		DisplayName:   "Engineering",
+		ProviderIDs:   []string{openai.ID.String()},
+		ModelPatterns: []string{`^gpt-5`},
+	})
+	if err != nil {
+		t.Fatalf("create group: %v", err)
+	}
+	if _, err := service.ReplaceUserGroups(ctx, user.ID, []string{group.ID.String()}); err != nil {
+		t.Fatalf("replace user groups: %v", err)
+	}
+
+	access, err := service.UserAccess(ctx, user.ID)
+	if err != nil {
+		t.Fatalf("user access: %v", err)
+	}
+
+	if len(access.Providers) != 1 || access.Providers[0] != openai.Name {
+		t.Fatalf("expected OpenAI provider access, got %#v", access.Providers)
+	}
+	if !access.Allows(openai.Name, "gpt-5-mini") {
+		t.Fatal("expected matching OpenAI model to be allowed")
+	}
+	if access.Allows(openai.Name, "gpt-4.1") {
+		t.Fatal("expected non-matching OpenAI model to be denied")
+	}
+	if access.Allows(anthropic.Name, "gpt-5-mini") {
+		t.Fatal("expected matching model on another provider to be denied")
+	}
+}
+
+func TestUserAccessCombinesGroupsWithoutCrossProduct(t *testing.T) {
+	service, _, user, openai, anthropic := newGroupTestService(t)
+	ctx := context.Background()
+
+	openAIGroup, err := service.CreateGroup(ctx, CreateGroupInput{
+		Name:          "openai-access",
+		DisplayName:   "OpenAI Access",
+		ProviderIDs:   []string{openai.ID.String()},
+		ModelPatterns: []string{`^gpt-5`},
+	})
+	if err != nil {
+		t.Fatalf("create openai group: %v", err)
+	}
+	anthropicGroup, err := service.CreateGroup(ctx, CreateGroupInput{
+		Name:          "anthropic-access",
+		DisplayName:   "Anthropic Access",
+		ProviderIDs:   []string{anthropic.ID.String()},
+		ModelPatterns: []string{`^claude`},
+	})
+	if err != nil {
+		t.Fatalf("create anthropic group: %v", err)
+	}
+	if _, err := service.ReplaceUserGroups(ctx, user.ID, []string{openAIGroup.ID.String(), anthropicGroup.ID.String()}); err != nil {
+		t.Fatalf("replace user groups: %v", err)
+	}
+
+	access, err := service.UserAccess(ctx, user.ID)
+	if err != nil {
+		t.Fatalf("user access: %v", err)
+	}
+
+	if !access.Allows(openai.Name, "gpt-5-mini") {
+		t.Fatal("expected OpenAI GPT-5 model to be allowed")
+	}
+	if !access.Allows(anthropic.Name, "claude-sonnet-4") {
+		t.Fatal("expected Anthropic Claude model to be allowed")
+	}
+	if access.Allows(openai.Name, "claude-sonnet-4") {
+		t.Fatal("expected Anthropic regex not to cross-apply to OpenAI")
+	}
+	if access.Allows(anthropic.Name, "gpt-5-mini") {
+		t.Fatal("expected OpenAI regex not to cross-apply to Anthropic")
+	}
+}
+
+func TestUserAccessReturnsEmptyForUserWithoutGroups(t *testing.T) {
+	service, _, user, openai, _ := newGroupTestService(t)
+
+	access, err := service.UserAccess(context.Background(), user.ID)
+	if err != nil {
+		t.Fatalf("user access: %v", err)
+	}
+
+	if len(access.Providers) != 0 || len(access.ModelPatterns) != 0 || len(access.Rules) != 0 {
+		t.Fatalf("expected empty access, got %#v", access)
+	}
+	if access.Allows(openai.Name, "gpt-5-mini") {
+		t.Fatal("expected user without groups to be denied")
+	}
+}
+
 func TestCreateGroupRejectsInvalidRegex(t *testing.T) {
 	service, _, _, openai, _ := newGroupTestService(t)
 	_, err := service.CreateGroup(context.Background(), CreateGroupInput{
