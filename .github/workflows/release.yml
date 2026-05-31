@@ -1,0 +1,211 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: prompt-gate/backend
+
+jobs:
+  release:
+    name: Build image and create release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Check formatting
+        run: make fmt-check
+
+      - name: Vet
+        run: make vet
+
+      - name: Test
+        run: make test
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Lint frontend
+        working-directory: frontend
+        run: npm run lint:check
+
+      - name: Typecheck frontend
+        working-directory: frontend
+        run: npm run typecheck
+
+      - name: Test frontend
+        working-directory: frontend
+        run: npm test -- --run
+
+      - name: Build frontend assets
+        working-directory: frontend
+        env:
+          NUXT_PUBLIC_API_BASE_URL: ''
+        run: npm run generate
+
+      - name: Validate Compose file
+        run: docker compose config --quiet
+
+      - name: Build binary
+        run: make build
+
+      - name: Extract release metadata
+        id: release
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          SHORT_SHA="${GITHUB_SHA::7}"
+
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "short_sha=${SHORT_SHA}" >> "${GITHUB_OUTPUT}"
+
+      - name: Build release archives
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          VERSION="${{ steps.release.outputs.version }}"
+          DIST_DIR="${PWD}/dist/release"
+          PACKAGE_DIR="${PWD}/dist/package"
+          FRONTEND_PUBLIC="${PWD}/frontend/.output/public"
+
+          test -f "${FRONTEND_PUBLIC}/index.html"
+          mkdir -p "${DIST_DIR}" "${PACKAGE_DIR}"
+
+          create_readme() {
+            local package_path="$1"
+
+            printf '%s\n' \
+              "Prompt Gate standalone release package" \
+              "" \
+              "Run the API with the bundled frontend assets:" \
+              "" \
+              '  PROMPTGATE_STATIC_ASSETS_DIR="$(pwd)/public" ./promptgate api' \
+              "" \
+              "On Windows PowerShell:" \
+              "" \
+              '  $env:PROMPTGATE_STATIC_ASSETS_DIR = (Join-Path (Get-Location) "public")' \
+              '  .\promptgate.exe api' \
+              "" \
+              "The binary still requires PostgreSQL, Redis, and OIDC/Keycloak configuration." \
+              > "${package_path}/README.txt"
+          }
+
+          build_package() {
+            local goos="$1"
+            local goarch="$2"
+            local binary_name="promptgate"
+            local archive_name="promptgate_${VERSION}_${goos}_${goarch}"
+            local package_path="${PACKAGE_DIR}/${archive_name}"
+
+            if [ "${goos}" = "windows" ]; then
+              binary_name="promptgate.exe"
+            fi
+
+            rm -rf "${package_path}"
+            mkdir -p "${package_path}"
+
+            CGO_ENABLED=0 GOOS="${goos}" GOARCH="${goarch}" \
+              go build -trimpath -ldflags="-s -w" -o "${package_path}/${binary_name}" "."
+
+            cp -R "${FRONTEND_PUBLIC}" "${package_path}/public"
+            create_readme "${package_path}"
+
+            if [ "${goos}" = "windows" ]; then
+              (cd "${PACKAGE_DIR}" && zip -qr "${DIST_DIR}/${archive_name}.zip" "${archive_name}")
+            else
+              (cd "${PACKAGE_DIR}" && tar -czf "${DIST_DIR}/${archive_name}.tar.gz" "${archive_name}")
+            fi
+          }
+
+          build_package darwin arm64
+          build_package linux amd64
+          build_package windows amd64
+
+      - name: Verify release archives
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          VERSION="${{ steps.release.outputs.version }}"
+          DARWIN_ARCHIVE="dist/release/promptgate_${VERSION}_darwin_arm64.tar.gz"
+          LINUX_ARCHIVE="dist/release/promptgate_${VERSION}_linux_amd64.tar.gz"
+          WINDOWS_ARCHIVE="dist/release/promptgate_${VERSION}_windows_amd64.zip"
+
+          test -s "${DARWIN_ARCHIVE}"
+          test -s "${LINUX_ARCHIVE}"
+          test -s "${WINDOWS_ARCHIVE}"
+
+          tar -tzf "${DARWIN_ARCHIVE}" | grep -Fx "promptgate_${VERSION}_darwin_arm64/promptgate"
+          tar -tzf "${DARWIN_ARCHIVE}" | grep -Fx "promptgate_${VERSION}_darwin_arm64/public/index.html"
+
+          tar -tzf "${LINUX_ARCHIVE}" | grep -Fx "promptgate_${VERSION}_linux_amd64/promptgate"
+          tar -tzf "${LINUX_ARCHIVE}" | grep -Fx "promptgate_${VERSION}_linux_amd64/public/index.html"
+
+          unzip -Z1 "${WINDOWS_ARCHIVE}" | grep -Fx "promptgate_${VERSION}_windows_amd64/promptgate.exe"
+          unzip -Z1 "${WINDOWS_ARCHIVE}" | grep -Fx "promptgate_${VERSION}_windows_amd64/public/index.html"
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.release.outputs.version }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ steps.release.outputs.short_sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ github.ref_name }}
+
+      - name: Create GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.ref_name }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          gh release create "${TAG_NAME}" \
+            "dist/release/promptgate_${VERSION}_darwin_arm64.tar.gz" \
+            "dist/release/promptgate_${VERSION}_linux_amd64.tar.gz" \
+            "dist/release/promptgate_${VERSION}_windows_amd64.zip" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --title "${TAG_NAME}" \
+            --generate-notes
