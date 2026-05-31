@@ -1,0 +1,48 @@
+{
+  "realm": "promptgate",
+  "enabled": true,
+  "displayName": "Prompt Gate",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": false,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": false,
+  "clients": [
+    {
+      "clientId": "promptgate-backend",
+      "name": "Prompt Gate Backend",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "clientAuthenticatorType": "client-secret",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "redirectUris": ["http://localhost:8080/auth/callback"],
+      "webOrigins": ["http://localhost:8080"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:8080/*"
+      }
+    }
+  ],
+  "users": [
+    {
+      "username": "admin",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "admin@promptgate.local",
+      "firstName": "Prompt",
+      "lastName": "Admin",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "admin",
+          "temporary": false
+        }
+      ]
+    }
+  ]
+}
