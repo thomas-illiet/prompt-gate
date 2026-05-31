@@ -1,11 +1,9 @@
 <script setup lang="ts">
-import type { AccessGroup } from '~/types/groups'
-
-type ProfileGroup = Pick<AccessGroup, 'description' | 'id' | 'name'>
+import type { ProfileGroupSummary } from '~/types/groups'
 
 const props = defineProps<{
   error: string | null
-  groups: ProfileGroup[]
+  groups: ProfileGroupSummary[]
   loading: boolean
 }>()
 </script>

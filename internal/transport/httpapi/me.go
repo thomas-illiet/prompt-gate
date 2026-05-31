@@ -185,7 +185,7 @@ func (s server) handleCurrentUserGroups(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	result, err := s.groups.ListUserGroups(r.Context(), user.ID)
+	result, err := s.groups.ListUserGroupSummaries(r.Context(), user.ID)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "load_user_groups_failed"})
 		return

@@ -221,6 +221,45 @@ func TestHandleAdminValidateGroupModelPatternsCountsRealMatches(t *testing.T) {
 	}
 }
 
+func TestHandleAdminValidateGroupModelPatternsMarksDisabledProviderUnavailable(t *testing.T) {
+	handler, _, _, _, _ := newGroupsTestHandler(t)
+	ctx := context.Background()
+	providerRecord, err := handler.providers.CreateProvider(ctx, provider.CreateProviderInput{
+		Name:    "disabled-openai",
+		Type:    provider.ProviderTypeOpenAI,
+		BaseURL: "https://disabled.example.com/v1",
+		Enabled: false,
+	})
+	if err != nil {
+		t.Fatalf("create provider: %v", err)
+	}
+
+	body, err := json.Marshal(groups.ValidateModelPatternsInput{
+		ProviderIDs:   []string{providerRecord.ID.String()},
+		ModelPatterns: []string{`.*`},
+	})
+	if err != nil {
+		t.Fatalf("marshal validation request: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/groups/model-patterns/validate", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	handler.HandleAdminValidateGroupModelPatterns(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var response groups.ModelPatternValidationResponse
+	if err := json.NewDecoder(rec.Body).Decode(&response); err != nil {
+		t.Fatalf("decode validation response: %v", err)
+	}
+	if response.MatchedModelCount != 0 || response.UnavailableProviderCount != 1 {
+		t.Fatalf("expected disabled provider to be unavailable without matches, got %#v", response)
+	}
+	if len(response.ProviderResults) != 1 || response.ProviderResults[0].ModelsError == "" {
+		t.Fatalf("expected disabled provider result error, got %#v", response.ProviderResults)
+	}
+}
+
 func TestHandleAdminValidateGroupModelPatternsRejectsInvalidRegex(t *testing.T) {
 	handler, _, _, _, _ := newGroupsTestHandler(t)
 	body, err := json.Marshal(groups.ValidateModelPatternsInput{

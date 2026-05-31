@@ -250,6 +250,11 @@ func (s *Service) ModelCatalog(ctx context.Context, providerIDs []string) ([]Mod
 			DisplayName: record.DisplayName,
 			Models:      []string{},
 		}
+		if !record.Enabled {
+			item.ModelsError = "provider is disabled"
+			out = append(out, item)
+			continue
+		}
 		models, err := s.fetchProviderModels(ctx, record)
 		if err != nil {
 			item.ModelsError = err.Error()

@@ -44,26 +44,12 @@ func (s *Service) SetNotifier(notifier configevents.Notifier) {
 }
 
 func (s *Service) AutoMigrate(ctx context.Context) error {
-	db := s.db.WithContext(ctx)
-	if err := db.AutoMigrate(
+	return s.db.WithContext(ctx).AutoMigrate(
 		&Group{},
 		&GroupProvider{},
 		&GroupModelPattern{},
 		&GroupMember{},
-	); err != nil {
-		return err
-	}
-
-	migrator := db.Migrator()
-	if migrator.HasColumn(&legacyGroupEnabledColumn{}, "enabled") {
-		if err := db.Exec("DROP INDEX IF EXISTS idx_access_groups_enabled").Error; err != nil {
-			return fmt.Errorf("drop legacy group enabled index: %w", err)
-		}
-		if err := db.Exec("ALTER TABLE access_groups DROP COLUMN enabled").Error; err != nil {
-			return fmt.Errorf("drop legacy group enabled column: %w", err)
-		}
-	}
-	return nil
+	)
 }
 
 func (s *Service) ListGroupsPaged(ctx context.Context, params ListParams) (ListResult, error) {
@@ -334,6 +320,28 @@ func (s *Service) ListUserGroups(ctx context.Context, userID string) ([]GroupRes
 	out := make([]GroupResponse, len(records))
 	for i := range records {
 		out[i] = records[i].toResponse()
+	}
+	return out, nil
+}
+
+func (s *Service) ListUserGroupSummaries(ctx context.Context, userID string) ([]ProfileGroupResponse, error) {
+	userID = strings.TrimSpace(userID)
+	if err := s.ensureUserExists(ctx, s.db, userID); err != nil {
+		return nil, err
+	}
+
+	var records []Group
+	if err := s.db.WithContext(ctx).
+		Select("access_groups.id", "access_groups.name", "access_groups.display_name", "access_groups.description").
+		Joins("JOIN access_group_members ON access_group_members.group_id = access_groups.id").
+		Where("access_group_members.user_id = ?", userID).
+		Order("access_groups.name ASC").
+		Find(&records).Error; err != nil {
+		return nil, fmt.Errorf("list user group summaries: %w", err)
+	}
+	out := make([]ProfileGroupResponse, len(records))
+	for i := range records {
+		out[i] = records[i].toProfileResponse()
 	}
 	return out, nil
 }
@@ -624,5 +632,14 @@ func (g *Group) toResponse() GroupResponse {
 		MemberCount:       len(members),
 		CreatedAt:         g.CreatedAt,
 		UpdatedAt:         g.UpdatedAt,
+	}
+}
+
+func (g *Group) toProfileResponse() ProfileGroupResponse {
+	return ProfileGroupResponse{
+		ID:          g.ID,
+		Name:        g.Name,
+		DisplayName: g.DisplayName,
+		Description: g.Description,
 	}
 }

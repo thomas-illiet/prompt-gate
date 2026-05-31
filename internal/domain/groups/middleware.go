@@ -30,7 +30,17 @@ func Middleware(snapshot *SnapshotStore, logger *slog.Logger) func(http.Handler)
 			}
 
 			model, err := requestModel(r)
-			if err != nil || !snapshot.Allows(user.ID, providerName, model) {
+			if err != nil {
+				logger.Warn("group access denied", "provider", providerName, "model", model, "user_id", user.ID)
+				writeJSON(w, http.StatusForbidden, map[string]string{"error": "group_access_denied"})
+				return
+			}
+			if model == "" {
+				logger.Warn("group access denied for request without model", "provider", providerName, "user_id", user.ID)
+				writeJSON(w, http.StatusForbidden, map[string]string{"error": "group_model_required"})
+				return
+			}
+			if !snapshot.Allows(user.ID, providerName, model) {
 				logger.Warn("group access denied", "provider", providerName, "model", model, "user_id", user.ID)
 				writeJSON(w, http.StatusForbidden, map[string]string{"error": "group_access_denied"})
 				return

@@ -86,7 +86,7 @@ func TestParseUsageWindowRejectsInvalidWindow(t *testing.T) {
 	}
 }
 
-func TestHandleCurrentUserGroupsReturnsMemberships(t *testing.T) {
+func TestHandleCurrentUserGroupsReturnsProfileSafeMemberships(t *testing.T) {
 	groupService, db := newHTTPGroupService(t)
 	profile := testUserProfile()
 	ctx := context.Background()
@@ -125,7 +125,13 @@ func TestHandleCurrentUserGroupsReturnsMemberships(t *testing.T) {
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", recorder.Code, recorder.Body.String())
 	}
-	var response []groups.GroupResponse
+	raw := recorder.Body.String()
+	for _, field := range []string{"providers", "modelPatterns", "members"} {
+		if strings.Contains(raw, field) {
+			t.Fatalf("profile group response leaked admin field %q: %s", field, raw)
+		}
+	}
+	var response []groups.ProfileGroupResponse
 	if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
 		t.Fatalf("decode groups: %v", err)
 	}

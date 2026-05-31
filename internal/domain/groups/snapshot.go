@@ -2,6 +2,7 @@ package groups
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"sort"
@@ -10,6 +11,8 @@ import (
 
 	"promptgate/backend/internal/domain/provider"
 )
+
+var ErrLegacySnapshot = errors.New("legacy group access snapshot")
 
 type AccessRule struct {
 	Providers     []string `json:"providers"`
@@ -241,11 +244,8 @@ func compileAccessRule(rule AccessRule) (compiledAccessRule, error) {
 func compileAccessRules(access UserAccess) ([]compiledAccessRule, error) {
 	normalized := normalizeUserAccess(access)
 	rules := normalized.Rules
-	if len(rules) == 0 && len(normalized.ModelPatterns) > 0 {
-		rules = []AccessRule{{
-			Providers:     normalized.Providers,
-			ModelPatterns: normalized.ModelPatterns,
-		}}
+	if len(rules) == 0 && (len(normalized.Providers) > 0 || len(normalized.ModelPatterns) > 0) {
+		return nil, ErrLegacySnapshot
 	}
 
 	compiled := make([]compiledAccessRule, 0, len(rules))

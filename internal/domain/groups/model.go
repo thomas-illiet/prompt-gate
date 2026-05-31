@@ -25,14 +25,6 @@ type Group struct {
 	DeletedAt     gorm.DeletedAt `gorm:"index"`
 }
 
-type legacyGroupEnabledColumn struct {
-	Enabled bool `gorm:"column:enabled"`
-}
-
-func (legacyGroupEnabledColumn) TableName() string {
-	return "access_groups"
-}
-
 func (Group) TableName() string {
 	return "access_groups"
 }
@@ -131,6 +123,13 @@ type GroupResponse struct {
 	MemberCount       int               `json:"memberCount"`
 	CreatedAt         time.Time         `json:"createdAt"`
 	UpdatedAt         time.Time         `json:"updatedAt"`
+}
+
+type ProfileGroupResponse struct {
+	ID          uuid.UUID `json:"id"`
+	Name        string    `json:"name"`
+	DisplayName string    `json:"displayName"`
+	Description string    `json:"description"`
 }
 
 type ListParams struct {

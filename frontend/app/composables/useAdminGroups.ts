@@ -6,9 +6,9 @@ import type {
   GroupModelPatternValidationResponse,
   GroupPayload,
 } from '~/types/groups'
-import type { Provider, ProviderListResponse } from '~/types/providers'
-import type { ServiceAccountListResponse } from '~/types/service-accounts'
-import type { UserListResponse } from '~/types/users'
+import type { Provider } from '~/types/providers'
+import type { ServiceAccount } from '~/types/service-accounts'
+import type { AdminUser } from '~/types/users'
 import { Notify } from '~/stores/notification'
 import { toApiErrorMessage } from '~/utils/api-error'
 
@@ -37,13 +37,34 @@ export function useAdminGroups() {
   const saving = shallowRef(false)
   const memberLoading = shallowRef(false)
   const modelValidationLoading = shallowRef(false)
-  const modelValidation = shallowRef<GroupModelPatternValidationResponse | null>(
-    null,
-  )
+  const modelValidation =
+    shallowRef<GroupModelPatternValidationResponse | null>(null)
   const modelValidationError = shallowRef<string | null>(null)
   const selectedGroup = shallowRef<AccessGroup | null>(null)
   const providerOptions = shallowRef<Provider[]>([])
   const memberOptions = shallowRef<GroupMemberSummary[]>([])
+
+  async function loadAllPages<T>(path: string, sortBy = 'name') {
+    const items: T[] = []
+    const pageSize = 100
+
+    for (let page = 1; ; page += 1) {
+      const params = new URLSearchParams({
+        page: page.toString(),
+        pageSize: pageSize.toString(),
+        sortBy,
+        sortDir: 'asc',
+      })
+      const response = await apiFetch<{
+        items: T[]
+        total: number
+      }>(`${path}?${params.toString()}`)
+      items.push(...response.items)
+      if (items.length >= response.total || response.items.length === 0) {
+        return items
+      }
+    }
+  }
 
   const queryList = useQueryList<AccessGroup>({
     fetch: (queryString) =>
@@ -58,45 +79,22 @@ export function useAdminGroups() {
   }
 
   async function loadProviderOptions() {
-    const params = new URLSearchParams({
-      page: '1',
-      pageSize: '100',
-      sortBy: 'name',
-      sortDir: 'asc',
-    })
-    const response = await apiFetch<ProviderListResponse>(
-      `/api/v1/admin/providers?${params.toString()}`,
+    providerOptions.value = await loadAllPages<Provider>(
+      '/api/v1/admin/providers',
     )
-    providerOptions.value = response.items
     return providerOptions.value
   }
 
   async function loadMemberOptions() {
     memberLoading.value = true
     try {
-      const userParams = new URLSearchParams({
-        page: '1',
-        pageSize: '100',
-        sortBy: 'name',
-        sortDir: 'asc',
-      })
-      const accountParams = new URLSearchParams({
-        page: '1',
-        pageSize: '100',
-        sortBy: 'name',
-        sortDir: 'asc',
-      })
-      const [usersResponse, serviceAccountsResponse] = await Promise.all([
-        apiFetch<UserListResponse>(
-          `/api/v1/admin/users?${userParams.toString()}`,
-        ),
-        apiFetch<ServiceAccountListResponse>(
-          `/api/v1/admin/service-accounts?${accountParams.toString()}`,
-        ),
+      const [users, serviceAccounts] = await Promise.all([
+        loadAllPages<AdminUser>('/api/v1/admin/users'),
+        loadAllPages<ServiceAccount>('/api/v1/admin/service-accounts'),
       ])
 
       memberOptions.value = [
-        ...usersResponse.items.map((user) => ({
+        ...users.map((user) => ({
           id: user.id,
           preferredUsername: user.preferredUsername,
           email: user.email,
@@ -105,7 +103,7 @@ export function useAdminGroups() {
           role: user.role,
           isActive: user.isActive,
         })),
-        ...serviceAccountsResponse.items.map((account) => ({
+        ...serviceAccounts.map((account) => ({
           id: account.id,
           preferredUsername: account.identifier,
           email: '',
@@ -233,11 +231,12 @@ export function useAdminGroups() {
     modelValidationLoading.value = true
     modelValidationError.value = null
     try {
-      modelValidation.value = await apiJson<GroupModelPatternValidationResponse>(
-        '/api/v1/admin/groups/model-patterns/validate',
-        payload,
-        { method: 'POST' },
-      )
+      modelValidation.value =
+        await apiJson<GroupModelPatternValidationResponse>(
+          '/api/v1/admin/groups/model-patterns/validate',
+          payload,
+          { method: 'POST' },
+        )
       return modelValidation.value
     } catch (error) {
       modelValidation.value = null

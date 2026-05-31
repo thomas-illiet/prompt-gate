@@ -1,4 +1,4 @@
-import type { AccessGroup } from '~/types/groups'
+import type { ProfileGroupSummary } from '~/types/groups'
 import { toApiErrorMessage } from '~/utils/api-error'
 
 // toProfileGroupsErrorMessage converts profile group API errors into user-facing text.
@@ -10,7 +10,7 @@ export function toProfileGroupsErrorMessage(error: unknown) {
 export function useProfileGroups() {
   const apiFetch = useApiFetch()
 
-  const groups = shallowRef<AccessGroup[]>([])
+  const groups = shallowRef<ProfileGroupSummary[]>([])
   const loading = shallowRef(false)
   const error = shallowRef<string | null>(null)
 
@@ -19,7 +19,7 @@ export function useProfileGroups() {
     error.value = null
 
     try {
-      groups.value = await apiFetch<AccessGroup[]>('/api/v1/me/groups')
+      groups.value = await apiFetch<ProfileGroupSummary[]>('/api/v1/me/groups')
     } catch (fetchError) {
       groups.value = []
       error.value = toProfileGroupsErrorMessage(fetchError)

@@ -128,7 +128,13 @@ func (m *Manager) RefreshAccessGroups(ctx context.Context) error {
 	var snapshot groups.Snapshot
 	if m.opts.Redis != nil {
 		if ok, err := m.opts.Redis.GetJSON(ctx, redisstore.SnapshotKey(configevents.DomainGroups), &snapshot); err == nil && ok {
-			return m.opts.AccessSnapshot.SetSnapshot(snapshot)
+			if err := m.opts.AccessSnapshot.SetSnapshot(snapshot); err == nil {
+				return nil
+			} else {
+				m.opts.Logger.Warn("cached group access snapshot ignored", "error", err)
+			}
+		} else if err != nil {
+			m.opts.Logger.Warn("cached group access snapshot load failed", "error", err)
 		}
 	}
 	if err := m.opts.AccessSnapshot.Refresh(ctx); err != nil {

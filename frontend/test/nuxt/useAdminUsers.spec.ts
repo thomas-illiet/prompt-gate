@@ -11,6 +11,7 @@ import type {
   UserToken,
   UserTokenListResponse,
 } from '../../app/types/user-service'
+import type { AccessGroup, GroupListResponse } from '../../app/types/groups'
 import type { AdminUser, UserListResponse } from '../../app/types/users'
 
 const { apiFetch, useApiFetchMock, useRouteMock } = vi.hoisted(() => {
@@ -58,6 +59,21 @@ const token: UserToken = {
   createdAt: '2026-01-01T00:00:00Z',
 }
 
+const group: AccessGroup = {
+  id: 'group-id',
+  name: 'engineering',
+  displayName: 'Engineering',
+  description: 'Engineering access',
+  providers: [],
+  modelPatterns: ['^gpt-5'],
+  members: [],
+  providerCount: 0,
+  modelPatternCount: 1,
+  memberCount: 0,
+  createdAt: '2026-01-01T00:00:00Z',
+  updatedAt: '2026-01-01T00:00:00Z',
+}
+
 function userResponse(
   items: AdminUser[],
   total = items.length,
@@ -78,6 +94,18 @@ function tokenResponse(
     items,
     page: 1,
     pageSize: 10,
+    total,
+  }
+}
+
+function groupResponse(
+  items: AccessGroup[],
+  total = items.length,
+): GroupListResponse {
+  return {
+    items,
+    page: 1,
+    pageSize: 100,
     total,
   }
 }
@@ -146,6 +174,31 @@ describe('useAdminUsers', () => {
     )
     expect(apiFetch).toHaveBeenNthCalledWith(4, expectedListUrl)
     expect(adminUsers.tokens.value[0]?.revokedAt).toBe('2026-02-01T00:00:00Z')
+  })
+
+  it('loads group options across all pages', async () => {
+    apiFetch
+      .mockResolvedValueOnce(userResponse([]))
+      .mockResolvedValueOnce(groupResponse([group], 2))
+      .mockResolvedValueOnce(groupResponse([{ ...group, id: 'group-id-2' }], 2))
+
+    const adminUsers = useAdminUsers()
+    await vi.waitFor(() => expect(adminUsers.loading.value).toBe(false))
+
+    await adminUsers.loadGroups()
+
+    expect(apiFetch).toHaveBeenNthCalledWith(
+      2,
+      '/api/v1/admin/groups?page=1&pageSize=100&sortBy=name&sortDir=asc',
+    )
+    expect(apiFetch).toHaveBeenNthCalledWith(
+      3,
+      '/api/v1/admin/groups?page=2&pageSize=100&sortBy=name&sortDir=asc',
+    )
+    expect(adminUsers.groupOptions.value.map((item) => item.id)).toEqual([
+      'group-id',
+      'group-id-2',
+    ])
   })
 
   it('maps token API errors to readable messages', () => {

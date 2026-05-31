@@ -16,7 +16,11 @@ func TestMiddlewareAllowsModelRegexAndRestoresBody(t *testing.T) {
 	if err := store.SetSnapshot(Snapshot{
 		KnownProviders: []string{"openai"},
 		Users: map[string]UserAccess{
-			"user-id": {ModelPatterns: []string{`^gpt-5`}},
+			"user-id": {
+				Rules: []AccessRule{{
+					ModelPatterns: []string{`^gpt-5`},
+				}},
+			},
 		},
 	}); err != nil {
 		t.Fatalf("set snapshot: %v", err)
@@ -62,7 +66,7 @@ func TestMiddlewareDeniesUserWithoutGroup(t *testing.T) {
 		t.Fatal("next should not be called")
 	}))
 
-	req := httptest.NewRequest(http.MethodGet, "/openai/v1/models", nil)
+	req := httptest.NewRequest(http.MethodPost, "/openai/v1/chat/completions", strings.NewReader(`{"model":"gpt-5-mini"}`))
 	req = req.WithContext(auth.ContextWithUser(req.Context(), auth.UserProfile{
 		ID:       "user-id",
 		Role:     auth.RoleUser,
@@ -79,12 +83,17 @@ func TestMiddlewareDeniesUserWithoutGroup(t *testing.T) {
 	}
 }
 
-func TestMiddlewareDeniesProviderGrantWithoutModelRegex(t *testing.T) {
+func TestMiddlewareDeniesRequestWithoutModel(t *testing.T) {
 	store := NewSnapshotStore(nil)
 	if err := store.SetSnapshot(Snapshot{
 		KnownProviders: []string{"openai"},
 		Users: map[string]UserAccess{
-			"user-id": {Providers: []string{"openai"}},
+			"user-id": {
+				Rules: []AccessRule{{
+					Providers:     []string{"openai"},
+					ModelPatterns: []string{`^gpt-5`},
+				}},
+			},
 		},
 	}); err != nil {
 		t.Fatalf("set snapshot: %v", err)
@@ -105,6 +114,45 @@ func TestMiddlewareDeniesProviderGrantWithoutModelRegex(t *testing.T) {
 
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("expected 403, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "group_model_required") {
+		t.Fatalf("unexpected response: %s", rec.Body.String())
+	}
+}
+
+func TestMiddlewareDeniesProviderGrantWithoutModelRegex(t *testing.T) {
+	store := NewSnapshotStore(nil)
+	if err := store.SetSnapshot(Snapshot{
+		KnownProviders: []string{"openai"},
+		Users: map[string]UserAccess{
+			"user-id": {
+				Rules: []AccessRule{{
+					Providers: []string{"openai"},
+				}},
+			},
+		},
+	}); err != nil {
+		t.Fatalf("set snapshot: %v", err)
+	}
+
+	handler := Middleware(store, nil)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	req := httptest.NewRequest(http.MethodPost, "/openai/v1/chat/completions", strings.NewReader(`{"model":"gpt-5-mini"}`))
+	req = req.WithContext(auth.ContextWithUser(req.Context(), auth.UserProfile{
+		ID:       "user-id",
+		Role:     auth.RoleUser,
+		IsActive: true,
+	}))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "group_access_denied") {
+		t.Fatalf("unexpected response: %s", rec.Body.String())
 	}
 }
 
@@ -154,7 +202,12 @@ func TestMiddlewareDeniesUnknownProvider(t *testing.T) {
 	if err := store.SetSnapshot(Snapshot{
 		KnownProviders: []string{"openai"},
 		Users: map[string]UserAccess{
-			"user-id": {Providers: []string{"openai"}},
+			"user-id": {
+				Rules: []AccessRule{{
+					Providers:     []string{"openai"},
+					ModelPatterns: []string{`^gpt-5`},
+				}},
+			},
 		},
 	}); err != nil {
 		t.Fatalf("set snapshot: %v", err)

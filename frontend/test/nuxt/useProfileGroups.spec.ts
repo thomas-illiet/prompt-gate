@@ -6,7 +6,7 @@ import {
   toProfileGroupsErrorMessage,
   useProfileGroups,
 } from '../../app/composables/useProfileGroups'
-import type { AccessGroup } from '../../app/types/groups'
+import type { ProfileGroupSummary } from '../../app/types/groups'
 
 const { apiFetch, useApiFetchMock } = vi.hoisted(() => {
   const apiFetch = vi.fn()
@@ -26,19 +26,11 @@ function apiError(code: string) {
   }) as FetchError
 }
 
-const group: AccessGroup = {
+const group: ProfileGroupSummary = {
   id: 'group-id',
   name: 'engineering',
   displayName: 'Engineering',
   description: 'Engineering model access',
-  providers: [],
-  modelPatterns: [],
-  members: [],
-  providerCount: 0,
-  modelPatternCount: 0,
-  memberCount: 1,
-  createdAt: '2026-01-01T00:00:00Z',
-  updatedAt: '2026-01-01T00:00:00Z',
 }
 
 describe('useProfileGroups', () => {

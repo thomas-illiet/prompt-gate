@@ -78,39 +78,6 @@ func newGroupTestService(t *testing.T) (*Service, *gorm.DB, users.User, provider
 	return service, db, user, openai, anthropic
 }
 
-func TestAutoMigrateDropsLegacyEnabledColumn(t *testing.T) {
-	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
-	if err != nil {
-		t.Fatalf("open sqlite: %v", err)
-	}
-	if err := db.Exec(`
-		CREATE TABLE access_groups (
-			id uuid PRIMARY KEY,
-			name text NOT NULL,
-			display_name text NOT NULL DEFAULT '',
-			description text NOT NULL DEFAULT '',
-			enabled boolean NOT NULL DEFAULT true,
-			created_at datetime,
-			updated_at datetime,
-			deleted_at datetime
-		)
-	`).Error; err != nil {
-		t.Fatalf("create legacy group table: %v", err)
-	}
-	if err := db.Exec("CREATE INDEX idx_access_groups_enabled ON access_groups(enabled)").Error; err != nil {
-		t.Fatalf("create legacy group enabled index: %v", err)
-	}
-
-	service := NewService(db)
-	if err := service.AutoMigrate(context.Background()); err != nil {
-		t.Fatalf("migrate groups: %v", err)
-	}
-
-	if db.Migrator().HasColumn(&legacyGroupEnabledColumn{}, "enabled") {
-		t.Fatal("expected legacy enabled column to be dropped")
-	}
-}
-
 func TestSnapshotRequiresModelRegexAndHonorsProviderScope(t *testing.T) {
 	service, _, user, openai, anthropic := newGroupTestService(t)
 	ctx := context.Background()
@@ -154,6 +121,27 @@ func TestSnapshotRequiresModelRegexAndHonorsProviderScope(t *testing.T) {
 	}
 	if store.Allows(uuid.NewString(), openai.Name, "") {
 		t.Fatal("expected user without group to be denied")
+	}
+}
+
+func TestSetSnapshotRejectsLegacyAggregatedAccess(t *testing.T) {
+	store := NewSnapshotStore(nil)
+
+	err := store.SetSnapshot(Snapshot{
+		KnownProviders: []string{"openai"},
+		Users: map[string]UserAccess{
+			"user-id": {
+				Providers:     []string{"openai"},
+				ModelPatterns: []string{`^gpt-5`},
+			},
+		},
+	})
+
+	if !errors.Is(err, ErrLegacySnapshot) {
+		t.Fatalf("expected ErrLegacySnapshot, got %v", err)
+	}
+	if store.Allows("user-id", "openai", "gpt-5-mini") {
+		t.Fatal("legacy snapshot should not update access rules")
 	}
 }
 

@@ -36,6 +36,13 @@ export interface AccessGroup {
   updatedAt: string
 }
 
+export interface ProfileGroupSummary {
+  id: string
+  name: string
+  displayName: string
+  description: string
+}
+
 export interface GroupListResponse {
   items: AccessGroup[]
   page: number

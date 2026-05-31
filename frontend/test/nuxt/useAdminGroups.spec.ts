@@ -119,6 +119,82 @@ describe('useAdminGroups', () => {
     expect(adminGroups.groups.value).toEqual([group])
   })
 
+  it('loads provider and member options across all pages', async () => {
+    apiFetch
+      .mockResolvedValueOnce(groupResponse([]))
+      .mockResolvedValueOnce({
+        items: [
+          {
+            id: 'provider-a',
+            name: 'alpha',
+            displayName: 'Alpha',
+            type: 'openai',
+            enabled: true,
+          },
+        ],
+        total: 2,
+      })
+      .mockResolvedValueOnce({
+        items: [
+          {
+            id: 'provider-b',
+            name: 'beta',
+            displayName: 'Beta',
+            type: 'anthropic',
+            enabled: true,
+          },
+        ],
+        total: 2,
+      })
+      .mockResolvedValueOnce({
+        items: [
+          {
+            id: 'user-id',
+            preferredUsername: 'ada',
+            email: 'ada@example.com',
+            name: 'Ada',
+            role: 'user',
+            isActive: true,
+          },
+        ],
+        total: 1,
+      })
+      .mockResolvedValueOnce({
+        items: [
+          {
+            id: 'service-id',
+            identifier: 'service',
+            name: 'Service',
+            role: 'user',
+            isActive: true,
+          },
+        ],
+        total: 1,
+      })
+
+    const adminGroups = useAdminGroups()
+    await vi.waitFor(() => expect(adminGroups.loading.value).toBe(false))
+
+    await adminGroups.loadProviderOptions()
+    await adminGroups.loadMemberOptions()
+
+    expect(apiFetch).toHaveBeenNthCalledWith(
+      2,
+      '/api/v1/admin/providers?page=1&pageSize=100&sortBy=name&sortDir=asc',
+    )
+    expect(apiFetch).toHaveBeenNthCalledWith(
+      3,
+      '/api/v1/admin/providers?page=2&pageSize=100&sortBy=name&sortDir=asc',
+    )
+    expect(
+      adminGroups.providerOptions.value.map((provider) => provider.id),
+    ).toEqual(['provider-a', 'provider-b'])
+    expect(adminGroups.memberOptions.value.map((member) => member.id)).toEqual([
+      'user-id',
+      'service-id',
+    ])
+  })
+
   it('validates model regex against provider models', async () => {
     const validation: GroupModelPatternValidationResponse = {
       matchedModelCount: 2,
@@ -135,7 +211,9 @@ describe('useAdminGroups', () => {
       ],
       unavailableProviderCount: 0,
     }
-    apiFetch.mockResolvedValueOnce(groupResponse([])).mockResolvedValueOnce(validation)
+    apiFetch
+      .mockResolvedValueOnce(groupResponse([]))
+      .mockResolvedValueOnce(validation)
 
     const adminGroups = useAdminGroups()
     await vi.waitFor(() => expect(adminGroups.loading.value).toBe(false))

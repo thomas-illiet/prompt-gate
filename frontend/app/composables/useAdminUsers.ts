@@ -55,7 +55,11 @@ export function useAdminUsers() {
   const tokenSortBy = shallowRef('createdAt')
   const tokenSortDir = shallowRef<'asc' | 'desc'>('desc')
   const tokenTotal = shallowRef(0)
-  const groupLoading = shallowRef(false)
+  const groupOptionsLoading = shallowRef(false)
+  const userGroupsLoading = shallowRef(false)
+  const groupLoading = computed(
+    () => groupOptionsLoading.value || userGroupsLoading.value,
+  )
   const groupOptions = shallowRef<AccessGroup[]>([])
   const userGroups = shallowRef<AccessGroup[]>([])
 
@@ -145,30 +149,40 @@ export function useAdminUsers() {
 
   // loadGroups fetches group options for user membership management.
   async function loadGroups() {
-    groupLoading.value = true
+    groupOptionsLoading.value = true
     try {
-      const params = new URLSearchParams({
-        page: '1',
-        pageSize: '100',
-        sortBy: 'name',
-        sortDir: 'asc',
-      })
-      const response = await apiFetch<GroupListResponse>(
-        `/api/v1/admin/groups?${params.toString()}`,
-      )
-      groupOptions.value = response.items
+      const items: AccessGroup[] = []
+      const pageSize = 100
+
+      for (let page = 1; ; page += 1) {
+        const params = new URLSearchParams({
+          page: page.toString(),
+          pageSize: pageSize.toString(),
+          sortBy: 'name',
+          sortDir: 'asc',
+        })
+        const response = await apiFetch<GroupListResponse>(
+          `/api/v1/admin/groups?${params.toString()}`,
+        )
+        items.push(...response.items)
+        if (items.length >= response.total || response.items.length === 0) {
+          break
+        }
+      }
+
+      groupOptions.value = items
       return groupOptions.value
     } catch (error) {
       Notify.error(toAdminUserErrorMessage(error))
       throw error
     } finally {
-      groupLoading.value = false
+      groupOptionsLoading.value = false
     }
   }
 
   // loadUserGroups fetches one user's current group memberships.
   async function loadUserGroups(userId: string) {
-    groupLoading.value = true
+    userGroupsLoading.value = true
     try {
       userGroups.value = await apiFetch<AccessGroup[]>(
         `/api/v1/admin/users/${userId}/groups`,
@@ -178,7 +192,7 @@ export function useAdminUsers() {
       Notify.error(toAdminUserErrorMessage(error))
       throw error
     } finally {
-      groupLoading.value = false
+      userGroupsLoading.value = false
     }
   }
 
