@@ -121,4 +121,13 @@ describe('AdminGroupMembersList', () => {
 
     expect(wrapper.emitted('remove')).toEqual([['member-1']])
   })
+
+  it('hides member search when the group has no members', () => {
+    const wrapper = mountList([])
+
+    expect(wrapper.find('[data-test="member-search"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="empty-state"]').text()).toContain(
+      'No members',
+    )
+  })
 })

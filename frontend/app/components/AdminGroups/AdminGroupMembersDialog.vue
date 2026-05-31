@@ -123,6 +123,7 @@ function addMember() {
           />
           <v-btn
             color="primary"
+            height="48"
             rounded="lg"
             prepend-icon="mdi-plus"
             :disabled="!selectedMemberId"

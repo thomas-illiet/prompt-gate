@@ -16,6 +16,7 @@ const search = shallowRef('')
 const page = shallowRef(1)
 const pageSize = 5
 
+const hasMembers = computed(() => props.members.length > 0)
 const filteredMembers = computed(() => {
   const query = normalizeSearch(search.value)
   if (!query) {
@@ -92,7 +93,7 @@ function normalizeSearch(value: string) {
 
 <template>
   <div class="admin-group-members-list">
-    <div class="admin-group-members-list__toolbar">
+    <div v-if="hasMembers" class="admin-group-members-list__toolbar">
       <v-text-field
         v-model="search"
         label="Search members"
@@ -153,7 +154,7 @@ function normalizeSearch(value: string) {
     </v-list>
 
     <AppEmptyState
-      v-else-if="props.members.length"
+      v-else-if="hasMembers"
       compact
       icon="mdi-account-search-outline"
       title="No matching members"
@@ -194,7 +195,7 @@ function normalizeSearch(value: string) {
 }
 
 .admin-group-members-list__count {
-  color: rgb(var(--v-theme-on-surface-variant));
+  color: rgb(var(--app-shell-text-muted));
   font-size: 0.875rem;
   white-space: nowrap;
 }
