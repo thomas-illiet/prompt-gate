@@ -136,7 +136,7 @@ the API process when `PROMPTGATE_STATIC_ASSETS_DIR` is set.
 Official release image:
 
 ```text
-ghcr.io/prompt-gate/backend
+ghcr.io/thomas-illiet/prompt-gate
 ```
 
 ## CI And Releases

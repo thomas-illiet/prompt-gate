@@ -11,7 +11,7 @@ permissions:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: prompt-gate/backend
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
   release:

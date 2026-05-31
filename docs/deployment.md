@@ -4,7 +4,7 @@ Prompt Gate Backend is deployed as a Docker image published to GitHub Container
 Registry:
 
 ```text
-ghcr.io/prompt-gate/backend
+ghcr.io/thomas-illiet/prompt-gate
 ```
 
 The same image contains the backend binary and the generated Nuxt static
@@ -74,7 +74,7 @@ Run migrations:
 ```sh
 docker run --rm \
   -e PROMPTGATE_DATABASE_URL=postgres://postgres:postgres@db:5432/promptgate?sslmode=disable \
-  ghcr.io/prompt-gate/backend:v0.1.0 \
+  ghcr.io/thomas-illiet/prompt-gate:v0.1.0 \
   /app/promptgate migrate
 ```
 
@@ -95,7 +95,7 @@ docker run --rm \
   -e PROMPTGATE_PROXY_BASE_URL=https://proxy.example.com \
   -e PROMPTGATE_JWT_SECRET=change-me-change-me-change-me-32 \
   -e PROMPTGATE_SECRETS_KEY=MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY= \
-  ghcr.io/prompt-gate/backend:v0.1.0
+  ghcr.io/thomas-illiet/prompt-gate:v0.1.0
 ```
 
 Run the proxy:
@@ -109,7 +109,7 @@ docker run --rm \
   -e PROMPTGATE_FRONTEND_BASE_URL=https://app.example.com \
   -e PROMPTGATE_JWT_SECRET=change-me-change-me-change-me-32 \
   -e PROMPTGATE_SECRETS_KEY=MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY= \
-  ghcr.io/prompt-gate/backend:v0.1.0 \
+  ghcr.io/thomas-illiet/prompt-gate:v0.1.0 \
   /app/promptgate proxy
 ```
 
@@ -121,7 +121,7 @@ docker run --rm \
   -e PROMPTGATE_REDIS_URL=redis://redis:6379/0 \
   -e PROMPTGATE_JWT_SECRET=change-me-change-me-change-me-32 \
   -e PROMPTGATE_SECRETS_KEY=MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY= \
-  ghcr.io/prompt-gate/backend:v0.1.0 \
+  ghcr.io/thomas-illiet/prompt-gate:v0.1.0 \
   /app/promptgate schedule
 ```
 

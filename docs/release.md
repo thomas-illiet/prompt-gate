@@ -9,7 +9,7 @@ Container Registry, and creates a GitHub Release with downloadable assets.
 
 ## Prerequisites
 
-- Write access to `prompt-gate/backend`.
+- Write access to `thomas-illiet/prompt-gate`.
 - GitHub Packages enabled for the repository or organization.
 - Workflow token permissions for package publishing and release creation.
 - A clean local validation run before tagging.
@@ -104,10 +104,10 @@ runtime settings.
 For Git tag `v0.1.0`, the workflow publishes:
 
 ```text
-ghcr.io/prompt-gate/backend:v0.1.0
-ghcr.io/prompt-gate/backend:0.1.0
-ghcr.io/prompt-gate/backend:latest
-ghcr.io/prompt-gate/backend:sha-<short-sha>
+ghcr.io/thomas-illiet/prompt-gate:v0.1.0
+ghcr.io/thomas-illiet/prompt-gate:0.1.0
+ghcr.io/thomas-illiet/prompt-gate:latest
+ghcr.io/thomas-illiet/prompt-gate:sha-<short-sha>
 ```
 
 Use the immutable `vX.Y.Z` tag for production deployments.
@@ -117,8 +117,8 @@ Use the immutable `vX.Y.Z` tag for production deployments.
 After the workflow completes:
 
 ```sh
-docker pull ghcr.io/prompt-gate/backend:v0.1.0
-docker run --rm --entrypoint id ghcr.io/prompt-gate/backend:v0.1.0
+docker pull ghcr.io/thomas-illiet/prompt-gate:v0.1.0
+docker run --rm --entrypoint id ghcr.io/thomas-illiet/prompt-gate:v0.1.0
 ```
 
 The container should run as the non-root `promptgate` user with UID `10001`.
@@ -137,7 +137,7 @@ gh release view v0.1.0 --json assets --jq '.assets[].name'
 Redeploy the previous stable versioned image tag:
 
 ```sh
-docker pull ghcr.io/prompt-gate/backend:v0.0.9
+docker pull ghcr.io/thomas-illiet/prompt-gate:v0.0.9
 ```
 
 Avoid using `latest` for production rollbacks because it moves every time a new
