@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	defaultLoginRedirectPath  = "/homepage"
+	defaultLoginRedirectPath  = "/dashboard"
 	defaultLogoutRedirectPath = "/login"
 )
 

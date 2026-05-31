@@ -13,4 +13,17 @@ declare module '#app' {
   }
 }
 
+declare module 'vue-router' {
+  interface RouteMeta {
+    auth?: boolean
+    icon?: string
+    title?: string
+    subtitle?: string
+    drawerIndex?: number
+    drawerGroup?: boolean
+    allowBlocked?: boolean
+    requiredRoles?: AppRole[]
+  }
+}
+
 export {}
