@@ -20,6 +20,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   delete: [user: AdminUser]
   edit: [user: AdminUser]
+  manageGroups: [user: AdminUser]
   manageTokens: [user: AdminUser]
   refresh: []
   toggleStatus: [user: AdminUser]
@@ -108,6 +109,12 @@ const rowActions: AppRowAction<AdminUser>[] = [
     key: 'tokens',
     onSelect: (user) => emit('manageTokens', user),
     title: 'Manage virtual keys',
+  },
+  {
+    icon: 'mdi-account-multiple-check-outline',
+    key: 'groups',
+    onSelect: (user) => emit('manageGroups', user),
+    title: 'Manage groups',
   },
   {
     color: 'error',

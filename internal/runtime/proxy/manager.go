@@ -16,6 +16,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"promptgate/backend/internal/domain/firewall"
+	"promptgate/backend/internal/domain/groups"
 	localmcp "promptgate/backend/internal/domain/mcp"
 	localprovider "promptgate/backend/internal/domain/provider"
 	localproxy "promptgate/backend/internal/domain/proxy"
@@ -29,6 +30,7 @@ type Options struct {
 	MCP              *localmcp.Service
 	Recorder         *localproxy.Recorder
 	FirewallSnapshot *firewall.SnapshotStore
+	AccessSnapshot   *groups.SnapshotStore
 	AuthCache        tokens.AuthCache
 	Redis            *redisstore.Store
 	Logger           *slog.Logger
@@ -60,6 +62,11 @@ func NewManager(ctx context.Context, opts Options) (*Manager, error) {
 			return nil, fmt.Errorf("load firewall snapshot: %w", err)
 		}
 		_ = manager.cacheFirewallSnapshot(ctx)
+	}
+	if opts.AccessSnapshot != nil {
+		if err := manager.RefreshAccessGroups(ctx); err != nil {
+			return nil, fmt.Errorf("load group access snapshot: %w", err)
+		}
 	}
 	if err := manager.Rebuild(ctx); err != nil {
 		return nil, err
@@ -113,10 +120,30 @@ func (m *Manager) RefreshFirewall(ctx context.Context) error {
 	return m.cacheFirewallSnapshot(ctx)
 }
 
+// RefreshAccessGroups reloads group access rules without rebuilding the bridge.
+func (m *Manager) RefreshAccessGroups(ctx context.Context) error {
+	if m.opts.AccessSnapshot == nil {
+		return nil
+	}
+	var snapshot groups.Snapshot
+	if m.opts.Redis != nil {
+		if ok, err := m.opts.Redis.GetJSON(ctx, redisstore.SnapshotKey(configevents.DomainGroups), &snapshot); err == nil && ok {
+			return m.opts.AccessSnapshot.SetSnapshot(snapshot)
+		}
+	}
+	if err := m.opts.AccessSnapshot.Refresh(ctx); err != nil {
+		return err
+	}
+	return m.cacheAccessSnapshot(ctx)
+}
+
 // Reload refreshes runtime-backed configuration without restarting the process.
 func (m *Manager) Reload(ctx context.Context) error {
 	if err := m.RefreshFirewall(ctx); err != nil {
 		return fmt.Errorf("refresh firewall snapshot: %w", err)
+	}
+	if err := m.RefreshAccessGroups(ctx); err != nil {
+		return fmt.Errorf("refresh group access snapshot: %w", err)
 	}
 	if err := m.Rebuild(ctx); err != nil {
 		return fmt.Errorf("rebuild proxy bridge: %w", err)
@@ -177,6 +204,12 @@ func (m *Manager) Watch(ctx context.Context) {
 					m.opts.Logger.Error("firewall snapshot reload failed", "error", err)
 				} else {
 					m.opts.Logger.Info("firewall snapshot reloaded", "version", event.Version)
+				}
+			case configevents.DomainGroups:
+				if err := m.RefreshAccessGroups(ctx); err != nil {
+					m.opts.Logger.Error("group access snapshot reload failed", "error", err)
+				} else {
+					m.opts.Logger.Info("group access snapshot reloaded", "version", event.Version)
 				}
 			case configevents.DomainProviders, configevents.DomainMCP:
 				scheduleBridgeReload()
@@ -317,6 +350,14 @@ func (m *Manager) cacheFirewallSnapshot(ctx context.Context) error {
 		return nil
 	}
 	return m.opts.Redis.SetJSON(ctx, redisstore.SnapshotKey(configevents.DomainFirewall), m.opts.FirewallSnapshot.Snapshot(), m.opts.Redis.TTL())
+}
+
+// cacheAccessSnapshot refreshes and caches the group access snapshot.
+func (m *Manager) cacheAccessSnapshot(ctx context.Context) error {
+	if m.opts.Redis == nil || m.opts.AccessSnapshot == nil {
+		return nil
+	}
+	return m.opts.Redis.SetJSON(ctx, redisstore.SnapshotKey(configevents.DomainGroups), m.opts.AccessSnapshot.Snapshot(), m.opts.Redis.TTL())
 }
 
 // compileOptionalRegex compiles a regex only when a pattern is configured.

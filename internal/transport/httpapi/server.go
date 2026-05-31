@@ -7,6 +7,7 @@ import (
 
 	"promptgate/backend/internal/domain/auth"
 	"promptgate/backend/internal/domain/firewall"
+	"promptgate/backend/internal/domain/groups"
 	"promptgate/backend/internal/domain/mcp"
 	"promptgate/backend/internal/domain/provider"
 	"promptgate/backend/internal/domain/proxy"
@@ -25,6 +26,7 @@ type Dependencies struct {
 	Users     *users.Service
 	Tokens    *tokens.Service
 	Firewall  *firewall.Service
+	Groups    *groups.Service
 	Providers *provider.Service
 	MCP       *mcp.Service
 	Proxy     *proxy.Service
@@ -41,10 +43,11 @@ func NewHandler(a Dependencies) http.Handler {
 		sessionStore: a.Sessions,
 		userService:  a.Users,
 		tokenService: a.Tokens,
+		groups:       a.Groups,
 		proxyService: a.Proxy,
 		providers:    a.Providers,
 	}
-	adminH := admin.NewHandler(a.Users, a.Tokens, a.Firewall, a.Providers, a.MCP, a.Proxy)
+	adminH := admin.NewHandler(a.Users, a.Tokens, a.Firewall, a.Groups, a.Providers, a.MCP, a.Proxy)
 
 	cfg := a.Config
 	sessionStore := a.Sessions
@@ -124,6 +127,10 @@ func NewHandler(a Dependencies) http.Handler {
 		middleware.Chain(http.HandlerFunc(srv.handleCurrentUserDashboardTopProviderTypes), userMiddlewares...),
 	)
 	mux.Handle(
+		"GET /api/v1/me/groups",
+		middleware.Chain(http.HandlerFunc(srv.handleCurrentUserGroups), userMiddlewares...),
+	)
+	mux.Handle(
 		"POST /api/v1/tokens",
 		middleware.Chain(http.HandlerFunc(srv.handleCreateToken), userMiddlewares...),
 	)
@@ -164,6 +171,14 @@ func NewHandler(a Dependencies) http.Handler {
 	mux.Handle(
 		"DELETE /api/v1/admin/users/{id}/tokens/{tokenId}",
 		middleware.Chain(http.HandlerFunc(adminH.HandleAdminRevokeToken), adminMiddlewares...),
+	)
+	mux.Handle(
+		"GET /api/v1/admin/users/{id}/groups",
+		middleware.Chain(http.HandlerFunc(adminH.HandleAdminListUserGroups), adminMiddlewares...),
+	)
+	mux.Handle(
+		"PUT /api/v1/admin/users/{id}/groups",
+		middleware.Chain(http.HandlerFunc(adminH.HandleAdminReplaceUserGroups), adminMiddlewares...),
 	)
 	mux.Handle(
 		"GET /api/v1/admin/prompts",
@@ -292,6 +307,38 @@ func NewHandler(a Dependencies) http.Handler {
 	mux.Handle(
 		"DELETE /api/v1/admin/firewall/rules/{id}",
 		middleware.Chain(http.HandlerFunc(adminH.HandleAdminDeleteFirewallRule), adminMiddlewares...),
+	)
+	mux.Handle(
+		"GET /api/v1/admin/groups",
+		middleware.Chain(http.HandlerFunc(adminH.HandleAdminListGroups), adminMiddlewares...),
+	)
+	mux.Handle(
+		"POST /api/v1/admin/groups",
+		middleware.Chain(http.HandlerFunc(adminH.HandleAdminCreateGroup), adminMiddlewares...),
+	)
+	mux.Handle(
+		"POST /api/v1/admin/groups/model-patterns/validate",
+		middleware.Chain(http.HandlerFunc(adminH.HandleAdminValidateGroupModelPatterns), adminMiddlewares...),
+	)
+	mux.Handle(
+		"GET /api/v1/admin/groups/{id}",
+		middleware.Chain(http.HandlerFunc(adminH.HandleAdminGetGroup), adminMiddlewares...),
+	)
+	mux.Handle(
+		"PATCH /api/v1/admin/groups/{id}",
+		middleware.Chain(http.HandlerFunc(adminH.HandleAdminUpdateGroup), adminMiddlewares...),
+	)
+	mux.Handle(
+		"DELETE /api/v1/admin/groups/{id}",
+		middleware.Chain(http.HandlerFunc(adminH.HandleAdminDeleteGroup), adminMiddlewares...),
+	)
+	mux.Handle(
+		"PUT /api/v1/admin/groups/{id}/members/{userId}",
+		middleware.Chain(http.HandlerFunc(adminH.HandleAdminAddGroupMember), adminMiddlewares...),
+	)
+	mux.Handle(
+		"DELETE /api/v1/admin/groups/{id}/members/{userId}",
+		middleware.Chain(http.HandlerFunc(adminH.HandleAdminRemoveGroupMember), adminMiddlewares...),
 	)
 	mux.Handle(
 		"GET /api/v1/admin/providers",

@@ -95,4 +95,16 @@ describe('AdminUsersTable', () => {
 
     expect(wrapper.emitted('manageTokens')).toEqual([[user]])
   })
+
+  it('exposes a manage-groups row action', async () => {
+    const wrapper = mountTable()
+
+    expect(wrapper.get('[data-test="row-action-groups"]').text()).toBe(
+      'Manage groups',
+    )
+
+    await wrapper.get('[data-test="row-action-groups"]').trigger('click')
+
+    expect(wrapper.emitted('manageGroups')).toEqual([[user]])
+  })
 })

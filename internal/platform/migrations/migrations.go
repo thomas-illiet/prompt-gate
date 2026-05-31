@@ -8,6 +8,7 @@ import (
 	"gorm.io/gorm"
 
 	"promptgate/backend/internal/domain/firewall"
+	"promptgate/backend/internal/domain/groups"
 	"promptgate/backend/internal/domain/mcp"
 	"promptgate/backend/internal/domain/provider"
 	"promptgate/backend/internal/domain/proxy"
@@ -35,6 +36,11 @@ func Run(ctx context.Context, db *gorm.DB) error {
 	slog.Info("running database migrations", "models", "providers")
 	if err := db.WithContext(ctx).AutoMigrate(&provider.Provider{}); err != nil {
 		return fmt.Errorf("migrate providers: %w", err)
+	}
+
+	slog.Info("running database migrations", "models", "groups")
+	if err := db.WithContext(ctx).AutoMigrate(&groups.Group{}, &groups.GroupProvider{}, &groups.GroupModelPattern{}, &groups.GroupMember{}); err != nil {
+		return fmt.Errorf("migrate groups: %w", err)
 	}
 
 	slog.Info("running database migrations", "models", "mcp")

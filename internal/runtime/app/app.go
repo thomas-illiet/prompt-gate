@@ -9,6 +9,7 @@ import (
 
 	"promptgate/backend/internal/domain/auth"
 	"promptgate/backend/internal/domain/firewall"
+	"promptgate/backend/internal/domain/groups"
 	"promptgate/backend/internal/domain/mcp"
 	"promptgate/backend/internal/domain/provider"
 	"promptgate/backend/internal/domain/proxy"
@@ -27,6 +28,7 @@ type App struct {
 	Users     *users.Service
 	Tokens    *tokens.Service
 	Firewall  *firewall.Service
+	Groups    *groups.Service
 	Providers *provider.Service
 	MCP       *mcp.Service
 	Proxy     *proxy.Service
@@ -49,6 +51,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	tokenService := tokens.NewService(db, cfg.JWTSecret)
 	userService.SetTokenRevoker(tokenService)
 	firewallService := firewall.NewService(db)
+	groupService := groups.NewService(db)
 	secretCipher, err := secrets.NewCipher(cfg.SecretsKey)
 	if err != nil {
 		return nil, err
@@ -65,6 +68,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	userService.SetNotifier(redisStore)
 	tokenService.SetNotifier(redisStore)
 	firewallService.SetNotifier(redisStore)
+	groupService.SetNotifier(redisStore)
 	providerService.SetNotifier(redisStore)
 	mcpService.SetNotifier(redisStore)
 
@@ -103,6 +107,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		Users:     userService,
 		Tokens:    tokenService,
 		Firewall:  firewallService,
+		Groups:    groupService,
 		Providers: providerService,
 		MCP:       mcpService,
 		Proxy:     proxyService,

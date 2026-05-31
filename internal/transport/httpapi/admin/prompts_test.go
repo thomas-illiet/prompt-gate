@@ -53,7 +53,7 @@ func newPromptsTestHandler(t *testing.T) (*Handler, *gorm.DB) {
 		t.Fatalf("seed user: %v", err)
 	}
 
-	return NewHandler(userService, nil, nil, nil, nil, proxy.NewService(db)), db
+	return NewHandler(userService, nil, nil, nil, nil, nil, proxy.NewService(db)), db
 }
 
 func seedAdminPrompt(t *testing.T, db *gorm.DB) {
@@ -126,7 +126,7 @@ func TestHandleAdminListPromptsRejectsInvalidSort(t *testing.T) {
 }
 
 func TestHandleAdminListPromptsRequiresProxyService(t *testing.T) {
-	handler := NewHandler(nil, nil, nil, nil, nil)
+	handler := NewHandler(nil, nil, nil, nil, nil, nil)
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/prompts", nil)
 	recorder := httptest.NewRecorder()
 

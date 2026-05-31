@@ -71,7 +71,7 @@ func newDashboardTestHandler(t *testing.T) (*Handler, *gorm.DB) {
 		}
 	}
 
-	return NewHandler(userService, nil, nil, nil, nil, proxy.NewService(db)), db
+	return NewHandler(userService, nil, nil, nil, nil, nil, proxy.NewService(db)), db
 }
 
 func seedDashboardUsage(t *testing.T, db *gorm.DB, userID string, id string, at time.Time, inputTokens int64, outputTokens int64) {

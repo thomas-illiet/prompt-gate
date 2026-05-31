@@ -1,5 +1,10 @@
 import type { UserToken, UserTokenListResponse } from '~/types/user-service'
 import type {
+  AccessGroup,
+  GroupListResponse,
+  ReplaceUserGroupsPayload,
+} from '~/types/groups'
+import type {
   AdminUser,
   UpdateUserPayload,
   UserListResponse,
@@ -16,6 +21,7 @@ import { toApiErrorMessage } from '~/utils/api-error'
 
 const ERROR_MESSAGES = {
   invalid_expiration: 'Expiration date must be in the future.',
+  group_not_found: 'Group no longer exists.',
   invalid_role: 'Selected role is invalid.',
   invalid_sort: 'Selected user sort is invalid.',
   token_not_found: 'Virtual key no longer exists.',
@@ -49,6 +55,9 @@ export function useAdminUsers() {
   const tokenSortBy = shallowRef('createdAt')
   const tokenSortDir = shallowRef<'asc' | 'desc'>('desc')
   const tokenTotal = shallowRef(0)
+  const groupLoading = shallowRef(false)
+  const groupOptions = shallowRef<AccessGroup[]>([])
+  const userGroups = shallowRef<AccessGroup[]>([])
 
   const queryList = useQueryList<AdminUser>({
     debounceMs: 80,
@@ -132,6 +141,66 @@ export function useAdminUsers() {
     } finally {
       tokenLoading.value = false
     }
+  }
+
+  // loadGroups fetches group options for user membership management.
+  async function loadGroups() {
+    groupLoading.value = true
+    try {
+      const params = new URLSearchParams({
+        page: '1',
+        pageSize: '100',
+        sortBy: 'name',
+        sortDir: 'asc',
+      })
+      const response = await apiFetch<GroupListResponse>(
+        `/api/v1/admin/groups?${params.toString()}`,
+      )
+      groupOptions.value = response.items
+      return groupOptions.value
+    } catch (error) {
+      Notify.error(toAdminUserErrorMessage(error))
+      throw error
+    } finally {
+      groupLoading.value = false
+    }
+  }
+
+  // loadUserGroups fetches one user's current group memberships.
+  async function loadUserGroups(userId: string) {
+    groupLoading.value = true
+    try {
+      userGroups.value = await apiFetch<AccessGroup[]>(
+        `/api/v1/admin/users/${userId}/groups`,
+      )
+      return userGroups.value
+    } catch (error) {
+      Notify.error(toAdminUserErrorMessage(error))
+      throw error
+    } finally {
+      groupLoading.value = false
+    }
+  }
+
+  // replaceUserGroups replaces the selected user's group memberships.
+  async function replaceUserGroups(userId: string, groupIds: string[]) {
+    return await runApiMutation(
+      {
+        loading: saving,
+        successMessage: 'User groups updated.',
+        toErrorMessage: toAdminUserErrorMessage,
+      },
+      async () => {
+        const payload: ReplaceUserGroupsPayload = { groupIds }
+        userGroups.value = await apiJson<AccessGroup[]>(
+          `/api/v1/admin/users/${userId}/groups`,
+          payload,
+          { method: 'PUT' },
+        )
+        await queryList.reload()
+        return userGroups.value
+      },
+    )
   }
 
   // setTokenPage updates token pagination.
@@ -243,12 +312,17 @@ export function useAdminUsers() {
   return {
     deleteUser,
     listError: queryList.listError,
+    groupLoading,
+    groupOptions,
     loadTokens,
+    loadGroups,
+    loadUserGroups,
     loadUser,
     loading: queryList.loading,
     page: queryList.page,
     pageSize: queryList.pageSize,
     reload,
+    replaceUserGroups,
     role,
     saving,
     search: queryList.search,
@@ -274,6 +348,7 @@ export function useAdminUsers() {
     tokenTotal,
     total: queryList.total,
     updateUser,
+    userGroups,
     users: queryList.items,
     revokeUserToken,
   }

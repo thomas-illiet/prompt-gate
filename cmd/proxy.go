@@ -18,6 +18,7 @@ import (
 
 	"promptgate/backend/internal/domain/auth"
 	"promptgate/backend/internal/domain/firewall"
+	"promptgate/backend/internal/domain/groups"
 	localmcp "promptgate/backend/internal/domain/mcp"
 	localprovider "promptgate/backend/internal/domain/provider"
 	localproxy "promptgate/backend/internal/domain/proxy"
@@ -90,6 +91,7 @@ func runProxy() error {
 	userService := users.NewService(db)
 	tokenService := tokens.NewService(db, cfg.JWTSecret)
 	firewallService := firewall.NewService(db)
+	groupService := groups.NewService(db)
 	providerService := localprovider.NewService(db, secretCipher)
 	mcpService := localmcp.NewService(db, secretCipher)
 	recorder := localproxy.NewRecorder(db)
@@ -98,12 +100,14 @@ func runProxy() error {
 	authCache := tokens.NewRedisAuthCache(redisStore, cfg.RedisCacheTTL, stdLogger)
 	authCache.SyncVersion(ctx)
 	firewallSnapshot := firewall.NewSnapshotStore(firewallService)
+	accessSnapshot := groups.NewSnapshotStore(groupService)
 
 	manager, err := proxyruntime.NewManager(ctx, proxyruntime.Options{
 		Providers:        providerService,
 		MCP:              mcpService,
 		Recorder:         recorder,
 		FirewallSnapshot: firewallSnapshot,
+		AccessSnapshot:   accessSnapshot,
 		AuthCache:        authCache,
 		Redis:            redisStore,
 		Logger:           stdLogger,
@@ -154,7 +158,9 @@ func runProxy() error {
 		Logger:       stdLogger,
 	})(
 		firewall.Middleware(firewallSnapshot, cfg.ProxyTrustForwardHeaders, stdLogger)(
-			auth.ActorMiddleware(manager),
+			groups.Middleware(accessSnapshot, stdLogger)(
+				auth.ActorMiddleware(manager),
+			),
 		),
 	)
 	if len(cfg.CORSAllowedOrigins) > 0 {

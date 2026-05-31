@@ -37,7 +37,7 @@ func newUsersTestHandler(t *testing.T) (*Handler, *users.Service) {
 	}
 	createAdminUsersUsageTables(t, db)
 
-	return NewHandler(service, nil, nil, nil, nil), service
+	return NewHandler(service, nil, nil, nil, nil, nil), service
 }
 
 func createAdminUsersUsageTables(t *testing.T, db *gorm.DB) {

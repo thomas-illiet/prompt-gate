@@ -7,6 +7,7 @@ const (
 	DomainProviders = "providers"
 	DomainMCP       = "mcp"
 	DomainAuth      = "auth"
+	DomainGroups    = "groups"
 )
 
 type Notifier interface {

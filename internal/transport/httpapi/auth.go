@@ -7,6 +7,7 @@ import (
 	"gorm.io/gorm"
 
 	"promptgate/backend/internal/domain/auth"
+	"promptgate/backend/internal/domain/groups"
 	"promptgate/backend/internal/domain/provider"
 	"promptgate/backend/internal/domain/proxy"
 	"promptgate/backend/internal/domain/tokens"
@@ -21,6 +22,7 @@ type server struct {
 	sessionStore *auth.SessionStore
 	userService  *users.Service
 	tokenService *tokens.Service
+	groups       *groups.Service
 	proxyService *proxy.Service
 	providers    *provider.Service
 }

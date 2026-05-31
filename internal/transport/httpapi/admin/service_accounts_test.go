@@ -45,7 +45,7 @@ func newServiceAccountsTestHandler(t *testing.T) (*Handler, *users.Service, *tok
 		t.Fatalf("auto-migrate firewall tables: %v", err)
 	}
 
-	return NewHandler(userService, tokenService, firewallService, nil, nil), userService, tokenService
+	return NewHandler(userService, tokenService, firewallService, nil, nil, nil), userService, tokenService
 }
 
 func TestHandleAdminCreateServiceAccountRejectsInvalidIdentifier(t *testing.T) {

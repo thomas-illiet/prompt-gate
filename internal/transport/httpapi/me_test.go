@@ -12,8 +12,10 @@ import (
 	"time"
 
 	"promptgate/backend/internal/domain/auth"
+	"promptgate/backend/internal/domain/groups"
 	"promptgate/backend/internal/domain/provider"
 	"promptgate/backend/internal/domain/proxy"
+	"promptgate/backend/internal/domain/users"
 	"promptgate/backend/internal/platform/config"
 	"promptgate/backend/internal/platform/secrets"
 
@@ -81,6 +83,57 @@ func TestParseUsageWindowRejectsInvalidWindow(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/me/dashboard/tokens?window=14d", nil)
 	if _, err := parseUsageWindow(req); err == nil {
 		t.Fatal("expected invalid usage window")
+	}
+}
+
+func TestHandleCurrentUserGroupsReturnsMemberships(t *testing.T) {
+	groupService, db := newHTTPGroupService(t)
+	profile := testUserProfile()
+	ctx := context.Background()
+	user := users.User{
+		ID:                profile.ID,
+		ExternalSub:       profile.Sub,
+		Email:             profile.Email,
+		PreferredUsername: profile.PreferredUsername,
+		Name:              profile.Name,
+		Type:              profile.Type,
+		Role:              profile.Role,
+		IsActive:          profile.IsActive,
+		LastLoginAt:       profile.LastLoginAt,
+	}
+	if err := db.Create(&user).Error; err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+	group, err := groupService.CreateGroup(ctx, groups.CreateGroupInput{
+		Name:        "engineering",
+		DisplayName: "Engineering",
+		Description: "Engineering model access",
+	})
+	if err != nil {
+		t.Fatalf("create group: %v", err)
+	}
+	if err := groupService.AddMember(ctx, group.ID.String(), profile.ID); err != nil {
+		t.Fatalf("add member: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/me/groups", nil)
+	req = req.WithContext(auth.ContextWithUser(context.Background(), profile))
+	recorder := httptest.NewRecorder()
+
+	server{groups: groupService}.handleCurrentUserGroups(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", recorder.Code, recorder.Body.String())
+	}
+	var response []groups.GroupResponse
+	if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
+		t.Fatalf("decode groups: %v", err)
+	}
+	if len(response) != 1 {
+		t.Fatalf("expected one group, got %#v", response)
+	}
+	if response[0].Name != "engineering" || response[0].Description != "Engineering model access" {
+		t.Fatalf("unexpected group response: %#v", response[0])
 	}
 }
 
@@ -179,4 +232,21 @@ func newHTTPProviderService(t *testing.T) *provider.Service {
 		t.Fatalf("migrate providers: %v", err)
 	}
 	return service
+}
+
+func newHTTPGroupService(t *testing.T) (*groups.Service, *gorm.DB) {
+	t.Helper()
+
+	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"-groups?mode=memory&cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	if err := db.AutoMigrate(&users.User{}, &provider.Provider{}); err != nil {
+		t.Fatalf("migrate group dependencies: %v", err)
+	}
+	service := groups.NewService(db)
+	if err := service.AutoMigrate(context.Background()); err != nil {
+		t.Fatalf("migrate groups: %v", err)
+	}
+	return service, db
 }

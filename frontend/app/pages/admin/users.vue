@@ -3,6 +3,7 @@ import type { UserToken } from '~/types/user-service'
 import type { AdminUser } from '~/types/users'
 import AdminUserDeleteDialog from '~/components/AdminUsers/AdminUserDeleteDialog.vue'
 import AdminUserEditDialog from '~/components/AdminUsers/AdminUserEditDialog.vue'
+import AdminUserGroupsDialog from '~/components/AdminUsers/AdminUserGroupsDialog.vue'
 import AdminUserTokensDialog from '~/components/AdminUsers/AdminUserTokensDialog.vue'
 
 definePageMeta({
@@ -15,8 +16,10 @@ const adminUsers = useAdminUsers()
 const editDialogOpen = shallowRef(false)
 const deleteDialogOpen = shallowRef(false)
 const tokenDialogOpen = shallowRef(false)
+const groupsDialogOpen = shallowRef(false)
 const userToDelete = shallowRef<AdminUser | null>(null)
 const tokenUser = shallowRef<AdminUser | null>(null)
+const groupsUser = shallowRef<AdminUser | null>(null)
 const statusDialog = useTargetDialog<AdminUser>()
 const tokenRevokeDialog = useTargetDialog<UserToken>()
 const statusConfirm = useToggleConfirmDialog(statusDialog.target, {
@@ -87,6 +90,16 @@ function openTokenDialog(user: AdminUser) {
   void adminUsers.loadTokens(user.id).catch(() => {})
 }
 
+// openGroupsDialog loads group memberships before showing group management.
+async function openGroupsDialog(user: AdminUser) {
+  groupsUser.value = user
+  await Promise.all([
+    adminUsers.loadGroups(),
+    adminUsers.loadUserGroups(user.id),
+  ])
+  groupsDialogOpen.value = true
+}
+
 // refreshTokens reloads token rows for the selected user.
 async function refreshTokens() {
   if (!tokenUser.value) {
@@ -151,6 +164,16 @@ async function confirmRevokeToken() {
   )
   tokenRevokeDialog.close()
 }
+
+// saveUserGroups replaces group memberships for the selected user.
+async function saveUserGroups(groupIds: string[]) {
+  if (!groupsUser.value) {
+    return
+  }
+
+  await adminUsers.replaceUserGroups(groupsUser.value.id, groupIds)
+  groupsDialogOpen.value = false
+}
 </script>
 
 <template>
@@ -199,6 +222,7 @@ async function confirmRevokeToken() {
           :total="adminUsers.total.value"
           @delete="openDeleteDialog"
           @edit="openEditDialog"
+          @manage-groups="openGroupsDialog"
           @manage-tokens="openTokenDialog"
           @refresh="adminUsers.reload"
           @toggle-status="statusDialog.open"
@@ -238,6 +262,15 @@ async function confirmRevokeToken() {
       @update:page="updateTokenPage"
       @update:page-size="updateTokenPageSize"
       @update:sort="updateTokenSort"
+    />
+    <AdminUserGroupsDialog
+      v-model="groupsDialogOpen"
+      :groups="adminUsers.groupOptions.value"
+      :loading="adminUsers.groupLoading.value"
+      :saving="adminUsers.saving.value"
+      :selected-groups="adminUsers.userGroups.value"
+      :user="groupsUser"
+      @save="saveUserGroups"
     />
     <AppConfirmDialog
       v-model="statusDialog.isOpen.value"

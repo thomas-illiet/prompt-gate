@@ -40,7 +40,7 @@ func newFirewallTestHandler(t *testing.T) (*Handler, *firewall.Service) {
 		t.Fatalf("auto-migrate firewall table: %v", err)
 	}
 
-	return NewHandler(nil, nil, service, nil, nil), service
+	return NewHandler(nil, nil, service, nil, nil, nil), service
 }
 
 // TestHandleAdminCreateFirewallRuleRejectsInvalidBody verifies malformed JSON is rejected.

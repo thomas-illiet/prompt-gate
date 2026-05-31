@@ -173,6 +173,27 @@ func (s server) handleCurrentUserPrompts(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, result)
 }
 
+// handleCurrentUserGroups returns the authenticated user's access groups.
+func (s server) handleCurrentUserGroups(w http.ResponseWriter, r *http.Request) {
+	user, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "missing user in context"})
+		return
+	}
+	if s.groups == nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "groups service unavailable"})
+		return
+	}
+
+	result, err := s.groups.ListUserGroups(r.Context(), user.ID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "load_user_groups_failed"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, result)
+}
+
 // handleHelpSetup returns provider setup metadata for authenticated users.
 func (s server) handleHelpSetup(w http.ResponseWriter, r *http.Request) {
 	if _, ok := auth.UserFromContext(r.Context()); !ok {

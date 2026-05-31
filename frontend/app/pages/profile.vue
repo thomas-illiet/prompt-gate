@@ -12,6 +12,7 @@ definePageMeta({
 
 const authStore = useAuthStore()
 const { user } = storeToRefs(authStore)
+const profileGroups = useProfileGroups()
 
 const displayName = computed(
   () =>
@@ -161,6 +162,18 @@ async function logout() {
       </v-col>
 
       <v-col cols="12" lg="7">
+        <ProfileGroupsCard
+          :error="profileGroups.error.value"
+          :groups="profileGroups.groups.value"
+          :loading="profileGroups.loading.value"
+        />
+      </v-col>
+
+      <v-col cols="12" lg="5">
+        <ProfileQuickActions :actions="quickActions" @logout="logout" />
+      </v-col>
+
+      <v-col cols="12">
         <ProfileInfoCard
           icon="mdi-card-account-details-outline"
           title="Technical details"
@@ -178,10 +191,6 @@ async function logout() {
             </v-list-item>
           </v-list>
         </ProfileInfoCard>
-      </v-col>
-
-      <v-col cols="12" lg="5">
-        <ProfileQuickActions :actions="quickActions" @logout="logout" />
       </v-col>
     </v-row>
   </v-container>

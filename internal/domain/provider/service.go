@@ -130,6 +130,14 @@ type HelpSetupProvider struct {
 	ModelsError      string       `json:"modelsError,omitempty"`
 }
 
+type ModelCatalogProvider struct {
+	ID          uuid.UUID `json:"id"`
+	Name        string    `json:"name"`
+	DisplayName string    `json:"displayName"`
+	Models      []string  `json:"models"`
+	ModelsError string    `json:"modelsError,omitempty"`
+}
+
 // ListProviders returns all providers in admin response form.
 func (s *Service) ListProviders(ctx context.Context) ([]ProviderResponse, error) {
 	result, err := s.ListProvidersPaged(ctx, ListParams{
@@ -224,6 +232,32 @@ func (s *Service) HelpSetup(ctx context.Context, proxyBaseURL string) (HelpSetup
 		out.Providers = append(out.Providers, item)
 	}
 
+	return out, nil
+}
+
+// ModelCatalog returns best-effort upstream model lists for selected providers.
+func (s *Service) ModelCatalog(ctx context.Context, providerIDs []string) ([]ModelCatalogProvider, error) {
+	records, err := s.modelCatalogRecords(ctx, providerIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]ModelCatalogProvider, 0, len(records))
+	for _, record := range records {
+		item := ModelCatalogProvider{
+			ID:          record.ID,
+			Name:        record.Name,
+			DisplayName: record.DisplayName,
+			Models:      []string{},
+		}
+		models, err := s.fetchProviderModels(ctx, record)
+		if err != nil {
+			item.ModelsError = err.Error()
+		} else {
+			item.Models = models
+		}
+		out = append(out, item)
+	}
 	return out, nil
 }
 
@@ -329,6 +363,7 @@ func (s *Service) CreateProvider(ctx context.Context, input CreateProviderInput)
 		return ProviderResponse{}, fmt.Errorf("create provider: %w", err)
 	}
 	s.notifier.Notify(ctx, configevents.DomainProviders)
+	s.notifier.Notify(ctx, configevents.DomainGroups)
 	return record.toResponse(), nil
 }
 
@@ -401,6 +436,7 @@ func (s *Service) UpdateProvider(ctx context.Context, id string, input UpdatePro
 		return ProviderResponse{}, fmt.Errorf("update provider: %w", err)
 	}
 	s.notifier.Notify(ctx, configevents.DomainProviders)
+	s.notifier.Notify(ctx, configevents.DomainGroups)
 	return record.toResponse(), nil
 }
 
@@ -414,7 +450,33 @@ func (s *Service) DeleteProvider(ctx context.Context, id string) error {
 		return ErrProviderNotFound
 	}
 	s.notifier.Notify(ctx, configevents.DomainProviders)
+	s.notifier.Notify(ctx, configevents.DomainGroups)
 	return nil
+}
+
+func (s *Service) modelCatalogRecords(ctx context.Context, providerIDs []string) ([]Provider, error) {
+	if len(providerIDs) == 0 {
+		return s.ListEnabled(ctx)
+	}
+
+	seen := map[string]struct{}{}
+	records := make([]Provider, 0, len(providerIDs))
+	for _, providerID := range providerIDs {
+		providerID = strings.TrimSpace(providerID)
+		if providerID == "" {
+			continue
+		}
+		if _, ok := seen[providerID]; ok {
+			continue
+		}
+		record, err := s.getProvider(ctx, s.db, providerID)
+		if err != nil {
+			return nil, err
+		}
+		seen[providerID] = struct{}{}
+		records = append(records, record)
+	}
+	return records, nil
 }
 
 // DecryptAPIKey decrypts the provider API key for proxy use.

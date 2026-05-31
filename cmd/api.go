@@ -84,6 +84,7 @@ func runAPI() error {
 			Users:     a.Users,
 			Tokens:    a.Tokens,
 			Firewall:  a.Firewall,
+			Groups:    a.Groups,
 			Providers: a.Providers,
 			MCP:       a.MCP,
 			Proxy:     a.Proxy,
