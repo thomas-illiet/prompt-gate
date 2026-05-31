@@ -155,9 +155,15 @@ func writeGroupError(w http.ResponseWriter, err error) {
 	case errors.Is(err, groups.ErrInvalidName):
 		status = http.StatusBadRequest
 		code = "invalid_name"
+	case errors.Is(err, groups.ErrInvalidDisplayName):
+		status = http.StatusBadRequest
+		code = "invalid_display_name"
 	case errors.Is(err, groups.ErrInvalidRegex):
 		status = http.StatusBadRequest
 		code = "invalid_regex"
+	case errors.Is(err, groups.ErrProviderRequired):
+		status = http.StatusBadRequest
+		code = "provider_required"
 	case errors.Is(err, groups.ErrProviderNotFound):
 		status = http.StatusNotFound
 		code = "provider_not_found"

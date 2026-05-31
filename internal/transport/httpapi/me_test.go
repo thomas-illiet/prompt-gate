@@ -20,6 +20,7 @@ import (
 	"promptgate/backend/internal/platform/secrets"
 
 	"github.com/glebarez/sqlite"
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -104,10 +105,22 @@ func TestHandleCurrentUserGroupsReturnsProfileSafeMemberships(t *testing.T) {
 	if err := db.Create(&user).Error; err != nil {
 		t.Fatalf("create user: %v", err)
 	}
+	providerRecord := provider.Provider{
+		ID:          uuid.New(),
+		Name:        "openai-main",
+		DisplayName: "OpenAI Main",
+		Type:        provider.ProviderTypeOpenAI,
+		BaseURL:     "https://api.openai.com/v1",
+		Enabled:     true,
+	}
+	if err := db.Create(&providerRecord).Error; err != nil {
+		t.Fatalf("create provider: %v", err)
+	}
 	group, err := groupService.CreateGroup(ctx, groups.CreateGroupInput{
 		Name:        "engineering",
 		DisplayName: "Engineering",
 		Description: "Engineering model access",
+		ProviderIDs: []string{providerRecord.ID.String()},
 	})
 	if err != nil {
 		t.Fatalf("create group: %v", err)

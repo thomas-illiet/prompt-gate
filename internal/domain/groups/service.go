@@ -16,16 +16,20 @@ import (
 )
 
 var (
-	ErrGroupNotFound    = errors.New("group not found")
-	ErrInvalidName      = errors.New("invalid_name")
-	ErrNameConflict     = errors.New("name_conflict")
-	ErrInvalidRegex     = errors.New("invalid_regex")
-	ErrInvalidSort      = errors.New("invalid_sort")
-	ErrProviderNotFound = errors.New("provider not found")
-	ErrUserNotFound     = errors.New("user not found")
+	ErrGroupNotFound      = errors.New("group not found")
+	ErrInvalidName        = errors.New("invalid_name")
+	ErrInvalidDisplayName = errors.New("invalid_display_name")
+	ErrNameConflict       = errors.New("name_conflict")
+	ErrInvalidRegex       = errors.New("invalid_regex")
+	ErrInvalidSort        = errors.New("invalid_sort")
+	ErrProviderRequired   = errors.New("provider_required")
+	ErrProviderNotFound   = errors.New("provider not found")
+	ErrUserNotFound       = errors.New("user not found")
 )
 
 var groupNameRegexp = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
+
+const defaultAllModelsPattern = ".*"
 
 type Service struct {
 	db       *gorm.DB
@@ -107,7 +111,11 @@ func (s *Service) CreateGroup(ctx context.Context, input CreateGroupInput) (Grou
 	if err != nil {
 		return GroupResponse{}, err
 	}
-	providerIDs, err := parseProviderIDs(input.ProviderIDs)
+	displayName, err := validateDisplayName(input.DisplayName)
+	if err != nil {
+		return GroupResponse{}, err
+	}
+	providerIDs, err := parseRequiredProviderIDs(input.ProviderIDs)
 	if err != nil {
 		return GroupResponse{}, err
 	}
@@ -124,7 +132,7 @@ func (s *Service) CreateGroup(ctx context.Context, input CreateGroupInput) (Grou
 
 		record = Group{
 			Name:        name,
-			DisplayName: strings.TrimSpace(input.DisplayName),
+			DisplayName: displayName,
 			Description: strings.TrimSpace(input.Description),
 		}
 		if err := tx.WithContext(ctx).Create(&record).Error; err != nil {
@@ -158,9 +166,16 @@ func (s *Service) UpdateGroup(ctx context.Context, id string, input UpdateGroupI
 			return GroupResponse{}, err
 		}
 	}
+	var parsedDisplayName string
+	if input.DisplayName != nil {
+		parsedDisplayName, err = validateDisplayName(*input.DisplayName)
+		if err != nil {
+			return GroupResponse{}, err
+		}
+	}
 	var providerIDs []uuid.UUID
 	if input.ProviderIDs != nil {
-		providerIDs, err = parseProviderIDs(*input.ProviderIDs)
+		providerIDs, err = parseRequiredProviderIDs(*input.ProviderIDs)
 		if err != nil {
 			return GroupResponse{}, err
 		}
@@ -184,7 +199,7 @@ func (s *Service) UpdateGroup(ctx context.Context, id string, input UpdateGroupI
 			record.Name = parsedName
 		}
 		if input.DisplayName != nil {
-			record.DisplayName = strings.TrimSpace(*input.DisplayName)
+			record.DisplayName = parsedDisplayName
 		}
 		if input.Description != nil {
 			record.Description = strings.TrimSpace(*input.Description)
@@ -480,6 +495,14 @@ func validateName(raw string) (string, error) {
 	return name, nil
 }
 
+func validateDisplayName(raw string) (string, error) {
+	displayName := strings.TrimSpace(raw)
+	if displayName == "" {
+		return "", ErrInvalidDisplayName
+	}
+	return displayName, nil
+}
+
 func validatePatterns(raw []string) ([]string, error) {
 	seen := map[string]struct{}{}
 	out := make([]string, 0, len(raw))
@@ -496,6 +519,9 @@ func validatePatterns(raw []string) ([]string, error) {
 		}
 		seen[pattern] = struct{}{}
 		out = append(out, pattern)
+	}
+	if len(out) == 0 {
+		return []string{defaultAllModelsPattern}, nil
 	}
 	return out, nil
 }
@@ -538,6 +564,17 @@ func parseProviderIDs(raw []string) ([]uuid.UUID, error) {
 	return out, nil
 }
 
+func parseRequiredProviderIDs(raw []string) ([]uuid.UUID, error) {
+	out, err := parseProviderIDs(raw)
+	if err != nil {
+		return nil, err
+	}
+	if len(out) == 0 {
+		return nil, ErrProviderRequired
+	}
+	return out, nil
+}
+
 func normalizeListParams(params *ListParams) {
 	if params.Page <= 0 {
 		params.Page = 1
@@ -562,10 +599,13 @@ func applyGroupSort(query *gorm.DB, sortBy, sortDir string) (*gorm.DB, error) {
 		return nil, err
 	}
 	columns := map[string]string{
-		"name":        "access_groups.name",
-		"displayName": "access_groups.display_name",
-		"createdAt":   "access_groups.created_at",
-		"updatedAt":   "access_groups.updated_at",
+		"name":              "access_groups.name",
+		"displayName":       "access_groups.display_name",
+		"providerCount":     "(SELECT COUNT(*) FROM access_group_providers WHERE access_group_providers.group_id = access_groups.id)",
+		"modelPatternCount": "(SELECT COUNT(*) FROM access_group_model_patterns WHERE access_group_model_patterns.group_id = access_groups.id)",
+		"memberCount":       "(SELECT COUNT(*) FROM access_group_members WHERE access_group_members.group_id = access_groups.id)",
+		"createdAt":         "access_groups.created_at",
+		"updatedAt":         "access_groups.updated_at",
 	}
 	column, ok := columns[sortBy]
 	if !ok {

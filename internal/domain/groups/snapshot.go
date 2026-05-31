@@ -13,6 +13,7 @@ import (
 )
 
 var ErrLegacySnapshot = errors.New("legacy group access snapshot")
+var ErrSnapshotServiceUnavailable = errors.New("group snapshot service unavailable")
 
 type AccessRule struct {
 	Providers     []string `json:"providers"`
@@ -101,6 +102,9 @@ func (s *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 		for _, pattern := range group.ModelPatterns {
 			modelPatterns = append(modelPatterns, pattern.Pattern)
 		}
+		if len(modelPatterns) == 0 {
+			modelPatterns = []string{defaultAllModelsPattern}
+		}
 		for _, member := range group.Members {
 			access := users[member.ID]
 			access.Providers = append(access.Providers, providerNames...)
@@ -120,6 +124,9 @@ func (s *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 }
 
 func (s *SnapshotStore) Refresh(ctx context.Context) error {
+	if s.service == nil {
+		return ErrSnapshotServiceUnavailable
+	}
 	snapshot, err := s.service.Snapshot(ctx)
 	if err != nil {
 		return err

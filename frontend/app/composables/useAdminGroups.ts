@@ -15,9 +15,11 @@ import { toApiErrorMessage } from '~/utils/api-error'
 const ERROR_MESSAGES = {
   group_not_found: 'Group no longer exists.',
   invalid_name: 'Name must use lowercase letters, numbers, and single hyphens.',
+  invalid_display_name: 'Display name is required.',
   invalid_regex: 'One or more model patterns are invalid regular expressions.',
   invalid_sort: 'Selected group sort is invalid.',
   name_conflict: 'Another group already uses this name.',
+  provider_required: 'Select at least one provider.',
   provider_not_found: 'Provider no longer exists.',
   user_not_found: 'User or service account no longer exists.',
 }

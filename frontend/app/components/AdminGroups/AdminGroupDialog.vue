@@ -30,12 +30,15 @@ const providerIds = shallowRef<string[]>([])
 const modelPatterns = shallowRef<string[]>([])
 const hasSubmitted = shallowRef(false)
 const hasValidatedModels = shallowRef(false)
+const displayNameEdited = shallowRef(false)
+const allModelsPattern = '.*'
 
 const title = computed(() => (props.group ? 'Update group' : 'Create group'))
 const submitLabel = computed(() =>
   props.group ? 'Save group' : 'Create group',
 )
 const normalizedName = computed(() => name.value.trim().toLowerCase())
+const normalizedDisplayName = computed(() => displayName.value.trim())
 const providerItems = computed(() =>
   props.providers.map((provider) => ({
     title: provider.displayName || provider.name,
@@ -48,7 +51,9 @@ const providerItems = computed(() =>
 const normalizedPatterns = computed(() =>
   modelPatterns.value.map((pattern) => pattern.trim()).filter(Boolean),
 )
-const uniqueNormalizedPatterns = computed(() => [...new Set(normalizedPatterns.value)])
+const uniqueNormalizedPatterns = computed(() => [
+  ...new Set(normalizedPatterns.value),
+])
 const nameError = computed(() => {
   if (!hasSubmitted.value) {
     return ''
@@ -58,6 +63,24 @@ const nameError = computed(() => {
   }
   if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(normalizedName.value)) {
     return 'Use lowercase letters, numbers, and single hyphens.'
+  }
+  return ''
+})
+const displayNameError = computed(() => {
+  if (!hasSubmitted.value) {
+    return ''
+  }
+  if (!normalizedDisplayName.value) {
+    return 'Display name is required.'
+  }
+  return ''
+})
+const providerError = computed(() => {
+  if (!hasSubmitted.value) {
+    return ''
+  }
+  if (providerIds.value.length === 0) {
+    return 'Select at least one provider.'
   }
   return ''
 })
@@ -75,7 +98,14 @@ const regexError = computed(() =>
   hasSubmitted.value || hasValidatedModels.value ? currentRegexError.value : '',
 )
 const canSave = computed(
-  () => Boolean(normalizedName.value) && !nameError.value && !regexError.value,
+  () =>
+    Boolean(normalizedName.value) &&
+    Boolean(normalizedDisplayName.value) &&
+    providerIds.value.length > 0 &&
+    !nameError.value &&
+    !displayNameError.value &&
+    !providerError.value &&
+    !regexError.value,
 )
 const canValidateModels = computed(
   () =>
@@ -112,17 +142,28 @@ watch(
       return
     }
     name.value = props.group?.name ?? ''
-    displayName.value = props.group?.displayName ?? ''
+    displayName.value =
+      props.group?.displayName || formatDisplayName(props.group?.name ?? '')
+    displayNameEdited.value = Boolean(props.group)
     description.value = props.group?.description ?? ''
     providerIds.value =
       props.group?.providers.map((provider) => provider.id) ?? []
-    modelPatterns.value = props.group?.modelPatterns ?? []
+    modelPatterns.value = props.group?.modelPatterns.length
+      ? props.group.modelPatterns
+      : [allModelsPattern]
     hasSubmitted.value = false
     hasValidatedModels.value = false
     emit('clearModelValidation')
   },
   { immediate: true },
 )
+
+watch(name, () => {
+  if (!isOpen.value || displayNameEdited.value) {
+    return
+  }
+  displayName.value = formatDisplayName(name.value)
+})
 
 watch([providerIds, modelPatterns], () => {
   if (!isOpen.value) {
@@ -140,11 +181,26 @@ function save() {
 
   emit('save', {
     name: normalizedName.value,
-    displayName: displayName.value.trim(),
+    displayName: normalizedDisplayName.value,
     description: description.value.trim(),
     providerIds: providerIds.value,
     modelPatterns: uniqueNormalizedPatterns.value,
   })
+}
+
+function updateDisplayName(value: string | null) {
+  displayNameEdited.value = true
+  displayName.value = value ?? ''
+}
+
+function formatDisplayName(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .split(/[-\s]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
 }
 
 function validateModels() {
@@ -185,12 +241,15 @@ function validateModels() {
 
             <v-col cols="12" md="6">
               <v-text-field
-                v-model="displayName"
+                :model-value="displayName"
                 label="Display name"
                 placeholder="Engineering"
                 variant="outlined"
                 density="comfortable"
                 autocomplete="off"
+                :error="Boolean(displayNameError)"
+                :error-messages="displayNameError ? [displayNameError] : []"
+                @update:model-value="updateDisplayName"
               />
             </v-col>
 
@@ -215,6 +274,8 @@ function validateModels() {
                 multiple
                 chips
                 closable-chips
+                :error="Boolean(providerError)"
+                :error-messages="providerError ? [providerError] : []"
               />
             </v-col>
 
@@ -223,7 +284,7 @@ function validateModels() {
                 <v-combobox
                   v-model="modelPatterns"
                   label="Allowed model regex"
-                  placeholder="^gpt-5"
+                  placeholder=".*"
                   variant="outlined"
                   density="comfortable"
                   multiple

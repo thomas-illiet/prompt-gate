@@ -87,7 +87,7 @@ func TestHandleAdminGroupsCreateAddMemberAndReplaceUserGroups(t *testing.T) {
 	body, err := json.Marshal(groups.CreateGroupInput{
 		Name:        "platform",
 		DisplayName: "Platform",
-		Description: "Two providers and no model rules",
+		Description: "Two providers with default model access",
 		ProviderIDs: []string{openai.ID.String(), anthropic.ID.String()},
 	})
 	if err != nil {
@@ -103,8 +103,11 @@ func TestHandleAdminGroupsCreateAddMemberAndReplaceUserGroups(t *testing.T) {
 	if err := json.NewDecoder(createRec.Body).Decode(&created); err != nil {
 		t.Fatalf("decode created group: %v", err)
 	}
-	if created.ProviderCount != 2 || created.ModelPatternCount != 0 {
-		t.Fatalf("expected two providers and no model patterns, got %#v", created)
+	if created.ProviderCount != 2 || created.ModelPatternCount != 1 {
+		t.Fatalf("expected two providers and default model pattern, got %#v", created)
+	}
+	if len(created.ModelPatterns) != 1 || created.ModelPatterns[0] != ".*" {
+		t.Fatalf("expected default all-model pattern, got %#v", created.ModelPatterns)
 	}
 
 	addReq := httptest.NewRequest(http.MethodPut, "/api/v1/admin/groups/"+created.ID.String()+"/members/"+user.ID, nil)
@@ -152,9 +155,11 @@ func TestHandleAdminGroupsCreateAddMemberAndReplaceUserGroups(t *testing.T) {
 }
 
 func TestHandleAdminCreateGroupRejectsInvalidRegex(t *testing.T) {
-	handler, _, _, _, _ := newGroupsTestHandler(t)
+	handler, _, _, openai, _ := newGroupsTestHandler(t)
 	body, err := json.Marshal(groups.CreateGroupInput{
 		Name:          "broken",
+		DisplayName:   "Broken",
+		ProviderIDs:   []string{openai.ID.String()},
 		ModelPatterns: []string{"["},
 	})
 	if err != nil {
@@ -169,6 +174,44 @@ func TestHandleAdminCreateGroupRejectsInvalidRegex(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "invalid_regex") {
 		t.Fatalf("expected invalid_regex error, got %s", rec.Body.String())
+	}
+}
+
+func TestHandleAdminCreateGroupRejectsMissingDisplayNameAndProvider(t *testing.T) {
+	handler, _, _, openai, _ := newGroupsTestHandler(t)
+
+	body, err := json.Marshal(groups.CreateGroupInput{
+		Name:        "missing-display",
+		ProviderIDs: []string{openai.ID.String()},
+	})
+	if err != nil {
+		t.Fatalf("marshal group: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/groups", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	handler.HandleAdminCreateGroup(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "invalid_display_name") {
+		t.Fatalf("expected invalid_display_name error, got %s", rec.Body.String())
+	}
+
+	body, err = json.Marshal(groups.CreateGroupInput{
+		Name:        "missing-provider",
+		DisplayName: "Missing Provider",
+	})
+	if err != nil {
+		t.Fatalf("marshal group: %v", err)
+	}
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/admin/groups", bytes.NewReader(body))
+	rec = httptest.NewRecorder()
+	handler.HandleAdminCreateGroup(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "provider_required") {
+		t.Fatalf("expected provider_required error, got %s", rec.Body.String())
 	}
 }
 

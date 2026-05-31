@@ -145,7 +145,7 @@ func TestSetSnapshotRejectsLegacyAggregatedAccess(t *testing.T) {
 	}
 }
 
-func TestSnapshotBlocksProviderGrantWithoutModelRegex(t *testing.T) {
+func TestSnapshotDefaultsMissingModelRegexToAllModels(t *testing.T) {
 	service, _, user, openai, anthropic := newGroupTestService(t)
 	ctx := context.Background()
 
@@ -175,8 +175,8 @@ func TestSnapshotBlocksProviderGrantWithoutModelRegex(t *testing.T) {
 		{providerName: anthropic.Name, model: "claude-sonnet-4"},
 		{providerName: anthropic.Name, model: "another-model"},
 	} {
-		if store.Allows(user.ID, tc.providerName, tc.model) {
-			t.Fatalf("expected provider grant without model patterns to deny %s/%s", tc.providerName, tc.model)
+		if !store.Allows(user.ID, tc.providerName, tc.model) {
+			t.Fatalf("expected default all-model pattern to allow %s/%s", tc.providerName, tc.model)
 		}
 	}
 }
@@ -199,14 +199,18 @@ func TestSnapshotCombinesMultipleGroupsWithUnionSemantics(t *testing.T) {
 	}
 
 	openAIGroup, err := service.CreateGroup(ctx, CreateGroupInput{
-		Name:        "openai-access",
-		ProviderIDs: []string{openai.ID.String()},
+		Name:          "openai-access",
+		DisplayName:   "OpenAI Access",
+		ProviderIDs:   []string{openai.ID.String()},
+		ModelPatterns: []string{`^gpt-5`},
 	})
 	if err != nil {
 		t.Fatalf("create openai group: %v", err)
 	}
 	modelGroup, err := service.CreateGroup(ctx, CreateGroupInput{
 		Name:          "gpt-five",
+		DisplayName:   "GPT Five",
+		ProviderIDs:   []string{anthropic.ID.String()},
 		ModelPatterns: []string{`^gpt-5`},
 	})
 	if err != nil {
@@ -225,7 +229,7 @@ func TestSnapshotCombinesMultipleGroupsWithUnionSemantics(t *testing.T) {
 	}
 
 	if store.Allows(user.ID, openai.Name, "any-model") {
-		t.Fatal("expected provider-only group to deny OpenAI without a matching model regex")
+		t.Fatal("expected OpenAI non-matching model to be denied")
 	}
 	if !store.Allows(user.ID, openai.Name, "gpt-5-mini") {
 		t.Fatal("expected model regex group to allow OpenAI gpt-5 model")
@@ -245,11 +249,106 @@ func TestCreateGroupRejectsInvalidRegex(t *testing.T) {
 	service, _, _, openai, _ := newGroupTestService(t)
 	_, err := service.CreateGroup(context.Background(), CreateGroupInput{
 		Name:          "engineering",
+		DisplayName:   "Engineering",
 		ProviderIDs:   []string{openai.ID.String()},
 		ModelPatterns: []string{"["},
 	})
 	if !errors.Is(err, ErrInvalidRegex) {
 		t.Fatalf("expected ErrInvalidRegex, got %v", err)
+	}
+}
+
+func TestListGroupsPagedSortsByComputedCounts(t *testing.T) {
+	service, _, _, openai, anthropic := newGroupTestService(t)
+	ctx := context.Background()
+
+	oneProvider, err := service.CreateGroup(ctx, CreateGroupInput{
+		Name:        "one-provider",
+		DisplayName: "One Provider",
+		ProviderIDs: []string{openai.ID.String()},
+	})
+	if err != nil {
+		t.Fatalf("create one-provider group: %v", err)
+	}
+	twoProviders, err := service.CreateGroup(ctx, CreateGroupInput{
+		Name:        "two-providers",
+		DisplayName: "Two Providers",
+		ProviderIDs: []string{openai.ID.String(), anthropic.ID.String()},
+	})
+	if err != nil {
+		t.Fatalf("create two-providers group: %v", err)
+	}
+
+	result, err := service.ListGroupsPaged(ctx, ListParams{
+		Page:     1,
+		PageSize: 10,
+		SortBy:   "providerCount",
+		SortDir:  "desc",
+	})
+	if err != nil {
+		t.Fatalf("list groups sorted by provider count: %v", err)
+	}
+	if len(result.Items) < 2 {
+		t.Fatalf("expected two groups, got %#v", result.Items)
+	}
+	if result.Items[0].ID != twoProviders.ID || result.Items[1].ID != oneProvider.ID {
+		t.Fatalf("unexpected provider count order: %#v", result.Items)
+	}
+
+	result, err = service.ListGroupsPaged(ctx, ListParams{
+		Page:     1,
+		PageSize: 10,
+		SortBy:   "modelPatternCount",
+		SortDir:  "asc",
+	})
+	if err != nil {
+		t.Fatalf("list groups sorted by model pattern count: %v", err)
+	}
+
+	result, err = service.ListGroupsPaged(ctx, ListParams{
+		Page:     1,
+		PageSize: 10,
+		SortBy:   "memberCount",
+		SortDir:  "asc",
+	})
+	if err != nil {
+		t.Fatalf("list groups sorted by member count: %v", err)
+	}
+}
+
+func TestCreateGroupRequiresDisplayNameAndProvider(t *testing.T) {
+	service, _, _, openai, _ := newGroupTestService(t)
+	ctx := context.Background()
+
+	_, err := service.CreateGroup(ctx, CreateGroupInput{
+		Name:        "engineering",
+		ProviderIDs: []string{openai.ID.String()},
+	})
+	if !errors.Is(err, ErrInvalidDisplayName) {
+		t.Fatalf("expected ErrInvalidDisplayName, got %v", err)
+	}
+
+	_, err = service.CreateGroup(ctx, CreateGroupInput{
+		Name:        "engineering",
+		DisplayName: "Engineering",
+	})
+	if !errors.Is(err, ErrProviderRequired) {
+		t.Fatalf("expected ErrProviderRequired, got %v", err)
+	}
+}
+
+func TestCreateGroupDefaultsEmptyModelPatternsToAllModels(t *testing.T) {
+	service, _, _, openai, _ := newGroupTestService(t)
+	group, err := service.CreateGroup(context.Background(), CreateGroupInput{
+		Name:        "engineering",
+		DisplayName: "Engineering",
+		ProviderIDs: []string{openai.ID.String()},
+	})
+	if err != nil {
+		t.Fatalf("create group: %v", err)
+	}
+	if len(group.ModelPatterns) != 1 || group.ModelPatterns[0] != defaultAllModelsPattern {
+		t.Fatalf("expected default all-model pattern, got %#v", group.ModelPatterns)
 	}
 }
 
@@ -261,6 +360,7 @@ func TestGroupMutationsNotifyDomainGroups(t *testing.T) {
 
 	group, err := service.CreateGroup(ctx, CreateGroupInput{
 		Name:        "engineering",
+		DisplayName: "Engineering",
 		ProviderIDs: []string{openai.ID.String()},
 	})
 	if err != nil {

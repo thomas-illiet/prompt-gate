@@ -165,6 +165,7 @@ func newManagerGroupService(t *testing.T) (*groups.Service, string) {
 	}
 	group, err := groupService.CreateGroup(ctx, groups.CreateGroupInput{
 		Name:          "engineering",
+		DisplayName:   "Engineering",
 		ProviderIDs:   []string{providerRecord.ID.String()},
 		ModelPatterns: []string{`^gpt-5`},
 	})
