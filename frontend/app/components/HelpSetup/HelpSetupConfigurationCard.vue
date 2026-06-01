@@ -19,7 +19,10 @@ const selectedModel = defineModel<string>('model', { required: true })
 const providerOptions = computed(() =>
   props.providers.map((provider) => ({
     icon: providerIcon(provider.type),
-    modelsCount: provider.models.length,
+    modelsLabel:
+      provider.type === 'anthropic'
+        ? ANTHROPIC_MODEL_PLACEHOLDER
+        : `${provider.models.length} models`,
     title: providerLabel(provider),
     type: provider.type,
     value: provider.name,
@@ -132,7 +135,7 @@ function providerIcon(type: HelpSetupProvider['type']) {
                 <span
                   class="help-setup-configuration-card__provider-option-subtitle"
                 >
-                  {{ item.type }} · {{ item.modelsCount }} models
+                  {{ item.type }} · {{ item.modelsLabel }}
                 </span>
               </template>
             </v-list-item>
@@ -157,7 +160,7 @@ function providerIcon(type: HelpSetupProvider['type']) {
             size="small"
             variant="tonal"
           >
-            {{ selectedProviderOption.modelsCount }} models
+            {{ selectedProviderOption.modelsLabel }}
           </v-chip>
         </div>
       </div>

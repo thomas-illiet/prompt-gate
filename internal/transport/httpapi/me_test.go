@@ -276,6 +276,84 @@ func TestHandleHelpSetupReturnsUserScopedRedactedProviderMetadata(t *testing.T) 
 	}
 }
 
+func TestHandleHelpSetupReturnsAnthropicWithoutModelFetch(t *testing.T) {
+	providerService, groupService, db := newHTTPSetupServices(t)
+	ctx := context.Background()
+	profile := testUserProfile()
+	createHTTPUser(t, db, profile)
+	var upstreamRequests int
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		upstreamRequests++
+		http.Error(w, "upstream unavailable", http.StatusBadGateway)
+	}))
+	t.Cleanup(upstream.Close)
+
+	anthropicProvider, err := providerService.CreateProvider(ctx, provider.CreateProviderInput{
+		Name:    "anthropic-main",
+		Type:    provider.ProviderTypeAnthropic,
+		BaseURL: upstream.URL + "/anthropic",
+		APIKey:  "sk-ant-secret",
+		Enabled: true,
+	})
+	if err != nil {
+		t.Fatalf("create provider: %v", err)
+	}
+	group, err := groupService.CreateGroup(ctx, groups.CreateGroupInput{
+		Name:        "engineering",
+		DisplayName: "Engineering",
+		ProviderIDs: []string{anthropicProvider.ID.String()},
+	})
+	if err != nil {
+		t.Fatalf("create group: %v", err)
+	}
+	if err := groupService.AddMember(ctx, group.ID.String(), profile.ID); err != nil {
+		t.Fatalf("add member: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/me/help/setup", nil)
+	req = req.WithContext(auth.ContextWithUser(context.Background(), profile))
+	recorder := httptest.NewRecorder()
+
+	server{
+		config: config.Config{
+			ProxyBaseURL: "https://proxy.example.com",
+		},
+		providers: providerService,
+		groups:    groupService,
+	}.handleHelpSetup(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", recorder.Code, recorder.Body.String())
+	}
+	if upstreamRequests != 0 {
+		t.Fatalf("expected no upstream model requests, got %d", upstreamRequests)
+	}
+
+	var body provider.HelpSetupResponse
+	if err := json.NewDecoder(recorder.Body).Decode(&body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if len(body.Providers) != 1 {
+		t.Fatalf("expected one provider, got %#v", body.Providers)
+	}
+	got := body.Providers[0]
+	if got.Name != "anthropic-main" {
+		t.Fatalf("unexpected provider: %#v", got)
+	}
+	if got.AnthropicBaseURL != "https://proxy.example.com/anthropic-main" {
+		t.Fatalf("unexpected Anthropic base URL: %q", got.AnthropicBaseURL)
+	}
+	if got.ModelsError != "" {
+		t.Fatalf("expected no models error, got %#v", got)
+	}
+	if len(got.Models) != 0 {
+		t.Fatalf("expected no models, got %#v", got.Models)
+	}
+	if strings.Contains(recorder.Body.String(), "sk-ant-secret") {
+		t.Fatalf("response leaked provider API key: %s", recorder.Body.String())
+	}
+}
+
 func TestHandleHelpSetupReturnsEmptyProvidersWithoutGroupAccess(t *testing.T) {
 	providerService, groupService, db := newHTTPSetupServices(t)
 	ctx := context.Background()

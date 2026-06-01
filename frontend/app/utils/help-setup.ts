@@ -14,9 +14,11 @@ export function providerHasModels(provider: HelpSetupProvider) {
   return provider.models.length > 0
 }
 
-// availableSetupProviders keeps setup docs focused on providers with models.
+// availableSetupProviders keeps setup docs focused on providers that can produce snippets.
 export function availableSetupProviders(providers: HelpSetupProvider[]) {
-  return providers.filter(providerHasModels)
+  return providers.filter(
+    (provider) => provider.type === 'anthropic' || providerHasModels(provider),
+  )
 }
 
 // providerBaseUrl returns the provider-specific base URL shown in snippets.

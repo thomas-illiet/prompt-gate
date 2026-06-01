@@ -87,8 +87,8 @@ const modelSelectMode = computed<ModelSelectMode>(() => {
         >
           <AppEmptyState
             icon="mdi-cloud-question-outline"
-            title="No accessible provider with models yet"
-            text="Once your groups grant access to a provider with available models, client snippets appear here ready to copy."
+            title="No accessible setup provider yet"
+            text="Once your groups grant access to a supported provider, client snippets appear here ready to copy."
           />
         </AppSectionCard>
       </v-col>

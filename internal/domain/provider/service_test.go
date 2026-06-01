@@ -91,10 +91,12 @@ func TestHelpSetupLoadsModelsAndRedactsAPIKeys(t *testing.T) {
 	}
 }
 
-func TestHelpSetupKeepsProviderWhenModelsFail(t *testing.T) {
+func TestHelpSetupSkipsAnthropicModelListing(t *testing.T) {
 	service, _ := newTestService(t)
 	ctx := context.Background()
+	var upstreamRequests int
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		upstreamRequests++
 		http.Error(w, "upstream unavailable", http.StatusBadGateway)
 	}))
 	t.Cleanup(upstream.Close)
@@ -113,6 +115,9 @@ func TestHelpSetupKeepsProviderWhenModelsFail(t *testing.T) {
 	if err != nil {
 		t.Fatalf("help setup: %v", err)
 	}
+	if upstreamRequests != 0 {
+		t.Fatalf("expected no upstream model requests, got %d", upstreamRequests)
+	}
 	if len(setup.Providers) != 1 {
 		t.Fatalf("expected one provider, got %#v", setup.Providers)
 	}
@@ -120,11 +125,11 @@ func TestHelpSetupKeepsProviderWhenModelsFail(t *testing.T) {
 	if provider.AnthropicBaseURL != "https://proxy.example.com/anthropic-main" {
 		t.Fatalf("unexpected anthropic base URL: %q", provider.AnthropicBaseURL)
 	}
-	if provider.ModelsError == "" {
-		t.Fatalf("expected model error, got %#v", provider)
+	if provider.ModelsError != "" {
+		t.Fatalf("expected no model error, got %#v", provider)
 	}
 	if len(provider.Models) != 0 {
-		t.Fatalf("expected no models on failed fetch, got %#v", provider.Models)
+		t.Fatalf("expected no models, got %#v", provider.Models)
 	}
 }
 
@@ -189,6 +194,46 @@ func TestHelpSetupForProviderNamesFiltersProvidersAndModels(t *testing.T) {
 	got := setup.Providers[0].Models
 	if len(got) != 1 || got[0] != "gpt-5-mini" {
 		t.Fatalf("expected filtered models, got %#v", got)
+	}
+}
+
+func TestModelCatalogSkipsAnthropicModelListing(t *testing.T) {
+	service, _ := newTestService(t)
+	ctx := context.Background()
+	var upstreamRequests int
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		upstreamRequests++
+		http.Error(w, "upstream unavailable", http.StatusBadGateway)
+	}))
+	t.Cleanup(upstream.Close)
+
+	provider, err := service.CreateProvider(ctx, CreateProviderInput{
+		Name:    "anthropic-main",
+		Type:    ProviderTypeAnthropic,
+		BaseURL: upstream.URL,
+		APIKey:  "sk-ant-secret",
+		Enabled: true,
+	})
+	if err != nil {
+		t.Fatalf("create provider: %v", err)
+	}
+
+	catalog, err := service.ModelCatalog(ctx, []string{provider.ID.String()})
+	if err != nil {
+		t.Fatalf("model catalog: %v", err)
+	}
+
+	if upstreamRequests != 0 {
+		t.Fatalf("expected no upstream model requests, got %d", upstreamRequests)
+	}
+	if len(catalog) != 1 {
+		t.Fatalf("expected one catalog provider, got %#v", catalog)
+	}
+	if catalog[0].ModelsError != "" {
+		t.Fatalf("expected no model error, got %#v", catalog[0])
+	}
+	if len(catalog[0].Models) != 0 {
+		t.Fatalf("expected no models, got %#v", catalog[0].Models)
 	}
 }
 

@@ -20,7 +20,7 @@ const anthropicProvider: HelpSetupProvider = {
   type: 'anthropic',
   routePrefix: '/anthropic-main',
   anthropicBaseUrl: 'https://proxy.example.com/anthropic-main',
-  models: ['claude-3-7-sonnet-latest'],
+  models: [],
 }
 
 const global = {
@@ -71,7 +71,7 @@ describe('HelpSetupDocumentationPanel', () => {
     const wrapper = mount(HelpSetupDocumentationPanel, {
       global,
       props: {
-        model: 'claude-3-7-sonnet-latest',
+        model: 'No model required',
         provider: anthropicProvider,
       },
     })

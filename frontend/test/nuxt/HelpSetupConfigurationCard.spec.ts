@@ -13,6 +13,15 @@ const openaiProvider: HelpSetupProvider = {
   models: ['gpt-4.1-mini', 'gpt-4.1'],
 }
 
+const anthropicProvider: HelpSetupProvider = {
+  name: 'anthropic-main',
+  displayName: 'Anthropic Main',
+  type: 'anthropic',
+  routePrefix: '/anthropic-main',
+  anthropicBaseUrl: 'https://proxy.example.com/anthropic-main',
+  models: [],
+}
+
 const global = {
   stubs: {
     AppSectionCard: {
@@ -74,5 +83,30 @@ describe('HelpSetupConfigurationCard', () => {
     expect(modelSelect.attributes('data-disabled')).toBe('true')
     expect(modelSelect.attributes('data-model-value')).toBe('All')
     expect(modelSelect.text()).toContain('All')
+  })
+
+  it('labels Anthropic providers as not requiring a model', () => {
+    const wrapper = mount(HelpSetupConfigurationCard, {
+      global,
+      props: {
+        model: 'No model required',
+        modelOptions: ['No model required'],
+        modelSelectMode: 'none',
+        providerName: 'anthropic-main',
+        providers: [anthropicProvider],
+        selectedProvider: anthropicProvider,
+      },
+    })
+
+    const selects = wrapper.findAll('.select')
+    expect(selects).toHaveLength(2)
+    const modelSelect = selects[1]!
+
+    expect(wrapper.text()).toContain('No model required')
+    expect(wrapper.text()).not.toContain('0 models')
+    expect(modelSelect.attributes('data-disabled')).toBe('true')
+    expect(modelSelect.attributes('data-model-value')).toBe(
+      'No model required',
+    )
   })
 })

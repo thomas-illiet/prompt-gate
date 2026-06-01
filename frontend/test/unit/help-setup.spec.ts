@@ -48,18 +48,27 @@ describe('help setup utilities', () => {
     ).toBe('MODEL_ID')
   })
 
-  it('keeps only providers with available models', () => {
+  it('keeps Anthropic providers and providers with available models', () => {
     const providerWithoutModels: HelpSetupProvider = {
       ...openaiProvider,
       name: 'openai-empty',
       models: [],
       modelsError: 'fetch models returned 502',
     }
+    const anthropicWithoutModels: HelpSetupProvider = {
+      ...anthropicProvider,
+      models: [],
+    }
 
     expect(providerHasModels(openaiProvider)).toBe(true)
     expect(providerHasModels(providerWithoutModels)).toBe(false)
+    expect(providerHasModels(anthropicWithoutModels)).toBe(false)
     expect(
-      availableSetupProviders([providerWithoutModels, openaiProvider]),
-    ).toEqual([openaiProvider])
+      availableSetupProviders([
+        providerWithoutModels,
+        anthropicWithoutModels,
+        openaiProvider,
+      ]),
+    ).toEqual([anthropicWithoutModels, openaiProvider])
   })
 })

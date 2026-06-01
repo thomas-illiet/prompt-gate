@@ -264,6 +264,11 @@ func (s *Service) helpSetupFromRecords(
 			item.AnthropicBaseURL = proxyBaseURL + item.RoutePrefix
 		}
 
+		if !providerSupportsModelListing(record.Type) {
+			out.Providers = append(out.Providers, item)
+			continue
+		}
+
 		models, err := s.fetchProviderModels(ctx, record)
 		if err != nil {
 			item.ModelsError = err.Error()
@@ -296,6 +301,10 @@ func (s *Service) ModelCatalog(ctx context.Context, providerIDs []string) ([]Mod
 		}
 		if !record.Enabled {
 			item.ModelsError = "provider is disabled"
+			out = append(out, item)
+			continue
+		}
+		if !providerSupportsModelListing(record.Type) {
 			out = append(out, item)
 			continue
 		}
@@ -556,6 +565,16 @@ func filterAllowedModels(providerName string, models []string, modelAllowed Help
 		}
 	}
 	return out
+}
+
+// providerSupportsModelListing reports whether setup/catalog should fetch upstream models.
+func providerSupportsModelListing(providerType ProviderType) bool {
+	switch providerType {
+	case ProviderTypeOpenAI, ProviderTypeOllama:
+		return true
+	default:
+		return false
+	}
 }
 
 // DecryptAPIKey decrypts the provider API key for proxy use.
