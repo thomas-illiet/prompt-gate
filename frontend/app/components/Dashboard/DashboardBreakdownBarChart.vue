@@ -2,8 +2,7 @@
 import type { EstimatedCost, UsageBreakdown } from '~/types/user-service'
 import {
   dashboardTooltipOptions,
-  formatEstimatedCostTooltipLines,
-  formatTooltipLines,
+  formatDashboardTooltip,
 } from '~/utils/dashboard-cost'
 import { formatNumber } from '~/utils/formatters'
 
@@ -38,12 +37,17 @@ const option = computed<ECOption>(() => ({
       const item = point as BreakdownTooltipParam
       const data = item.data
 
-      return formatTooltipLines([
-        item.name,
-        `${formatNumber(data?.value)} tokens`,
-        `${formatNumber(data?.requests)} requests`,
-        ...formatEstimatedCostTooltipLines(data?.estimatedCost),
-      ])
+      return formatDashboardTooltip({
+        estimatedCost: data?.estimatedCost,
+        metrics: [
+          { label: 'Tokens', value: `${formatNumber(data?.value)} tokens` },
+          {
+            label: 'Requests',
+            value: `${formatNumber(data?.requests)} requests`,
+          },
+        ],
+        title: item.name,
+      })
     },
   },
   grid: {

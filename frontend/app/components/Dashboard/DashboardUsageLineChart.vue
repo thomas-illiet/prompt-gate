@@ -2,8 +2,7 @@
 import type { DailyUsage, EstimatedCost } from '~/types/user-service'
 import {
   dashboardTooltipOptions,
-  formatEstimatedCostTooltipLines,
-  formatTooltipLines,
+  formatDashboardTooltip,
 } from '~/utils/dashboard-cost'
 import { formatNumber } from '~/utils/formatters'
 
@@ -46,16 +45,14 @@ const option = computed<ECOption>(() => ({
       const estimatedCost = points.find((point) => point.data?.estimatedCost)
         ?.data?.estimatedCost
 
-      return formatTooltipLines([
-        firstPoint?.axisValueLabel ?? firstPoint?.axisValue,
-        ...points.map(
-          (point) =>
-            `${point.seriesName ?? 'Value'}: ${formatNumber(
-              point.data?.value ?? point.value,
-            )}`,
-        ),
-        ...formatEstimatedCostTooltipLines(estimatedCost),
-      ])
+      return formatDashboardTooltip({
+        estimatedCost,
+        metrics: points.map((point) => ({
+          label: point.seriesName ?? 'Value',
+          value: formatNumber(point.data?.value ?? point.value),
+        })),
+        title: firstPoint?.axisValueLabel ?? firstPoint?.axisValue,
+      })
     },
   },
   legend: {
