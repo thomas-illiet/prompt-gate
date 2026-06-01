@@ -4,20 +4,28 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import DashboardPage from '../../app/pages/dashboard.vue'
 
-const { authUser, useAuthStoreMock } = vi.hoisted(() => {
-  const authUser = {
-    value: null as null | { role: string },
-  }
+const { authUser, initializeMock, useAuthStoreMock, waitUntilReadyMock } =
+  vi.hoisted(() => {
+    const authUser = {
+      value: null as null | { role: string },
+    }
+    const initializeMock = vi.fn(async () => undefined)
+    const waitUntilReadyMock = vi.fn(async () => undefined)
 
-  return {
-    authUser,
-    useAuthStoreMock: vi.fn(() => ({
-      get user() {
-        return authUser.value
-      },
-    })),
-  }
-})
+    return {
+      authUser,
+      initializeMock,
+      useAuthStoreMock: vi.fn(() => ({
+        initialize: initializeMock,
+        waitUntilReady: waitUntilReadyMock,
+        isAuthenticated: true,
+        get user() {
+          return authUser.value
+        },
+      })),
+      waitUntilReadyMock,
+    }
+  })
 
 mockNuxtImport('useAuthStore', () => useAuthStoreMock)
 
@@ -88,7 +96,9 @@ function mountPage() {
 describe('DashboardPage', () => {
   beforeEach(() => {
     authUser.value = null
+    initializeMock.mockClear()
     useAuthStoreMock.mockClear()
+    waitUntilReadyMock.mockClear()
   })
 
   it('shows scope control for admins and defaults to my usage', () => {
