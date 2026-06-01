@@ -139,6 +139,20 @@ timestamp context.
 Client setup flow for selecting providers, matching routes, and copying
 ready-to-use snippets.
 
+### Service Accounts
+
+![Prompt Gate service accounts table with scoped firewall and virtual key actions](docs/assets/screenshots/service-accounts.png)
+
+Non-human account management with activation status, scoped firewall mode,
+usage totals, and integration key actions.
+
+### User Management
+
+![Prompt Gate user management table with role, status, and usage controls](docs/assets/screenshots/user-management.png)
+
+Admin directory view for reviewing roles, active state, usage totals, and
+account-level actions.
+
 ### Firewall
 
 ![Prompt Gate firewall table with allow and deny rules](docs/assets/screenshots/firewall.png)
