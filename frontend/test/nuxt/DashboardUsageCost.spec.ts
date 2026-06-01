@@ -117,6 +117,9 @@ interface ChartOptionForTest {
     name?: string
   }>
   tooltip?: {
+    appendTo?: string
+    confine?: boolean
+    extraCssText?: string
     formatter?: unknown
   }
 }
@@ -150,6 +153,9 @@ function mountChartOption(component: Component, props: Record<string, unknown>) 
 }
 
 function tooltipFormatter(option: ChartOptionForTest) {
+  expect(option.tooltip?.appendTo).toBe('body')
+  expect(option.tooltip?.confine).toBe(true)
+  expect(option.tooltip?.extraCssText).toContain('max-width')
   expect(option.tooltip?.formatter).toBeTypeOf('function')
   return option.tooltip?.formatter as (params: unknown) => string
 }
@@ -325,7 +331,9 @@ describe('dashboard usage cost display', () => {
     expect(html).toContain('35 tokens')
     expect(html).toContain('2 requests')
     expect(html).toContain('Estimated cost: $0.13')
-    expect(html).toContain('Input: $0.01 / Output: $0.10 / Embedding: $0.02')
+    expect(html).toContain('Input: $0.01')
+    expect(html).toContain('Output: $0.10')
+    expect(html).toContain('Embedding: $0.02')
   })
 
   it('adds estimated cost metadata to breakdown pie tooltips when present', () => {
@@ -342,7 +350,9 @@ describe('dashboard usage cost display', () => {
     expect(html).toContain('35 tokens')
     expect(html).toContain('2 requests')
     expect(html).toContain('Estimated cost: $0.13')
-    expect(html).toContain('Input: $0.01 / Output: $0.10 / Embedding: $0.02')
+    expect(html).toContain('Input: $0.01')
+    expect(html).toContain('Output: $0.10')
+    expect(html).toContain('Embedding: $0.02')
   })
 
   it('adds estimated cost metadata to daily activity tooltips when present', () => {
@@ -358,7 +368,9 @@ describe('dashboard usage cost display', () => {
     expect(html).toContain('Output tokens: 20')
     expect(html).toContain('Embedding tokens: 5')
     expect(html).toContain('Estimated cost: $0.13')
-    expect(html).toContain('Input: $0.01 / Output: $0.10 / Embedding: $0.02')
+    expect(html).toContain('Input: $0.01')
+    expect(html).toContain('Output: $0.10')
+    expect(html).toContain('Embedding: $0.02')
   })
 
   it('keeps chart tooltips cost-free when estimatedCost is absent', () => {

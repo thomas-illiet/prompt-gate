@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { DailyUsage, EstimatedCost } from '~/types/user-service'
 import {
+  dashboardTooltipOptions,
   formatEstimatedCostTooltipLines,
   formatTooltipLines,
 } from '~/utils/dashboard-cost'
@@ -35,6 +36,7 @@ const option = computed<ECOption>(() => ({
   animationDuration: 700,
   animationEasing: 'cubicOut',
   tooltip: {
+    ...dashboardTooltipOptions,
     trigger: 'axis',
     formatter: (params: unknown) => {
       const points = (Array.isArray(params) ? params : [params]).map(

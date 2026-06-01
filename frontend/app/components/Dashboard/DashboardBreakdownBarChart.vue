@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { EstimatedCost, UsageBreakdown } from '~/types/user-service'
 import {
+  dashboardTooltipOptions,
   formatEstimatedCostTooltipLines,
   formatTooltipLines,
 } from '~/utils/dashboard-cost'
@@ -27,6 +28,7 @@ const option = computed<ECOption>(() => ({
   animationDuration: 650,
   animationEasing: 'cubicOut',
   tooltip: {
+    ...dashboardTooltipOptions,
     trigger: 'axis',
     axisPointer: {
       type: 'shadow',
