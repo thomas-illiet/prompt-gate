@@ -31,6 +31,16 @@ const items = computed(() => widget.data.value?.items ?? [])
 const showSkeleton = computed(() => widget.loading.value && !widget.data.value)
 const showError = computed(() => widget.error.value && !widget.data.value)
 const leader = computed(() => items.value[0] ?? null)
+const leaderCaption = computed(() => {
+  if (!leader.value) {
+    return ''
+  }
+
+  const tokenLabel = `${leader.value.name} / ${formatNumber(
+    leader.value.totalTokens,
+  )}`
+  return tokenLabel
+})
 </script>
 
 <template>
@@ -47,7 +57,7 @@ const leader = computed(() => items.value[0] ?? null)
         color="primary"
         prepend-icon="mdi-trophy-outline"
       >
-        {{ leader.name }} / {{ formatNumber(leader.totalTokens) }}
+        {{ leaderCaption }}
       </v-chip>
     </template>
 

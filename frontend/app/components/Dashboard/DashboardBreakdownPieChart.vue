@@ -1,10 +1,20 @@
 <script setup lang="ts">
-import type { UsageBreakdown } from '~/types/user-service'
+import type { EstimatedCost, UsageBreakdown } from '~/types/user-service'
+import {
+  formatEstimatedCostTooltipLines,
+  formatTooltipLines,
+} from '~/utils/dashboard-cost'
 import { formatNumber } from '~/utils/formatters'
 
 const props = defineProps<{
   items: UsageBreakdown[]
 }>()
+
+interface BreakdownChartPoint {
+  estimatedCost?: EstimatedCost
+  requests?: number
+  value?: number
+}
 
 const option = computed<ECOption>(() => ({
   backgroundColor: 'transparent',
@@ -15,15 +25,16 @@ const option = computed<ECOption>(() => ({
     formatter: (params: unknown) => {
       const point = Array.isArray(params) ? params[0] : params
       const item = point as {
-        data?: { requests?: number; value?: number }
+        data?: BreakdownChartPoint
         name?: string
       }
       const data = item.data ?? {}
-      return [
+      return formatTooltipLines([
         item.name,
         `${formatNumber(data.value)} tokens`,
         `${formatNumber(data.requests)} requests`,
-      ].join('<br />')
+        ...formatEstimatedCostTooltipLines(data.estimatedCost),
+      ])
     },
   },
   legend: {
@@ -46,6 +57,7 @@ const option = computed<ECOption>(() => ({
         scaleSize: 6,
       },
       data: props.items.map((item) => ({
+        estimatedCost: item.estimatedCost,
         name: item.name,
         value: item.totalTokens,
         requests: item.requests,

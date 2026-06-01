@@ -4,7 +4,7 @@ import type {
   DashboardScope,
   UsageWindow,
 } from '~/types/user-service'
-import { formatCurrencyUsd, formatNumber } from '~/utils/formatters'
+import { formatNumber } from '~/utils/formatters'
 
 const props = defineProps<{
   scope: DashboardScope
@@ -38,21 +38,18 @@ const activitySummary = computed(() => {
     (total, item) => total + item.embeddingTokens,
     0,
   )
-  const estimatedCost = daily.value.reduce(
-    (total, item) => total + (item.estimatedCost?.totalUsd ?? 0),
-    0,
-  )
-  const hasEstimatedCost = daily.value.some((item) => item.estimatedCost)
 
   return {
     completionInputTokens,
     completionOutputTokens,
     embeddingTokens,
-    estimatedCost,
-    hasEstimatedCost,
     requests,
   }
 })
+
+function formatTokenMetric(tokens: number, label: string) {
+  return `${formatNumber(tokens)} ${label}`
+}
 </script>
 
 <template>
@@ -78,7 +75,12 @@ const activitySummary = computed(() => {
         color="success"
         prepend-icon="mdi-import"
       >
-        {{ formatNumber(activitySummary.completionInputTokens) }} input
+        {{
+          formatTokenMetric(
+            activitySummary.completionInputTokens,
+            'input',
+          )
+        }}
       </v-chip>
       <v-chip
         size="small"
@@ -87,7 +89,12 @@ const activitySummary = computed(() => {
         color="warning"
         prepend-icon="mdi-export"
       >
-        {{ formatNumber(activitySummary.completionOutputTokens) }} output
+        {{
+          formatTokenMetric(
+            activitySummary.completionOutputTokens,
+            'output',
+          )
+        }}
       </v-chip>
       <v-chip
         size="small"
@@ -96,17 +103,12 @@ const activitySummary = computed(() => {
         color="info"
         prepend-icon="mdi-vector-point"
       >
-        {{ formatNumber(activitySummary.embeddingTokens) }} embedding
-      </v-chip>
-      <v-chip
-        v-if="activitySummary.hasEstimatedCost"
-        size="small"
-        label
-        variant="tonal"
-        color="secondary"
-        prepend-icon="mdi-cash"
-      >
-        {{ formatCurrencyUsd(activitySummary.estimatedCost) }} estimated
+        {{
+          formatTokenMetric(
+            activitySummary.embeddingTokens,
+            'embedding',
+          )
+        }}
       </v-chip>
     </template>
 

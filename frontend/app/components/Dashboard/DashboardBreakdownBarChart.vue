@@ -1,9 +1,25 @@
 <script setup lang="ts">
-import type { UsageBreakdown } from '~/types/user-service'
+import type { EstimatedCost, UsageBreakdown } from '~/types/user-service'
+import {
+  formatEstimatedCostTooltipLines,
+  formatTooltipLines,
+} from '~/utils/dashboard-cost'
+import { formatNumber } from '~/utils/formatters'
 
 const props = defineProps<{
   items: UsageBreakdown[]
 }>()
+
+interface BreakdownChartPoint {
+  estimatedCost?: EstimatedCost
+  requests: number
+  value: number
+}
+
+interface BreakdownTooltipParam {
+  data?: BreakdownChartPoint
+  name?: string
+}
 
 const option = computed<ECOption>(() => ({
   backgroundColor: 'transparent',
@@ -14,6 +30,18 @@ const option = computed<ECOption>(() => ({
     trigger: 'axis',
     axisPointer: {
       type: 'shadow',
+    },
+    formatter: (params: unknown) => {
+      const point = Array.isArray(params) ? params[0] : params
+      const item = point as BreakdownTooltipParam
+      const data = item.data
+
+      return formatTooltipLines([
+        item.name,
+        `${formatNumber(data?.value)} tokens`,
+        `${formatNumber(data?.requests)} requests`,
+        ...formatEstimatedCostTooltipLines(data?.estimatedCost),
+      ])
     },
   },
   grid: {
@@ -42,7 +70,11 @@ const option = computed<ECOption>(() => ({
       itemStyle: {
         borderRadius: [0, 6, 6, 0],
       },
-      data: props.items.map((item) => item.totalTokens),
+      data: props.items.map((item) => ({
+        estimatedCost: item.estimatedCost,
+        requests: item.requests,
+        value: item.totalTokens,
+      })),
     },
   ],
 }))

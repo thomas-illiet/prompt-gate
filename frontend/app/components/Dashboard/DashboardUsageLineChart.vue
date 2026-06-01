@@ -1,9 +1,34 @@
 <script setup lang="ts">
-import type { DailyUsage } from '~/types/user-service'
+import type { DailyUsage, EstimatedCost } from '~/types/user-service'
+import {
+  formatEstimatedCostTooltipLines,
+  formatTooltipLines,
+} from '~/utils/dashboard-cost'
+import { formatNumber } from '~/utils/formatters'
 
 const props = defineProps<{
   daily: DailyUsage[]
 }>()
+
+interface ActivityChartPoint {
+  estimatedCost?: EstimatedCost
+  value: number
+}
+
+interface ActivityTooltipParam {
+  axisValue?: number | string
+  axisValueLabel?: string
+  data?: ActivityChartPoint
+  seriesName?: string
+  value?: number
+}
+
+function activityPoint(value: number, item: DailyUsage): ActivityChartPoint {
+  return {
+    estimatedCost: item.estimatedCost,
+    value,
+  }
+}
 
 const option = computed<ECOption>(() => ({
   backgroundColor: 'transparent',
@@ -11,6 +36,25 @@ const option = computed<ECOption>(() => ({
   animationEasing: 'cubicOut',
   tooltip: {
     trigger: 'axis',
+    formatter: (params: unknown) => {
+      const points = (Array.isArray(params) ? params : [params]).map(
+        (point) => point as ActivityTooltipParam,
+      )
+      const firstPoint = points[0]
+      const estimatedCost = points.find((point) => point.data?.estimatedCost)
+        ?.data?.estimatedCost
+
+      return formatTooltipLines([
+        firstPoint?.axisValueLabel ?? firstPoint?.axisValue,
+        ...points.map(
+          (point) =>
+            `${point.seriesName ?? 'Value'}: ${formatNumber(
+              point.data?.value ?? point.value,
+            )}`,
+        ),
+        ...formatEstimatedCostTooltipLines(estimatedCost),
+      ])
+    },
   },
   legend: {
     top: 0,
@@ -49,7 +93,7 @@ const option = computed<ECOption>(() => ({
       emphasis: {
         focus: 'series',
       },
-      data: props.daily.map((item) => item.requests),
+      data: props.daily.map((item) => activityPoint(item.requests, item)),
     },
     {
       name: 'Input tokens',
@@ -63,7 +107,9 @@ const option = computed<ECOption>(() => ({
       emphasis: {
         focus: 'series',
       },
-      data: props.daily.map((item) => item.completionInputTokens),
+      data: props.daily.map((item) =>
+        activityPoint(item.completionInputTokens, item),
+      ),
     },
     {
       name: 'Output tokens',
@@ -74,7 +120,9 @@ const option = computed<ECOption>(() => ({
       emphasis: {
         focus: 'series',
       },
-      data: props.daily.map((item) => item.completionOutputTokens),
+      data: props.daily.map((item) =>
+        activityPoint(item.completionOutputTokens, item),
+      ),
     },
     {
       name: 'Embedding tokens',
@@ -88,7 +136,9 @@ const option = computed<ECOption>(() => ({
       emphasis: {
         focus: 'series',
       },
-      data: props.daily.map((item) => item.embeddingTokens),
+      data: props.daily.map((item) =>
+        activityPoint(item.embeddingTokens, item),
+      ),
     },
   ],
 }))
