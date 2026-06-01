@@ -139,6 +139,34 @@ func (h *Handler) HandleAdminUpdateUser(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, user)
 }
 
+// HandleAdminUpdateUserNote updates a user's admin note.
+func (h *Handler) HandleAdminUpdateUserNote(w http.ResponseWriter, r *http.Request) {
+	var input users.UpdateAccountNoteInput
+	if !decodeRequestBody(w, r, &input) {
+		return
+	}
+
+	user, err := h.users.UpdateUserNote(r.Context(), r.PathValue("id"), input)
+	if err != nil {
+		status := http.StatusInternalServerError
+		payload := map[string]string{"error": err.Error()}
+
+		switch {
+		case errors.Is(err, users.ErrUserNotFound):
+			status = http.StatusNotFound
+			payload["error"] = "user_not_found"
+		case errors.Is(err, users.ErrInvalidNote):
+			status = http.StatusBadRequest
+			payload["error"] = "invalid_note"
+		}
+
+		writeJSON(w, status, payload)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, user)
+}
+
 // HandleAdminDeleteUser permanently deletes a user by ID.
 func (h *Handler) HandleAdminDeleteUser(w http.ResponseWriter, r *http.Request) {
 	if err := h.users.DeleteUser(r.Context(), r.PathValue("id")); err != nil {

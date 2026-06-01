@@ -22,6 +22,7 @@ const emit = defineEmits<{
   edit: [user: AdminUser]
   manageGroups: [user: AdminUser]
   manageTokens: [user: AdminUser]
+  notes: [user: AdminUser]
   refresh: []
   toggleStatus: [user: AdminUser]
   'update:page': [value: number]
@@ -115,6 +116,12 @@ const rowActions: AppRowAction<AdminUser>[] = [
     key: 'groups',
     onSelect: (user) => emit('manageGroups', user),
     title: 'Manage groups',
+  },
+  {
+    icon: 'mdi-note-edit-outline',
+    key: 'notes',
+    onSelect: (user) => emit('notes', user),
+    title: 'Notes',
   },
   {
     color: 'error',

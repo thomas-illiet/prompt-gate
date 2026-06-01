@@ -26,6 +26,7 @@ const ERROR_MESSAGES = {
     'Identifier must use lowercase letters, numbers, dashes, or underscores.',
   invalid_ipv4_address: 'Address must be an IPv4 address.',
   invalid_name: 'Name is required.',
+  invalid_note: 'Notes must be 2,000 characters or fewer.',
   invalid_sort: 'Selected service account sort is invalid.',
   invalid_token_name:
     'Virtual key name must use lowercase letters, numbers, dashes, or underscores.',
@@ -148,6 +149,30 @@ export function useAdminServiceAccounts() {
         )
 
         selectedAccount.value = account
+        await fetchAccounts()
+        return account
+      },
+    )
+  }
+
+  // updateAccountNote stores the dedicated admin note for one service account.
+  async function updateAccountNote(accountId: string, note: string) {
+    return await runApiMutation(
+      {
+        loading: saving,
+        successMessage: 'Service account note updated.',
+        toErrorMessage: toAdminServiceAccountErrorMessage,
+      },
+      async () => {
+        const account = await apiJson<ServiceAccount>(
+          `/api/v1/admin/service-accounts/${accountId}/note`,
+          { note },
+          { method: 'PATCH' },
+        )
+
+        if (selectedAccount.value?.id === account.id) {
+          selectedAccount.value = account
+        }
         await fetchAccounts()
         return account
       },
@@ -467,6 +492,7 @@ export function useAdminServiceAccounts() {
     tokens,
     total: accountList.total,
     updateAccount,
+    updateAccountNote,
     updateFirewallRule,
   }
 }

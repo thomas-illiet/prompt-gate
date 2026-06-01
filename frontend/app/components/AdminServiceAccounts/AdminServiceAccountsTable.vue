@@ -22,6 +22,7 @@ const emit = defineEmits<{
   edit: [account: ServiceAccount]
   manageFirewall: [account: ServiceAccount]
   manageTokens: [account: ServiceAccount]
+  notes: [account: ServiceAccount]
   refresh: []
   toggleStatus: [account: ServiceAccount]
   'update:page': [value: number]
@@ -84,6 +85,12 @@ const rowActions: AppRowAction<ServiceAccount>[] = [
     key: 'edit',
     onSelect: (account) => emit('edit', account),
     title: 'Edit account',
+  },
+  {
+    icon: 'mdi-note-edit-outline',
+    key: 'notes',
+    onSelect: (account) => emit('notes', account),
+    title: 'Notes',
   },
   {
     color: 'error',

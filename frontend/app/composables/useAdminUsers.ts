@@ -21,6 +21,7 @@ import { toApiErrorMessage } from '~/utils/api-error'
 
 const ERROR_MESSAGES = {
   invalid_expiration: 'Expiration date must be in the future.',
+  invalid_note: 'Notes must be 2,000 characters or fewer.',
   group_not_found: 'Group no longer exists.',
   invalid_role: 'Selected role is invalid.',
   invalid_sort: 'Selected user sort is invalid.',
@@ -258,6 +259,30 @@ export function useAdminUsers() {
     )
   }
 
+  // updateUserNote stores the dedicated admin note for one user.
+  async function updateUserNote(userId: string, note: string) {
+    return await runApiMutation(
+      {
+        loading: saving,
+        successMessage: 'User note updated.',
+        toErrorMessage: toAdminUserErrorMessage,
+      },
+      async () => {
+        const updatedUser = await apiJson<AdminUser>(
+          `/api/v1/admin/users/${userId}/note`,
+          { note },
+          { method: 'PATCH' },
+        )
+
+        if (selectedUser.value?.id === updatedUser.id) {
+          selectedUser.value = updatedUser
+        }
+        await queryList.reload()
+        return updatedUser
+      },
+    )
+  }
+
   // deleteUser removes a user and handles current-user side effects.
   async function deleteUser(userId: string) {
     await runApiMutation(
@@ -362,6 +387,7 @@ export function useAdminUsers() {
     tokenTotal,
     total: queryList.total,
     updateUser,
+    updateUserNote,
     userGroups,
     users: queryList.items,
     revokeUserToken,

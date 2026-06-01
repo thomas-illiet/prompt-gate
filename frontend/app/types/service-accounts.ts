@@ -5,6 +5,7 @@ export interface ServiceAccount {
   identifier: string
   name: string
   role: AppRole
+  note: string
   isActive: boolean
   firewallOverrideEnabled: boolean
   inputTokens: number

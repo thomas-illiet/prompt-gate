@@ -5,6 +5,7 @@ import AdminUserDeleteDialog from '~/components/AdminUsers/AdminUserDeleteDialog
 import AdminUserEditDialog from '~/components/AdminUsers/AdminUserEditDialog.vue'
 import AdminUserGroupsDialog from '~/components/AdminUsers/AdminUserGroupsDialog.vue'
 import AdminUserTokensDialog from '~/components/AdminUsers/AdminUserTokensDialog.vue'
+import AdminAccountNoteDialog from '~/components/AdminAccounts/AdminAccountNoteDialog.vue'
 
 definePageMeta({
   requiredRoles: ['admin'],
@@ -20,6 +21,7 @@ const groupsDialogOpen = shallowRef(false)
 const userToDelete = shallowRef<AdminUser | null>(null)
 const tokenUser = shallowRef<AdminUser | null>(null)
 const groupsUser = shallowRef<AdminUser | null>(null)
+const noteDialog = useTargetDialog<AdminUser>()
 const statusDialog = useTargetDialog<AdminUser>()
 const tokenRevokeDialog = useTargetDialog<UserToken>()
 const statusConfirm = useToggleConfirmDialog(statusDialog.target, {
@@ -174,6 +176,16 @@ async function saveUserGroups(groupIds: string[]) {
   await adminUsers.replaceUserGroups(groupsUser.value.id, groupIds)
   groupsDialogOpen.value = false
 }
+
+// saveUserNote persists the dedicated admin note for the selected user.
+async function saveUserNote(note: string) {
+  if (!noteDialog.target.value) {
+    return
+  }
+
+  await adminUsers.updateUserNote(noteDialog.target.value.id, note)
+  noteDialog.close()
+}
 </script>
 
 <template>
@@ -224,6 +236,7 @@ async function saveUserGroups(groupIds: string[]) {
           @edit="openEditDialog"
           @manage-groups="openGroupsDialog"
           @manage-tokens="openTokenDialog"
+          @notes="noteDialog.open"
           @refresh="adminUsers.reload"
           @toggle-status="statusDialog.open"
           @update:page="adminUsers.setPage"
@@ -271,6 +284,12 @@ async function saveUserGroups(groupIds: string[]) {
       :selected-groups="adminUsers.userGroups.value"
       :user="groupsUser"
       @save="saveUserGroups"
+    />
+    <AdminAccountNoteDialog
+      v-model="noteDialog.isOpen.value"
+      :account="noteDialog.target.value"
+      :loading="adminUsers.saving.value"
+      @save="saveUserNote"
     />
     <AppConfirmDialog
       v-model="statusDialog.isOpen.value"

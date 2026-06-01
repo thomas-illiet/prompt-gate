@@ -1,6 +1,7 @@
 import type { AppRole, AuthUser } from '~/types/auth'
 
 export interface AdminUser extends AuthUser {
+  note: string
   inputTokens: number
   outputTokens: number
   expiresAt: string | null

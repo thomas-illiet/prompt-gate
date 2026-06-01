@@ -37,6 +37,7 @@ func newServiceAccountsTestHandler(t *testing.T) (*Handler, *users.Service, *tok
 	if err := userService.AutoMigrate(context.Background()); err != nil {
 		t.Fatalf("auto-migrate users table: %v", err)
 	}
+	createAdminUsersUsageTables(t, db)
 	if err := tokenService.AutoMigrate(context.Background()); err != nil {
 		t.Fatalf("auto-migrate tokens table: %v", err)
 	}
@@ -61,6 +62,111 @@ func TestHandleAdminCreateServiceAccountRejectsInvalidIdentifier(t *testing.T) {
 
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestHandleAdminUpdateServiceAccountNoteStoresNote(t *testing.T) {
+	handler, userService, _ := newServiceAccountsTestHandler(t)
+	ctx := context.Background()
+
+	account, err := userService.CreateServiceAccount(ctx, users.ServiceAccountInput{
+		Identifier: "worker",
+		Name:       "Worker",
+		IsActive:   true,
+	})
+	if err != nil {
+		t.Fatalf("create service account: %v", err)
+	}
+
+	body, err := json.Marshal(map[string]string{
+		"note": "Owned by platform automation.",
+	})
+	if err != nil {
+		t.Fatalf("marshal request body: %v", err)
+	}
+
+	req := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/v1/admin/service-accounts/"+account.ID+"/note",
+		bytes.NewReader(body),
+	)
+	req.SetPathValue("id", account.ID)
+	recorder := httptest.NewRecorder()
+
+	handler.HandleAdminUpdateServiceAccountNote(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", recorder.Code, recorder.Body.String())
+	}
+
+	var response users.ServiceAccount
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Note != "Owned by platform automation." {
+		t.Fatalf("expected response note, got %q", response.Note)
+	}
+
+	updated, err := userService.GetServiceAccount(ctx, account.ID)
+	if err != nil {
+		t.Fatalf("get updated service account: %v", err)
+	}
+	if updated.Note != response.Note {
+		t.Fatalf("expected persisted note %q, got %q", response.Note, updated.Note)
+	}
+}
+
+func TestHandleAdminUpdateServiceAccountNoteErrors(t *testing.T) {
+	handler, userService, _ := newServiceAccountsTestHandler(t)
+	ctx := context.Background()
+
+	account, err := userService.CreateServiceAccount(ctx, users.ServiceAccountInput{
+		Identifier: "worker",
+		Name:       "Worker",
+		IsActive:   true,
+	})
+	if err != nil {
+		t.Fatalf("create service account: %v", err)
+	}
+
+	longBody, err := json.Marshal(map[string]string{
+		"note": strings.Repeat("a", 2001),
+	})
+	if err != nil {
+		t.Fatalf("marshal request body: %v", err)
+	}
+	invalidReq := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/v1/admin/service-accounts/"+account.ID+"/note",
+		bytes.NewReader(longBody),
+	)
+	invalidReq.SetPathValue("id", account.ID)
+	invalidRecorder := httptest.NewRecorder()
+
+	handler.HandleAdminUpdateServiceAccountNote(invalidRecorder, invalidReq)
+
+	if invalidRecorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", invalidRecorder.Code, invalidRecorder.Body.String())
+	}
+	if !strings.Contains(invalidRecorder.Body.String(), "invalid_note") {
+		t.Fatalf("expected invalid_note response, got %s", invalidRecorder.Body.String())
+	}
+
+	missingReq := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/v1/admin/service-accounts/missing-account/note",
+		bytes.NewBufferString(`{"note":"hello"}`),
+	)
+	missingReq.SetPathValue("id", "missing-account")
+	missingRecorder := httptest.NewRecorder()
+
+	handler.HandleAdminUpdateServiceAccountNote(missingRecorder, missingReq)
+
+	if missingRecorder.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", missingRecorder.Code, missingRecorder.Body.String())
+	}
+	if !strings.Contains(missingRecorder.Body.String(), "service_account_not_found") {
+		t.Fatalf("expected service_account_not_found response, got %s", missingRecorder.Body.String())
 	}
 }
 

@@ -13,6 +13,7 @@ const user: AdminUser = {
   email: 'ada@example.com',
   name: 'Ada Lovelace',
   role: 'user',
+  note: '',
   isActive: true,
   lastLoginAt: '2026-01-02T00:00:00Z',
   inputTokens: 123,
@@ -106,5 +107,15 @@ describe('AdminUsersTable', () => {
     await wrapper.get('[data-test="row-action-groups"]').trigger('click')
 
     expect(wrapper.emitted('manageGroups')).toEqual([[user]])
+  })
+
+  it('exposes a notes row action', async () => {
+    const wrapper = mountTable()
+
+    expect(wrapper.get('[data-test="row-action-notes"]').text()).toBe('Notes')
+
+    await wrapper.get('[data-test="row-action-notes"]').trigger('click')
+
+    expect(wrapper.emitted('notes')).toEqual([[user]])
   })
 })

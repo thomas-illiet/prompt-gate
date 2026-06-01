@@ -41,6 +41,7 @@ const user: AdminUser = {
   email: 'ada@example.com',
   name: 'Ada Lovelace',
   role: 'user',
+  note: '',
   isActive: true,
   lastLoginAt: '2026-01-02T00:00:00Z',
   inputTokens: 123,
@@ -174,6 +175,38 @@ describe('useAdminUsers', () => {
     )
     expect(apiFetch).toHaveBeenNthCalledWith(4, expectedListUrl)
     expect(adminUsers.tokens.value[0]?.revokedAt).toBe('2026-02-01T00:00:00Z')
+  })
+
+  it('updates a selected user note and reloads users', async () => {
+    const notedUser = { ...user, note: 'Follow up before renewal.' }
+    apiFetch
+      .mockResolvedValueOnce(userResponse([user]))
+      .mockResolvedValueOnce(notedUser)
+      .mockResolvedValueOnce(userResponse([notedUser]))
+
+    const adminUsers = useAdminUsers()
+    await vi.waitFor(() => expect(adminUsers.loading.value).toBe(false))
+
+    const updated = await adminUsers.updateUserNote(
+      user.id,
+      'Follow up before renewal.',
+    )
+
+    expect(updated).toEqual(notedUser)
+    expect(apiFetch).toHaveBeenNthCalledWith(
+      2,
+      `/api/v1/admin/users/${user.id}/note`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ note: 'Follow up before renewal.' }),
+      },
+    )
+    expect(apiFetch).toHaveBeenNthCalledWith(
+      3,
+      '/api/v1/admin/users?page=1&pageSize=10&sortBy=lastLoginAt&sortDir=desc',
+    )
+    expect(adminUsers.users.value).toEqual([notedUser])
   })
 
   it('loads group options across all pages', async () => {

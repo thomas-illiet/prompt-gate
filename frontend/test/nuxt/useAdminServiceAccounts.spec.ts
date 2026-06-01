@@ -45,6 +45,7 @@ const account: ServiceAccount = {
   identifier: 'ci_runner',
   name: 'CI runner',
   role: 'user',
+  note: '',
   isActive: true,
   firewallOverrideEnabled: false,
   inputTokens: 1234,
@@ -216,6 +217,40 @@ describe('useAdminServiceAccounts', () => {
       `/api/v1/admin/service-accounts/${account.id}`,
       { method: 'DELETE' },
     )
+  })
+
+  it('updates a service account note and reloads accounts', async () => {
+    const notedAccount = { ...account, note: 'Owned by platform.' }
+    apiFetch
+      .mockResolvedValueOnce(accountResponse([account]))
+      .mockResolvedValueOnce(notedAccount)
+      .mockResolvedValueOnce(accountResponse([notedAccount]))
+
+    const adminServiceAccounts = useAdminServiceAccounts()
+    await vi.waitFor(() =>
+      expect(adminServiceAccounts.loading.value).toBe(false),
+    )
+
+    const updated = await adminServiceAccounts.updateAccountNote(
+      account.id,
+      'Owned by platform.',
+    )
+
+    expect(updated).toEqual(notedAccount)
+    expect(apiFetch).toHaveBeenNthCalledWith(
+      2,
+      `/api/v1/admin/service-accounts/${account.id}/note`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ note: 'Owned by platform.' }),
+      },
+    )
+    expect(apiFetch).toHaveBeenNthCalledWith(
+      3,
+      '/api/v1/admin/service-accounts?page=1&pageSize=10&sortBy=createdAt&sortDir=desc',
+    )
+    expect(adminServiceAccounts.accounts.value).toEqual([notedAccount])
   })
 
   it('loads, creates, stores, and revokes service account tokens', async () => {

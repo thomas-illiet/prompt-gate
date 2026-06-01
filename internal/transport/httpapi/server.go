@@ -173,6 +173,10 @@ func NewHandler(a Dependencies) http.Handler {
 		middleware.Chain(http.HandlerFunc(adminH.HandleAdminUpdateUser), adminMiddlewares...),
 	)
 	mux.Handle(
+		"PATCH /api/v1/admin/users/{id}/note",
+		middleware.Chain(http.HandlerFunc(adminH.HandleAdminUpdateUserNote), adminMiddlewares...),
+	)
+	mux.Handle(
 		"DELETE /api/v1/admin/users/{id}",
 		middleware.Chain(http.HandlerFunc(adminH.HandleAdminDeleteUser), adminMiddlewares...),
 	)
@@ -247,6 +251,10 @@ func NewHandler(a Dependencies) http.Handler {
 	mux.Handle(
 		"PATCH /api/v1/admin/service-accounts/{id}",
 		middleware.Chain(http.HandlerFunc(adminH.HandleAdminUpdateServiceAccount), adminMiddlewares...),
+	)
+	mux.Handle(
+		"PATCH /api/v1/admin/service-accounts/{id}/note",
+		middleware.Chain(http.HandlerFunc(adminH.HandleAdminUpdateServiceAccountNote), adminMiddlewares...),
 	)
 	mux.Handle(
 		"DELETE /api/v1/admin/service-accounts/{id}",

@@ -57,6 +57,7 @@ const user: AdminUser = {
   email: 'prompt@example.com',
   name: 'Prompt User',
   role: 'user',
+  note: '',
   isActive: true,
   inputTokens: 10,
   outputTokens: 20,

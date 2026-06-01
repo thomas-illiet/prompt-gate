@@ -73,6 +73,22 @@ func (h *Handler) HandleAdminUpdateServiceAccount(w http.ResponseWriter, r *http
 	writeJSON(w, http.StatusOK, account)
 }
 
+// HandleAdminUpdateServiceAccountNote updates a service account's admin note.
+func (h *Handler) HandleAdminUpdateServiceAccountNote(w http.ResponseWriter, r *http.Request) {
+	var input users.UpdateAccountNoteInput
+	if !decodeRequestBody(w, r, &input) {
+		return
+	}
+
+	account, err := h.users.UpdateServiceAccountNote(r.Context(), r.PathValue("id"), input)
+	if err != nil {
+		writeServiceAccountError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, account)
+}
+
 // HandleAdminDeleteServiceAccount deletes a service account.
 func (h *Handler) HandleAdminDeleteServiceAccount(w http.ResponseWriter, r *http.Request) {
 	if err := h.users.DeleteServiceAccount(r.Context(), r.PathValue("id")); err != nil {
@@ -323,6 +339,9 @@ func writeServiceAccountError(w http.ResponseWriter, err error) {
 	case errors.Is(err, users.ErrServiceAccountConflict):
 		status = http.StatusConflict
 		code = "identifier_conflict"
+	case errors.Is(err, users.ErrInvalidNote):
+		status = http.StatusBadRequest
+		code = "invalid_note"
 	}
 
 	writeJSON(w, status, map[string]string{"error": code})

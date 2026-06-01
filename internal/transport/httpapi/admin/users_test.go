@@ -108,3 +108,110 @@ func TestHandleAdminUpdateUserStoresExpiration(t *testing.T) {
 		t.Fatalf("expected expiration %s, got %v", expiresAt, updated.ExpiresAt)
 	}
 }
+
+func TestHandleAdminUpdateUserNoteStoresNote(t *testing.T) {
+	handler, service := newUsersTestHandler(t)
+	ctx := context.Background()
+
+	created, err := service.SyncUser(ctx, auth.Identity{
+		Sub:               "sub-note",
+		PreferredUsername: "note-user",
+		Email:             "note@example.com",
+		Name:              "Note User",
+	})
+	if err != nil {
+		t.Fatalf("sync user: %v", err)
+	}
+
+	body, err := json.Marshal(map[string]string{
+		"note": "Follow up with security before renewal.",
+	})
+	if err != nil {
+		t.Fatalf("marshal request body: %v", err)
+	}
+
+	req := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/v1/admin/users/"+created.ID+"/note",
+		bytes.NewReader(body),
+	)
+	req.SetPathValue("id", created.ID)
+	recorder := httptest.NewRecorder()
+
+	handler.HandleAdminUpdateUserNote(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", recorder.Code, recorder.Body.String())
+	}
+
+	var response users.AdminUser
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Note != "Follow up with security before renewal." {
+		t.Fatalf("expected response note, got %q", response.Note)
+	}
+
+	updated, err := service.GetUser(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("get updated user: %v", err)
+	}
+	if updated.Note != response.Note {
+		t.Fatalf("expected persisted note %q, got %q", response.Note, updated.Note)
+	}
+}
+
+func TestHandleAdminUpdateUserNoteErrors(t *testing.T) {
+	handler, service := newUsersTestHandler(t)
+	ctx := context.Background()
+
+	created, err := service.SyncUser(ctx, auth.Identity{
+		Sub:               "sub-note-errors",
+		PreferredUsername: "note-errors",
+		Email:             "note-errors@example.com",
+		Name:              "Note Errors",
+	})
+	if err != nil {
+		t.Fatalf("sync user: %v", err)
+	}
+
+	longBody, err := json.Marshal(map[string]string{
+		"note": strings.Repeat("a", 2001),
+	})
+	if err != nil {
+		t.Fatalf("marshal request body: %v", err)
+	}
+	invalidReq := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/v1/admin/users/"+created.ID+"/note",
+		bytes.NewReader(longBody),
+	)
+	invalidReq.SetPathValue("id", created.ID)
+	invalidRecorder := httptest.NewRecorder()
+
+	handler.HandleAdminUpdateUserNote(invalidRecorder, invalidReq)
+
+	if invalidRecorder.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", invalidRecorder.Code, invalidRecorder.Body.String())
+	}
+	if !strings.Contains(invalidRecorder.Body.String(), "invalid_note") {
+		t.Fatalf("expected invalid_note response, got %s", invalidRecorder.Body.String())
+	}
+
+	missingReq := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/v1/admin/users/missing-user/note",
+		bytes.NewBufferString(`{"note":"hello"}`),
+	)
+	missingReq.SetPathValue("id", "missing-user")
+	missingRecorder := httptest.NewRecorder()
+
+	handler.HandleAdminUpdateUserNote(missingRecorder, missingReq)
+
+	if missingRecorder.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", missingRecorder.Code, missingRecorder.Body.String())
+	}
+	if !strings.Contains(missingRecorder.Body.String(), "user_not_found") {
+		t.Fatalf("expected user_not_found response, got %s", missingRecorder.Body.String())
+	}
+}

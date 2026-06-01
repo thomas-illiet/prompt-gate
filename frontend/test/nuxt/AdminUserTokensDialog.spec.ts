@@ -12,6 +12,7 @@ const user: AdminUser = {
   email: 'ada@example.com',
   name: 'Ada Lovelace',
   role: 'user',
+  note: '',
   isActive: true,
   lastLoginAt: '2026-01-02T00:00:00Z',
   inputTokens: 123,

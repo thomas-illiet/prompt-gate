@@ -19,11 +19,14 @@ import (
 var (
 	ErrUserNotFound                    = errors.New("user not found")
 	ErrInvalidExpiration               = errors.New("expires_at must be in the future")
+	ErrInvalidNote                     = errors.New("note must be 2000 characters or fewer")
 	ErrInvalidServiceAccountName       = errors.New("service account name is required")
 	ErrInvalidServiceAccountIdentifier = errors.New("service account identifier must be lowercase alphanumeric with dashes or underscores, max 64 chars")
 	ErrServiceAccountConflict          = errors.New("service account identifier already exists")
 	ErrInvalidSort                     = errors.New("invalid_sort")
 )
+
+const maxAccountNoteLength = 2000
 
 var serviceAccountIdentifierRegexp = regexp.MustCompile(`^[a-z0-9_-]{1,64}$`)
 
@@ -35,6 +38,7 @@ type User struct {
 	Name                    string        `gorm:"not null"`
 	Type                    auth.UserType `gorm:"type:varchar(16);not null;default:'user';index"`
 	Role                    auth.AppRole  `gorm:"type:varchar(16);not null;index"`
+	Note                    string        `gorm:"type:text;not null;default:''"`
 	IsActive                bool          `gorm:"not null;default:true;index"`
 	FirewallOverrideEnabled bool          `gorm:"column:firewall_override_enabled;not null;default:false;index"`
 	ExpiresAt               *time.Time    `gorm:"column:expires_at;index"`
@@ -51,6 +55,7 @@ type AdminUser struct {
 	Name              string        `json:"name"`
 	Type              auth.UserType `json:"type"`
 	Role              auth.AppRole  `json:"role"`
+	Note              string        `json:"note"`
 	IsActive          bool          `json:"isActive"`
 	InputTokens       int64         `json:"inputTokens"`
 	OutputTokens      int64         `json:"outputTokens"`
@@ -83,6 +88,7 @@ type ServiceAccount struct {
 	Identifier              string       `json:"identifier"`
 	Name                    string       `json:"name"`
 	Role                    auth.AppRole `json:"role"`
+	Note                    string       `json:"note"`
 	IsActive                bool         `json:"isActive"`
 	FirewallOverrideEnabled bool         `json:"firewallOverrideEnabled"`
 	InputTokens             int64        `json:"inputTokens"`
@@ -116,6 +122,10 @@ type UpdateUserInput struct {
 	Role      auth.AppRole `json:"role"`
 	IsActive  bool         `json:"isActive"`
 	ExpiresAt *time.Time   `json:"expiresAt"`
+}
+
+type UpdateAccountNoteInput struct {
+	Note string `json:"note"`
 }
 
 type Service struct {
@@ -568,6 +578,62 @@ func (s *Service) UpdateUser(ctx context.Context, id string, input UpdateUserInp
 	return items[0], nil
 }
 
+// UpdateUserNote changes the admin note for a human user only.
+func (s *Service) UpdateUserNote(ctx context.Context, id string, input UpdateAccountNoteInput) (AdminUser, error) {
+	note, err := normalizeAccountNote(input.Note)
+	if err != nil {
+		return AdminUser{}, err
+	}
+
+	var record User
+	if err := s.db.WithContext(ctx).
+		Where("id = ? AND type = ?", id, auth.UserTypeUser).
+		First(&record).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return AdminUser{}, ErrUserNotFound
+		}
+
+		return AdminUser{}, fmt.Errorf("find user for note update: %w", err)
+	}
+
+	record.Note = note
+	if err := s.db.WithContext(ctx).Save(&record).Error; err != nil {
+		return AdminUser{}, fmt.Errorf("update user note: %w", err)
+	}
+
+	items := []AdminUser{record.adminUser()}
+	if err := s.attachAdminUserTokenConsumption(ctx, items); err != nil {
+		return AdminUser{}, err
+	}
+
+	return items[0], nil
+}
+
+// UpdateServiceAccountNote changes the admin note for a service account only.
+func (s *Service) UpdateServiceAccountNote(ctx context.Context, id string, input UpdateAccountNoteInput) (ServiceAccount, error) {
+	note, err := normalizeAccountNote(input.Note)
+	if err != nil {
+		return ServiceAccount{}, err
+	}
+
+	record, err := s.findServiceAccount(ctx, s.db, id)
+	if err != nil {
+		return ServiceAccount{}, err
+	}
+
+	record.Note = note
+	if err := s.db.WithContext(ctx).Save(&record).Error; err != nil {
+		return ServiceAccount{}, fmt.Errorf("update service account note: %w", err)
+	}
+
+	items := []ServiceAccount{record.serviceAccount()}
+	if err := s.attachServiceAccountTokenConsumption(ctx, items); err != nil {
+		return ServiceAccount{}, err
+	}
+
+	return items[0], nil
+}
+
 // ExpireAccess removes roles whose access expiration date has passed and revokes their tokens.
 func (s *Service) ExpireAccess(ctx context.Context, now time.Time) (int64, error) {
 	now = now.UTC()
@@ -679,6 +745,15 @@ func serviceAccountFirewallOverride(input ServiceAccountInput, fallback bool) bo
 		return fallback
 	}
 	return *input.FirewallOverrideEnabled
+}
+
+// normalizeAccountNote validates account note length while preserving entered text.
+func normalizeAccountNote(note string) (string, error) {
+	if len([]rune(note)) > maxAccountNoteLength {
+		return "", ErrInvalidNote
+	}
+
+	return note, nil
 }
 
 // ensureServiceAccountIdentifierAvailable checks service account identifier uniqueness.
@@ -930,6 +1005,7 @@ func (u *User) adminUser() AdminUser {
 		Name:              u.Name,
 		Type:              u.Type,
 		Role:              u.Role,
+		Note:              u.Note,
 		IsActive:          u.IsActive,
 		ExpiresAt:         u.ExpiresAt,
 		LastLoginAt:       u.LastLoginAt,
@@ -945,6 +1021,7 @@ func (u *User) serviceAccount() ServiceAccount {
 		Identifier:              u.PreferredUsername,
 		Name:                    u.Name,
 		Role:                    auth.RoleUser,
+		Note:                    u.Note,
 		IsActive:                u.IsActive,
 		FirewallOverrideEnabled: u.FirewallOverrideEnabled,
 		CreatedAt:               u.CreatedAt,

@@ -15,6 +15,7 @@ import AdminServiceAccountDialog from '~/components/AdminServiceAccounts/AdminSe
 import AdminServiceAccountFirewallDialog from '~/components/AdminServiceAccounts/AdminServiceAccountFirewallDialog.vue'
 import AdminServiceAccountTokenCreatedDialog from '~/components/AdminServiceAccounts/AdminServiceAccountTokenCreatedDialog.vue'
 import AdminServiceAccountTokensDialog from '~/components/AdminServiceAccounts/AdminServiceAccountTokensDialog.vue'
+import AdminAccountNoteDialog from '~/components/AdminAccounts/AdminAccountNoteDialog.vue'
 
 definePageMeta({
   requiredRoles: ['admin'],
@@ -30,6 +31,7 @@ const tokenDialogOpen = shallowRef(false)
 const tokenCreateDialogOpen = shallowRef(false)
 const createdTokenDialogOpen = shallowRef(false)
 const deleteDialog = useTargetDialog<ServiceAccount>()
+const noteDialog = useTargetDialog<ServiceAccount>()
 const statusDialog = useTargetDialog<ServiceAccount>()
 const firewallAccount = shallowRef<ServiceAccount | null>(null)
 const tokenAccount = shallowRef<ServiceAccount | null>(null)
@@ -296,6 +298,16 @@ async function updateShowRevokedTokens(showRevoked: boolean) {
   await refreshTokens()
 }
 
+// saveAccountNote persists the dedicated admin note for the selected account.
+async function saveAccountNote(note: string) {
+  if (!noteDialog.target.value) {
+    return
+  }
+
+  await adminServiceAccounts.updateAccountNote(noteDialog.target.value.id, note)
+  noteDialog.close()
+}
+
 // confirmDelete removes the selected service account.
 async function confirmDelete() {
   if (!deleteDialog.target.value) {
@@ -360,6 +372,7 @@ async function confirmToggleStatus() {
           @edit="openEditDialog"
           @manage-firewall="openFirewallDialog"
           @manage-tokens="openTokenDialog"
+          @notes="noteDialog.open"
           @refresh="adminServiceAccounts.reload"
           @toggle-status="statusDialog.open"
           @update:page="adminServiceAccounts.setPage"
@@ -434,6 +447,13 @@ async function confirmToggleStatus() {
     <AdminServiceAccountTokenCreatedDialog
       v-model="createdTokenDialogOpen"
       :created-token="adminServiceAccounts.createdToken.value"
+    />
+
+    <AdminAccountNoteDialog
+      v-model="noteDialog.isOpen.value"
+      :account="noteDialog.target.value"
+      :loading="adminServiceAccounts.saving.value"
+      @save="saveAccountNote"
     />
 
     <AppConfirmDialog

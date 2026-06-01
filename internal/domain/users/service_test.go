@@ -464,6 +464,81 @@ func TestUpdateUserValidatesExpirationAndRevokesTokensWhenRoleBecomesNone(t *tes
 	}
 }
 
+func TestUpdateAccountNotesPersistClearValidateAndRespectAccountType(t *testing.T) {
+	service := newTestService(t)
+	ctx := context.Background()
+
+	user, err := service.SyncUser(ctx, auth.Identity{
+		Sub:               "sub-1",
+		PreferredUsername: "promptgate-user",
+		Email:             "user@example.com",
+		Name:              "PromptGate User",
+	})
+	if err != nil {
+		t.Fatalf("sync user: %v", err)
+	}
+	account, err := service.CreateServiceAccount(ctx, ServiceAccountInput{
+		Identifier: "worker",
+		Name:       "Worker",
+		IsActive:   true,
+	})
+	if err != nil {
+		t.Fatalf("create service account: %v", err)
+	}
+
+	updatedUser, err := service.UpdateUserNote(ctx, user.ID, UpdateAccountNoteInput{
+		Note: "VIP access approved by security.",
+	})
+	if err != nil {
+		t.Fatalf("update user note: %v", err)
+	}
+	if updatedUser.Note != "VIP access approved by security." {
+		t.Fatalf("expected updated user note, got %q", updatedUser.Note)
+	}
+	reloadedUser, err := service.GetUser(ctx, user.ID)
+	if err != nil {
+		t.Fatalf("reload user: %v", err)
+	}
+	if reloadedUser.Note != updatedUser.Note {
+		t.Fatalf("expected persisted user note %q, got %q", updatedUser.Note, reloadedUser.Note)
+	}
+
+	clearedUser, err := service.UpdateUserNote(ctx, user.ID, UpdateAccountNoteInput{})
+	if err != nil {
+		t.Fatalf("clear user note: %v", err)
+	}
+	if clearedUser.Note != "" {
+		t.Fatalf("expected cleared user note, got %q", clearedUser.Note)
+	}
+
+	updatedAccount, err := service.UpdateServiceAccountNote(ctx, account.ID, UpdateAccountNoteInput{
+		Note: "Rotation owner: platform.",
+	})
+	if err != nil {
+		t.Fatalf("update service account note: %v", err)
+	}
+	if updatedAccount.Note != "Rotation owner: platform." {
+		t.Fatalf("expected updated service account note, got %q", updatedAccount.Note)
+	}
+	reloadedAccount, err := service.GetServiceAccount(ctx, account.ID)
+	if err != nil {
+		t.Fatalf("reload service account: %v", err)
+	}
+	if reloadedAccount.Note != updatedAccount.Note {
+		t.Fatalf("expected persisted service account note %q, got %q", updatedAccount.Note, reloadedAccount.Note)
+	}
+
+	if _, err := service.UpdateUserNote(ctx, user.ID, UpdateAccountNoteInput{Note: strings.Repeat("a", maxAccountNoteLength+1)}); !errors.Is(err, ErrInvalidNote) {
+		t.Fatalf("expected ErrInvalidNote, got %v", err)
+	}
+	if _, err := service.UpdateUserNote(ctx, account.ID, UpdateAccountNoteInput{Note: "wrong type"}); !errors.Is(err, ErrUserNotFound) {
+		t.Fatalf("expected service account to be hidden from user note update, got %v", err)
+	}
+	if _, err := service.UpdateServiceAccountNote(ctx, user.ID, UpdateAccountNoteInput{Note: "wrong type"}); !errors.Is(err, ErrUserNotFound) {
+		t.Fatalf("expected user to be hidden from service account note update, got %v", err)
+	}
+}
+
 func TestExpireAccessClearsExpiredRolesAndRevokesTokens(t *testing.T) {
 	service := newTestService(t)
 	revoker := &recordingTokenRevoker{}

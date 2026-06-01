@@ -12,6 +12,7 @@ const account: ServiceAccount = {
   identifier: 'ci_runner',
   name: 'CI runner',
   role: 'user',
+  note: '',
   isActive: true,
   firewallOverrideEnabled: false,
   inputTokens: 1234,
