@@ -29,35 +29,77 @@ const (
 )
 
 type Service struct {
-	db *gorm.DB
+	db        *gorm.DB
+	usageCost UsageCostConfig
+}
+
+const usageCostTokenUnit = 1_000_000
+
+var defaultUsageCostConfig = UsageCostConfig{
+	Enabled: true,
+	Rates: CostRates{
+		InputUSDPer1MTokens:     5.00,
+		OutputUSDPer1MTokens:    30.00,
+		EmbeddingUSDPer1MTokens: 0.02,
+	},
+}
+
+type CostRates struct {
+	InputUSDPer1MTokens     float64 `json:"inputUsdPer1MTokens"`
+	OutputUSDPer1MTokens    float64 `json:"outputUsdPer1MTokens"`
+	EmbeddingUSDPer1MTokens float64 `json:"embeddingUsdPer1MTokens"`
+}
+
+type UsageCostConfig struct {
+	Enabled bool
+	Rates   CostRates
+}
+
+type EstimatedCost struct {
+	InputUSD     float64   `json:"inputUsd"`
+	OutputUSD    float64   `json:"outputUsd"`
+	EmbeddingUSD float64   `json:"embeddingUsd"`
+	TotalUSD     float64   `json:"totalUsd"`
+	Rates        CostRates `json:"rates"`
+}
+
+type ServiceOption func(*Service)
+
+// WithUsageCost configures dashboard usage cost estimates.
+func WithUsageCost(config UsageCostConfig) ServiceOption {
+	return func(s *Service) {
+		s.usageCost = config
+	}
 }
 
 type UsageTotals struct {
-	Requests               int64 `json:"requests"`
-	Prompts                int64 `json:"prompts"`
-	ToolCalls              int64 `json:"toolCalls"`
-	InputTokens            int64 `json:"inputTokens"`
-	OutputTokens           int64 `json:"outputTokens"`
-	CacheReadInputTokens   int64 `json:"cacheReadInputTokens"`
-	CacheWriteInputTokens  int64 `json:"cacheWriteInputTokens"`
-	CompletionInputTokens  int64 `json:"completionInputTokens"`
-	CompletionOutputTokens int64 `json:"completionOutputTokens"`
-	CompletionTokens       int64 `json:"completionTokens"`
-	EmbeddingTokens        int64 `json:"embeddingTokens"`
-	TotalTokens            int64 `json:"totalTokens"`
+	Requests               int64          `json:"requests"`
+	Prompts                int64          `json:"prompts"`
+	ToolCalls              int64          `json:"toolCalls"`
+	InputTokens            int64          `json:"inputTokens"`
+	OutputTokens           int64          `json:"outputTokens"`
+	CacheReadInputTokens   int64          `json:"cacheReadInputTokens"`
+	CacheWriteInputTokens  int64          `json:"cacheWriteInputTokens"`
+	CompletionInputTokens  int64          `json:"completionInputTokens"`
+	CompletionOutputTokens int64          `json:"completionOutputTokens"`
+	CompletionTokens       int64          `json:"completionTokens"`
+	EmbeddingTokens        int64          `json:"embeddingTokens"`
+	TotalTokens            int64          `json:"totalTokens"`
+	EstimatedCost          *EstimatedCost `json:"estimatedCost,omitempty"`
 }
 
 type DailyUsage struct {
-	Date                   string `json:"date"`
-	Requests               int64  `json:"requests"`
-	Prompts                int64  `json:"prompts"`
-	InputTokens            int64  `json:"inputTokens"`
-	OutputTokens           int64  `json:"outputTokens"`
-	CompletionInputTokens  int64  `json:"completionInputTokens"`
-	CompletionOutputTokens int64  `json:"completionOutputTokens"`
-	CompletionTokens       int64  `json:"completionTokens"`
-	EmbeddingTokens        int64  `json:"embeddingTokens"`
-	TotalTokens            int64  `json:"totalTokens"`
+	Date                   string         `json:"date"`
+	Requests               int64          `json:"requests"`
+	Prompts                int64          `json:"prompts"`
+	InputTokens            int64          `json:"inputTokens"`
+	OutputTokens           int64          `json:"outputTokens"`
+	CompletionInputTokens  int64          `json:"completionInputTokens"`
+	CompletionOutputTokens int64          `json:"completionOutputTokens"`
+	CompletionTokens       int64          `json:"completionTokens"`
+	EmbeddingTokens        int64          `json:"embeddingTokens"`
+	TotalTokens            int64          `json:"totalTokens"`
+	EstimatedCost          *EstimatedCost `json:"estimatedCost,omitempty"`
 }
 
 type UsageBreakdown struct {
@@ -85,15 +127,16 @@ type UsageWindowMeta struct {
 
 type DashboardTokensResponse struct {
 	UsageWindowMeta
-	InputTokens            int64 `json:"inputTokens"`
-	OutputTokens           int64 `json:"outputTokens"`
-	CacheReadInputTokens   int64 `json:"cacheReadInputTokens"`
-	CacheWriteInputTokens  int64 `json:"cacheWriteInputTokens"`
-	CompletionInputTokens  int64 `json:"completionInputTokens"`
-	CompletionOutputTokens int64 `json:"completionOutputTokens"`
-	CompletionTokens       int64 `json:"completionTokens"`
-	EmbeddingTokens        int64 `json:"embeddingTokens"`
-	TotalTokens            int64 `json:"totalTokens"`
+	InputTokens            int64          `json:"inputTokens"`
+	OutputTokens           int64          `json:"outputTokens"`
+	CacheReadInputTokens   int64          `json:"cacheReadInputTokens"`
+	CacheWriteInputTokens  int64          `json:"cacheWriteInputTokens"`
+	CompletionInputTokens  int64          `json:"completionInputTokens"`
+	CompletionOutputTokens int64          `json:"completionOutputTokens"`
+	CompletionTokens       int64          `json:"completionTokens"`
+	EmbeddingTokens        int64          `json:"embeddingTokens"`
+	TotalTokens            int64          `json:"totalTokens"`
+	EstimatedCost          *EstimatedCost `json:"estimatedCost,omitempty"`
 }
 
 type DashboardMessagesResponse struct {
@@ -274,8 +317,15 @@ func (scope dashboardUsageScope) applyInitiatorFilter(query *gorm.DB, column str
 }
 
 // NewService creates a proxy usage and prompt history service.
-func NewService(db *gorm.DB) *Service {
-	return &Service{db: db}
+func NewService(db *gorm.DB, options ...ServiceOption) *Service {
+	service := &Service{
+		db:        db,
+		usageCost: defaultUsageCostConfig,
+	}
+	for _, option := range options {
+		option(service)
+	}
+	return service
 }
 
 // UsageSummary builds usage totals, daily buckets, and recent prompts for a user.
@@ -310,6 +360,7 @@ func (s *Service) UsageSummary(ctx context.Context, userID string, days int, now
 	if err := s.loadTokenUsage(ctx, userID, resolved.StartsAt, resolved.EndsAt, &summary, dailyByDate, models, providers, nil); err != nil {
 		return UsageSummary{}, err
 	}
+	s.attachEstimatedCosts(&summary.Totals, summary.Daily)
 	if err := s.loadToolUsage(ctx, userID, resolved.StartsAt, resolved.EndsAt, &summary); err != nil {
 		return UsageSummary{}, err
 	}
@@ -363,7 +414,7 @@ func (s *Service) dashboardTokens(ctx context.Context, scope dashboardUsageScope
 		accumulateTokenTotals(&totals, row)
 	}
 
-	return DashboardTokensResponse{
+	response := DashboardTokensResponse{
 		UsageWindowMeta:        resolved.UsageWindowMeta,
 		InputTokens:            totals.InputTokens,
 		OutputTokens:           totals.OutputTokens,
@@ -374,7 +425,10 @@ func (s *Service) dashboardTokens(ctx context.Context, scope dashboardUsageScope
 		CompletionTokens:       totals.CompletionTokens,
 		EmbeddingTokens:        totals.EmbeddingTokens,
 		TotalTokens:            totals.TotalTokens,
-	}, nil
+		EstimatedCost:          s.estimateUsageCost(totals.CompletionInputTokens, totals.CompletionOutputTokens, totals.EmbeddingTokens),
+	}
+
+	return response, nil
 }
 
 // DashboardMessages returns the request count used as the dashboard message KPI.
@@ -487,6 +541,7 @@ func (s *Service) dashboardActivity(ctx context.Context, scope dashboardUsageSco
 	if err := s.loadTokenUsageScoped(ctx, scope, resolved.StartsAt, resolved.EndsAt, &summary, dailyByDate, nil, nil, nil); err != nil {
 		return DashboardActivityResponse{}, err
 	}
+	s.attachEstimatedCosts(&summary.Totals, summary.Daily)
 
 	return DashboardActivityResponse{
 		UsageWindowMeta: resolved.UsageWindowMeta,
@@ -929,6 +984,45 @@ func accumulateTokenTotals(totals *UsageTotals, row tokenUsageRow) {
 	totals.CompletionInputTokens += completionInputTokens(row)
 	totals.CompletionOutputTokens += row.OutputTokens
 	totals.CompletionTokens += total
+}
+
+// attachEstimatedCosts adds optional dashboard-only cost estimates to token aggregates.
+func (s *Service) attachEstimatedCosts(totals *UsageTotals, daily []DailyUsage) {
+	totals.EstimatedCost = s.estimateUsageCost(
+		totals.CompletionInputTokens,
+		totals.CompletionOutputTokens,
+		totals.EmbeddingTokens,
+	)
+	for i := range daily {
+		daily[i].EstimatedCost = s.estimateUsageCost(
+			daily[i].CompletionInputTokens,
+			daily[i].CompletionOutputTokens,
+			daily[i].EmbeddingTokens,
+		)
+	}
+}
+
+// estimateUsageCost converts token buckets into an optional USD cost estimate.
+func (s *Service) estimateUsageCost(completionInputTokens, completionOutputTokens, embeddingTokens int64) *EstimatedCost {
+	if !s.usageCost.Enabled {
+		return nil
+	}
+
+	inputCost := usageTokenCost(completionInputTokens, s.usageCost.Rates.InputUSDPer1MTokens)
+	outputCost := usageTokenCost(completionOutputTokens, s.usageCost.Rates.OutputUSDPer1MTokens)
+	embeddingCost := usageTokenCost(embeddingTokens, s.usageCost.Rates.EmbeddingUSDPer1MTokens)
+	return &EstimatedCost{
+		InputUSD:     inputCost,
+		OutputUSD:    outputCost,
+		EmbeddingUSD: embeddingCost,
+		TotalUSD:     inputCost + outputCost + embeddingCost,
+		Rates:        s.usageCost.Rates,
+	}
+}
+
+// usageTokenCost prices tokens using a USD per 1M token rate.
+func usageTokenCost(tokens int64, rate float64) float64 {
+	return float64(tokens) * rate / usageCostTokenUnit
 }
 
 // tokenUsageTotal returns all counted token fields for a usage row.

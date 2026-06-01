@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -130,6 +131,13 @@ func setInterceptionProvider(t *testing.T, db *gorm.DB, id, providerName, provid
 			"provider_type": providerType,
 		}).Error; err != nil {
 		t.Fatalf("set interception provider: %v", err)
+	}
+}
+
+func assertFloatClose(t *testing.T, got, want float64) {
+	t.Helper()
+	if math.Abs(got-want) > 0.000000001 {
+		t.Fatalf("got %f want %f", got, want)
 	}
 }
 
@@ -488,6 +496,16 @@ func TestDashboardTokensDifferentiatesCompletionAndEmbeddingTokens(t *testing.T)
 	if tokens.CompletionInputTokens != 8 || tokens.CompletionOutputTokens != 6 {
 		t.Fatalf("unexpected dashboard completion split: %#v", tokens)
 	}
+	if tokens.EstimatedCost == nil {
+		t.Fatal("expected dashboard estimated cost")
+	}
+	assertFloatClose(t, tokens.EstimatedCost.InputUSD, 0.00004)
+	assertFloatClose(t, tokens.EstimatedCost.OutputUSD, 0.00018)
+	assertFloatClose(t, tokens.EstimatedCost.EmbeddingUSD, 0.00000034)
+	assertFloatClose(t, tokens.EstimatedCost.TotalUSD, 0.00022034)
+	if tokens.EstimatedCost.Rates.InputUSDPer1MTokens != 5 || tokens.EstimatedCost.Rates.OutputUSDPer1MTokens != 30 || tokens.EstimatedCost.Rates.EmbeddingUSDPer1MTokens != 0.02 {
+		t.Fatalf("unexpected default cost rates: %#v", tokens.EstimatedCost.Rates)
+	}
 
 	summary, err := service.UsageSummary(context.Background(), userID, 7, now)
 	if err != nil {
@@ -498,6 +516,9 @@ func TestDashboardTokensDifferentiatesCompletionAndEmbeddingTokens(t *testing.T)
 	}
 	if summary.Totals.CompletionInputTokens != 8 || summary.Totals.CompletionOutputTokens != 6 {
 		t.Fatalf("unexpected summary completion split: %#v", summary.Totals)
+	}
+	if summary.Totals.EstimatedCost == nil {
+		t.Fatal("expected summary estimated cost")
 	}
 
 	activity, err := service.DashboardActivity(context.Background(), userID, UsageWindow7Days, now)
@@ -510,6 +531,85 @@ func TestDashboardTokensDifferentiatesCompletionAndEmbeddingTokens(t *testing.T)
 	}
 	if latest.CompletionInputTokens != 8 || latest.CompletionOutputTokens != 6 {
 		t.Fatalf("unexpected daily completion split: %#v", latest)
+	}
+	if latest.EstimatedCost == nil {
+		t.Fatal("expected daily estimated cost")
+	}
+	assertFloatClose(t, latest.EstimatedCost.TotalUSD, 0.00022034)
+}
+
+func TestUsageCostEstimatesCanBeOverriddenAndDisabled(t *testing.T) {
+	db, service := newProxyServiceTestDB(t)
+	service = NewService(db, WithUsageCost(UsageCostConfig{
+		Enabled: true,
+		Rates: CostRates{
+			InputUSDPer1MTokens:     100,
+			OutputUSDPer1MTokens:    200,
+			EmbeddingUSDPer1MTokens: 300,
+		},
+	}))
+	now := time.Date(2026, 1, 30, 15, 0, 0, 0, time.UTC)
+	userID := "11111111-1111-1111-1111-111111111111"
+	startedAt := now.Add(-time.Hour)
+
+	if err := db.Create(&Interception{
+		ID:           "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+		InitiatorID:  userID,
+		Provider:     "openai-main",
+		ProviderType: "openai",
+		Model:        "gpt-5",
+		StartedAt:    startedAt,
+		Metadata:     "{}",
+	}).Error; err != nil {
+		t.Fatalf("seed interception: %v", err)
+	}
+	if err := db.Create(&TokenUsage{
+		InterceptionID:        "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+		ProviderResponseID:    "completion-response",
+		InputTokens:           5,
+		OutputTokens:          6,
+		CacheReadInputTokens:  1,
+		CacheWriteInputTokens: 2,
+		Metadata:              "{}",
+		CreatedAt:             startedAt,
+	}).Error; err != nil {
+		t.Fatalf("seed token usage: %v", err)
+	}
+
+	tokens, err := service.DashboardTokens(context.Background(), userID, UsageWindow7Days, now)
+	if err != nil {
+		t.Fatalf("dashboard tokens: %v", err)
+	}
+	if tokens.EstimatedCost == nil {
+		t.Fatal("expected overridden estimated cost")
+	}
+	assertFloatClose(t, tokens.EstimatedCost.InputUSD, 0.0008)
+	assertFloatClose(t, tokens.EstimatedCost.OutputUSD, 0.0012)
+	assertFloatClose(t, tokens.EstimatedCost.TotalUSD, 0.002)
+
+	disabled := NewService(db, WithUsageCost(UsageCostConfig{Enabled: false}))
+	disabledTokens, err := disabled.DashboardTokens(context.Background(), userID, UsageWindow7Days, now)
+	if err != nil {
+		t.Fatalf("dashboard tokens disabled: %v", err)
+	}
+	if disabledTokens.EstimatedCost != nil {
+		t.Fatalf("expected no dashboard estimated cost when disabled, got %#v", disabledTokens.EstimatedCost)
+	}
+	disabledSummary, err := disabled.UsageSummary(context.Background(), userID, 7, now)
+	if err != nil {
+		t.Fatalf("usage summary disabled: %v", err)
+	}
+	if disabledSummary.Totals.EstimatedCost != nil {
+		t.Fatalf("expected no summary estimated cost when disabled, got %#v", disabledSummary.Totals.EstimatedCost)
+	}
+	disabledActivity, err := disabled.DashboardActivity(context.Background(), userID, UsageWindow7Days, now)
+	if err != nil {
+		t.Fatalf("dashboard activity disabled: %v", err)
+	}
+	for _, daily := range disabledActivity.Daily {
+		if daily.EstimatedCost != nil {
+			t.Fatalf("expected no daily estimated cost when disabled, got %#v", daily.EstimatedCost)
+		}
 	}
 }
 

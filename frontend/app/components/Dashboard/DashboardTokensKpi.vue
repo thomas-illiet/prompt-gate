@@ -4,7 +4,7 @@ import type {
   DashboardTokensResponse,
   UsageWindow,
 } from '~/types/user-service'
-import { formatNumber } from '~/utils/formatters'
+import { formatCurrencyUsd, formatNumber } from '~/utils/formatters'
 
 const props = defineProps<{
   scope: DashboardScope
@@ -26,11 +26,28 @@ const completionTokens = computed(
   () => widget.data.value?.completionTokens ?? 0,
 )
 const embeddingTokens = computed(() => widget.data.value?.embeddingTokens ?? 0)
-const caption = computed(
+const estimatedCost = computed(() => widget.data.value?.estimatedCost ?? null)
+const tokenCaption = computed(
   () =>
     `${formatNumber(completionTokens.value)} completion / ${formatNumber(
       embeddingTokens.value,
     )} embedding`,
+)
+const costCaption = computed(() => {
+  if (!estimatedCost.value) {
+    return ''
+  }
+
+  return `${formatCurrencyUsd(estimatedCost.value.totalUsd)} estimated (${formatCurrencyUsd(
+    estimatedCost.value.inputUsd,
+  )} in / ${formatCurrencyUsd(estimatedCost.value.outputUsd)} out / ${formatCurrencyUsd(
+    estimatedCost.value.embeddingUsd,
+  )} emb)`
+})
+const caption = computed(() =>
+  costCaption.value
+    ? `${tokenCaption.value} / ${costCaption.value}`
+    : tokenCaption.value,
 )
 </script>
 

@@ -4,7 +4,7 @@ import type {
   DashboardScope,
   UsageWindow,
 } from '~/types/user-service'
-import { formatNumber } from '~/utils/formatters'
+import { formatCurrencyUsd, formatNumber } from '~/utils/formatters'
 
 const props = defineProps<{
   scope: DashboardScope
@@ -38,11 +38,18 @@ const activitySummary = computed(() => {
     (total, item) => total + item.embeddingTokens,
     0,
   )
+  const estimatedCost = daily.value.reduce(
+    (total, item) => total + (item.estimatedCost?.totalUsd ?? 0),
+    0,
+  )
+  const hasEstimatedCost = daily.value.some((item) => item.estimatedCost)
 
   return {
     completionInputTokens,
     completionOutputTokens,
     embeddingTokens,
+    estimatedCost,
+    hasEstimatedCost,
     requests,
   }
 })
@@ -90,6 +97,16 @@ const activitySummary = computed(() => {
         prepend-icon="mdi-vector-point"
       >
         {{ formatNumber(activitySummary.embeddingTokens) }} embedding
+      </v-chip>
+      <v-chip
+        v-if="activitySummary.hasEstimatedCost"
+        size="small"
+        label
+        variant="tonal"
+        color="secondary"
+        prepend-icon="mdi-cash"
+      >
+        {{ formatCurrencyUsd(activitySummary.estimatedCost) }} estimated
       </v-chip>
     </template>
 

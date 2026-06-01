@@ -24,6 +24,21 @@ export function formatNumber(value: number | null | undefined) {
   return new Intl.NumberFormat('fr-FR').format(value)
 }
 
+// formatCurrencyUsd renders optional USD amounts, including tiny usage estimates.
+export function formatCurrencyUsd(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value)) {
+    return '$0.00'
+  }
+
+  const isTinyAmount = Math.abs(value) > 0 && Math.abs(value) < 0.01
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: isTinyAmount ? 6 : 2,
+    maximumFractionDigits: isTinyAmount ? 6 : 2,
+  }).format(value)
+}
+
 // formatDurationMs renders optional execution durations for table rows.
 export function formatDurationMs(value: number | null | undefined) {
   if (value == null) {

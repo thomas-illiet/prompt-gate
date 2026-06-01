@@ -42,6 +42,10 @@ dotenv file.
 | `PROMPTGATE_PROXY_TRUST_FORWARD_HEADERS` | proxy | `false` | Whether the proxy trusts `X-Forwarded-For` and `X-Real-IP`. Enable only behind trusted infrastructure. |
 | `PROMPTGATE_REDIS_CACHE_TTL` | API, proxy, schedule | `5m` | TTL for Redis-backed cache entries and snapshots. |
 | `PROMPTGATE_PROXY_RELOAD_DEBOUNCE` | API, proxy, schedule | `250ms` | Debounce duration for proxy provider and MCP reload notifications. |
+| `PROMPTGATE_USAGE_COST_ENABLED` | API | `true` | Enables dashboard usage cost estimates. Set to `false` to omit cost fields from web API responses. |
+| `PROMPTGATE_USAGE_COST_INPUT` | API | `5.00` | Estimated USD price per 1M completion input tokens. |
+| `PROMPTGATE_USAGE_COST_OUTPUT` | API | `30.00` | Estimated USD price per 1M completion output tokens. |
+| `PROMPTGATE_USAGE_COST_EMBEDDING` | API | `0.02` | Estimated USD price per 1M embedding tokens. |
 
 ## Per Command Requirements
 
@@ -110,6 +114,10 @@ PROMPTGATE_USER_ACCESS_EXPIRATION_INTERVAL=1h
 PROMPTGATE_PROXY_TRUST_FORWARD_HEADERS=false
 PROMPTGATE_REDIS_CACHE_TTL=5m
 PROMPTGATE_PROXY_RELOAD_DEBOUNCE=250ms
+PROMPTGATE_USAGE_COST_ENABLED=true
+PROMPTGATE_USAGE_COST_INPUT=5.00
+PROMPTGATE_USAGE_COST_OUTPUT=30.00
+PROMPTGATE_USAGE_COST_EMBEDDING=0.02
 ```
 
 ## Notes
@@ -127,6 +135,9 @@ PROMPTGATE_PROXY_RELOAD_DEBOUNCE=250ms
   plan.
 - `PROMPTGATE_JWT_SECRET` must be shared by API, proxy, and scheduler
   processes so issued tokens can be validated and revoked consistently.
+- Dashboard usage cost fields are indicative estimates only. They are
+  calculated from recorded token counts and the configured rates, not from an
+  OpenAI invoice.
 
 Related docs:
 

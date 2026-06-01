@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -70,6 +71,66 @@ func TestLoadApiProxyBaseURLFallback(t *testing.T) {
 	}
 	if cfg.ProxyBaseURL != "http://127.0.0.1:9090" {
 		t.Fatalf("expected proxy fallback url, got %q", cfg.ProxyBaseURL)
+	}
+}
+
+func TestLoadApiUsageCostDefaults(t *testing.T) {
+	setRequiredAPIEnv(t)
+
+	cfg, err := LoadApi()
+	if err != nil {
+		t.Fatalf("load api config: %v", err)
+	}
+	if !cfg.UsageCost.Enabled {
+		t.Fatal("expected usage cost estimates to be enabled by default")
+	}
+	if cfg.UsageCost.Input != 5 || cfg.UsageCost.Output != 30 || cfg.UsageCost.Embedding != 0.02 {
+		t.Fatalf("unexpected usage cost defaults: %#v", cfg.UsageCost)
+	}
+}
+
+func TestLoadApiUsageCostOverrideAndDisable(t *testing.T) {
+	setRequiredAPIEnv(t)
+	t.Setenv("PROMPTGATE_USAGE_COST_ENABLED", "false")
+	t.Setenv("PROMPTGATE_USAGE_COST_INPUT", "1.25")
+	t.Setenv("PROMPTGATE_USAGE_COST_OUTPUT", "2.5")
+	t.Setenv("PROMPTGATE_USAGE_COST_EMBEDDING", "0.13")
+
+	cfg, err := LoadApi()
+	if err != nil {
+		t.Fatalf("load api config: %v", err)
+	}
+	if cfg.UsageCost.Enabled {
+		t.Fatal("expected usage cost estimates to be disabled")
+	}
+	if cfg.UsageCost.Input != 1.25 || cfg.UsageCost.Output != 2.5 || cfg.UsageCost.Embedding != 0.13 {
+		t.Fatalf("unexpected usage cost overrides: %#v", cfg.UsageCost)
+	}
+}
+
+func TestLoadApiRejectsInvalidUsageCostRates(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		env   string
+		value string
+		want  string
+	}{
+		{name: "input non numeric", env: "PROMPTGATE_USAGE_COST_INPUT", value: "not-a-number", want: "PROMPTGATE_USAGE_COST_INPUT"},
+		{name: "output negative", env: "PROMPTGATE_USAGE_COST_OUTPUT", value: "-1", want: "PROMPTGATE_USAGE_COST_OUTPUT"},
+		{name: "embedding nan", env: "PROMPTGATE_USAGE_COST_EMBEDDING", value: "NaN", want: "PROMPTGATE_USAGE_COST_EMBEDDING"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			setRequiredAPIEnv(t)
+			t.Setenv(test.env, test.value)
+
+			_, err := LoadApi()
+			if err == nil {
+				t.Fatal("expected invalid usage cost rate to fail")
+			}
+			if !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("expected error mentioning %s, got %v", test.want, err)
+			}
+		})
 	}
 }
 

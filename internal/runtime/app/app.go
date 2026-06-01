@@ -58,7 +58,14 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	}
 	providerService := provider.NewService(db, secretCipher)
 	mcpService := mcp.NewService(db, secretCipher)
-	proxyService := proxy.NewService(db)
+	proxyService := proxy.NewService(db, proxy.WithUsageCost(proxy.UsageCostConfig{
+		Enabled: cfg.UsageCost.Enabled,
+		Rates: proxy.CostRates{
+			InputUSDPer1MTokens:     cfg.UsageCost.Input,
+			OutputUSDPer1MTokens:    cfg.UsageCost.Output,
+			EmbeddingUSDPer1MTokens: cfg.UsageCost.Embedding,
+		},
+	}))
 	slog.Info("initializing redis connection")
 	redisStore, err := redisstore.NewRequired(ctx, cfg.RedisURL, cfg.RedisCacheTTL, slog.Default())
 	if err != nil {

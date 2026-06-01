@@ -258,6 +258,14 @@ onBeforeUnmount(cancelValueAnimation)
   font-size: 0.86rem;
 }
 
+.dashboard-kpi-card__footer span {
+  min-width: 0;
+}
+
+.dashboard-kpi-card__footer span:not(.dashboard-kpi-card__error) {
+  overflow-wrap: anywhere;
+}
+
 .dashboard-kpi-card__error {
   overflow: hidden;
   min-width: 0;

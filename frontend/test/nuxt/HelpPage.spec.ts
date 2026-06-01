@@ -10,9 +10,9 @@ const { useHelpSetupMock, useHelpSnippetSelectionMock } = vi.hoisted(() => {
   return {
     useHelpSetupMock: vi.fn(),
     useHelpSnippetSelectionMock: vi.fn(() => ({
-      modelOptions: { value: [] },
+      modelOptions: { value: [] as string[] },
       selectedModel: { value: '' },
-      selectedProvider: { value: null },
+      selectedProvider: { value: null as HelpSetupProvider | null },
       selectedProviderName: { value: '' },
     })),
   }
@@ -109,6 +109,8 @@ describe('HelpPage', () => {
 
     expect(wrapper.find('[data-test="empty-state"]').exists()).toBe(false)
     expect(wrapper.find('[data-test="configuration-card"]').exists()).toBe(true)
-    expect(wrapper.find('[data-test="documentation-panel"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="documentation-panel"]').exists()).toBe(
+      true,
+    )
   })
 })

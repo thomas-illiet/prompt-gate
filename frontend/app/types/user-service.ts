@@ -41,6 +41,20 @@ export interface UserTokenStats {
   revoked: number
 }
 
+export interface CostRates {
+  inputUsdPer1MTokens: number
+  outputUsdPer1MTokens: number
+  embeddingUsdPer1MTokens: number
+}
+
+export interface EstimatedCost {
+  inputUsd: number
+  outputUsd: number
+  embeddingUsd: number
+  totalUsd: number
+  rates: CostRates
+}
+
 export interface UsageTotals {
   requests: number
   prompts: number
@@ -54,6 +68,7 @@ export interface UsageTotals {
   completionTokens: number
   embeddingTokens: number
   totalTokens: number
+  estimatedCost?: EstimatedCost
 }
 
 export interface UsageWindowMeta {
@@ -73,6 +88,7 @@ export interface DailyUsage {
   completionTokens: number
   embeddingTokens: number
   totalTokens: number
+  estimatedCost?: EstimatedCost
 }
 
 export interface UsageBreakdown {
@@ -138,6 +154,7 @@ export interface DashboardTokensResponse extends UsageWindowMeta {
   completionTokens: number
   embeddingTokens: number
   totalTokens: number
+  estimatedCost?: EstimatedCost
 }
 
 export interface DashboardMessagesResponse extends UsageWindowMeta {

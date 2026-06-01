@@ -46,6 +46,11 @@ dashboard, prompt, usage, setup, and token routes require role `user`,
 Common list-style routes use query parameters such as `page`, `pageSize`,
 `search`, `sortBy`, and `sortDir` where supported. Dashboard routes use the
 usage windows implemented by the proxy domain: `7d`, `30d`, and `all`.
+When `PROMPTGATE_USAGE_COST_ENABLED=true`, usage summary, dashboard token, and
+dashboard activity responses include an optional `estimatedCost` object. Its
+`inputUsd`, `outputUsd`, `embeddingUsd`, and `totalUsd` values are indicative
+estimates based on configured USD-per-1M-token rates, not billing records. The
+same object includes a `rates` field with the rates used for the calculation.
 
 ## Token Routes
 
@@ -80,6 +85,9 @@ All `/api/v1/admin/**` routes require a browser session with role `admin`.
 | `GET` | `/api/v1/admin/dashboard/top-provider-types` | Global provider-type usage breakdown. |
 | `GET` | `/api/v1/admin/dashboard/adoption` | Active users, active service accounts, and currently valid virtual keys. |
 | `GET` | `/api/v1/admin/dashboard/top-identities` | Top users and service accounts by token volume. |
+
+Admin dashboard token and activity responses follow the same optional
+`estimatedCost` shape as current-user dashboard responses.
 
 ### Users
 

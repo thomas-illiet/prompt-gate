@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { formatDurationMs } from '../../app/utils/formatters'
+import { formatCurrencyUsd, formatDurationMs } from '../../app/utils/formatters'
 
 describe('formatDurationMs', () => {
   it('formats milliseconds, seconds, minutes, and missing durations', () => {
@@ -13,5 +13,13 @@ describe('formatDurationMs', () => {
   it('handles invalid durations', () => {
     expect(formatDurationMs(Number.NaN)).toBe('Unknown')
     expect(formatDurationMs(-1)).toBe('Unknown')
+  })
+})
+
+describe('formatCurrencyUsd', () => {
+  it('formats normal and tiny USD values', () => {
+    expect(formatCurrencyUsd(12.3)).toBe('$12.30')
+    expect(formatCurrencyUsd(0.00022034)).toBe('$0.000220')
+    expect(formatCurrencyUsd(null)).toBe('$0.00')
   })
 })

@@ -4,10 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"net"
 	"net/url"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 
@@ -38,6 +40,14 @@ type Config struct {
 	RedisURL                     string
 	RedisCacheTTL                time.Duration
 	ProxyReloadDebounce          time.Duration
+	UsageCost                    UsageCostConfig
+}
+
+type UsageCostConfig struct {
+	Enabled   bool
+	Input     float64
+	Output    float64
+	Embedding float64
 }
 
 // LoadApi reads configuration from environment variables prefixed with PROMPTGATE_ and validates required fields.
@@ -55,6 +65,15 @@ func LoadApi() (Config, error) {
 	v.SetDefault("proxy_port", "8081")
 	v.SetDefault("redis_cache_ttl", "5m")
 	v.SetDefault("proxy_reload_debounce", "250ms")
+	v.SetDefault("usage_cost_enabled", true)
+	v.SetDefault("usage_cost_input", "5.00")
+	v.SetDefault("usage_cost_output", "30.00")
+	v.SetDefault("usage_cost_embedding", "0.02")
+
+	usageCost, err := loadUsageCostConfig(v)
+	if err != nil {
+		return Config{}, err
+	}
 
 	cfg := Config{
 		Port:                         v.GetString("port"),
@@ -79,6 +98,7 @@ func LoadApi() (Config, error) {
 		RedisURL:                     strings.TrimSpace(v.GetString("redis_url")),
 		RedisCacheTTL:                v.GetDuration("redis_cache_ttl"),
 		ProxyReloadDebounce:          v.GetDuration("proxy_reload_debounce"),
+		UsageCost:                    usageCost,
 	}
 
 	if cfg.DatabaseURL == "" {
@@ -275,6 +295,41 @@ func LoadMigration() (Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// loadUsageCostConfig reads dashboard-only usage cost settings.
+func loadUsageCostConfig(v *viper.Viper) (UsageCostConfig, error) {
+	input, err := parseNonNegativeFloat(v, "usage_cost_input", "PROMPTGATE_USAGE_COST_INPUT")
+	if err != nil {
+		return UsageCostConfig{}, err
+	}
+	output, err := parseNonNegativeFloat(v, "usage_cost_output", "PROMPTGATE_USAGE_COST_OUTPUT")
+	if err != nil {
+		return UsageCostConfig{}, err
+	}
+	embedding, err := parseNonNegativeFloat(v, "usage_cost_embedding", "PROMPTGATE_USAGE_COST_EMBEDDING")
+	if err != nil {
+		return UsageCostConfig{}, err
+	}
+	return UsageCostConfig{
+		Enabled:   v.GetBool("usage_cost_enabled"),
+		Input:     input,
+		Output:    output,
+		Embedding: embedding,
+	}, nil
+}
+
+// parseNonNegativeFloat parses a non-negative float from a viper key.
+func parseNonNegativeFloat(v *viper.Viper, key string, envName string) (float64, error) {
+	raw := strings.TrimSpace(v.GetString(key))
+	value, err := strconv.ParseFloat(raw, 64)
+	if err != nil || math.IsNaN(value) || math.IsInf(value, 0) {
+		return 0, fmt.Errorf("%s must be a valid number", envName)
+	}
+	if value < 0 {
+		return 0, fmt.Errorf("%s must be greater than or equal to zero", envName)
+	}
+	return value, nil
 }
 
 // ListenAddress returns the address the server should bind to, ensuring it starts with ":".
