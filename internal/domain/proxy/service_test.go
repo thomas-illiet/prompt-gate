@@ -301,6 +301,10 @@ func TestDashboardWidgetsAggregateByWindowAndDimension(t *testing.T) {
 	if len(topModels.Items) != 3 || topModels.Items[0].Name != "gpt-old" || topModels.Items[0].TotalTokens != 307 {
 		t.Fatalf("unexpected top models: %#v", topModels.Items)
 	}
+	if topModels.Items[0].EstimatedCost == nil {
+		t.Fatal("expected top model estimated cost")
+	}
+	assertFloatClose(t, topModels.Items[0].EstimatedCost.TotalUSD, 0.006535)
 
 	topProviderNames, err := service.DashboardTopProviderNames(context.Background(), userID, UsageWindow7Days, now)
 	if err != nil {
@@ -431,6 +435,10 @@ func TestAdminDashboardWidgetsAggregateGlobally(t *testing.T) {
 	if len(topIdentities.Items) != 3 || topIdentities.Items[0].Name != "Service Bot" || topIdentities.Items[0].TotalTokens != 117 {
 		t.Fatalf("unexpected top identities: %#v", topIdentities.Items)
 	}
+	if topIdentities.Items[0].EstimatedCost == nil {
+		t.Fatal("expected top identity estimated cost")
+	}
+	assertFloatClose(t, topIdentities.Items[0].EstimatedCost.TotalUSD, 0.002085)
 }
 
 func TestDashboardTokensDifferentiatesCompletionAndEmbeddingTokens(t *testing.T) {
@@ -536,6 +544,22 @@ func TestDashboardTokensDifferentiatesCompletionAndEmbeddingTokens(t *testing.T)
 		t.Fatal("expected daily estimated cost")
 	}
 	assertFloatClose(t, latest.EstimatedCost.TotalUSD, 0.00022034)
+
+	topModels, err := service.DashboardTopModels(context.Background(), userID, UsageWindow7Days, now)
+	if err != nil {
+		t.Fatalf("dashboard top models: %v", err)
+	}
+	var embeddingModel *UsageBreakdown
+	for i := range topModels.Items {
+		if topModels.Items[i].Name == "text-embedding-3-small" {
+			embeddingModel = &topModels.Items[i]
+			break
+		}
+	}
+	if embeddingModel == nil || embeddingModel.EstimatedCost == nil {
+		t.Fatalf("expected embedding model estimated cost: %#v", topModels.Items)
+	}
+	assertFloatClose(t, embeddingModel.EstimatedCost.EmbeddingUSD, 0.00000034)
 }
 
 func TestUsageCostEstimatesCanBeOverriddenAndDisabled(t *testing.T) {

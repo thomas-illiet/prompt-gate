@@ -103,9 +103,13 @@ type DailyUsage struct {
 }
 
 type UsageBreakdown struct {
-	Name        string `json:"name"`
-	Requests    int64  `json:"requests"`
-	TotalTokens int64  `json:"totalTokens"`
+	Name                   string         `json:"name"`
+	Requests               int64          `json:"requests"`
+	TotalTokens            int64          `json:"totalTokens"`
+	EstimatedCost          *EstimatedCost `json:"estimatedCost,omitempty"`
+	completionInputTokens  int64
+	completionOutputTokens int64
+	embeddingTokens        int64
 }
 
 type UsageSummary struct {
@@ -361,6 +365,7 @@ func (s *Service) UsageSummary(ctx context.Context, userID string, days int, now
 		return UsageSummary{}, err
 	}
 	s.attachEstimatedCosts(&summary.Totals, summary.Daily)
+	s.attachBreakdownEstimatedCosts(models, providers)
 	if err := s.loadToolUsage(ctx, userID, resolved.StartsAt, resolved.EndsAt, &summary); err != nil {
 		return UsageSummary{}, err
 	}
@@ -611,6 +616,7 @@ func (s *Service) dashboardBreakdown(ctx context.Context, scope dashboardUsageSc
 	if err := s.loadTokenUsageScoped(ctx, scope, resolved.StartsAt, resolved.EndsAt, &summary, nil, models, providers, providerTypes); err != nil {
 		return DashboardBreakdownResponse{}, err
 	}
+	s.attachBreakdownEstimatedCosts(values)
 
 	return DashboardBreakdownResponse{
 		UsageWindowMeta: resolved.UsageWindowMeta,
@@ -653,27 +659,76 @@ func (s *Service) AdminDashboardTopIdentities(ctx context.Context, window UsageW
 		return DashboardBreakdownResponse{}, err
 	}
 
-	var items []UsageBreakdown
+	type identityRequestRow struct {
+		InitiatorID string
+		Name        string
+		Requests    int64
+	}
+	var requestRows []identityRequestRow
 	if err := s.db.WithContext(ctx).
 		Table("interceptions").
-		Select(`COALESCE(NULLIF(users.name, ''), NULLIF(users.preferred_username, ''), NULLIF(users.email, ''), CAST(users.id AS TEXT)) AS name,
-			COUNT(DISTINCT interceptions.id) AS requests,
-			COALESCE(SUM(token_usages.input_tokens + token_usages.output_tokens + token_usages.cache_read_input_tokens + token_usages.cache_write_input_tokens), 0) AS total_tokens`).
+		Select(`interceptions.initiator_id,
+			COALESCE(NULLIF(users.name, ''), NULLIF(users.preferred_username, ''), NULLIF(users.email, ''), CAST(users.id AS TEXT)) AS name,
+			COUNT(DISTINCT interceptions.id) AS requests`).
 		Joins("JOIN users ON users.id = interceptions.initiator_id").
-		Joins("LEFT JOIN token_usages ON token_usages.interception_id = interceptions.id AND token_usages.created_at >= ? AND token_usages.created_at <= ?", resolved.StartsAt, resolved.EndsAt).
 		Where("interceptions.started_at >= ? AND interceptions.started_at <= ?", resolved.StartsAt, resolved.EndsAt).
-		Group("users.id, users.name, users.preferred_username, users.email").
-		Order("total_tokens DESC").
-		Order("requests DESC").
-		Order("name ASC").
-		Limit(5).
-		Scan(&items).Error; err != nil {
-		return DashboardBreakdownResponse{}, fmt.Errorf("load dashboard top identities: %w", err)
+		Group("interceptions.initiator_id, users.id, users.name, users.preferred_username, users.email").
+		Scan(&requestRows).Error; err != nil {
+		return DashboardBreakdownResponse{}, fmt.Errorf("load dashboard top identity requests: %w", err)
 	}
+
+	itemsByID := map[string]*UsageBreakdown{}
+	for _, row := range requestRows {
+		breakdownByKey(itemsByID, row.InitiatorID, row.Name).Requests += row.Requests
+	}
+
+	type identityTokenUsageRow struct {
+		InitiatorID           string
+		Name                  string
+		InputTokens           int64
+		OutputTokens          int64
+		CacheReadInputTokens  int64
+		CacheWriteInputTokens int64
+		Type                  string
+		Metadata              string
+	}
+	var tokenRows []identityTokenUsageRow
+	if err := s.db.WithContext(ctx).
+		Table("token_usages").
+		Select(`interceptions.initiator_id,
+			COALESCE(NULLIF(users.name, ''), NULLIF(users.preferred_username, ''), NULLIF(users.email, ''), CAST(users.id AS TEXT)) AS name,
+			token_usages.input_tokens,
+			token_usages.output_tokens,
+			token_usages.cache_read_input_tokens,
+			token_usages.cache_write_input_tokens,
+			token_usages.type,
+			token_usages.metadata`).
+		Joins("JOIN interceptions ON interceptions.id = token_usages.interception_id").
+		Joins("JOIN users ON users.id = interceptions.initiator_id").
+		Where("interceptions.started_at >= ? AND interceptions.started_at <= ?", resolved.StartsAt, resolved.EndsAt).
+		Where("token_usages.created_at >= ? AND token_usages.created_at <= ?", resolved.StartsAt, resolved.EndsAt).
+		Scan(&tokenRows).Error; err != nil {
+		return DashboardBreakdownResponse{}, fmt.Errorf("load dashboard top identity tokens: %w", err)
+	}
+
+	for _, row := range tokenRows {
+		accumulateBreakdownTokenTotals(
+			breakdownByKey(itemsByID, row.InitiatorID, row.Name),
+			tokenUsageRow{
+				InputTokens:           row.InputTokens,
+				OutputTokens:          row.OutputTokens,
+				CacheReadInputTokens:  row.CacheReadInputTokens,
+				CacheWriteInputTokens: row.CacheWriteInputTokens,
+				Type:                  row.Type,
+				Metadata:              row.Metadata,
+			},
+		)
+	}
+	s.attachBreakdownEstimatedCosts(itemsByID)
 
 	return DashboardBreakdownResponse{
 		UsageWindowMeta: resolved.UsageWindowMeta,
-		Items:           items,
+		Items:           sortedBreakdowns(itemsByID, 5),
 	}, nil
 }
 
@@ -957,13 +1012,13 @@ func (s *Service) loadTokenUsageScoped(ctx context.Context, scope dashboardUsage
 			}
 		}
 		if models != nil {
-			breakdown(models, row.Model).TotalTokens += total
+			accumulateBreakdownTokenTotals(breakdown(models, row.Model), row)
 		}
 		if providers != nil {
-			breakdown(providers, row.Provider).TotalTokens += total
+			accumulateBreakdownTokenTotals(breakdown(providers, row.Provider), row)
 		}
 		if providerTypes != nil {
-			breakdown(providerTypes, row.ProviderType).TotalTokens += total
+			accumulateBreakdownTokenTotals(breakdown(providerTypes, row.ProviderType), row)
 		}
 	}
 	return nil
@@ -999,6 +1054,19 @@ func (s *Service) attachEstimatedCosts(totals *UsageTotals, daily []DailyUsage) 
 			daily[i].CompletionOutputTokens,
 			daily[i].EmbeddingTokens,
 		)
+	}
+}
+
+// attachBreakdownEstimatedCosts adds optional cost estimates to token breakdowns.
+func (s *Service) attachBreakdownEstimatedCosts(groups ...map[string]*UsageBreakdown) {
+	for _, group := range groups {
+		for _, item := range group {
+			item.EstimatedCost = s.estimateUsageCost(
+				item.completionInputTokens,
+				item.completionOutputTokens,
+				item.embeddingTokens,
+			)
+		}
 	}
 }
 
@@ -1413,14 +1481,35 @@ func buildDailyBuckets(startsAt time.Time, days int) []DailyUsage {
 
 // breakdown returns an existing or new usage breakdown for a display name.
 func breakdown(values map[string]*UsageBreakdown, name string) *UsageBreakdown {
+	return breakdownByKey(values, name, name)
+}
+
+// breakdownByKey returns an existing or new usage breakdown for a stable key.
+func breakdownByKey(values map[string]*UsageBreakdown, key, name string) *UsageBreakdown {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		name = "unknown"
 	}
-	if values[name] == nil {
-		values[name] = &UsageBreakdown{Name: name}
+	key = strings.TrimSpace(key)
+	if key == "" {
+		key = name
 	}
-	return values[name]
+	if values[key] == nil {
+		values[key] = &UsageBreakdown{Name: name}
+	}
+	return values[key]
+}
+
+// accumulateBreakdownTokenTotals adds token and cost buckets to a breakdown.
+func accumulateBreakdownTokenTotals(item *UsageBreakdown, row tokenUsageRow) {
+	total := tokenUsageTotal(row)
+	item.TotalTokens += total
+	if isEmbeddingTokenUsage(row.Type, row.Metadata) {
+		item.embeddingTokens += total
+		return
+	}
+	item.completionInputTokens += completionInputTokens(row)
+	item.completionOutputTokens += row.OutputTokens
 }
 
 // sortedBreakdowns returns the highest-volume usage breakdowns.
@@ -1434,6 +1523,9 @@ func sortedBreakdowns(values map[string]*UsageBreakdown, limit int) []UsageBreak
 	}
 	sort.Slice(items, func(i, j int) bool {
 		if items[i].TotalTokens == items[j].TotalTokens {
+			if items[i].Requests == items[j].Requests {
+				return items[i].Name < items[j].Name
+			}
 			return items[i].Requests > items[j].Requests
 		}
 		return items[i].TotalTokens > items[j].TotalTokens

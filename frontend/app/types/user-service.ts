@@ -95,6 +95,7 @@ export interface UsageBreakdown {
   name: string
   requests: number
   totalTokens: number
+  estimatedCost?: EstimatedCost
 }
 
 export interface PromptHistoryItem {
