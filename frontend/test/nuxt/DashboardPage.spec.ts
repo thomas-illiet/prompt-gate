@@ -4,30 +4,43 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import DashboardPage from '../../app/pages/dashboard.vue'
 
-const { authUser, initializeMock, useAuthStoreMock, waitUntilReadyMock } =
-  vi.hoisted(() => {
-    const authUser = {
-      value: null as null | { role: string },
-    }
-    const initializeMock = vi.fn(async () => undefined)
-    const waitUntilReadyMock = vi.fn(async () => undefined)
+const {
+  authUser,
+  initializeMock,
+  refreshDashboardMock,
+  useAuthStoreMock,
+  useDashboardRefreshMock,
+  waitUntilReadyMock,
+} = vi.hoisted(() => {
+  const authUser = {
+    value: null as null | { role: string },
+  }
+  const initializeMock = vi.fn(async () => undefined)
+  const refreshDashboardMock = vi.fn()
+  const waitUntilReadyMock = vi.fn(async () => undefined)
 
-    return {
-      authUser,
-      initializeMock,
-      useAuthStoreMock: vi.fn(() => ({
-        initialize: initializeMock,
-        waitUntilReady: waitUntilReadyMock,
-        isAuthenticated: true,
-        get user() {
-          return authUser.value
-        },
-      })),
-      waitUntilReadyMock,
-    }
-  })
+  return {
+    authUser,
+    initializeMock,
+    refreshDashboardMock,
+    useAuthStoreMock: vi.fn(() => ({
+      initialize: initializeMock,
+      waitUntilReady: waitUntilReadyMock,
+      isAuthenticated: true,
+      get user() {
+        return authUser.value
+      },
+    })),
+    useDashboardRefreshMock: vi.fn(() => ({
+      refresh: refreshDashboardMock,
+      version: { value: 0 },
+    })),
+    waitUntilReadyMock,
+  }
+})
 
 mockNuxtImport('useAuthStore', () => useAuthStoreMock)
+mockNuxtImport('useDashboardRefresh', () => useDashboardRefreshMock)
 
 function mountPage() {
   return mount(DashboardPage, {
@@ -85,9 +98,21 @@ function mountPage() {
         },
         DashboardTopProviderNamesChart: true,
         DashboardTopProviderTypesChart: true,
+        VBtn: {
+          emits: ['click'],
+          template:
+            '<button data-test="dashboard-refresh" @click="$emit(\'click\')"><slot /></button>',
+        },
         VCol: { template: '<div><slot /></div>' },
         VContainer: { template: '<div><slot /></div>' },
         VRow: { template: '<div><slot /></div>' },
+        VTooltip: {
+          template:
+            '<span><slot name="activator" :props="{}" /><slot /></span>',
+        },
+      },
+      directives: {
+        tooltip: {},
       },
     },
   })
@@ -97,7 +122,9 @@ describe('DashboardPage', () => {
   beforeEach(() => {
     authUser.value = null
     initializeMock.mockClear()
+    refreshDashboardMock.mockClear()
     useAuthStoreMock.mockClear()
+    useDashboardRefreshMock.mockClear()
     waitUntilReadyMock.mockClear()
   })
 
@@ -137,5 +164,14 @@ describe('DashboardPage', () => {
       'self',
     )
     expect(wrapper.find('[data-test="adoption"]').exists()).toBe(false)
+  })
+
+  it('refreshes dashboard widgets from the header control', async () => {
+    authUser.value = { role: 'user' }
+
+    const wrapper = mountPage()
+    await wrapper.get('[data-test="dashboard-refresh"]').trigger('click')
+
+    expect(refreshDashboardMock).toHaveBeenCalledTimes(1)
   })
 })

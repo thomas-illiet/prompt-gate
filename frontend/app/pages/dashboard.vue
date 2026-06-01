@@ -11,6 +11,7 @@ definePageMeta({
 const selectedWindow = shallowRef<UsageWindow>('7d')
 const selectedScope = shallowRef<DashboardScope>('self')
 const authStore = useAuthStore()
+const dashboardRefresh = useDashboardRefresh()
 const isAdmin = computed(() => authStore.user?.role === 'admin')
 const dashboardScope = computed<DashboardScope>(() =>
   isAdmin.value ? selectedScope.value : 'self',
@@ -40,6 +41,20 @@ watch(
       <div class="user-dashboard-page__controls">
         <DashboardScopeSelect v-if="isAdmin" v-model="selectedScope" />
         <DashboardTimeRangeSelect v-model="selectedWindow" />
+        <v-tooltip text="Refresh dashboard" location="top">
+          <template #activator="{ props: tooltipProps }">
+            <v-btn
+              v-bind="tooltipProps"
+              class="user-dashboard-page__refresh"
+              icon="mdi-refresh"
+              color="primary"
+              variant="tonal"
+              rounded="lg"
+              aria-label="Refresh dashboard"
+              @click="dashboardRefresh.refresh"
+            />
+          </template>
+        </v-tooltip>
       </div>
     </div>
 
@@ -132,6 +147,10 @@ watch(
   gap: 12px;
 }
 
+.user-dashboard-page__refresh {
+  flex: 0 0 auto;
+}
+
 @media (max-width: 720px) {
   .user-dashboard-page__header {
     align-items: stretch;
@@ -141,6 +160,10 @@ watch(
   .user-dashboard-page__controls {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .user-dashboard-page__refresh {
+    align-self: flex-end;
   }
 }
 </style>

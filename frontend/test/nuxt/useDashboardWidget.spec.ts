@@ -1,10 +1,12 @@
 import { FetchError } from 'ofetch'
 import { mockNuxtImport } from '@nuxt/test-utils/runtime'
+import { mount } from '@vue/test-utils'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { shallowRef } from 'vue'
+import { defineComponent, h, shallowRef } from 'vue'
 
 import {
   toDashboardWidgetErrorMessage,
+  useDashboardRefresh,
   useDashboardWidget,
 } from '../../app/composables/useDashboardWidget'
 import type {
@@ -126,6 +128,47 @@ describe('useDashboardWidget', () => {
       ),
     )
     await vi.waitFor(() => expect(widget.data.value?.totalTokens).toBe(70))
+  })
+
+  it('reloads when the shared dashboard refresh signal changes', async () => {
+    apiFetch
+      .mockResolvedValueOnce(tokensResponse('7d', 7))
+      .mockResolvedValueOnce(tokensResponse('7d', 8))
+    const holder = {} as {
+      refresh: () => void
+      widget: ReturnType<typeof useDashboardWidget<DashboardTokensResponse>>
+    }
+    const ProbeChild = defineComponent({
+      setup() {
+        const window = shallowRef<UsageWindow>('7d')
+        holder.widget = useDashboardWidget<DashboardTokensResponse>(
+          '/api/v1/me/dashboard/tokens',
+          window,
+        )
+        return () => null
+      },
+    })
+    const ProbeParent = defineComponent({
+      setup() {
+        const dashboardRefresh = useDashboardRefresh()
+        holder.refresh = dashboardRefresh.refresh
+        return () => h(ProbeChild)
+      },
+    })
+
+    const wrapper = mount(ProbeParent)
+    await vi.waitFor(() => expect(holder.widget.data.value?.totalTokens).toBe(7))
+
+    holder.refresh()
+
+    await vi.waitFor(() =>
+      expect(apiFetch).toHaveBeenNthCalledWith(
+        2,
+        '/api/v1/me/dashboard/tokens?window=7d',
+      ),
+    )
+    await vi.waitFor(() => expect(holder.widget.data.value?.totalTokens).toBe(8))
+    wrapper.unmount()
   })
 
   it('maps dashboard widget API errors to readable messages', () => {
