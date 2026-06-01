@@ -170,7 +170,11 @@ describe('DashboardPage', () => {
     authUser.value = { role: 'user' }
 
     const wrapper = mountPage()
-    await wrapper.get('[data-test="dashboard-refresh"]').trigger('click')
+    const refreshButton = wrapper.get('[data-test="dashboard-refresh"]')
+
+    expect(refreshButton.text()).toContain('Refresh')
+
+    await refreshButton.trigger('click')
 
     expect(refreshDashboardMock).toHaveBeenCalledTimes(1)
   })

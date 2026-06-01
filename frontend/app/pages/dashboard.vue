@@ -40,21 +40,25 @@ watch(
 
       <div class="user-dashboard-page__controls">
         <DashboardScopeSelect v-if="isAdmin" v-model="selectedScope" />
-        <DashboardTimeRangeSelect v-model="selectedWindow" />
-        <v-tooltip text="Refresh dashboard" location="top">
-          <template #activator="{ props: tooltipProps }">
-            <v-btn
-              v-bind="tooltipProps"
-              class="user-dashboard-page__refresh"
-              icon="mdi-refresh"
-              color="primary"
-              variant="tonal"
-              rounded="lg"
-              aria-label="Refresh dashboard"
-              @click="dashboardRefresh.refresh"
-            />
-          </template>
-        </v-tooltip>
+        <div class="user-dashboard-page__window-control">
+          <DashboardTimeRangeSelect v-model="selectedWindow" />
+          <v-tooltip text="Refresh dashboard" location="top">
+            <template #activator="{ props: tooltipProps }">
+              <v-btn
+                v-bind="tooltipProps"
+                class="user-dashboard-page__refresh"
+                color="primary"
+                prepend-icon="mdi-refresh"
+                variant="outlined"
+                rounded="lg"
+                aria-label="Refresh dashboard"
+                @click="dashboardRefresh.refresh"
+              >
+                <span class="user-dashboard-page__refresh-label">Refresh</span>
+              </v-btn>
+            </template>
+          </v-tooltip>
+        </div>
       </div>
     </div>
 
@@ -147,8 +151,19 @@ watch(
   gap: 12px;
 }
 
+.user-dashboard-page__window-control {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .user-dashboard-page__refresh {
   flex: 0 0 auto;
+  min-width: 46px;
+  height: 46px;
+  padding-inline: 14px;
+  font-weight: 700;
+  text-transform: none;
 }
 
 @media (max-width: 720px) {
@@ -162,8 +177,41 @@ watch(
     flex-direction: column;
   }
 
+  .user-dashboard-page__window-control {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 46px;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .user-dashboard-page__window-control :deep(.dashboard-time-range-select) {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .user-dashboard-page__window-control
+    :deep(.dashboard-time-range-select__control) {
+    flex: 0 1 clamp(116px, 38vw, 150px);
+    min-width: 0;
+    width: clamp(116px, 38vw, 150px);
+  }
+
   .user-dashboard-page__refresh {
-    align-self: flex-end;
+    min-width: 46px;
+    width: 46px;
+    height: 46px;
+    padding-inline: 0;
+    border-color: rgba(var(--app-shell-border), 0.52);
+    background: rgb(var(--app-shell-surface));
+    box-shadow: var(--app-card-shadow-soft);
+  }
+
+  .user-dashboard-page__refresh :deep(.v-btn__prepend) {
+    margin-inline: 0;
+  }
+
+  .user-dashboard-page__refresh-label {
+    display: none;
   }
 }
 </style>
