@@ -76,8 +76,16 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	var sessionStore *auth.SessionStore
 	var oidcService *auth.OIDCService
 	if cfg.KeycloakIssuerURL != "" || cfg.KeycloakJWKSURL != "" {
+		keycloakHTTPClient, err := auth.NewKeycloakHTTPClient(cfg.KeycloakCACertPath)
+		if err != nil {
+			return nil, err
+		}
+		if keycloakHTTPClient != nil {
+			slog.Info("loaded Keycloak CA certificate", "path", cfg.KeycloakCACertPath)
+		}
+
 		slog.Info("initializing token validator", "issuer", cfg.KeycloakIssuerURL)
-		validator, err = auth.NewValidator(ctx, cfg.KeycloakIssuerURL, cfg.KeycloakJWKSURL)
+		validator, err = auth.NewValidator(ctx, cfg.KeycloakIssuerURL, cfg.KeycloakJWKSURL, auth.WithValidatorHTTPClient(keycloakHTTPClient))
 		if err != nil {
 			return nil, err
 		}
@@ -92,7 +100,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		slog.Info("session store ready")
 
 		slog.Info("initializing OIDC service")
-		oidcService, err = auth.NewOIDCService(ctx, cfg, validator, sessionStore, userService)
+		oidcService, err = auth.NewOIDCService(ctx, cfg, validator, sessionStore, userService, keycloakHTTPClient)
 		if err != nil {
 			return nil, err
 		}

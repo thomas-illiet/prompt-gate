@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strings"
 	"time"
@@ -33,11 +34,13 @@ type OIDCService struct {
 	sessionStore       *SessionStore
 	userSynchronizer   UserSynchronizer
 	validator          *Validator
+	httpClient         *http.Client
 }
 
 // NewOIDCService discovers the OIDC provider and initializes the OAuth2/OIDC service.
-func NewOIDCService(ctx context.Context, cfg config.Config, validator *Validator, sessionStore *SessionStore, userSynchronizer UserSynchronizer) (*OIDCService, error) {
-	provider, err := oidc.NewProvider(ctx, cfg.KeycloakIssuerURL)
+func NewOIDCService(ctx context.Context, cfg config.Config, validator *Validator, sessionStore *SessionStore, userSynchronizer UserSynchronizer, httpClient *http.Client) (*OIDCService, error) {
+	oidcCtx := oidcHTTPClientContext(ctx, httpClient)
+	provider, err := oidc.NewProvider(oidcCtx, cfg.KeycloakIssuerURL)
 	if err != nil {
 		return nil, fmt.Errorf("discover OIDC provider: %w", err)
 	}
@@ -57,12 +60,13 @@ func NewOIDCService(ctx context.Context, cfg config.Config, validator *Validator
 
 	return &OIDCService{
 		oauthConfig:        oauthConfig,
-		idTokenVerifier:    provider.Verifier(&oidc.Config{ClientID: cfg.KeycloakClientID}),
+		idTokenVerifier:    provider.VerifierContext(oidcCtx, &oidc.Config{ClientID: cfg.KeycloakClientID}),
 		endSessionEndpoint: metadata.EndSessionEndpoint,
 		frontendBaseURL:    cfg.FrontendBaseURL,
 		sessionStore:       sessionStore,
 		userSynchronizer:   userSynchronizer,
 		validator:          validator,
+		httpClient:         httpClient,
 	}, nil
 }
 
@@ -96,8 +100,9 @@ func (s *OIDCService) ExchangeCode(ctx context.Context, state string, code strin
 		return Session{}, "", "", errors.New("authorization request has expired or is invalid")
 	}
 
+	oidcCtx := oidcHTTPClientContext(ctx, s.httpClient)
 	token, err := s.oauthConfig.Exchange(
-		ctx,
+		oidcCtx,
 		code,
 		oauth2.SetAuthURLParam("code_verifier", request.CodeVerifier),
 	)
@@ -110,7 +115,7 @@ func (s *OIDCService) ExchangeCode(ctx context.Context, state string, code strin
 		return Session{}, "", request.FrontendBaseURL, errors.New("missing id_token in token response")
 	}
 
-	idToken, err := s.idTokenVerifier.Verify(ctx, rawIDToken)
+	idToken, err := s.idTokenVerifier.Verify(oidcCtx, rawIDToken)
 	if err != nil {
 		return Session{}, "", request.FrontendBaseURL, fmt.Errorf("verify id_token: %w", err)
 	}
@@ -142,6 +147,13 @@ func (s *OIDCService) ExchangeCode(ctx context.Context, state string, code strin
 	}
 
 	return session, request.RedirectPath, request.FrontendBaseURL, nil
+}
+
+func oidcHTTPClientContext(ctx context.Context, client *http.Client) context.Context {
+	if client == nil {
+		return ctx
+	}
+	return oidc.ClientContext(ctx, client)
 }
 
 // DeleteSession removes a session by ID from the session store.

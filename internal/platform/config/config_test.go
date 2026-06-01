@@ -1,6 +1,8 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -82,6 +84,41 @@ func TestLoadApiReadsStaticAssetsDir(t *testing.T) {
 	}
 	if cfg.StaticAssetsDir != staticDir {
 		t.Fatalf("expected static assets dir %q, got %q", staticDir, cfg.StaticAssetsDir)
+	}
+}
+
+func TestLoadApiReadsKeycloakCACertPath(t *testing.T) {
+	setRequiredAPIEnv(t)
+	caCertPath := filepath.Join(t.TempDir(), "keycloak-ca.pem")
+	if err := os.WriteFile(caCertPath, []byte("not validated here"), 0o600); err != nil {
+		t.Fatalf("write ca cert: %v", err)
+	}
+	t.Setenv("PROMPTGATE_KEYCLOAK_CA_CERT_PATH", caCertPath)
+
+	cfg, err := LoadApi()
+	if err != nil {
+		t.Fatalf("load api config: %v", err)
+	}
+	if cfg.KeycloakCACertPath != caCertPath {
+		t.Fatalf("expected Keycloak CA cert path %q, got %q", caCertPath, cfg.KeycloakCACertPath)
+	}
+}
+
+func TestLoadApiRejectsInvalidKeycloakCACertPath(t *testing.T) {
+	setRequiredAPIEnv(t)
+	t.Setenv("PROMPTGATE_KEYCLOAK_CA_CERT_PATH", "/definitely/not/a/keycloak-ca.pem")
+
+	if _, err := LoadApi(); err == nil {
+		t.Fatal("expected invalid Keycloak CA cert path to fail")
+	}
+}
+
+func TestLoadApiRejectsKeycloakCACertDirectory(t *testing.T) {
+	setRequiredAPIEnv(t)
+	t.Setenv("PROMPTGATE_KEYCLOAK_CA_CERT_PATH", t.TempDir())
+
+	if _, err := LoadApi(); err == nil {
+		t.Fatal("expected Keycloak CA cert directory to fail")
 	}
 }
 

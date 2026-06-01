@@ -22,6 +22,7 @@ type Config struct {
 	KeycloakJWKSURL              string
 	KeycloakClientID             string
 	KeycloakClientSecret         string
+	KeycloakCACertPath           string
 	FrontendBaseURL              string
 	BackendBaseURL               string
 	ProxyBaseURL                 string
@@ -63,6 +64,7 @@ func LoadApi() (Config, error) {
 		KeycloakJWKSURL:              strings.TrimSpace(v.GetString("keycloak_jwks_url")),
 		KeycloakClientID:             strings.TrimSpace(v.GetString("keycloak_client_id")),
 		KeycloakClientSecret:         strings.TrimSpace(v.GetString("keycloak_client_secret")),
+		KeycloakCACertPath:           strings.TrimSpace(v.GetString("keycloak_ca_cert_path")),
 		FrontendBaseURL:              strings.TrimRight(strings.TrimSpace(v.GetString("frontend_base_url")), "/"),
 		BackendBaseURL:               strings.TrimRight(strings.TrimSpace(v.GetString("backend_base_url")), "/"),
 		ProxyBaseURL:                 strings.TrimRight(strings.TrimSpace(v.GetString("proxy_base_url")), "/"),
@@ -93,6 +95,16 @@ func LoadApi() (Config, error) {
 
 	if cfg.KeycloakClientID == "" {
 		return Config{}, errors.New("PROMPTGATE_KEYCLOAK_CLIENT_ID is required")
+	}
+
+	if cfg.KeycloakCACertPath != "" {
+		info, err := os.Stat(cfg.KeycloakCACertPath)
+		if err != nil {
+			return Config{}, fmt.Errorf("PROMPTGATE_KEYCLOAK_CA_CERT_PATH is not accessible: %w", err)
+		}
+		if info.IsDir() {
+			return Config{}, errors.New("PROMPTGATE_KEYCLOAK_CA_CERT_PATH must be a file")
+		}
 	}
 
 	if cfg.FrontendBaseURL == "" {
