@@ -158,6 +158,106 @@ SPA shell for frontend routes.
 - Enable `PROMPTGATE_PROXY_TRUST_FORWARD_HEADERS` only when the proxy is behind
   trusted infrastructure that sanitizes forwarded headers.
 
+## Kubernetes NGINX Ingress
+
+When the API image serves the generated static frontend, expose it at the host
+root without a rewrite:
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: promptgate-api
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - promptgate.example.com
+      secretName: promptgate-tls
+  rules:
+    - host: promptgate.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: promptgate-api
+                port:
+                  number: 8080
+```
+
+Use matching public URLs:
+
+```sh
+PROMPTGATE_FRONTEND_BASE_URL=https://promptgate.example.com
+PROMPTGATE_BACKEND_BASE_URL=https://promptgate.example.com
+PROMPTGATE_CORS_ALLOWED_ORIGINS=https://promptgate.example.com
+```
+
+Register the OIDC redirect URI as:
+
+```text
+https://promptgate.example.com/auth/callback
+```
+
+For a separate frontend service behind the same host, route `/auth/*` and
+`/api/v1/*` to the API service, `/bridge/*` to the proxy service with the
+`/bridge` prefix stripped, and `/` to the frontend service. Keep the rules that
+need rewrites in separate Ingress objects because nginx applies
+`rewrite-target` to every path in the same object.
+
+If `PROMPTGATE_BACKEND_BASE_URL` includes `/api`, add a compatibility rule for
+the OIDC callback:
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: promptgate-api-auth-compat
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /auth/$2
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: promptgate.example.com
+      http:
+        paths:
+          - path: /api/auth(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: promptgate-api
+                port:
+                  number: 8080
+```
+
+For the LLM proxy route:
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: promptgate-proxy
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: promptgate.example.com
+      http:
+        paths:
+          - path: /bridge(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: promptgate-proxy
+                port:
+                  number: 8081
+```
+
 ## Health Checks
 
 API:
