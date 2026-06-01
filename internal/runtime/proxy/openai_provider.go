@@ -19,6 +19,7 @@ type openAIProvider struct {
 	key   string
 }
 
+// newOpenAIProvider wraps the aibridge OpenAI provider with Prompt Gate extensions.
 func newOpenAIProvider(name, baseURL, key string) *openAIProvider {
 	return &openAIProvider{
 		inner: coderbridge.NewOpenAIProvider(coderbridge.OpenAIConfig{
@@ -30,18 +31,22 @@ func newOpenAIProvider(name, baseURL, key string) *openAIProvider {
 	}
 }
 
+// Type returns the wrapped provider type.
 func (p *openAIProvider) Type() string {
 	return p.inner.Type()
 }
 
+// Name returns the configured provider name.
 func (p *openAIProvider) Name() string {
 	return p.inner.Name()
 }
 
+// BaseURL returns the upstream provider base URL.
 func (p *openAIProvider) BaseURL() string {
 	return p.inner.BaseURL()
 }
 
+// CreateInterceptor creates a standard interceptor or an embeddings interceptor for embedding routes.
 func (p *openAIProvider) CreateInterceptor(w http.ResponseWriter, r *http.Request, tracer trace.Tracer) (intercept.Interceptor, error) {
 	path := strings.TrimPrefix(r.URL.Path, p.RoutePrefix())
 	if path != routeEmbeddings {
@@ -55,31 +60,38 @@ func (p *openAIProvider) CreateInterceptor(w http.ResponseWriter, r *http.Reques
 	return newEmbeddingInterceptor(p, raw, tracer, p.key), nil
 }
 
+// RoutePrefix returns the provider route prefix handled by the proxy.
 func (p *openAIProvider) RoutePrefix() string {
 	return p.inner.RoutePrefix()
 }
 
+// BridgedRoutes returns routes intercepted by aibridge plus embeddings.
 func (p *openAIProvider) BridgedRoutes() []string {
 	routes := append([]string{}, p.inner.BridgedRoutes()...)
 	return append(routes, routeEmbeddings)
 }
 
+// PassthroughRoutes returns routes forwarded without bridge interception.
 func (p *openAIProvider) PassthroughRoutes() []string {
 	return p.inner.PassthroughRoutes()
 }
 
+// AuthHeader returns the upstream authentication header name.
 func (p *openAIProvider) AuthHeader() string {
 	return p.inner.AuthHeader()
 }
 
+// InjectAuthHeader adds upstream authentication to request headers.
 func (p *openAIProvider) InjectAuthHeader(headers *http.Header) {
 	p.inner.InjectAuthHeader(headers)
 }
 
+// CircuitBreakerConfig returns the wrapped provider circuit breaker configuration.
 func (p *openAIProvider) CircuitBreakerConfig() *config.CircuitBreaker {
 	return p.inner.CircuitBreakerConfig()
 }
 
+// APIDumpDir returns the wrapped provider API dump directory.
 func (p *openAIProvider) APIDumpDir() string {
 	return p.inner.APIDumpDir()
 }

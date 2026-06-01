@@ -55,6 +55,7 @@ type embeddingInterceptor struct {
 	credential intercept.CredentialInfo
 }
 
+// newEmbeddingInterceptor creates an interceptor for a single OpenAI-compatible embeddings request.
 func newEmbeddingInterceptor(provider coderbridge.Provider, rawBody []byte, tracer trace.Tracer, credential string) *embeddingInterceptor {
 	return &embeddingInterceptor{
 		id:         uuid.New(),
@@ -66,15 +67,18 @@ func newEmbeddingInterceptor(provider coderbridge.Provider, rawBody []byte, trac
 	}
 }
 
+// ID returns the unique interception ID.
 func (i *embeddingInterceptor) ID() uuid.UUID {
 	return i.id
 }
 
+// Setup attaches logging and recording dependencies supplied by aibridge.
 func (i *embeddingInterceptor) Setup(logger cdrslog.Logger, rec recorder.Recorder, _ mcp.ServerProxier) {
 	i.logger = logger.Named("embeddings")
 	i.recorder = rec
 }
 
+// Model returns the requested embedding model or a stable unknown value.
 func (i *embeddingInterceptor) Model() string {
 	if strings.TrimSpace(i.model) == "" {
 		return unknownEmbeddingModel
@@ -82,6 +86,7 @@ func (i *embeddingInterceptor) Model() string {
 	return i.model
 }
 
+// ProcessRequest forwards the embeddings request upstream and records token usage from the response.
 func (i *embeddingInterceptor) ProcessRequest(w http.ResponseWriter, r *http.Request) (outErr error) {
 	ctx, span := i.tracer.Start(r.Context(), "Intercept.ProcessRequest", trace.WithAttributes(tracing.InterceptionAttributesFromContext(r.Context())...))
 	defer tracing.EndSpanErr(span, &outErr)
@@ -124,10 +129,12 @@ func (i *embeddingInterceptor) ProcessRequest(w http.ResponseWriter, r *http.Req
 	return nil
 }
 
+// Streaming reports that embeddings responses are handled as buffered responses.
 func (*embeddingInterceptor) Streaming() bool {
 	return false
 }
 
+// TraceAttributes returns tracing attributes for the embeddings request.
 func (i *embeddingInterceptor) TraceAttributes(r *http.Request) []attribute.KeyValue {
 	return []attribute.KeyValue{
 		attribute.String(tracing.RequestPath, r.URL.Path),
@@ -139,14 +146,17 @@ func (i *embeddingInterceptor) TraceAttributes(r *http.Request) []attribute.KeyV
 	}
 }
 
+// Credential returns metadata describing the centralized upstream credential.
 func (i *embeddingInterceptor) Credential() intercept.CredentialInfo {
 	return i.credential
 }
 
+// CorrelatingToolCallID returns nil because embeddings are not tool-call correlated.
 func (*embeddingInterceptor) CorrelatingToolCallID() *string {
 	return nil
 }
 
+// recordTokenUsage extracts embedding token usage from a successful upstream response.
 func (i *embeddingInterceptor) recordTokenUsage(ctx context.Context, body []byte) {
 	if i.recorder == nil {
 		return
@@ -180,6 +190,7 @@ func (i *embeddingInterceptor) recordTokenUsage(ctx context.Context, body []byte
 	i.recordEmbeddingTokens(ctx, responseID, 0, metadata)
 }
 
+// recordEmbeddingTokens persists embedding token totals through the aibridge recorder.
 func (i *embeddingInterceptor) recordEmbeddingTokens(ctx context.Context, responseID string, inputTokens int64, metadata recorder.Metadata) {
 	_ = i.recorder.RecordTokenUsage(ctx, &recorder.TokenUsageRecord{
 		InterceptionID: i.id.String(),
@@ -201,6 +212,7 @@ type embeddingResponseUsage struct {
 	TotalTokens  *int64 `json:"total_tokens"`
 }
 
+// embeddingProviderInputTokens normalizes provider usage fields into embedding input tokens.
 func embeddingProviderInputTokens(usage embeddingResponseUsage) (int64, string) {
 	inputTokens := int64(0)
 	switch {
@@ -218,6 +230,7 @@ func embeddingProviderInputTokens(usage embeddingResponseUsage) (int64, string) 
 	return inputTokens, ""
 }
 
+// embeddingModel extracts the requested model from an embeddings JSON body.
 func embeddingModel(raw []byte) string {
 	var payload struct {
 		Model string `json:"model"`
@@ -231,6 +244,7 @@ func embeddingModel(raw []byte) string {
 	return payload.Model
 }
 
+// embeddingUpstreamURL joins the provider base URL with the embeddings route and request query.
 func embeddingUpstreamURL(baseURL string, rawQuery string) (string, error) {
 	upstream, err := url.Parse(strings.TrimRight(strings.TrimSpace(baseURL), "/"))
 	if err != nil {
@@ -249,6 +263,7 @@ func embeddingUpstreamURL(baseURL string, rawQuery string) (string, error) {
 	return upstream.String(), nil
 }
 
+// copyResponseHeaders copies safe upstream response headers to the downstream response.
 func copyResponseHeaders(dst, src http.Header) {
 	for key, values := range src {
 		if _, excluded := responseHeadersExcludedFromCopy[http.CanonicalHeaderKey(key)]; excluded {

@@ -14,6 +14,7 @@ import (
 	"promptgate/backend/internal/platform/migrations"
 )
 
+// newMigrateCommand builds the CLI command that runs database migrations.
 func newMigrateCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "migrate",
@@ -25,6 +26,7 @@ func newMigrateCommand() *cobra.Command {
 	}
 }
 
+// runMigrate loads migration configuration and applies all pending database migrations.
 func runMigrate() error {
 	bootstrapLogger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 

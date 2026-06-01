@@ -11,6 +11,7 @@ import (
 	"promptgate/backend/internal/domain/auth"
 )
 
+// Middleware enforces group-based provider and model access from an in-memory snapshot.
 func Middleware(snapshot *SnapshotStore, logger *slog.Logger) func(http.Handler) http.Handler {
 	if logger == nil {
 		logger = slog.Default()
@@ -50,12 +51,14 @@ func Middleware(snapshot *SnapshotStore, logger *slog.Logger) func(http.Handler)
 	}
 }
 
+// requestProviderName extracts the provider route prefix from the request path.
 func requestProviderName(path string) string {
 	path = strings.TrimPrefix(path, "/")
 	providerName, _, _ := strings.Cut(path, "/")
 	return strings.TrimSpace(providerName)
 }
 
+// requestModel reads and restores the request body while extracting the JSON model field.
 func requestModel(r *http.Request) (string, error) {
 	if r.Body == nil {
 		return "", nil
@@ -81,6 +84,7 @@ func requestModel(r *http.Request) (string, error) {
 	return strings.TrimSpace(payload.Model), nil
 }
 
+// writeJSON sends a JSON response for group middleware errors.
 func writeJSON(w http.ResponseWriter, statusCode int, payload any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)

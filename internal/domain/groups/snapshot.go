@@ -53,6 +53,7 @@ type SnapshotStore struct {
 	value   atomic.Value
 }
 
+// NewSnapshotStore creates an initialized in-memory group access snapshot store.
 func NewSnapshotStore(service *Service) *SnapshotStore {
 	store := &SnapshotStore{service: service}
 	store.value.Store(compiledSnapshot{
@@ -62,6 +63,7 @@ func NewSnapshotStore(service *Service) *SnapshotStore {
 	return store
 }
 
+// Snapshot builds the current group access snapshot from enabled providers and group memberships.
 func (s *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 	var providerRows []provider.Provider
 	if err := s.db.WithContext(ctx).
@@ -126,6 +128,7 @@ func (s *Service) UserAccess(ctx context.Context, userID string) (UserAccess, er
 	return normalizeUserAccess(access), nil
 }
 
+// Refresh reloads the snapshot from the backing service and stores the compiled result.
 func (s *SnapshotStore) Refresh(ctx context.Context) error {
 	if s.service == nil {
 		return ErrSnapshotServiceUnavailable
@@ -137,6 +140,7 @@ func (s *SnapshotStore) Refresh(ctx context.Context) error {
 	return s.SetSnapshot(snapshot)
 }
 
+// SetSnapshot compiles and stores a new group access snapshot.
 func (s *SnapshotStore) SetSnapshot(snapshot Snapshot) error {
 	compiled, err := compileSnapshot(snapshot)
 	if err != nil {
@@ -146,6 +150,7 @@ func (s *SnapshotStore) SetSnapshot(snapshot Snapshot) error {
 	return nil
 }
 
+// Snapshot returns a normalized copy of the currently stored group access snapshot.
 func (s *SnapshotStore) Snapshot() Snapshot {
 	compiled, ok := s.value.Load().(compiledSnapshot)
 	if !ok {
@@ -191,6 +196,7 @@ func (s *SnapshotStore) Snapshot() Snapshot {
 	}
 }
 
+// KnownProvider reports whether a provider exists in the current snapshot.
 func (s *SnapshotStore) KnownProvider(providerName string) bool {
 	compiled, ok := s.value.Load().(compiledSnapshot)
 	if !ok {
@@ -200,6 +206,7 @@ func (s *SnapshotStore) KnownProvider(providerName string) bool {
 	return ok
 }
 
+// Allows reports whether the current snapshot permits a user to access a provider/model pair.
 func (s *SnapshotStore) Allows(userID, providerName, model string) bool {
 	compiled, ok := s.value.Load().(compiledSnapshot)
 	if !ok {
@@ -221,6 +228,7 @@ func (access UserAccess) Allows(providerName, model string) bool {
 	return compiledUserAccessAllows(compiled, providerName, model)
 }
 
+// compiledUserAccessAllows evaluates compiled access rules for a provider/model pair.
 func compiledUserAccessAllows(access compiledUserAccess, providerName, model string) bool {
 	if model == "" {
 		return false
@@ -243,6 +251,7 @@ func compiledUserAccessAllows(access compiledUserAccess, providerName, model str
 	return false
 }
 
+// groupAccessRule converts a group record into a normalized access rule.
 func groupAccessRule(group Group, knownProviderSet map[string]struct{}) AccessRule {
 	providerNames := []string{}
 	for _, item := range group.Providers {
@@ -269,6 +278,7 @@ func groupAccessRule(group Group, knownProviderSet map[string]struct{}) AccessRu
 	})
 }
 
+// appendUserAccessRule appends a group rule and refreshes aggregate user access fields.
 func appendUserAccessRule(access UserAccess, rule AccessRule) UserAccess {
 	rule = normalizeAccessRule(rule)
 	if len(rule.Providers) == 0 {
@@ -280,6 +290,7 @@ func appendUserAccessRule(access UserAccess, rule AccessRule) UserAccess {
 	return normalizeUserAccess(access)
 }
 
+// compileAccessRule compiles one normalized access rule into provider and regex lookup structures.
 func compileAccessRule(rule AccessRule) (compiledAccessRule, error) {
 	normalized := normalizeAccessRule(rule)
 	providers := make(map[string]struct{}, len(normalized.Providers))
@@ -301,6 +312,7 @@ func compileAccessRule(rule AccessRule) (compiledAccessRule, error) {
 	}, nil
 }
 
+// compileAccessRules compiles user access rules and rejects legacy aggregate-only snapshots.
 func compileAccessRules(access UserAccess) ([]compiledAccessRule, error) {
 	normalized := normalizeUserAccess(access)
 	rules := normalized.Rules
@@ -323,6 +335,7 @@ func compileAccessRules(access UserAccess) ([]compiledAccessRule, error) {
 	return compiled, nil
 }
 
+// compileUserAccess compiles normalized user access into aggregate and per-rule lookup data.
 func compileUserAccess(access UserAccess) (compiledUserAccess, error) {
 	normalized := normalizeUserAccess(access)
 	providers, patterns := aggregateAccess(normalized)
@@ -337,6 +350,7 @@ func compileUserAccess(access UserAccess) (compiledUserAccess, error) {
 	}, nil
 }
 
+// aggregateAccess derives aggregate provider and model pattern grants from user access rules.
 func aggregateAccess(access UserAccess) (map[string]struct{}, []string) {
 	normalized := normalizeUserAccess(access)
 	providerValues := append([]string{}, normalized.Providers...)
@@ -355,6 +369,7 @@ func aggregateAccess(access UserAccess) (map[string]struct{}, []string) {
 	return providers, patterns
 }
 
+// normalizeAccessRule sorts and de-duplicates one access rule.
 func normalizeAccessRule(rule AccessRule) AccessRule {
 	providers := uniqueStrings(rule.Providers)
 	patterns := uniqueStrings(rule.ModelPatterns)
@@ -366,6 +381,7 @@ func normalizeAccessRule(rule AccessRule) AccessRule {
 	}
 }
 
+// normalizeAccessRules sorts, normalizes, and de-duplicates access rules.
 func normalizeAccessRules(rules []AccessRule) []AccessRule {
 	seen := map[string]struct{}{}
 	out := make([]AccessRule, 0, len(rules))
@@ -381,6 +397,7 @@ func normalizeAccessRules(rules []AccessRule) []AccessRule {
 	return out
 }
 
+// compileSnapshot compiles a persisted snapshot into immutable lookup maps.
 func compileSnapshot(snapshot Snapshot) (compiledSnapshot, error) {
 	knownProviders := make(map[string]struct{}, len(snapshot.KnownProviders))
 	for _, providerName := range snapshot.KnownProviders {
@@ -402,6 +419,7 @@ func compileSnapshot(snapshot Snapshot) (compiledSnapshot, error) {
 	}, nil
 }
 
+// normalizeUserAccess sorts and de-duplicates aggregate and per-rule user access values.
 func normalizeUserAccess(access UserAccess) UserAccess {
 	providers := uniqueStrings(access.Providers)
 	patterns := uniqueStrings(access.ModelPatterns)
@@ -415,6 +433,7 @@ func normalizeUserAccess(access UserAccess) UserAccess {
 	}
 }
 
+// uniqueStrings returns non-empty unique strings in first-seen order.
 func uniqueStrings(values []string) []string {
 	seen := map[string]struct{}{}
 	out := make([]string, 0, len(values))

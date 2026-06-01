@@ -21,6 +21,7 @@ type tokenUsageEndpointMigration struct {
 	Endpoint string `gorm:"column:endpoint"`
 }
 
+// TableName returns the legacy token usage table used during endpoint-column migration.
 func (tokenUsageEndpointMigration) TableName() string {
 	return "token_usages"
 }

@@ -149,6 +149,7 @@ func (s *OIDCService) ExchangeCode(ctx context.Context, state string, code strin
 	return session, request.RedirectPath, request.FrontendBaseURL, nil
 }
 
+// oidcHTTPClientContext injects a custom OIDC HTTP client when one is configured.
 func oidcHTTPClientContext(ctx context.Context, client *http.Client) context.Context {
 	if client == nil {
 		return ctx

@@ -236,6 +236,7 @@ func (s *Service) HelpSetupForProviderNames(
 	return s.helpSetupFromRecords(ctx, proxyBaseURL, records, modelAllowed), nil
 }
 
+// helpSetupFromRecords builds setup metadata and best-effort model lists from provider records.
 func (s *Service) helpSetupFromRecords(
 	ctx context.Context,
 	proxyBaseURL string,
@@ -502,6 +503,7 @@ func (s *Service) DeleteProvider(ctx context.Context, id string) error {
 	return nil
 }
 
+// modelCatalogRecords returns selected providers or all enabled providers when none are requested.
 func (s *Service) modelCatalogRecords(ctx context.Context, providerIDs []string) ([]Provider, error) {
 	if len(providerIDs) == 0 {
 		return s.ListEnabled(ctx)
@@ -527,6 +529,7 @@ func (s *Service) modelCatalogRecords(ctx context.Context, providerIDs []string)
 	return records, nil
 }
 
+// normalizeProviderNames canonicalizes and de-duplicates provider names.
 func normalizeProviderNames(names []string) []string {
 	seen := map[string]struct{}{}
 	out := make([]string, 0, len(names))
@@ -544,6 +547,7 @@ func normalizeProviderNames(names []string) []string {
 	return out
 }
 
+// filterAllowedModels keeps models allowed by the supplied provider/model predicate.
 func filterAllowedModels(providerName string, models []string, modelAllowed HelpSetupModelAllowedFunc) []string {
 	out := make([]string, 0, len(models))
 	for _, model := range models {

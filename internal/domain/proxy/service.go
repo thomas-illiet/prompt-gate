@@ -255,14 +255,17 @@ type dashboardUsageScope struct {
 	userID string
 }
 
+// currentUserDashboardScope creates a dashboard scope limited to one user.
 func currentUserDashboardScope(userID string) dashboardUsageScope {
 	return dashboardUsageScope{userID: strings.TrimSpace(userID)}
 }
 
+// globalDashboardScope creates a dashboard scope across all identities.
 func globalDashboardScope() dashboardUsageScope {
 	return dashboardUsageScope{}
 }
 
+// applyInitiatorFilter restricts a query to the scoped user when needed.
 func (scope dashboardUsageScope) applyInitiatorFilter(query *gorm.DB, column string) *gorm.DB {
 	if scope.userID == "" {
 		return query
@@ -332,6 +335,7 @@ func (s *Service) AdminDashboardTokens(ctx context.Context, window UsageWindow, 
 	return s.dashboardTokens(ctx, globalDashboardScope(), window, now)
 }
 
+// dashboardTokens loads token totals for the requested dashboard scope and window.
 func (s *Service) dashboardTokens(ctx context.Context, scope dashboardUsageScope, window UsageWindow, now time.Time) (DashboardTokensResponse, error) {
 	resolved, err := s.resolveDashboardWindow(ctx, scope, window, now)
 	if err != nil {
@@ -383,6 +387,7 @@ func (s *Service) AdminDashboardMessages(ctx context.Context, window UsageWindow
 	return s.dashboardMessages(ctx, globalDashboardScope(), window, now)
 }
 
+// dashboardMessages counts proxied requests for the requested dashboard scope and window.
 func (s *Service) dashboardMessages(ctx context.Context, scope dashboardUsageScope, window UsageWindow, now time.Time) (DashboardMessagesResponse, error) {
 	resolved, err := s.resolveDashboardWindow(ctx, scope, window, now)
 	if err != nil {
@@ -413,6 +418,7 @@ func (s *Service) AdminDashboardDuration(ctx context.Context, window UsageWindow
 	return s.dashboardDuration(ctx, globalDashboardScope(), window, now)
 }
 
+// dashboardDuration sums completed request durations for the requested dashboard scope and window.
 func (s *Service) dashboardDuration(ctx context.Context, scope dashboardUsageScope, window UsageWindow, now time.Time) (DashboardDurationResponse, error) {
 	resolved, err := s.resolveDashboardWindow(ctx, scope, window, now)
 	if err != nil {
@@ -455,6 +461,7 @@ func (s *Service) AdminDashboardActivity(ctx context.Context, window UsageWindow
 	return s.dashboardActivity(ctx, globalDashboardScope(), window, now)
 }
 
+// dashboardActivity builds daily usage buckets for the requested dashboard scope and window.
 func (s *Service) dashboardActivity(ctx context.Context, scope dashboardUsageScope, window UsageWindow, now time.Time) (DashboardActivityResponse, error) {
 	resolved, err := s.resolveDashboardWindow(ctx, scope, window, now)
 	if err != nil {
@@ -517,6 +524,7 @@ func (s *Service) AdminDashboardTopProviderTypes(ctx context.Context, window Usa
 	return s.dashboardBreakdown(ctx, globalDashboardScope(), window, now, dashboardBreakdownProviderTypes)
 }
 
+// dashboardBreakdown returns top models, provider names, or provider types for a dashboard scope.
 func (s *Service) dashboardBreakdown(ctx context.Context, scope dashboardUsageScope, window UsageWindow, now time.Time, target dashboardBreakdownTarget) (DashboardBreakdownResponse, error) {
 	resolved, err := s.resolveDashboardWindow(ctx, scope, window, now)
 	if err != nil {
@@ -614,6 +622,7 @@ func (s *Service) AdminDashboardTopIdentities(ctx context.Context, window UsageW
 	}, nil
 }
 
+// countActiveIdentities counts distinct active users or service accounts in a time range.
 func (s *Service) countActiveIdentities(ctx context.Context, userType auth.UserType, startsAt, endsAt time.Time) (int64, error) {
 	var total int64
 	if err := s.db.WithContext(ctx).
@@ -627,6 +636,7 @@ func (s *Service) countActiveIdentities(ctx context.Context, userType auth.UserT
 	return total, nil
 }
 
+// countActiveVirtualKeys counts non-revoked, non-expired virtual keys at the given time.
 func (s *Service) countActiveVirtualKeys(ctx context.Context, now time.Time) (int64, error) {
 	var total int64
 	if err := s.db.WithContext(ctx).
@@ -790,6 +800,7 @@ func (s *Service) loadRequestUsage(ctx context.Context, userID string, startsAt,
 	return s.loadRequestUsageScoped(ctx, currentUserDashboardScope(userID), startsAt, endsAt, summary, daily, models, providers, providerTypes)
 }
 
+// loadRequestUsageScoped accumulates request counts for any dashboard usage scope.
 func (s *Service) loadRequestUsageScoped(ctx context.Context, scope dashboardUsageScope, startsAt, endsAt time.Time, summary *UsageSummary, daily map[string]*DailyUsage, models, providers, providerTypes map[string]*UsageBreakdown) error {
 	var rows []Interception
 	query := s.db.WithContext(ctx)
@@ -822,6 +833,7 @@ func (s *Service) loadPromptUsage(ctx context.Context, userID string, startsAt, 
 	return s.loadPromptUsageScoped(ctx, currentUserDashboardScope(userID), startsAt, endsAt, summary, daily)
 }
 
+// loadPromptUsageScoped accumulates prompt counts for any dashboard usage scope.
 func (s *Service) loadPromptUsageScoped(ctx context.Context, scope dashboardUsageScope, startsAt, endsAt time.Time, summary *UsageSummary, daily map[string]*DailyUsage) error {
 	var rows []struct {
 		CreatedAt time.Time
@@ -850,6 +862,7 @@ func (s *Service) loadTokenUsage(ctx context.Context, userID string, startsAt, e
 	return s.loadTokenUsageScoped(ctx, currentUserDashboardScope(userID), startsAt, endsAt, summary, daily, models, providers, providerTypes)
 }
 
+// loadTokenUsageScoped accumulates token totals for any dashboard usage scope.
 func (s *Service) loadTokenUsageScoped(ctx context.Context, scope dashboardUsageScope, startsAt, endsAt time.Time, summary *UsageSummary, daily map[string]*DailyUsage, models, providers, providerTypes map[string]*UsageBreakdown) error {
 	var rows []tokenUsageRow
 	query := s.db.WithContext(ctx).
@@ -901,6 +914,7 @@ func (s *Service) loadTokenUsageScoped(ctx context.Context, scope dashboardUsage
 	return nil
 }
 
+// accumulateTokenTotals adds one token usage row into aggregate totals.
 func accumulateTokenTotals(totals *UsageTotals, row tokenUsageRow) {
 	total := tokenUsageTotal(row)
 	totals.InputTokens += row.InputTokens
@@ -917,14 +931,17 @@ func accumulateTokenTotals(totals *UsageTotals, row tokenUsageRow) {
 	totals.CompletionTokens += total
 }
 
+// tokenUsageTotal returns all counted token fields for a usage row.
 func tokenUsageTotal(row tokenUsageRow) int64 {
 	return row.InputTokens + row.OutputTokens + row.CacheReadInputTokens + row.CacheWriteInputTokens
 }
 
+// completionInputTokens returns completion input tokens including cache token fields.
 func completionInputTokens(row tokenUsageRow) int64 {
 	return row.InputTokens + row.CacheReadInputTokens + row.CacheWriteInputTokens
 }
 
+// isEmbeddingTokenUsage reports whether a token usage row belongs to an embeddings request.
 func isEmbeddingTokenUsage(tokenType, metadata string) bool {
 	if tokenType == tokenUsageTypeEmbedding {
 		return true
@@ -1190,6 +1207,7 @@ func durationMilliseconds(startedAt time.Time, endedAt *time.Time) *int64 {
 	return &duration
 }
 
+// usageWindowForDays converts legacy day counts into dashboard usage windows.
 func usageWindowForDays(days int) (UsageWindow, error) {
 	switch days {
 	case 7:
@@ -1201,10 +1219,12 @@ func usageWindowForDays(days int) (UsageWindow, error) {
 	}
 }
 
+// resolveUsageWindow resolves a current-user usage window into concrete timestamps.
 func (s *Service) resolveUsageWindow(ctx context.Context, userID string, window UsageWindow, now time.Time) (usageRange, error) {
 	return s.resolveDashboardWindow(ctx, currentUserDashboardScope(userID), window, now)
 }
 
+// resolveDashboardWindow resolves a dashboard window into concrete UTC boundaries.
 func (s *Service) resolveDashboardWindow(ctx context.Context, scope dashboardUsageScope, window UsageWindow, now time.Time) (usageRange, error) {
 	if now.IsZero() {
 		now = time.Now()
@@ -1264,10 +1284,12 @@ func (s *Service) resolveDashboardWindow(ctx context.Context, scope dashboardUsa
 	}, nil
 }
 
+// firstUserActivityAt returns the earliest recorded request for one user.
 func (s *Service) firstUserActivityAt(ctx context.Context, userID string) (time.Time, bool, error) {
 	return s.firstActivityAt(ctx, currentUserDashboardScope(userID))
 }
 
+// firstActivityAt returns the earliest recorded request for a dashboard scope.
 func (s *Service) firstActivityAt(ctx context.Context, scope dashboardUsageScope) (time.Time, bool, error) {
 	var row struct {
 		StartedAt time.Time
@@ -1339,6 +1361,7 @@ func dayStart(value time.Time) time.Time {
 	return time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
 }
 
+// daysBetween returns the whole-day distance between two UTC-normalized dates.
 func daysBetween(start, end time.Time) int {
 	return int(dayStart(end).Sub(dayStart(start)).Hours() / 24)
 }

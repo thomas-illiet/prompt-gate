@@ -230,6 +230,7 @@ func (s server) handleHelpSetup(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, setup)
 }
 
+// currentUserDashboardRequest validates the authenticated dashboard request and returns its user and window.
 func (s server) currentUserDashboardRequest(w http.ResponseWriter, r *http.Request) (auth.UserProfile, proxy.UsageWindow, bool) {
 	user, ok := auth.UserFromContext(r.Context())
 	if !ok {
@@ -249,6 +250,7 @@ func (s server) currentUserDashboardRequest(w http.ResponseWriter, r *http.Reque
 	return user, window, true
 }
 
+// writeDashboardError writes a current-user dashboard error response and reports whether it handled an error.
 func writeDashboardError(w http.ResponseWriter, err error) bool {
 	if err == nil {
 		return false

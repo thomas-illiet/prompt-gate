@@ -11,6 +11,7 @@ import (
 	"promptgate/backend/internal/domain/provider"
 )
 
+// HandleAdminListGroups lists access groups with pagination, search, and sorting.
 func (h *Handler) HandleAdminListGroups(w http.ResponseWriter, r *http.Request) {
 	query := parseListQuery(r, "name", "asc")
 	result, err := h.groups.ListGroupsPaged(r.Context(), groups.ListParams{
@@ -31,6 +32,7 @@ func (h *Handler) HandleAdminListGroups(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, result)
 }
 
+// HandleAdminGetGroup returns a single access group by ID.
 func (h *Handler) HandleAdminGetGroup(w http.ResponseWriter, r *http.Request) {
 	group, err := h.groups.GetGroup(r.Context(), r.PathValue("id"))
 	if err != nil {
@@ -40,6 +42,7 @@ func (h *Handler) HandleAdminGetGroup(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, group)
 }
 
+// HandleAdminCreateGroup creates a new access group.
 func (h *Handler) HandleAdminCreateGroup(w http.ResponseWriter, r *http.Request) {
 	var input groups.CreateGroupInput
 	if !decodeRequestBody(w, r, &input) {
@@ -53,6 +56,7 @@ func (h *Handler) HandleAdminCreateGroup(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusCreated, group)
 }
 
+// HandleAdminUpdateGroup updates an existing access group.
 func (h *Handler) HandleAdminUpdateGroup(w http.ResponseWriter, r *http.Request) {
 	var input groups.UpdateGroupInput
 	if !decodeRequestBody(w, r, &input) {
@@ -66,6 +70,7 @@ func (h *Handler) HandleAdminUpdateGroup(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, group)
 }
 
+// HandleAdminDeleteGroup deletes an access group by ID.
 func (h *Handler) HandleAdminDeleteGroup(w http.ResponseWriter, r *http.Request) {
 	if err := h.groups.DeleteGroup(r.Context(), r.PathValue("id")); err != nil {
 		writeGroupError(w, err)
@@ -74,6 +79,7 @@ func (h *Handler) HandleAdminDeleteGroup(w http.ResponseWriter, r *http.Request)
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// HandleAdminAddGroupMember adds a user to an access group.
 func (h *Handler) HandleAdminAddGroupMember(w http.ResponseWriter, r *http.Request) {
 	if err := h.groups.AddMember(r.Context(), r.PathValue("id"), r.PathValue("userId")); err != nil {
 		writeGroupError(w, err)
@@ -82,6 +88,7 @@ func (h *Handler) HandleAdminAddGroupMember(w http.ResponseWriter, r *http.Reque
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// HandleAdminRemoveGroupMember removes a user from an access group.
 func (h *Handler) HandleAdminRemoveGroupMember(w http.ResponseWriter, r *http.Request) {
 	if err := h.groups.RemoveMember(r.Context(), r.PathValue("id"), r.PathValue("userId")); err != nil {
 		writeGroupError(w, err)
@@ -90,6 +97,7 @@ func (h *Handler) HandleAdminRemoveGroupMember(w http.ResponseWriter, r *http.Re
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// HandleAdminListUserGroups lists the access groups assigned to a user.
 func (h *Handler) HandleAdminListUserGroups(w http.ResponseWriter, r *http.Request) {
 	result, err := h.groups.ListUserGroups(r.Context(), r.PathValue("id"))
 	if err != nil {
@@ -99,6 +107,7 @@ func (h *Handler) HandleAdminListUserGroups(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusOK, result)
 }
 
+// HandleAdminReplaceUserGroups replaces all access group assignments for a user.
 func (h *Handler) HandleAdminReplaceUserGroups(w http.ResponseWriter, r *http.Request) {
 	var input groups.ReplaceUserGroupsInput
 	if !decodeRequestBody(w, r, &input) {
@@ -112,6 +121,7 @@ func (h *Handler) HandleAdminReplaceUserGroups(w http.ResponseWriter, r *http.Re
 	writeJSON(w, http.StatusOK, result)
 }
 
+// HandleAdminValidateGroupModelPatterns previews which provider models match access group patterns.
 func (h *Handler) HandleAdminValidateGroupModelPatterns(w http.ResponseWriter, r *http.Request) {
 	var input groups.ValidateModelPatternsInput
 	if !decodeRequestBody(w, r, &input) {
@@ -141,6 +151,7 @@ func (h *Handler) HandleAdminValidateGroupModelPatterns(w http.ResponseWriter, r
 	writeJSON(w, http.StatusOK, response)
 }
 
+// writeGroupError maps group domain errors to HTTP responses.
 func writeGroupError(w http.ResponseWriter, err error) {
 	status := http.StatusInternalServerError
 	code := err.Error()
@@ -175,6 +186,7 @@ func writeGroupError(w http.ResponseWriter, err error) {
 	writeJSON(w, status, map[string]string{"error": code})
 }
 
+// compileModelPatterns compiles unique non-empty model regex patterns.
 func compileModelPatterns(patterns []string) ([]*regexp.Regexp, error) {
 	out := make([]*regexp.Regexp, 0, len(patterns))
 	seen := map[string]struct{}{}
@@ -196,6 +208,7 @@ func compileModelPatterns(patterns []string) ([]*regexp.Regexp, error) {
 	return out, nil
 }
 
+// buildModelPatternValidationResponse summarizes model matches per provider and overall.
 func buildModelPatternValidationResponse(catalog []provider.ModelCatalogProvider, patterns []*regexp.Regexp) groups.ModelPatternValidationResponse {
 	matchedModels := map[string]struct{}{}
 	providerResults := make([]groups.ModelPatternProviderValidationResult, 0, len(catalog))
@@ -233,6 +246,7 @@ func buildModelPatternValidationResponse(catalog []provider.ModelCatalogProvider
 	}
 }
 
+// matchedProviderModels returns sorted unique models matching at least one pattern.
 func matchedProviderModels(models []string, patterns []*regexp.Regexp) []string {
 	matches := map[string]struct{}{}
 	for _, model := range models {

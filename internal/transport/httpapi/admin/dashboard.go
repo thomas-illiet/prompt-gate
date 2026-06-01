@@ -76,6 +76,7 @@ func (h *Handler) HandleAdminDashboardTopIdentities(w http.ResponseWriter, r *ht
 	})
 }
 
+// writeDashboardResponse validates the admin dashboard request and writes the loaded response.
 func (h *Handler) writeDashboardResponse(w http.ResponseWriter, r *http.Request, load adminDashboardLoader) {
 	window, ok := h.adminDashboardRequest(w, r)
 	if !ok {
@@ -89,6 +90,7 @@ func (h *Handler) writeDashboardResponse(w http.ResponseWriter, r *http.Request,
 	writeJSON(w, http.StatusOK, response)
 }
 
+// adminDashboardRequest validates dashboard dependencies and query parameters.
 func (h *Handler) adminDashboardRequest(w http.ResponseWriter, r *http.Request) (proxy.UsageWindow, bool) {
 	if h.proxy == nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "proxy usage service unavailable"})
@@ -102,6 +104,7 @@ func (h *Handler) adminDashboardRequest(w http.ResponseWriter, r *http.Request) 
 	return window, true
 }
 
+// parseDashboardWindow reads an admin dashboard usage window from query parameters.
 func parseDashboardWindow(r *http.Request) (proxy.UsageWindow, error) {
 	value := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("window")))
 	if value == "" {
@@ -130,6 +133,7 @@ func parseDashboardWindow(r *http.Request) (proxy.UsageWindow, error) {
 	}
 }
 
+// writeDashboardError writes a dashboard error response and reports whether an error was handled.
 func writeDashboardError(w http.ResponseWriter, err error) bool {
 	if err == nil {
 		return false

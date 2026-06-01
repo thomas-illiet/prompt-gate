@@ -12,10 +12,12 @@ type staticAssetsHandler struct {
 	root string
 }
 
+// newStaticAssetsHandler returns a handler that serves built frontend assets from root.
 func newStaticAssetsHandler(root string) http.Handler {
 	return staticAssetsHandler{root: root}
 }
 
+// ServeHTTP serves static assets and falls back to the SPA entrypoint for frontend routes.
 func (h staticAssetsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		http.NotFound(w, r)
@@ -52,6 +54,7 @@ func (h staticAssetsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	http.NotFound(w, r)
 }
 
+// cleanRequestPath normalizes an HTTP path for static file lookup.
 func cleanRequestPath(value string) string {
 	if value == "" {
 		return "/"
@@ -60,6 +63,7 @@ func cleanRequestPath(value string) string {
 	return path.Clean("/" + strings.TrimPrefix(value, "/"))
 }
 
+// isBackendPath reports whether requestPath belongs to API or auth routes.
 func isBackendPath(requestPath string) bool {
 	return requestPath == "/health" ||
 		requestPath == "/api" ||
@@ -68,10 +72,12 @@ func isBackendPath(requestPath string) bool {
 		strings.HasPrefix(requestPath, "/auth/")
 }
 
+// isAssetPath reports whether requestPath targets a concrete frontend asset.
 func isAssetPath(requestPath string) bool {
 	return strings.HasPrefix(requestPath, "/_nuxt/") || path.Ext(requestPath) != ""
 }
 
+// serveRequestFile serves a normalized request path when it maps to an existing file.
 func (h staticAssetsHandler) serveRequestFile(w http.ResponseWriter, r *http.Request, requestPath string) bool {
 	relativePath := strings.TrimPrefix(requestPath, "/")
 	if relativePath == "" {
@@ -81,6 +87,7 @@ func (h staticAssetsHandler) serveRequestFile(w http.ResponseWriter, r *http.Req
 	return h.serveNamedFile(w, r, relativePath)
 }
 
+// serveNamedFile serves a named static file when it exists under the configured root.
 func (h staticAssetsHandler) serveNamedFile(w http.ResponseWriter, r *http.Request, name string) bool {
 	filePath, ok := h.resolveFile(name)
 	if !ok {
@@ -91,6 +98,7 @@ func (h staticAssetsHandler) serveNamedFile(w http.ResponseWriter, r *http.Reque
 	return true
 }
 
+// resolveFile returns an absolute file path only when name stays within the static root.
 func (h staticAssetsHandler) resolveFile(name string) (string, bool) {
 	root, err := filepath.Abs(h.root)
 	if err != nil {

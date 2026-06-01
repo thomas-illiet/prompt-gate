@@ -36,10 +36,12 @@ type Service struct {
 	notifier configevents.Notifier
 }
 
+// NewService creates an access group service backed by GORM.
 func NewService(db *gorm.DB) *Service {
 	return &Service{db: db, notifier: configevents.NoopNotifier{}}
 }
 
+// SetNotifier configures config event publication after group mutations.
 func (s *Service) SetNotifier(notifier configevents.Notifier) {
 	if notifier == nil {
 		notifier = configevents.NoopNotifier{}
@@ -47,6 +49,7 @@ func (s *Service) SetNotifier(notifier configevents.Notifier) {
 	s.notifier = notifier
 }
 
+// AutoMigrate migrates access group tables.
 func (s *Service) AutoMigrate(ctx context.Context) error {
 	return s.db.WithContext(ctx).AutoMigrate(
 		&Group{},
@@ -56,6 +59,7 @@ func (s *Service) AutoMigrate(ctx context.Context) error {
 	)
 }
 
+// ListGroupsPaged returns access groups with pagination, search, sorting, and related counts.
 func (s *Service) ListGroupsPaged(ctx context.Context, params ListParams) (ListResult, error) {
 	normalizeListParams(&params)
 
@@ -98,6 +102,7 @@ func (s *Service) ListGroupsPaged(ctx context.Context, params ListParams) (ListR
 	}, nil
 }
 
+// GetGroup returns one access group by ID.
 func (s *Service) GetGroup(ctx context.Context, id string) (GroupResponse, error) {
 	record, err := s.getGroup(ctx, s.db, id)
 	if err != nil {
@@ -106,6 +111,7 @@ func (s *Service) GetGroup(ctx context.Context, id string) (GroupResponse, error
 	return record.toResponse(), nil
 }
 
+// CreateGroup validates and stores a new access group.
 func (s *Service) CreateGroup(ctx context.Context, input CreateGroupInput) (GroupResponse, error) {
 	name, err := validateName(input.Name)
 	if err != nil {
@@ -157,6 +163,7 @@ func (s *Service) CreateGroup(ctx context.Context, input CreateGroupInput) (Grou
 	return s.GetGroup(ctx, record.ID.String())
 }
 
+// UpdateGroup patches an access group and reconciles provider/model assignments.
 func (s *Service) UpdateGroup(ctx context.Context, id string, input UpdateGroupInput) (GroupResponse, error) {
 	var parsedName string
 	var err error
@@ -233,6 +240,7 @@ func (s *Service) UpdateGroup(ctx context.Context, id string, input UpdateGroupI
 	return s.GetGroup(ctx, groupID.String())
 }
 
+// DeleteGroup removes an access group and its membership and model/provider joins.
 func (s *Service) DeleteGroup(ctx context.Context, id string) error {
 	groupID, err := parseGroupID(id)
 	if err != nil {
@@ -264,6 +272,7 @@ func (s *Service) DeleteGroup(ctx context.Context, id string) error {
 	return nil
 }
 
+// AddMember assigns a user to an access group.
 func (s *Service) AddMember(ctx context.Context, groupIDRaw, userID string) error {
 	groupID, err := parseGroupID(groupIDRaw)
 	if err != nil {
@@ -290,6 +299,7 @@ func (s *Service) AddMember(ctx context.Context, groupIDRaw, userID string) erro
 	return nil
 }
 
+// RemoveMember removes a user from an access group.
 func (s *Service) RemoveMember(ctx context.Context, groupIDRaw, userID string) error {
 	groupID, err := parseGroupID(groupIDRaw)
 	if err != nil {
@@ -315,6 +325,7 @@ func (s *Service) RemoveMember(ctx context.Context, groupIDRaw, userID string) e
 	return nil
 }
 
+// ListUserGroups returns full access group details assigned to a user.
 func (s *Service) ListUserGroups(ctx context.Context, userID string) ([]GroupResponse, error) {
 	userID = strings.TrimSpace(userID)
 	if err := s.ensureUserExists(ctx, s.db, userID); err != nil {
@@ -339,6 +350,7 @@ func (s *Service) ListUserGroups(ctx context.Context, userID string) ([]GroupRes
 	return out, nil
 }
 
+// ListUserGroupSummaries returns profile-safe access group summaries for a user.
 func (s *Service) ListUserGroupSummaries(ctx context.Context, userID string) ([]ProfileGroupResponse, error) {
 	userID = strings.TrimSpace(userID)
 	if err := s.ensureUserExists(ctx, s.db, userID); err != nil {
@@ -361,6 +373,7 @@ func (s *Service) ListUserGroupSummaries(ctx context.Context, userID string) ([]
 	return out, nil
 }
 
+// ReplaceUserGroups replaces all access group assignments for a user.
 func (s *Service) ReplaceUserGroups(ctx context.Context, userID string, groupIDsRaw []string) ([]GroupResponse, error) {
 	userID = strings.TrimSpace(userID)
 	groupIDs, err := parseGroupIDs(groupIDsRaw)
@@ -391,6 +404,7 @@ func (s *Service) ReplaceUserGroups(ctx context.Context, userID string, groupIDs
 	return s.ListUserGroups(ctx, userID)
 }
 
+// getGroup loads one access group with all admin response relations.
 func (s *Service) getGroup(ctx context.Context, db *gorm.DB, id string) (Group, error) {
 	groupID, err := parseGroupID(id)
 	if err != nil {
@@ -410,6 +424,7 @@ func (s *Service) getGroup(ctx context.Context, db *gorm.DB, id string) (Group, 
 	return record, nil
 }
 
+// ensureGroupExists verifies that an access group exists.
 func (s *Service) ensureGroupExists(ctx context.Context, db *gorm.DB, id uuid.UUID) error {
 	var count int64
 	if err := db.WithContext(ctx).Model(&Group{}).Where("id = ?", id).Count(&count).Error; err != nil {
@@ -421,6 +436,7 @@ func (s *Service) ensureGroupExists(ctx context.Context, db *gorm.DB, id uuid.UU
 	return nil
 }
 
+// ensureGroupsExist verifies that every requested access group exists.
 func (s *Service) ensureGroupsExist(ctx context.Context, db *gorm.DB, ids []uuid.UUID) error {
 	if len(ids) == 0 {
 		return nil
@@ -435,6 +451,7 @@ func (s *Service) ensureGroupsExist(ctx context.Context, db *gorm.DB, ids []uuid
 	return nil
 }
 
+// ensureProvidersExist verifies that every requested provider exists.
 func (s *Service) ensureProvidersExist(ctx context.Context, db *gorm.DB, ids []uuid.UUID) error {
 	if len(ids) == 0 {
 		return nil
@@ -449,6 +466,7 @@ func (s *Service) ensureProvidersExist(ctx context.Context, db *gorm.DB, ids []u
 	return nil
 }
 
+// ensureUserExists verifies that a user exists.
 func (s *Service) ensureUserExists(ctx context.Context, db *gorm.DB, id string) error {
 	if strings.TrimSpace(id) == "" {
 		return ErrUserNotFound
@@ -463,6 +481,7 @@ func (s *Service) ensureUserExists(ctx context.Context, db *gorm.DB, id string) 
 	return nil
 }
 
+// replaceGroupProviders replaces provider assignments for an access group.
 func (s *Service) replaceGroupProviders(ctx context.Context, tx *gorm.DB, groupID uuid.UUID, providerIDs []uuid.UUID) error {
 	if err := tx.WithContext(ctx).Where("group_id = ?", groupID).Delete(&GroupProvider{}).Error; err != nil {
 		return fmt.Errorf("delete group providers: %w", err)
@@ -475,6 +494,7 @@ func (s *Service) replaceGroupProviders(ctx context.Context, tx *gorm.DB, groupI
 	return nil
 }
 
+// replaceGroupPatterns replaces model pattern assignments for an access group.
 func (s *Service) replaceGroupPatterns(ctx context.Context, tx *gorm.DB, groupID uuid.UUID, patterns []string) error {
 	if err := tx.WithContext(ctx).Where("group_id = ?", groupID).Delete(&GroupModelPattern{}).Error; err != nil {
 		return fmt.Errorf("delete group model patterns: %w", err)
@@ -487,6 +507,7 @@ func (s *Service) replaceGroupPatterns(ctx context.Context, tx *gorm.DB, groupID
 	return nil
 }
 
+// validateName normalizes and validates an access group slug.
 func validateName(raw string) (string, error) {
 	name := normalizeName(raw)
 	if !groupNameRegexp.MatchString(name) {
@@ -495,6 +516,7 @@ func validateName(raw string) (string, error) {
 	return name, nil
 }
 
+// validateDisplayName trims and validates an access group display name.
 func validateDisplayName(raw string) (string, error) {
 	displayName := strings.TrimSpace(raw)
 	if displayName == "" {
@@ -503,6 +525,7 @@ func validateDisplayName(raw string) (string, error) {
 	return displayName, nil
 }
 
+// validatePatterns compiles unique model patterns and applies the all-model default when empty.
 func validatePatterns(raw []string) ([]string, error) {
 	seen := map[string]struct{}{}
 	out := make([]string, 0, len(raw))
@@ -526,10 +549,12 @@ func validatePatterns(raw []string) ([]string, error) {
 	return out, nil
 }
 
+// parseGroupID parses a trimmed access group UUID.
 func parseGroupID(raw string) (uuid.UUID, error) {
 	return uuid.Parse(strings.TrimSpace(raw))
 }
 
+// parseGroupIDs parses and de-duplicates access group UUIDs.
 func parseGroupIDs(raw []string) ([]uuid.UUID, error) {
 	seen := map[uuid.UUID]struct{}{}
 	out := make([]uuid.UUID, 0, len(raw))
@@ -547,6 +572,7 @@ func parseGroupIDs(raw []string) ([]uuid.UUID, error) {
 	return out, nil
 }
 
+// parseProviderIDs parses and de-duplicates provider UUIDs.
 func parseProviderIDs(raw []string) ([]uuid.UUID, error) {
 	seen := map[uuid.UUID]struct{}{}
 	out := make([]uuid.UUID, 0, len(raw))
@@ -564,6 +590,7 @@ func parseProviderIDs(raw []string) ([]uuid.UUID, error) {
 	return out, nil
 }
 
+// parseRequiredProviderIDs parses provider UUIDs and rejects empty assignments.
 func parseRequiredProviderIDs(raw []string) ([]uuid.UUID, error) {
 	out, err := parseProviderIDs(raw)
 	if err != nil {
@@ -575,6 +602,7 @@ func parseRequiredProviderIDs(raw []string) ([]uuid.UUID, error) {
 	return out, nil
 }
 
+// normalizeListParams applies default access group pagination and sorting values.
 func normalizeListParams(params *ListParams) {
 	if params.Page <= 0 {
 		params.Page = 1
@@ -593,6 +621,7 @@ func normalizeListParams(params *ListParams) {
 	}
 }
 
+// applyGroupSort applies a validated access group order to the query.
 func applyGroupSort(query *gorm.DB, sortBy, sortDir string) (*gorm.DB, error) {
 	dir, err := normalizeSortDir(sortDir)
 	if err != nil {
@@ -614,6 +643,7 @@ func applyGroupSort(query *gorm.DB, sortBy, sortDir string) (*gorm.DB, error) {
 	return query.Order(column + " " + dir).Order("access_groups.id ASC"), nil
 }
 
+// normalizeSortDir converts an access group sort direction into SQL syntax.
 func normalizeSortDir(sortDir string) (string, error) {
 	switch strings.ToLower(strings.TrimSpace(sortDir)) {
 	case "asc":
@@ -625,6 +655,7 @@ func normalizeSortDir(sortDir string) (string, error) {
 	}
 }
 
+// isUniqueConstraintError detects database uniqueness violations.
 func isUniqueConstraintError(err error) bool {
 	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "unique") ||
@@ -632,6 +663,7 @@ func isUniqueConstraintError(err error) bool {
 		strings.Contains(msg, "23505")
 }
 
+// toResponse converts an access group model into its admin API shape.
 func (g *Group) toResponse() GroupResponse {
 	providers := make([]ProviderSummary, 0, len(g.Providers))
 	for _, item := range g.Providers {
@@ -675,6 +707,7 @@ func (g *Group) toResponse() GroupResponse {
 	}
 }
 
+// toProfileResponse converts an access group model into its profile API shape.
 func (g *Group) toProfileResponse() ProfileGroupResponse {
 	return ProfileGroupResponse{
 		ID:          g.ID,

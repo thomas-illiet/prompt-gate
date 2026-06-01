@@ -25,10 +25,12 @@ type Group struct {
 	DeletedAt     gorm.DeletedAt `gorm:"index"`
 }
 
+// TableName returns the database table for access groups.
 func (Group) TableName() string {
 	return "access_groups"
 }
 
+// BeforeCreate assigns an ID and normalizes the group name before insertion.
 func (g *Group) BeforeCreate(_ *gorm.DB) error {
 	if g.ID == uuid.Nil {
 		g.ID = uuid.New()
@@ -37,6 +39,7 @@ func (g *Group) BeforeCreate(_ *gorm.DB) error {
 	return nil
 }
 
+// BeforeUpdate normalizes the group name before updates.
 func (g *Group) BeforeUpdate(_ *gorm.DB) error {
 	g.Name = normalizeName(g.Name)
 	return nil
@@ -50,6 +53,7 @@ type GroupProvider struct {
 	CreatedAt  time.Time
 }
 
+// TableName returns the database table for group-provider joins.
 func (GroupProvider) TableName() string {
 	return "access_group_providers"
 }
@@ -63,10 +67,12 @@ type GroupModelPattern struct {
 	UpdatedAt time.Time
 }
 
+// TableName returns the database table for group model patterns.
 func (GroupModelPattern) TableName() string {
 	return "access_group_model_patterns"
 }
 
+// BeforeCreate assigns an ID and trims the model pattern before insertion.
 func (p *GroupModelPattern) BeforeCreate(_ *gorm.DB) error {
 	if p.ID == uuid.Nil {
 		p.ID = uuid.New()
@@ -75,6 +81,7 @@ func (p *GroupModelPattern) BeforeCreate(_ *gorm.DB) error {
 	return nil
 }
 
+// BeforeUpdate trims the model pattern before updates.
 func (p *GroupModelPattern) BeforeUpdate(_ *gorm.DB) error {
 	p.Pattern = strings.TrimSpace(p.Pattern)
 	return nil
@@ -88,6 +95,7 @@ type GroupMember struct {
 	CreatedAt time.Time
 }
 
+// TableName returns the database table for group memberships.
 func (GroupMember) TableName() string {
 	return "access_group_members"
 }
@@ -189,6 +197,7 @@ type ModelPatternProviderValidationResult struct {
 	ModelsError         string    `json:"modelsError,omitempty"`
 }
 
+// normalizeName returns the canonical access group name form.
 func normalizeName(name string) string {
 	return strings.TrimSpace(strings.ToLower(name))
 }

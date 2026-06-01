@@ -13,6 +13,7 @@ import (
 	"promptgate/backend/internal/runtime/app"
 )
 
+// newScheduleCommand builds the CLI command that starts scheduled background jobs.
 func newScheduleCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "schedule",
@@ -24,6 +25,7 @@ func newScheduleCommand() *cobra.Command {
 	}
 }
 
+// runSchedule loads scheduler configuration and runs background workers until shutdown.
 func runSchedule() error {
 	bootstrapLogger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 

@@ -17,6 +17,7 @@ import (
 	"promptgate/backend/internal/transport/httpapi"
 )
 
+// newAPICommand builds the CLI command that starts the HTTP API server.
 func newAPICommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "api",
@@ -28,6 +29,7 @@ func newAPICommand() *cobra.Command {
 	}
 }
 
+// runAPI loads API configuration, initializes dependencies, and serves HTTP requests until shutdown.
 func runAPI() error {
 	bootstrapLogger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 

@@ -32,6 +32,7 @@ import (
 	httpmiddleware "promptgate/backend/internal/transport/httpmiddleware"
 )
 
+// newProxyCommand builds the CLI command that starts the LLM proxy server.
 func newProxyCommand() *cobra.Command {
 	return &cobra.Command{
 		Use:   "proxy",
@@ -43,6 +44,7 @@ func newProxyCommand() *cobra.Command {
 	}
 }
 
+// runProxy loads proxy configuration, initializes runtime services, and serves proxy traffic until shutdown.
 func runProxy() error {
 	bootstrapLogger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
@@ -193,6 +195,7 @@ func runProxy() error {
 	return nil
 }
 
+// cdrLevel maps configured log level text to the cdr/slog level type.
 func cdrLevel(level string) cdrslog.Level {
 	switch strings.ToLower(strings.TrimSpace(level)) {
 	case "debug":

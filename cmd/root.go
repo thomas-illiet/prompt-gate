@@ -46,6 +46,7 @@ func NewRootCommand() *cobra.Command {
 	return root
 }
 
+// loadEnvFile loads dotenv values into the process environment without overriding existing values.
 func loadEnvFile(startDir string, explicitPath string) error {
 	envFilePath, err := resolveEnvFilePath(startDir, explicitPath)
 	if err != nil {
@@ -77,6 +78,7 @@ func loadEnvFile(startDir string, explicitPath string) error {
 	return nil
 }
 
+// resolveEnvFilePath returns the explicit dotenv path or searches parent directories for .env.
 func resolveEnvFilePath(startDir string, explicitPath string) (string, error) {
 	if explicitPath != "" {
 		return explicitPath, nil
