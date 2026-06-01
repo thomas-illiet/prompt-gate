@@ -9,6 +9,7 @@ import (
 	"promptgate/backend/internal/domain/firewall"
 	"promptgate/backend/internal/domain/groups"
 	"promptgate/backend/internal/domain/mcp"
+	"promptgate/backend/internal/domain/monitoring"
 	"promptgate/backend/internal/domain/provider"
 	"promptgate/backend/internal/domain/proxy"
 	"promptgate/backend/internal/domain/tokens"
@@ -21,17 +22,18 @@ import (
 )
 
 type Dependencies struct {
-	Config    config.Config
-	DB        *gorm.DB
-	Users     *users.Service
-	Tokens    *tokens.Service
-	Firewall  *firewall.Service
-	Groups    *groups.Service
-	Providers *provider.Service
-	MCP       *mcp.Service
-	Proxy     *proxy.Service
-	OIDC      *auth.OIDCService
-	Sessions  *auth.SessionStore
+	Config     config.Config
+	DB         *gorm.DB
+	Users      *users.Service
+	Tokens     *tokens.Service
+	Firewall   *firewall.Service
+	Groups     *groups.Service
+	Providers  *provider.Service
+	MCP        *mcp.Service
+	Monitoring *monitoring.Service
+	Proxy      *proxy.Service
+	OIDC       *auth.OIDCService
+	Sessions   *auth.SessionStore
 }
 
 // NewHandler builds and returns the HTTP handler with all routes and middleware configured.
@@ -46,8 +48,9 @@ func NewHandler(a Dependencies) http.Handler {
 		groups:       a.Groups,
 		proxyService: a.Proxy,
 		providers:    a.Providers,
+		monitoring:   a.Monitoring,
 	}
-	adminH := admin.NewHandler(a.Users, a.Tokens, a.Firewall, a.Groups, a.Providers, a.MCP, a.Proxy)
+	adminH := admin.NewHandler(a.Users, a.Tokens, a.Firewall, a.Groups, a.Providers, a.MCP, a.Proxy, a.Monitoring)
 
 	cfg := a.Config
 	sessionStore := a.Sessions
@@ -88,6 +91,15 @@ func NewHandler(a Dependencies) http.Handler {
 		"GET /api/v1/me/help/setup",
 		middleware.Chain(
 			http.HandlerFunc(srv.handleHelpSetup),
+			middleware.RequireSession(sessionStore, cfg.SessionCookieName),
+			middleware.RequireAppAccess(),
+			middleware.RequireRoles(auth.RoleUser, auth.RoleManager, auth.RoleAdmin),
+		),
+	)
+	mux.Handle(
+		"GET /api/v1/monitoring/status",
+		middleware.Chain(
+			http.HandlerFunc(srv.handleMonitoringStatus),
 			middleware.RequireSession(sessionStore, cfg.SessionCookieName),
 			middleware.RequireAppAccess(),
 			middleware.RequireRoles(auth.RoleUser, auth.RoleManager, auth.RoleAdmin),
@@ -379,6 +391,30 @@ func NewHandler(a Dependencies) http.Handler {
 	mux.Handle(
 		"DELETE /api/v1/admin/mcp/servers/{id}",
 		middleware.Chain(http.HandlerFunc(adminH.HandleAdminDeleteMCPServer), adminMiddlewares...),
+	)
+	mux.Handle(
+		"GET /api/v1/admin/monitoring/services",
+		middleware.Chain(http.HandlerFunc(adminH.HandleAdminListMonitoringServices), adminMiddlewares...),
+	)
+	mux.Handle(
+		"POST /api/v1/admin/monitoring/services",
+		middleware.Chain(http.HandlerFunc(adminH.HandleAdminCreateMonitoringService), adminMiddlewares...),
+	)
+	mux.Handle(
+		"GET /api/v1/admin/monitoring/services/{id}",
+		middleware.Chain(http.HandlerFunc(adminH.HandleAdminGetMonitoringService), adminMiddlewares...),
+	)
+	mux.Handle(
+		"PATCH /api/v1/admin/monitoring/services/{id}",
+		middleware.Chain(http.HandlerFunc(adminH.HandleAdminUpdateMonitoringService), adminMiddlewares...),
+	)
+	mux.Handle(
+		"DELETE /api/v1/admin/monitoring/services/{id}",
+		middleware.Chain(http.HandlerFunc(adminH.HandleAdminDeleteMonitoringService), adminMiddlewares...),
+	)
+	mux.Handle(
+		"POST /api/v1/admin/monitoring/services/{id}/check",
+		middleware.Chain(http.HandlerFunc(adminH.HandleAdminCheckMonitoringService), adminMiddlewares...),
 	)
 	if cfg.StaticAssetsDir != "" {
 		mux.Handle("/", newStaticAssetsHandler(cfg.StaticAssetsDir))

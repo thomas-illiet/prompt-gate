@@ -10,6 +10,7 @@ import (
 	"promptgate/backend/internal/domain/firewall"
 	"promptgate/backend/internal/domain/groups"
 	"promptgate/backend/internal/domain/mcp"
+	"promptgate/backend/internal/domain/monitoring"
 	"promptgate/backend/internal/domain/provider"
 	"promptgate/backend/internal/domain/proxy"
 	"promptgate/backend/internal/domain/tokens"
@@ -46,6 +47,11 @@ func Run(ctx context.Context, db *gorm.DB) error {
 	slog.Info("running database migrations", "models", "mcp")
 	if err := db.WithContext(ctx).AutoMigrate(&mcp.MCPServer{}); err != nil {
 		return fmt.Errorf("migrate mcp: %w", err)
+	}
+
+	slog.Info("running database migrations", "models", "monitoring")
+	if err := db.WithContext(ctx).AutoMigrate(&monitoring.MonitoringService{}); err != nil {
+		return fmt.Errorf("migrate monitoring: %w", err)
 	}
 
 	slog.Info("running database migrations", "models", "proxy")

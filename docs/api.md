@@ -42,6 +42,7 @@ dashboard, prompt, usage, setup, and token routes require role `user`,
 | `GET` | `/api/v1/me/dashboard/top-models` | Model usage breakdown. |
 | `GET` | `/api/v1/me/dashboard/top-provider-names` | Provider-name usage breakdown. |
 | `GET` | `/api/v1/me/dashboard/top-provider-types` | Provider-type usage breakdown. |
+| `GET` | `/api/v1/monitoring/status` | Current user-visible monitoring status and degraded service names. |
 
 Common list-style routes use query parameters such as `page`, `pageSize`,
 `search`, `sortBy`, and `sortDir` where supported. Dashboard routes use the
@@ -167,6 +168,32 @@ stored encrypted and are never returned by the admin API.
 
 Sensitive MCP headers are encrypted before storage. `allowPattern` and
 `denyPattern` are validated as regular expressions before they are saved.
+
+### Monitoring
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/v1/admin/monitoring/services` | List HTTP/S monitoring service definitions. |
+| `POST` | `/api/v1/admin/monitoring/services` | Create a monitoring service. |
+| `GET` | `/api/v1/admin/monitoring/services/{id}` | Get one monitoring service. |
+| `PATCH` | `/api/v1/admin/monitoring/services/{id}` | Update monitoring metadata, URL, expected HTTP code, interval, or enabled state. |
+| `DELETE` | `/api/v1/admin/monitoring/services/{id}` | Delete a monitoring service. |
+| `POST` | `/api/v1/admin/monitoring/services/{id}/check` | Run one immediate HTTP GET check and persist the result. |
+
+Monitoring service names use lowercase letters, numbers, and single hyphens.
+URLs must be `http` or `https`. `expectedStatusCode` must be between `100` and
+`599`; omitted create requests default to `200`. `intervalSeconds` must be
+between `30` and `86400`; omitted create requests default to `60`.
+
+The app-level `/api/v1/monitoring/status` route returns:
+
+```json
+{"status":"ok","services":[]}
+```
+
+When any enabled service is degraded, `status` is `degraded` and `services`
+contains only enabled degraded services. This response intentionally omits
+service URLs.
 
 ## Error Shape
 

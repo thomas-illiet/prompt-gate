@@ -8,6 +8,7 @@ import (
 	"promptgate/backend/internal/domain/firewall"
 	"promptgate/backend/internal/domain/groups"
 	"promptgate/backend/internal/domain/mcp"
+	"promptgate/backend/internal/domain/monitoring"
 	"promptgate/backend/internal/domain/provider"
 	"promptgate/backend/internal/domain/proxy"
 	"promptgate/backend/internal/domain/tokens"
@@ -16,20 +17,26 @@ import (
 
 // Handler handles admin-only HTTP routes for user and token management.
 type Handler struct {
-	users     *users.Service
-	tokens    *tokens.Service
-	firewall  *firewall.Service
-	groups    *groups.Service
-	providers *provider.Service
-	mcp       *mcp.Service
-	proxy     *proxy.Service
+	users      *users.Service
+	tokens     *tokens.Service
+	firewall   *firewall.Service
+	groups     *groups.Service
+	providers  *provider.Service
+	mcp        *mcp.Service
+	monitoring *monitoring.Service
+	proxy      *proxy.Service
 }
 
 // NewHandler returns an admin Handler wired to the given services.
-func NewHandler(u *users.Service, t *tokens.Service, f *firewall.Service, g *groups.Service, p *provider.Service, m *mcp.Service, proxyServices ...*proxy.Service) *Handler {
+func NewHandler(u *users.Service, t *tokens.Service, f *firewall.Service, g *groups.Service, p *provider.Service, m *mcp.Service, optionalServices ...any) *Handler {
 	handler := &Handler{users: u, tokens: t, firewall: f, groups: g, providers: p, mcp: m}
-	if len(proxyServices) > 0 {
-		handler.proxy = proxyServices[0]
+	for _, service := range optionalServices {
+		switch typed := service.(type) {
+		case *proxy.Service:
+			handler.proxy = typed
+		case *monitoring.Service:
+			handler.monitoring = typed
+		}
 	}
 	return handler
 }

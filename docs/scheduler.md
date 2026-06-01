@@ -15,10 +15,12 @@ It does not expose HTTP routes. It runs until the process receives `SIGINT` or
 | --- | --- | --- |
 | Token cleanup | `1h` | Marks stored tokens as expired when `expires_at` is in the past and `expired_at` is still empty. |
 | User access expiration | `1h` | Removes app access for users whose `expires_at` has passed and revokes their active tokens. |
+| Monitoring checks | `15s` scheduler tick, per-service intervals | Runs due HTTP/S checks and marks enabled services `ok` or `degraded`. |
 
 The access expiration job runs once immediately on startup and then repeats on
 its interval. The token cleanup job starts its ticker and runs on the first
-tick.
+tick. Monitoring checks run once immediately on startup, then every `15s`; each
+service is only checked when its own `intervalSeconds` has elapsed.
 
 ## Runtime Flow
 
@@ -28,15 +30,25 @@ flowchart TD
     Config --> App["Initialize app services"]
     App --> TokenJob["Start token cleanup goroutine"]
     App --> AccessJob["Start user access expiration goroutine"]
+    App --> MonitoringJob["Start monitoring checker goroutine"]
     TokenJob --> DB["Update token expired_at"]
     AccessJob --> DB
     AccessJob --> Redis["Publish auth config event"]
+    MonitoringJob --> DB
+    MonitoringJob --> HTTP["HTTP/S services"]
 ```
 
 When user access expires, affected users are assigned role `none`, their
 `expires_at` value is cleared, and their non-revoked tokens are revoked in the
 same transaction. An `auth` config event is then published so proxy auth caches
 move to a new version.
+
+Monitoring checks perform an HTTP `GET` with a `5s` timeout. A service is `ok`
+when the response code equals its configured `expectedStatusCode`. Any network
+error, timeout, or unexpected status code marks it `degraded` after the first
+failed check. The next successful check clears the degraded state. Disabled
+services are not selected by the scheduler and do not appear in the user-facing
+monitoring banner.
 
 ## Required Configuration
 

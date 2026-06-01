@@ -3,6 +3,7 @@
     <AppDrawer />
     <AppBar />
     <v-main class="default-layout-main">
+      <AppMonitoringBanner />
       <slot />
     </v-main>
     <AppFooter />

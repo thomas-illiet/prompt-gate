@@ -8,6 +8,7 @@ import (
 
 	"promptgate/backend/internal/domain/auth"
 	"promptgate/backend/internal/domain/groups"
+	"promptgate/backend/internal/domain/monitoring"
 	"promptgate/backend/internal/domain/provider"
 	"promptgate/backend/internal/domain/proxy"
 	"promptgate/backend/internal/domain/tokens"
@@ -25,6 +26,7 @@ type server struct {
 	groups       *groups.Service
 	proxyService *proxy.Service
 	providers    *provider.Service
+	monitoring   *monitoring.Service
 }
 
 // handleLogin initiates the OIDC authorization flow and redirects to the provider.

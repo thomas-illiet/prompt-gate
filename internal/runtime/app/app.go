@@ -11,6 +11,7 @@ import (
 	"promptgate/backend/internal/domain/firewall"
 	"promptgate/backend/internal/domain/groups"
 	"promptgate/backend/internal/domain/mcp"
+	"promptgate/backend/internal/domain/monitoring"
 	"promptgate/backend/internal/domain/provider"
 	"promptgate/backend/internal/domain/proxy"
 	"promptgate/backend/internal/domain/tokens"
@@ -23,19 +24,20 @@ import (
 
 // App holds all shared resources for the application lifetime.
 type App struct {
-	Config    config.Config
-	DB        *gorm.DB
-	Users     *users.Service
-	Tokens    *tokens.Service
-	Firewall  *firewall.Service
-	Groups    *groups.Service
-	Providers *provider.Service
-	MCP       *mcp.Service
-	Proxy     *proxy.Service
-	OIDC      *auth.OIDCService
-	Validator *auth.Validator
-	Sessions  *auth.SessionStore
-	Redis     *redisstore.Store
+	Config     config.Config
+	DB         *gorm.DB
+	Users      *users.Service
+	Tokens     *tokens.Service
+	Firewall   *firewall.Service
+	Groups     *groups.Service
+	Providers  *provider.Service
+	MCP        *mcp.Service
+	Monitoring *monitoring.Service
+	Proxy      *proxy.Service
+	OIDC       *auth.OIDCService
+	Validator  *auth.Validator
+	Sessions   *auth.SessionStore
+	Redis      *redisstore.Store
 }
 
 // New initializes the database, services, and auth components and returns a ready App.
@@ -58,6 +60,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	}
 	providerService := provider.NewService(db, secretCipher)
 	mcpService := mcp.NewService(db, secretCipher)
+	monitoringService := monitoring.NewService(db)
 	proxyService := proxy.NewService(db, proxy.WithUsageCost(proxy.UsageCostConfig{
 		Enabled: cfg.UsageCost.Enabled,
 		Rates: proxy.CostRates{
@@ -117,19 +120,20 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	}
 
 	return &App{
-		Config:    cfg,
-		DB:        db,
-		Users:     userService,
-		Tokens:    tokenService,
-		Firewall:  firewallService,
-		Groups:    groupService,
-		Providers: providerService,
-		MCP:       mcpService,
-		Proxy:     proxyService,
-		OIDC:      oidcService,
-		Validator: validator,
-		Sessions:  sessionStore,
-		Redis:     redisStore,
+		Config:     cfg,
+		DB:         db,
+		Users:      userService,
+		Tokens:     tokenService,
+		Firewall:   firewallService,
+		Groups:     groupService,
+		Providers:  providerService,
+		MCP:        mcpService,
+		Monitoring: monitoringService,
+		Proxy:      proxyService,
+		OIDC:       oidcService,
+		Validator:  validator,
+		Sessions:   sessionStore,
+		Redis:      redisStore,
 	}, nil
 }
 
@@ -139,4 +143,6 @@ func (a *App) StartBackgroundJobs(ctx context.Context) {
 	a.Tokens.StartCleanup(ctx, a.Config.TokenCleanupInterval)
 	slog.Info("starting user access expiration goroutine", "interval", a.Config.UserAccessExpirationInterval)
 	a.Users.StartAccessExpiration(ctx, a.Config.UserAccessExpirationInterval)
+	slog.Info("starting monitoring checker goroutine", "tick", monitoring.DefaultSchedulerTick)
+	a.Monitoring.StartScheduler(ctx, monitoring.DefaultSchedulerTick)
 }
