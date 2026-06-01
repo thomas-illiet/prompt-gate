@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"promptgate/backend/internal/domain/auth"
+	"promptgate/backend/internal/domain/provider"
 )
 
 // Middleware enforces group-based provider and model access from an in-memory snapshot.
@@ -27,6 +28,16 @@ func Middleware(snapshot *SnapshotStore, logger *slog.Logger) func(http.Handler)
 			if providerName == "" || snapshot == nil || !snapshot.KnownProvider(providerName) {
 				logger.Warn("group access denied for unknown provider", "provider", providerName, "user_id", user.ID)
 				writeJSON(w, http.StatusForbidden, map[string]string{"error": "group_access_denied"})
+				return
+			}
+			providerType, _ := snapshot.ProviderType(providerName)
+			if isModelBypassRoute(providerType, r.URL.Path) {
+				if !snapshot.AllowsProvider(user.ID, providerName) {
+					logger.Warn("group access denied for provider route", "provider", providerName, "path", r.URL.Path, "user_id", user.ID)
+					writeJSON(w, http.StatusForbidden, map[string]string{"error": "group_access_denied"})
+					return
+				}
+				next.ServeHTTP(w, r)
 				return
 			}
 
@@ -56,6 +67,43 @@ func requestProviderName(path string) string {
 	path = strings.TrimPrefix(path, "/")
 	providerName, _, _ := strings.Cut(path, "/")
 	return strings.TrimSpace(providerName)
+}
+
+// requestProviderPath extracts the route suffix after the provider name.
+func requestProviderPath(path string) string {
+	path = strings.TrimPrefix(path, "/")
+	_, suffix, ok := strings.Cut(path, "/")
+	if !ok {
+		return "/"
+	}
+	return "/" + strings.TrimPrefix(suffix, "/")
+}
+
+// isModelBypassRoute reports whether a provider route can be checked without a request model.
+func isModelBypassRoute(providerType provider.ProviderType, path string) bool {
+	providerPath := requestProviderPath(path)
+	switch providerType {
+	case provider.ProviderTypeOpenAI:
+		return routeExactOrSubtree(providerPath, "/v1/models") ||
+			routeExactOrSubtree(providerPath, "/v1/conversations") ||
+			routeSubtree(providerPath, "/v1/responses/")
+	case provider.ProviderTypeOllama:
+		return routeExactOrSubtree(providerPath, "/v1/models")
+	case provider.ProviderTypeAnthropic:
+		return routeExactOrSubtree(providerPath, "/v1/models") ||
+			providerPath == "/v1/messages/count_tokens" ||
+			routeSubtree(providerPath, "/api/event_logging/")
+	default:
+		return false
+	}
+}
+
+func routeExactOrSubtree(path, route string) bool {
+	return path == route || strings.HasPrefix(path, route+"/")
+}
+
+func routeSubtree(path, routePrefix string) bool {
+	return strings.HasPrefix(path, routePrefix)
 }
 
 // requestModel reads and restores the request body while extracting the JSON model field.

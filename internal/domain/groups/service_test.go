@@ -129,10 +129,36 @@ func TestSetSnapshotRejectsLegacyAggregatedAccess(t *testing.T) {
 
 	err := store.SetSnapshot(Snapshot{
 		KnownProviders: []string{"openai"},
+		ProviderTypes: map[string]provider.ProviderType{
+			"openai": provider.ProviderTypeOpenAI,
+		},
 		Users: map[string]UserAccess{
 			"user-id": {
 				Providers:     []string{"openai"},
 				ModelPatterns: []string{`^gpt-5`},
+			},
+		},
+	})
+
+	if !errors.Is(err, ErrLegacySnapshot) {
+		t.Fatalf("expected ErrLegacySnapshot, got %v", err)
+	}
+	if store.Allows("user-id", "openai", "gpt-5-mini") {
+		t.Fatal("legacy snapshot should not update access rules")
+	}
+}
+
+func TestSetSnapshotRejectsMissingProviderTypes(t *testing.T) {
+	store := NewSnapshotStore(nil)
+
+	err := store.SetSnapshot(Snapshot{
+		KnownProviders: []string{"openai"},
+		Users: map[string]UserAccess{
+			"user-id": {
+				Rules: []AccessRule{{
+					Providers:     []string{"openai"},
+					ModelPatterns: []string{`^gpt-5`},
+				}},
 			},
 		},
 	})

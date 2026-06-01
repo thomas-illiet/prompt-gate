@@ -27,8 +27,9 @@ type UserAccess struct {
 }
 
 type Snapshot struct {
-	KnownProviders []string              `json:"knownProviders"`
-	Users          map[string]UserAccess `json:"users"`
+	KnownProviders []string                         `json:"knownProviders"`
+	ProviderTypes  map[string]provider.ProviderType `json:"providerTypes"`
+	Users          map[string]UserAccess            `json:"users"`
 }
 
 type compiledUserAccess struct {
@@ -45,6 +46,7 @@ type compiledAccessRule struct {
 
 type compiledSnapshot struct {
 	knownProviders map[string]struct{}
+	providerTypes  map[string]provider.ProviderType
 	users          map[string]compiledUserAccess
 }
 
@@ -58,6 +60,7 @@ func NewSnapshotStore(service *Service) *SnapshotStore {
 	store := &SnapshotStore{service: service}
 	store.value.Store(compiledSnapshot{
 		knownProviders: map[string]struct{}{},
+		providerTypes:  map[string]provider.ProviderType{},
 		users:          map[string]compiledUserAccess{},
 	})
 	return store
@@ -73,9 +76,11 @@ func (s *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 		return Snapshot{}, fmt.Errorf("list known providers for groups: %w", err)
 	}
 	knownProviderSet := make(map[string]struct{}, len(providerRows))
+	providerTypes := make(map[string]provider.ProviderType, len(providerRows))
 	knownProviders := make([]string, 0, len(providerRows))
 	for _, row := range providerRows {
 		knownProviderSet[row.Name] = struct{}{}
+		providerTypes[row.Name] = row.Type
 		knownProviders = append(knownProviders, row.Name)
 	}
 
@@ -99,6 +104,7 @@ func (s *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 
 	return Snapshot{
 		KnownProviders: knownProviders,
+		ProviderTypes:  providerTypes,
 		Users:          users,
 	}, nil
 }
@@ -154,13 +160,21 @@ func (s *SnapshotStore) SetSnapshot(snapshot Snapshot) error {
 func (s *SnapshotStore) Snapshot() Snapshot {
 	compiled, ok := s.value.Load().(compiledSnapshot)
 	if !ok {
-		return Snapshot{KnownProviders: []string{}, Users: map[string]UserAccess{}}
+		return Snapshot{
+			KnownProviders: []string{},
+			ProviderTypes:  map[string]provider.ProviderType{},
+			Users:          map[string]UserAccess{},
+		}
 	}
 	knownProviders := make([]string, 0, len(compiled.knownProviders))
 	for providerName := range compiled.knownProviders {
 		knownProviders = append(knownProviders, providerName)
 	}
 	sort.Strings(knownProviders)
+	providerTypes := make(map[string]provider.ProviderType, len(compiled.providerTypes))
+	for providerName, providerType := range compiled.providerTypes {
+		providerTypes[providerName] = providerType
+	}
 	users := make(map[string]UserAccess, len(compiled.users))
 	for userID, access := range compiled.users {
 		providers := make([]string, 0, len(access.providers))
@@ -192,6 +206,7 @@ func (s *SnapshotStore) Snapshot() Snapshot {
 	}
 	return Snapshot{
 		KnownProviders: knownProviders,
+		ProviderTypes:  providerTypes,
 		Users:          users,
 	}
 }
@@ -204,6 +219,29 @@ func (s *SnapshotStore) KnownProvider(providerName string) bool {
 	}
 	_, ok = compiled.knownProviders[providerName]
 	return ok
+}
+
+// ProviderType returns the configured type for a known provider.
+func (s *SnapshotStore) ProviderType(providerName string) (provider.ProviderType, bool) {
+	compiled, ok := s.value.Load().(compiledSnapshot)
+	if !ok {
+		return "", false
+	}
+	providerType, ok := compiled.providerTypes[providerName]
+	return providerType, ok
+}
+
+// AllowsProvider reports whether the current snapshot permits a user to access a provider.
+func (s *SnapshotStore) AllowsProvider(userID, providerName string) bool {
+	compiled, ok := s.value.Load().(compiledSnapshot)
+	if !ok {
+		return false
+	}
+	access, ok := compiled.users[userID]
+	if !ok {
+		return false
+	}
+	return compiledUserAccessAllowsProvider(access, providerName)
 }
 
 // Allows reports whether the current snapshot permits a user to access a provider/model pair.
@@ -226,6 +264,15 @@ func (access UserAccess) Allows(providerName, model string) bool {
 		return false
 	}
 	return compiledUserAccessAllows(compiled, providerName, model)
+}
+
+// compiledUserAccessAllowsProvider evaluates whether access rules include a provider grant.
+func compiledUserAccessAllowsProvider(access compiledUserAccess, providerName string) bool {
+	if providerName == "" {
+		return false
+	}
+	_, ok := access.providers[providerName]
+	return ok
 }
 
 // compiledUserAccessAllows evaluates compiled access rules for a provider/model pair.
@@ -400,10 +447,18 @@ func normalizeAccessRules(rules []AccessRule) []AccessRule {
 // compileSnapshot compiles a persisted snapshot into immutable lookup maps.
 func compileSnapshot(snapshot Snapshot) (compiledSnapshot, error) {
 	knownProviders := make(map[string]struct{}, len(snapshot.KnownProviders))
+	providerTypes := make(map[string]provider.ProviderType, len(snapshot.KnownProviders))
 	for _, providerName := range snapshot.KnownProviders {
-		if providerName != "" {
-			knownProviders[providerName] = struct{}{}
+		providerName = strings.TrimSpace(providerName)
+		if providerName == "" {
+			continue
 		}
+		providerType := snapshot.ProviderTypes[providerName]
+		if providerType == "" {
+			return compiledSnapshot{}, ErrLegacySnapshot
+		}
+		knownProviders[providerName] = struct{}{}
+		providerTypes[providerName] = providerType
 	}
 	users := make(map[string]compiledUserAccess, len(snapshot.Users))
 	for userID, access := range snapshot.Users {
@@ -415,6 +470,7 @@ func compileSnapshot(snapshot Snapshot) (compiledSnapshot, error) {
 	}
 	return compiledSnapshot{
 		knownProviders: knownProviders,
+		providerTypes:  providerTypes,
 		users:          users,
 	}, nil
 }

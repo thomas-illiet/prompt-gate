@@ -33,6 +33,9 @@ func TestWatchReloadsAccessGroupsFromRedisEvent(t *testing.T) {
 
 	snapshot := groups.Snapshot{
 		KnownProviders: []string{"openai"},
+		ProviderTypes: map[string]provider.ProviderType{
+			"openai": provider.ProviderTypeOpenAI,
+		},
 		Users: map[string]groups.UserAccess{
 			"user-id": {
 				Rules: []groups.AccessRule{{
@@ -95,8 +98,10 @@ func TestRefreshAccessGroupsFallsBackWhenRedisSnapshotIsLegacy(t *testing.T) {
 		KnownProviders: []string{"openai"},
 		Users: map[string]groups.UserAccess{
 			"user-id": {
-				Providers:     []string{"openai"},
-				ModelPatterns: []string{`^legacy-`},
+				Rules: []groups.AccessRule{{
+					Providers:     []string{"openai"},
+					ModelPatterns: []string{`^legacy-`},
+				}},
 			},
 		},
 	}

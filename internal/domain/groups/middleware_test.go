@@ -9,15 +9,31 @@ import (
 	"time"
 
 	"promptgate/backend/internal/domain/auth"
+	"promptgate/backend/internal/domain/provider"
 )
+
+func testProviderTypes(names ...string) map[string]provider.ProviderType {
+	all := map[string]provider.ProviderType{
+		"openai":    provider.ProviderTypeOpenAI,
+		"ollama":    provider.ProviderTypeOllama,
+		"anthropic": provider.ProviderTypeAnthropic,
+	}
+	out := make(map[string]provider.ProviderType, len(names))
+	for _, name := range names {
+		out[name] = all[name]
+	}
+	return out
+}
 
 func TestMiddlewareAllowsModelRegexAndRestoresBody(t *testing.T) {
 	store := NewSnapshotStore(nil)
 	if err := store.SetSnapshot(Snapshot{
 		KnownProviders: []string{"openai"},
+		ProviderTypes:  testProviderTypes("openai"),
 		Users: map[string]UserAccess{
 			"user-id": {
 				Rules: []AccessRule{{
+					Providers:     []string{"openai"},
 					ModelPatterns: []string{`^gpt-5`},
 				}},
 			},
@@ -57,6 +73,7 @@ func TestMiddlewareDeniesUserWithoutGroup(t *testing.T) {
 	store := NewSnapshotStore(nil)
 	if err := store.SetSnapshot(Snapshot{
 		KnownProviders: []string{"openai"},
+		ProviderTypes:  testProviderTypes("openai"),
 		Users:          map[string]UserAccess{},
 	}); err != nil {
 		t.Fatalf("set snapshot: %v", err)
@@ -87,6 +104,7 @@ func TestMiddlewareDeniesRequestWithoutModel(t *testing.T) {
 	store := NewSnapshotStore(nil)
 	if err := store.SetSnapshot(Snapshot{
 		KnownProviders: []string{"openai"},
+		ProviderTypes:  testProviderTypes("openai"),
 		Users: map[string]UserAccess{
 			"user-id": {
 				Rules: []AccessRule{{
@@ -103,7 +121,7 @@ func TestMiddlewareDeniesRequestWithoutModel(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 
-	req := httptest.NewRequest(http.MethodGet, "/openai/v1/models", nil)
+	req := httptest.NewRequest(http.MethodPost, "/openai/v1/chat/completions", nil)
 	req = req.WithContext(auth.ContextWithUser(req.Context(), auth.UserProfile{
 		ID:       "user-id",
 		Role:     auth.RoleUser,
@@ -120,10 +138,104 @@ func TestMiddlewareDeniesRequestWithoutModel(t *testing.T) {
 	}
 }
 
+func TestMiddlewareAllowsWhitelistedProviderRoutesWithoutModel(t *testing.T) {
+	store := NewSnapshotStore(nil)
+	if err := store.SetSnapshot(Snapshot{
+		KnownProviders: []string{"openai", "ollama", "anthropic"},
+		ProviderTypes:  testProviderTypes("openai", "ollama", "anthropic"),
+		Users: map[string]UserAccess{
+			"user-id": {
+				Rules: []AccessRule{{
+					Providers:     []string{"openai", "ollama", "anthropic"},
+					ModelPatterns: []string{`^approved-model$`},
+				}},
+			},
+		},
+	}); err != nil {
+		t.Fatalf("set snapshot: %v", err)
+	}
+
+	handler := Middleware(store, nil)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	tests := []struct {
+		name string
+		path string
+	}{
+		{name: "openai models exact", path: "/openai/v1/models"},
+		{name: "openai models subtree", path: "/openai/v1/models/gpt-5"},
+		{name: "openai conversations exact", path: "/openai/v1/conversations"},
+		{name: "openai conversations subtree", path: "/openai/v1/conversations/conv_123"},
+		{name: "openai responses subtree", path: "/openai/v1/responses/resp_123"},
+		{name: "ollama models exact", path: "/ollama/v1/models"},
+		{name: "ollama models subtree", path: "/ollama/v1/models/llama3.2"},
+		{name: "anthropic models exact", path: "/anthropic/v1/models"},
+		{name: "anthropic models subtree", path: "/anthropic/v1/models/claude-sonnet-4"},
+		{name: "anthropic count tokens", path: "/anthropic/v1/messages/count_tokens"},
+		{name: "anthropic event logging", path: "/anthropic/api/event_logging/events"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, tc.path, nil)
+			req = req.WithContext(auth.ContextWithUser(req.Context(), auth.UserProfile{
+				ID:       "user-id",
+				Role:     auth.RoleUser,
+				IsActive: true,
+			}))
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+			if rec.Code != http.StatusNoContent {
+				t.Fatalf("expected 204, got %d: %s", rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestMiddlewareDeniesWhitelistedProviderRouteWithoutProviderGrant(t *testing.T) {
+	store := NewSnapshotStore(nil)
+	if err := store.SetSnapshot(Snapshot{
+		KnownProviders: []string{"openai", "anthropic"},
+		ProviderTypes:  testProviderTypes("openai", "anthropic"),
+		Users: map[string]UserAccess{
+			"user-id": {
+				Rules: []AccessRule{{
+					Providers:     []string{"anthropic"},
+					ModelPatterns: []string{`^claude-`},
+				}},
+			},
+		},
+	}); err != nil {
+		t.Fatalf("set snapshot: %v", err)
+	}
+
+	handler := Middleware(store, nil)(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Fatal("next should not be called")
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/openai/v1/models", nil)
+	req = req.WithContext(auth.ContextWithUser(req.Context(), auth.UserProfile{
+		ID:       "user-id",
+		Role:     auth.RoleUser,
+		IsActive: true,
+	}))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "group_access_denied") {
+		t.Fatalf("unexpected response: %s", rec.Body.String())
+	}
+}
+
 func TestMiddlewareDeniesProviderGrantWithoutModelRegex(t *testing.T) {
 	store := NewSnapshotStore(nil)
 	if err := store.SetSnapshot(Snapshot{
 		KnownProviders: []string{"openai"},
+		ProviderTypes:  testProviderTypes("openai"),
 		Users: map[string]UserAccess{
 			"user-id": {
 				Rules: []AccessRule{{
@@ -160,6 +272,7 @@ func TestMiddlewareAllowsMultipleProvidersFromOneGroupWithMatchingModelRegex(t *
 	store := NewSnapshotStore(nil)
 	if err := store.SetSnapshot(Snapshot{
 		KnownProviders: []string{"openai", "anthropic"},
+		ProviderTypes:  testProviderTypes("openai", "anthropic"),
 		Users: map[string]UserAccess{
 			"user-id": {
 				Rules: []AccessRule{{
@@ -201,6 +314,7 @@ func TestMiddlewareDeniesUnknownProvider(t *testing.T) {
 	store := NewSnapshotStore(nil)
 	if err := store.SetSnapshot(Snapshot{
 		KnownProviders: []string{"openai"},
+		ProviderTypes:  testProviderTypes("openai"),
 		Users: map[string]UserAccess{
 			"user-id": {
 				Rules: []AccessRule{{
