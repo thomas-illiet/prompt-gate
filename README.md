@@ -1,13 +1,13 @@
-# Prompt Gate Backend
+# Prompt Gate
 
 ![Prompt Gate banner](docs/assets/promptgate-banner.svg)
 
-Prompt Gate Backend is the Go service layer for Prompt Gate, a control plane
+Prompt Gate is the Go service layer for Prompt Gate, a control plane
 for safely exposing LLM providers to teams. It combines browser login, role
 management, API token issuance, a provider-aware LLM proxy, MCP server routing,
 firewall checks, usage recording, and scheduled cleanup jobs.
 
-The backend is designed as a small set of deployable processes built from one
+The product is designed as a small set of deployable processes built from one
 binary:
 
 - `api` runs the HTTP API, OIDC login flow, admin endpoints, and
