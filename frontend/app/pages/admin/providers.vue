@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import AdminProviderDialog from '~/components/AdminProviders/AdminProviderDialog.vue'
-import type { Provider, ProviderPayload } from '~/types/providers'
+import type {
+  CreateProviderPayload,
+  Provider,
+  UpdateProviderPayload,
+} from '~/types/providers'
 
 definePageMeta({
   requiredRoles: ['admin'],
@@ -41,14 +45,18 @@ async function openEditDialog(provider: Provider) {
 }
 
 // saveProvider creates or updates the active provider form.
-async function saveProvider(payload: ProviderPayload) {
+async function saveProvider(
+  payload: CreateProviderPayload | UpdateProviderPayload,
+) {
   if (adminProviders.selectedProvider.value) {
     await adminProviders.updateProvider(
       adminProviders.selectedProvider.value.id,
       payload,
     )
-  } else {
+  } else if ('name' in payload) {
     await adminProviders.createProvider(payload)
+  } else {
+    return
   }
 
   providerDialogOpen.value = false
@@ -62,7 +70,6 @@ async function confirmToggleProvider() {
 
   const provider = toggleDialog.target.value
   await adminProviders.updateProvider(provider.id, {
-    name: provider.name,
     displayName: provider.displayName,
     type: provider.type,
     baseUrl: provider.baseUrl,

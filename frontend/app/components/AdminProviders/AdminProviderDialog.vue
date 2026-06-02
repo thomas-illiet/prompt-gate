@@ -1,5 +1,10 @@
 <script setup lang="ts">
-import type { Provider, ProviderPayload, ProviderType } from '~/types/providers'
+import type {
+  CreateProviderPayload,
+  Provider,
+  ProviderType,
+  UpdateProviderPayload,
+} from '~/types/providers'
 
 const DEFAULT_BASE_URLS: Record<ProviderType, string> = {
   openai: 'https://api.openai.com/v1',
@@ -13,7 +18,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  save: [payload: ProviderPayload]
+  save: [payload: CreateProviderPayload | UpdateProviderPayload]
 }>()
 
 const isOpen = defineModel<boolean>({ default: false })
@@ -38,9 +43,14 @@ const title = computed(() =>
 const submitLabel = computed(() =>
   props.provider ? 'Save provider' : 'Create provider',
 )
+const isEditing = computed(() => Boolean(props.provider))
 const normalizedName = computed(() => name.value.trim().toLowerCase())
 const trimmedBaseUrl = computed(() => baseUrl.value.trim())
 const nameError = computed(() => {
+  if (isEditing.value) {
+    return ''
+  }
+
   if (!hasSubmitted.value) {
     return ''
   }
@@ -77,7 +87,9 @@ const baseUrlError = computed(() => {
 })
 const canSave = computed(
   () =>
-    !nameError.value && !baseUrlError.value && Boolean(normalizedName.value),
+    !nameError.value &&
+    !baseUrlError.value &&
+    (isEditing.value || Boolean(normalizedName.value)),
 )
 
 watch(
@@ -117,8 +129,7 @@ function save() {
     return
   }
 
-  const payload: ProviderPayload = {
-    name: normalizedName.value,
+  const payload: UpdateProviderPayload = {
     displayName: displayName.value.trim(),
     type: type.value,
     baseUrl: trimmedBaseUrl.value,
@@ -132,7 +143,15 @@ function save() {
     payload.apiKey = trimmedApiKey
   }
 
-  emit('save', payload)
+  if (isEditing.value) {
+    emit('save', payload)
+    return
+  }
+
+  emit('save', {
+    ...payload,
+    name: normalizedName.value,
+  })
 }
 </script>
 
@@ -154,6 +173,7 @@ function save() {
                 variant="outlined"
                 density="comfortable"
                 autocomplete="off"
+                :readonly="isEditing"
                 :error="Boolean(nameError)"
                 :error-messages="nameError ? [nameError] : []"
               />

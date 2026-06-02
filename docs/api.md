@@ -150,11 +150,13 @@ Firewall rules support `allow` and `deny` actions, priorities from `1` to
 | `GET` | `/api/v1/admin/providers` | List LLM provider definitions. |
 | `POST` | `/api/v1/admin/providers` | Create a provider. |
 | `GET` | `/api/v1/admin/providers/{id}` | Get one provider. |
-| `PATCH` | `/api/v1/admin/providers/{id}` | Update provider metadata, base URL, secret, config, or enabled state. |
+| `PATCH` | `/api/v1/admin/providers/{id}` | Update provider display name, type, base URL, secret, config, or enabled state. |
 | `DELETE` | `/api/v1/admin/providers/{id}` | Delete a provider. |
 
 Supported provider types are `openai`, `anthropic`, and `ollama`. API keys are
-stored encrypted and are never returned by the admin API.
+stored encrypted and are never returned by the admin API. Provider names are
+immutable after creation; update `displayName` to change the label shown in
+admin and setup views.
 
 ### MCP Servers
 

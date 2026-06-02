@@ -19,11 +19,14 @@ export interface ProviderListResponse {
   total: number
 }
 
-export interface ProviderPayload {
-  name: string
+export interface UpdateProviderPayload {
   displayName: string
   type: ProviderType
   baseUrl: string
   apiKey?: string
   enabled: boolean
+}
+
+export interface CreateProviderPayload extends UpdateProviderPayload {
+  name: string
 }

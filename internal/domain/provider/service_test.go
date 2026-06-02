@@ -275,3 +275,35 @@ func TestCreateProviderEncryptsAPIKeyAndRedactsResponse(t *testing.T) {
 		t.Fatalf("expected sk-secret, got %q", plain)
 	}
 }
+
+// TestUpdateProviderPreservesName verifies provider updates cannot rename route identities.
+func TestUpdateProviderPreservesName(t *testing.T) {
+	service, _ := newTestService(t)
+	ctx := context.Background()
+
+	created, err := service.CreateProvider(ctx, CreateProviderInput{
+		Name:        "openai-main",
+		DisplayName: "OpenAI Main",
+		Type:        ProviderTypeOpenAI,
+		BaseURL:     "https://api.openai.com/v1",
+		Enabled:     true,
+	})
+	if err != nil {
+		t.Fatalf("create provider: %v", err)
+	}
+
+	displayName := "OpenAI Primary"
+	updated, err := service.UpdateProvider(ctx, created.ID.String(), UpdateProviderInput{
+		DisplayName: &displayName,
+	})
+	if err != nil {
+		t.Fatalf("update provider: %v", err)
+	}
+
+	if updated.Name != "openai-main" {
+		t.Fatalf("expected immutable provider name, got %q", updated.Name)
+	}
+	if updated.DisplayName != displayName {
+		t.Fatalf("expected display name %q, got %q", displayName, updated.DisplayName)
+	}
+}

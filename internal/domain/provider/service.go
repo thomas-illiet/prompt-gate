@@ -78,7 +78,6 @@ type CreateProviderInput struct {
 }
 
 type UpdateProviderInput struct {
-	Name        *string         `json:"name,omitempty"`
 	DisplayName *string         `json:"displayName,omitempty"`
 	Type        *ProviderType   `json:"type,omitempty"`
 	BaseURL     *string         `json:"baseUrl,omitempty"`
@@ -427,14 +426,6 @@ func (s *Service) CreateProvider(ctx context.Context, input CreateProviderInput)
 
 // UpdateProvider patches a provider while preserving omitted secrets.
 func (s *Service) UpdateProvider(ctx context.Context, id string, input UpdateProviderInput) (ProviderResponse, error) {
-	var name string
-	if input.Name != nil {
-		parsed, err := validateName(*input.Name)
-		if err != nil {
-			return ProviderResponse{}, err
-		}
-		name = parsed
-	}
 	if input.Type != nil {
 		if err := validateType(*input.Type); err != nil {
 			return ProviderResponse{}, err
@@ -460,9 +451,6 @@ func (s *Service) UpdateProvider(ctx context.Context, id string, input UpdatePro
 	record, err := s.getProvider(ctx, s.db, id)
 	if err != nil {
 		return ProviderResponse{}, err
-	}
-	if input.Name != nil {
-		record.Name = name
 	}
 	if input.DisplayName != nil {
 		record.DisplayName = strings.TrimSpace(*input.DisplayName)

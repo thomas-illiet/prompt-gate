@@ -1,7 +1,8 @@
 import type {
+  CreateProviderPayload,
   Provider,
   ProviderListResponse,
-  ProviderPayload,
+  UpdateProviderPayload,
 } from '~/types/providers'
 import { toApiErrorMessage } from '~/utils/api-error'
 
@@ -54,7 +55,7 @@ export function useAdminProviders() {
   }
 
   // createProvider stores a new provider and reloads the list.
-  async function createProvider(payload: ProviderPayload) {
+  async function createProvider(payload: CreateProviderPayload) {
     return await runApiMutation(
       {
         loading: saving,
@@ -83,7 +84,10 @@ export function useAdminProviders() {
   }
 
   // updateProvider patches a provider and keeps the selected copy fresh.
-  async function updateProvider(providerId: string, payload: ProviderPayload) {
+  async function updateProvider(
+    providerId: string,
+    payload: UpdateProviderPayload,
+  ) {
     return await runApiMutation(
       {
         loading: saving,
