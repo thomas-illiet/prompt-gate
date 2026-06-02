@@ -46,7 +46,7 @@ Choose a semver version without the `v` prefix, then create and push an
 annotated tag with the prefix.
 
 ```sh
-export VERSION=0.1.0
+export VERSION=1.4.0
 git tag -a "v${VERSION}" -m "Release v${VERSION}"
 git push origin "v${VERSION}"
 ```
