@@ -51,12 +51,21 @@ func (s *Service) SetNotifier(notifier configevents.Notifier) {
 
 // AutoMigrate migrates access group tables.
 func (s *Service) AutoMigrate(ctx context.Context) error {
-	return s.db.WithContext(ctx).AutoMigrate(
+	if err := s.db.WithContext(ctx).AutoMigrate(
 		&Group{},
 		&GroupProvider{},
 		&GroupModelPattern{},
 		&GroupMember{},
-	)
+	); err != nil {
+		return err
+	}
+	if err := s.db.WithContext(ctx).
+		Model(&GroupModelPattern{}).
+		Where("pattern_type IS NULL OR pattern_type = ?", "").
+		Update("pattern_type", GroupModelPatternTypeAllow).Error; err != nil {
+		return fmt.Errorf("backfill group model pattern types: %w", err)
+	}
+	return nil
 }
 
 // ListGroupsPaged returns access groups with pagination, search, sorting, and related counts.
@@ -129,6 +138,10 @@ func (s *Service) CreateGroup(ctx context.Context, input CreateGroupInput) (Grou
 	if err != nil {
 		return GroupResponse{}, err
 	}
+	excludedPatterns, err := validateExcludedPatterns(input.ExcludedModelPatterns)
+	if err != nil {
+		return GroupResponse{}, err
+	}
 
 	var record Group
 	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -150,7 +163,10 @@ func (s *Service) CreateGroup(ctx context.Context, input CreateGroupInput) (Grou
 		if err := s.replaceGroupProviders(ctx, tx, record.ID, providerIDs); err != nil {
 			return err
 		}
-		if err := s.replaceGroupPatterns(ctx, tx, record.ID, patterns); err != nil {
+		if err := s.replaceGroupPatterns(ctx, tx, record.ID, GroupModelPatternTypeAllow, patterns); err != nil {
+			return err
+		}
+		if err := s.replaceGroupPatterns(ctx, tx, record.ID, GroupModelPatternTypeExclude, excludedPatterns); err != nil {
 			return err
 		}
 		return nil
@@ -165,14 +181,7 @@ func (s *Service) CreateGroup(ctx context.Context, input CreateGroupInput) (Grou
 
 // UpdateGroup patches an access group and reconciles provider/model assignments.
 func (s *Service) UpdateGroup(ctx context.Context, id string, input UpdateGroupInput) (GroupResponse, error) {
-	var parsedName string
 	var err error
-	if input.Name != nil {
-		parsedName, err = validateName(*input.Name)
-		if err != nil {
-			return GroupResponse{}, err
-		}
-	}
 	var parsedDisplayName string
 	if input.DisplayName != nil {
 		parsedDisplayName, err = validateDisplayName(*input.DisplayName)
@@ -194,6 +203,13 @@ func (s *Service) UpdateGroup(ctx context.Context, id string, input UpdateGroupI
 			return GroupResponse{}, err
 		}
 	}
+	var excludedPatterns []string
+	if input.ExcludedModelPatterns != nil {
+		excludedPatterns, err = validateExcludedPatterns(*input.ExcludedModelPatterns)
+		if err != nil {
+			return GroupResponse{}, err
+		}
+	}
 
 	var groupID uuid.UUID
 	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -202,9 +218,6 @@ func (s *Service) UpdateGroup(ctx context.Context, id string, input UpdateGroupI
 			return err
 		}
 		groupID = record.ID
-		if input.Name != nil {
-			record.Name = parsedName
-		}
 		if input.DisplayName != nil {
 			record.DisplayName = parsedDisplayName
 		}
@@ -226,7 +239,12 @@ func (s *Service) UpdateGroup(ctx context.Context, id string, input UpdateGroupI
 			}
 		}
 		if input.ModelPatterns != nil {
-			if err := s.replaceGroupPatterns(ctx, tx, record.ID, patterns); err != nil {
+			if err := s.replaceGroupPatterns(ctx, tx, record.ID, GroupModelPatternTypeAllow, patterns); err != nil {
+				return err
+			}
+		}
+		if input.ExcludedModelPatterns != nil {
+			if err := s.replaceGroupPatterns(ctx, tx, record.ID, GroupModelPatternTypeExclude, excludedPatterns); err != nil {
 				return err
 			}
 		}
@@ -494,13 +512,13 @@ func (s *Service) replaceGroupProviders(ctx context.Context, tx *gorm.DB, groupI
 	return nil
 }
 
-// replaceGroupPatterns replaces model pattern assignments for an access group.
-func (s *Service) replaceGroupPatterns(ctx context.Context, tx *gorm.DB, groupID uuid.UUID, patterns []string) error {
-	if err := tx.WithContext(ctx).Where("group_id = ?", groupID).Delete(&GroupModelPattern{}).Error; err != nil {
+// replaceGroupPatterns replaces model pattern assignments for one pattern type in an access group.
+func (s *Service) replaceGroupPatterns(ctx context.Context, tx *gorm.DB, groupID uuid.UUID, patternType GroupModelPatternType, patterns []string) error {
+	if err := tx.WithContext(ctx).Where("group_id = ? AND pattern_type = ?", groupID, patternType).Delete(&GroupModelPattern{}).Error; err != nil {
 		return fmt.Errorf("delete group model patterns: %w", err)
 	}
 	for _, pattern := range patterns {
-		if err := tx.WithContext(ctx).Create(&GroupModelPattern{GroupID: groupID, Pattern: pattern}).Error; err != nil {
+		if err := tx.WithContext(ctx).Create(&GroupModelPattern{GroupID: groupID, Pattern: pattern, PatternType: patternType}).Error; err != nil {
 			return fmt.Errorf("create group model pattern: %w", err)
 		}
 	}
@@ -527,6 +545,16 @@ func validateDisplayName(raw string) (string, error) {
 
 // validatePatterns compiles unique model patterns and applies the all-model default when empty.
 func validatePatterns(raw []string) ([]string, error) {
+	return validatePatternList(raw, true)
+}
+
+// validateExcludedPatterns compiles unique excluded model patterns without adding a default.
+func validateExcludedPatterns(raw []string) ([]string, error) {
+	return validatePatternList(raw, false)
+}
+
+// validatePatternList compiles and de-duplicates regex patterns.
+func validatePatternList(raw []string, defaultAll bool) ([]string, error) {
 	seen := map[string]struct{}{}
 	out := make([]string, 0, len(raw))
 	for _, pattern := range raw {
@@ -544,7 +572,10 @@ func validatePatterns(raw []string) ([]string, error) {
 		out = append(out, pattern)
 	}
 	if len(out) == 0 {
-		return []string{defaultAllModelsPattern}, nil
+		if defaultAll {
+			return []string{defaultAllModelsPattern}, nil
+		}
+		return []string{}, nil
 	}
 	return out, nil
 }
@@ -631,7 +662,7 @@ func applyGroupSort(query *gorm.DB, sortBy, sortDir string) (*gorm.DB, error) {
 		"name":              "access_groups.name",
 		"displayName":       "access_groups.display_name",
 		"providerCount":     "(SELECT COUNT(*) FROM access_group_providers WHERE access_group_providers.group_id = access_groups.id)",
-		"modelPatternCount": "(SELECT COUNT(*) FROM access_group_model_patterns WHERE access_group_model_patterns.group_id = access_groups.id)",
+		"modelPatternCount": "(SELECT COUNT(*) FROM access_group_model_patterns WHERE access_group_model_patterns.group_id = access_groups.id AND access_group_model_patterns.pattern_type = 'allow')",
 		"memberCount":       "(SELECT COUNT(*) FROM access_group_members WHERE access_group_members.group_id = access_groups.id)",
 		"createdAt":         "access_groups.created_at",
 		"updatedAt":         "access_groups.updated_at",
@@ -676,8 +707,14 @@ func (g *Group) toResponse() GroupResponse {
 		})
 	}
 	patterns := make([]string, 0, len(g.ModelPatterns))
+	excludedPatterns := []string{}
 	for _, item := range g.ModelPatterns {
-		patterns = append(patterns, item.Pattern)
+		switch item.PatternType {
+		case "", GroupModelPatternTypeAllow:
+			patterns = append(patterns, item.Pattern)
+		case GroupModelPatternTypeExclude:
+			excludedPatterns = append(excludedPatterns, item.Pattern)
+		}
 	}
 	members := make([]MemberSummary, 0, len(g.Members))
 	for _, item := range g.Members {
@@ -692,18 +729,19 @@ func (g *Group) toResponse() GroupResponse {
 		})
 	}
 	return GroupResponse{
-		ID:                g.ID,
-		Name:              g.Name,
-		DisplayName:       g.DisplayName,
-		Description:       g.Description,
-		Providers:         providers,
-		ModelPatterns:     patterns,
-		Members:           members,
-		ProviderCount:     len(providers),
-		ModelPatternCount: len(patterns),
-		MemberCount:       len(members),
-		CreatedAt:         g.CreatedAt,
-		UpdatedAt:         g.UpdatedAt,
+		ID:                    g.ID,
+		Name:                  g.Name,
+		DisplayName:           g.DisplayName,
+		Description:           g.Description,
+		Providers:             providers,
+		ModelPatterns:         patterns,
+		ExcludedModelPatterns: excludedPatterns,
+		Members:               members,
+		ProviderCount:         len(providers),
+		ModelPatternCount:     len(patterns),
+		MemberCount:           len(members),
+		CreatedAt:             g.CreatedAt,
+		UpdatedAt:             g.UpdatedAt,
 	}
 }
 

@@ -1,6 +1,7 @@
 package groups
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -237,6 +238,143 @@ func TestMiddlewareDeniesWhitelistedProviderRouteWithoutProviderGrant(t *testing
 	}
 }
 
+// TestMiddlewareFiltersOpenAIModelListWithExcludedRegex verifies OpenAI model listings hide excluded models.
+func TestMiddlewareFiltersOpenAIModelListWithExcludedRegex(t *testing.T) {
+	store := NewSnapshotStore(nil)
+	if err := store.SetSnapshot(Snapshot{
+		KnownProviders: []string{"openai"},
+		ProviderTypes:  testProviderTypes("openai"),
+		Users: map[string]UserAccess{
+			"user-id": {
+				Rules: []AccessRule{{
+					Providers:             []string{"openai"},
+					ModelPatterns:         []string{`.*`},
+					ExcludedModelPatterns: []string{`^bge`},
+				}},
+			},
+		},
+	}); err != nil {
+		t.Fatalf("set snapshot: %v", err)
+	}
+
+	handler := Middleware(store, nil)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"object":"list","data":[{"id":"gpt-5-mini"},{"id":"bge-large"},{"id":"text-embedding-3-small"}]}`))
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/openai/v1/models", nil)
+	req = req.WithContext(auth.ContextWithUser(req.Context(), auth.UserProfile{
+		ID:       "user-id",
+		Role:     auth.RoleUser,
+		IsActive: true,
+	}))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var response struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if got := modelIDs(response.Data); strings.Join(got, ",") != "gpt-5-mini,text-embedding-3-small" {
+		t.Fatalf("unexpected filtered models: %#v", got)
+	}
+}
+
+// TestMiddlewareFiltersOllamaModelListWithExcludedRegex verifies Ollama model listings hide excluded models.
+func TestMiddlewareFiltersOllamaModelListWithExcludedRegex(t *testing.T) {
+	store := NewSnapshotStore(nil)
+	if err := store.SetSnapshot(Snapshot{
+		KnownProviders: []string{"ollama"},
+		ProviderTypes:  testProviderTypes("ollama"),
+		Users: map[string]UserAccess{
+			"user-id": {
+				Rules: []AccessRule{{
+					Providers:             []string{"ollama"},
+					ModelPatterns:         []string{`.*`},
+					ExcludedModelPatterns: []string{`^bge`},
+				}},
+			},
+		},
+	}); err != nil {
+		t.Fatalf("set snapshot: %v", err)
+	}
+
+	handler := Middleware(store, nil)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"models":[{"name":"llama3.2"},{"name":"bge-m3"},{"name":"nomic-embed-text"}]}`))
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/ollama/v1/models", nil)
+	req = req.WithContext(auth.ContextWithUser(req.Context(), auth.UserProfile{
+		ID:       "user-id",
+		Role:     auth.RoleUser,
+		IsActive: true,
+	}))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var response struct {
+		Models []struct {
+			Name string `json:"name"`
+		} `json:"models"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if got := modelNames(response.Models); strings.Join(got, ",") != "llama3.2,nomic-embed-text" {
+		t.Fatalf("unexpected filtered models: %#v", got)
+	}
+}
+
+// TestMiddlewareLeavesModelListErrorsUnchanged verifies non-success model list responses are not rewritten.
+func TestMiddlewareLeavesModelListErrorsUnchanged(t *testing.T) {
+	store := NewSnapshotStore(nil)
+	if err := store.SetSnapshot(Snapshot{
+		KnownProviders: []string{"openai"},
+		ProviderTypes:  testProviderTypes("openai"),
+		Users: map[string]UserAccess{
+			"user-id": {
+				Rules: []AccessRule{{
+					Providers:     []string{"openai"},
+					ModelPatterns: []string{`.*`},
+				}},
+			},
+		},
+	}); err != nil {
+		t.Fatalf("set snapshot: %v", err)
+	}
+
+	handler := Middleware(store, nil)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, `{"error":"upstream"}`, http.StatusBadGateway)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/openai/v1/models", nil)
+	req = req.WithContext(auth.ContextWithUser(req.Context(), auth.UserProfile{
+		ID:       "user-id",
+		Role:     auth.RoleUser,
+		IsActive: true,
+	}))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "upstream") {
+		t.Fatalf("expected upstream body to be preserved, got %s", rec.Body.String())
+	}
+}
+
 // TestMiddlewareDeniesProviderGrantWithoutModelRegex verifies middleware denies provider grant without model regex.
 func TestMiddlewareDeniesProviderGrantWithoutModelRegex(t *testing.T) {
 	store := NewSnapshotStore(nil)
@@ -259,6 +397,46 @@ func TestMiddlewareDeniesProviderGrantWithoutModelRegex(t *testing.T) {
 	}))
 
 	req := httptest.NewRequest(http.MethodPost, "/openai/v1/chat/completions", strings.NewReader(`{"model":"gpt-5-mini"}`))
+	req = req.WithContext(auth.ContextWithUser(req.Context(), auth.UserProfile{
+		ID:       "user-id",
+		Role:     auth.RoleUser,
+		IsActive: true,
+	}))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "group_access_denied") {
+		t.Fatalf("unexpected response: %s", rec.Body.String())
+	}
+}
+
+// TestMiddlewareDeniesExcludedModelRequest verifies excluded model patterns apply to proxied model requests.
+func TestMiddlewareDeniesExcludedModelRequest(t *testing.T) {
+	store := NewSnapshotStore(nil)
+	if err := store.SetSnapshot(Snapshot{
+		KnownProviders: []string{"ollama"},
+		ProviderTypes:  testProviderTypes("ollama"),
+		Users: map[string]UserAccess{
+			"user-id": {
+				Rules: []AccessRule{{
+					Providers:             []string{"ollama"},
+					ModelPatterns:         []string{`.*`},
+					ExcludedModelPatterns: []string{`^bge`},
+				}},
+			},
+		},
+	}); err != nil {
+		t.Fatalf("set snapshot: %v", err)
+	}
+
+	handler := Middleware(store, nil)(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Fatal("next should not be called")
+	}))
+
+	req := httptest.NewRequest(http.MethodPost, "/ollama/v1/chat/completions", strings.NewReader(`{"model":"bge-m3"}`))
 	req = req.WithContext(auth.ContextWithUser(req.Context(), auth.UserProfile{
 		ID:       "user-id",
 		Role:     auth.RoleUser,
@@ -352,4 +530,24 @@ func TestMiddlewareDeniesUnknownProvider(t *testing.T) {
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("expected 403, got %d", rec.Code)
 	}
+}
+
+func modelIDs(models []struct {
+	ID string `json:"id"`
+}) []string {
+	out := make([]string, 0, len(models))
+	for _, model := range models {
+		out = append(out, model.ID)
+	}
+	return out
+}
+
+func modelNames(models []struct {
+	Name string `json:"name"`
+}) []string {
+	out := make([]string, 0, len(models))
+	for _, model := range models {
+		out = append(out, model.Name)
+	}
+	return out
 }

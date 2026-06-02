@@ -2,6 +2,7 @@ import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 
 import AdminGroupDialog from '../../app/components/AdminGroups/AdminGroupDialog.vue'
+import type { AccessGroup } from '../../app/types/groups'
 import type { Provider } from '../../app/types/providers'
 
 const provider: Provider = {
@@ -16,10 +17,26 @@ const provider: Provider = {
   updatedAt: '2026-01-01T00:00:00Z',
 }
 
-function mountDialog() {
+const group: AccessGroup = {
+  id: 'group-id',
+  name: 'engineering',
+  displayName: 'Engineering',
+  description: 'Engineering access',
+  providers: [provider],
+  modelPatterns: ['^gpt-5'],
+  excludedModelPatterns: ['^bge'],
+  members: [],
+  providerCount: 1,
+  modelPatternCount: 1,
+  memberCount: 0,
+  createdAt: '2026-01-01T00:00:00Z',
+  updatedAt: '2026-01-01T00:00:00Z',
+}
+
+function mountDialog(groupOverride: AccessGroup | null = null) {
   return mount(AdminGroupDialog, {
     props: {
-      group: null,
+      group: groupOverride,
       loading: false,
       modelValue: true,
       modelValidation: null,
@@ -51,9 +68,9 @@ function mountDialog() {
         VCol: { template: '<div><slot /></div>' },
         VCombobox: {
           emits: ['update:modelValue'],
-          props: ['modelValue'],
+          props: ['label', 'modelValue'],
           template:
-            '<input data-test="field-Allowed model regex" :value="modelValue.join(\',\')" @input="$emit(\'update:modelValue\', $event.target.value.split(\',\'))" />',
+            "<input :data-test=\"'field-' + label\" :value=\"modelValue.join(',')\" @input=\"$emit('update:modelValue', $event.target.value.split(','))\" />",
         },
         VDialog: {
           props: ['modelValue'],
@@ -79,11 +96,12 @@ function mountDialog() {
         },
         VTextField: {
           emits: ['update:modelValue'],
-          props: ['errorMessages', 'label', 'modelValue'],
+          props: ['errorMessages', 'label', 'modelValue', 'readonly'],
           template: `
             <label>
               <input
                 :data-test="'field-' + label"
+                :readonly="readonly"
                 :value="modelValue"
                 @input="$emit('update:modelValue', $event.target.value)"
               />
@@ -112,6 +130,48 @@ describe('AdminGroupDialog', () => {
           description: '',
           providerIds: ['provider-id'],
           modelPatterns: ['.*'],
+          excludedModelPatterns: [],
+        },
+      ],
+    ])
+  })
+
+  it('saves excluded model regex values', async () => {
+    const wrapper = mountDialog()
+
+    await wrapper.get('[data-test="field-Name"]').setValue('platform-team')
+    await wrapper.get('[data-test="select-provider"]').trigger('click')
+    await wrapper
+      .get('[data-test="field-Excluded model regex"]')
+      .setValue('^bge')
+    await wrapper.get('form').trigger('submit')
+
+    expect(wrapper.emitted('save')?.[0]?.[0]).toMatchObject({
+      modelPatterns: ['.*'],
+      excludedModelPatterns: ['^bge'],
+    })
+  })
+
+  it('keeps group name readonly in edit mode and omits it from update payloads', async () => {
+    const wrapper = mountDialog(group)
+
+    const nameInput = wrapper.get<HTMLInputElement>('[data-test="field-Name"]')
+    expect(nameInput.element.value).toBe('engineering')
+    expect(nameInput.attributes('readonly')).toBeDefined()
+
+    await wrapper
+      .get('[data-test="field-Display name"]')
+      .setValue('Core Engineering')
+    await wrapper.get('form').trigger('submit')
+
+    expect(wrapper.emitted('save')).toEqual([
+      [
+        {
+          displayName: 'Core Engineering',
+          description: 'Engineering access',
+          providerIds: ['provider-id'],
+          modelPatterns: ['^gpt-5'],
+          excludedModelPatterns: ['^bge'],
         },
       ],
     ])

@@ -16,14 +16,16 @@ var ErrLegacySnapshot = errors.New("legacy group access snapshot")
 var ErrSnapshotServiceUnavailable = errors.New("group snapshot service unavailable")
 
 type AccessRule struct {
-	Providers     []string `json:"providers"`
-	ModelPatterns []string `json:"modelPatterns"`
+	Providers             []string `json:"providers"`
+	ModelPatterns         []string `json:"modelPatterns"`
+	ExcludedModelPatterns []string `json:"excludedModelPatterns,omitempty"`
 }
 
 type UserAccess struct {
-	Providers     []string     `json:"providers"`
-	ModelPatterns []string     `json:"modelPatterns"`
-	Rules         []AccessRule `json:"rules,omitempty"`
+	Providers             []string     `json:"providers"`
+	ModelPatterns         []string     `json:"modelPatterns"`
+	ExcludedModelPatterns []string     `json:"excludedModelPatterns,omitempty"`
+	Rules                 []AccessRule `json:"rules,omitempty"`
 }
 
 type Snapshot struct {
@@ -33,15 +35,18 @@ type Snapshot struct {
 }
 
 type compiledUserAccess struct {
-	providers map[string]struct{}
-	patterns  []string
-	rules     []compiledAccessRule
+	providers        map[string]struct{}
+	patterns         []string
+	excludedPatterns []string
+	rules            []compiledAccessRule
 }
 
 type compiledAccessRule struct {
-	providers map[string]struct{}
-	patterns  []string
-	regexes   []*regexp.Regexp
+	providers        map[string]struct{}
+	patterns         []string
+	regexes          []*regexp.Regexp
+	excludedPatterns []string
+	excludedRegexes  []*regexp.Regexp
 }
 
 type compiledSnapshot struct {
@@ -184,6 +189,8 @@ func (s *SnapshotStore) Snapshot() Snapshot {
 		sort.Strings(providers)
 		patterns := append([]string{}, access.patterns...)
 		sort.Strings(patterns)
+		excludedPatterns := append([]string{}, access.excludedPatterns...)
+		sort.Strings(excludedPatterns)
 		rules := make([]AccessRule, 0, len(access.rules))
 		for _, rule := range access.rules {
 			ruleProviders := make([]string, 0, len(rule.providers))
@@ -193,15 +200,19 @@ func (s *SnapshotStore) Snapshot() Snapshot {
 			sort.Strings(ruleProviders)
 			rulePatterns := append([]string{}, rule.patterns...)
 			sort.Strings(rulePatterns)
+			ruleExcludedPatterns := append([]string{}, rule.excludedPatterns...)
+			sort.Strings(ruleExcludedPatterns)
 			rules = append(rules, AccessRule{
-				Providers:     ruleProviders,
-				ModelPatterns: rulePatterns,
+				Providers:             ruleProviders,
+				ModelPatterns:         rulePatterns,
+				ExcludedModelPatterns: ruleExcludedPatterns,
 			})
 		}
 		users[userID] = UserAccess{
-			Providers:     providers,
-			ModelPatterns: patterns,
-			Rules:         rules,
+			Providers:             providers,
+			ModelPatterns:         patterns,
+			ExcludedModelPatterns: excludedPatterns,
+			Rules:                 rules,
 		}
 	}
 	return Snapshot{
@@ -280,22 +291,29 @@ func compiledUserAccessAllows(access compiledUserAccess, providerName, model str
 	if model == "" {
 		return false
 	}
+	allowed := false
 	for _, rule := range access.rules {
-		if len(rule.regexes) == 0 {
-			continue
-		}
 		if len(rule.providers) > 0 {
 			if _, ok := rule.providers[providerName]; !ok {
 				continue
 			}
 		}
+		for _, pattern := range rule.excludedRegexes {
+			if pattern.MatchString(model) {
+				return false
+			}
+		}
+		if len(rule.regexes) == 0 {
+			continue
+		}
 		for _, pattern := range rule.regexes {
 			if pattern.MatchString(model) {
-				return true
+				allowed = true
+				break
 			}
 		}
 	}
-	return false
+	return allowed
 }
 
 // groupAccessRule converts a group record into a normalized access rule.
@@ -313,15 +331,22 @@ func groupAccessRule(group Group, knownProviderSet map[string]struct{}) AccessRu
 		providerNames = append(providerNames, item.Name)
 	}
 	modelPatterns := make([]string, 0, len(group.ModelPatterns))
+	excludedModelPatterns := []string{}
 	for _, pattern := range group.ModelPatterns {
-		modelPatterns = append(modelPatterns, pattern.Pattern)
+		switch pattern.PatternType {
+		case "", GroupModelPatternTypeAllow:
+			modelPatterns = append(modelPatterns, pattern.Pattern)
+		case GroupModelPatternTypeExclude:
+			excludedModelPatterns = append(excludedModelPatterns, pattern.Pattern)
+		}
 	}
 	if len(modelPatterns) == 0 {
 		modelPatterns = []string{defaultAllModelsPattern}
 	}
 	return normalizeAccessRule(AccessRule{
-		Providers:     providerNames,
-		ModelPatterns: modelPatterns,
+		Providers:             providerNames,
+		ModelPatterns:         modelPatterns,
+		ExcludedModelPatterns: excludedModelPatterns,
 	})
 }
 
@@ -333,6 +358,7 @@ func appendUserAccessRule(access UserAccess, rule AccessRule) UserAccess {
 	}
 	access.Providers = append(access.Providers, rule.Providers...)
 	access.ModelPatterns = append(access.ModelPatterns, rule.ModelPatterns...)
+	access.ExcludedModelPatterns = append(access.ExcludedModelPatterns, rule.ExcludedModelPatterns...)
 	access.Rules = append(access.Rules, rule)
 	return normalizeUserAccess(access)
 }
@@ -352,10 +378,20 @@ func compileAccessRule(rule AccessRule) (compiledAccessRule, error) {
 		}
 		regexes = append(regexes, compiled)
 	}
+	excludedRegexes := make([]*regexp.Regexp, 0, len(normalized.ExcludedModelPatterns))
+	for _, pattern := range normalized.ExcludedModelPatterns {
+		compiled, err := regexp.Compile(pattern)
+		if err != nil {
+			return compiledAccessRule{}, fmt.Errorf("compile group excluded model pattern %q: %w", pattern, err)
+		}
+		excludedRegexes = append(excludedRegexes, compiled)
+	}
 	return compiledAccessRule{
-		providers: providers,
-		patterns:  normalized.ModelPatterns,
-		regexes:   regexes,
+		providers:        providers,
+		patterns:         normalized.ModelPatterns,
+		regexes:          regexes,
+		excludedPatterns: normalized.ExcludedModelPatterns,
+		excludedRegexes:  excludedRegexes,
 	}, nil
 }
 
@@ -363,7 +399,7 @@ func compileAccessRule(rule AccessRule) (compiledAccessRule, error) {
 func compileAccessRules(access UserAccess) ([]compiledAccessRule, error) {
 	normalized := normalizeUserAccess(access)
 	rules := normalized.Rules
-	if len(rules) == 0 && (len(normalized.Providers) > 0 || len(normalized.ModelPatterns) > 0) {
+	if len(rules) == 0 && (len(normalized.Providers) > 0 || len(normalized.ModelPatterns) > 0 || len(normalized.ExcludedModelPatterns) > 0) {
 		return nil, ErrLegacySnapshot
 	}
 
@@ -385,26 +421,29 @@ func compileAccessRules(access UserAccess) ([]compiledAccessRule, error) {
 // compileUserAccess compiles normalized user access into aggregate and per-rule lookup data.
 func compileUserAccess(access UserAccess) (compiledUserAccess, error) {
 	normalized := normalizeUserAccess(access)
-	providers, patterns := aggregateAccess(normalized)
+	providers, patterns, excludedPatterns := aggregateAccess(normalized)
 	rules, err := compileAccessRules(normalized)
 	if err != nil {
 		return compiledUserAccess{}, err
 	}
 	return compiledUserAccess{
-		providers: providers,
-		patterns:  patterns,
-		rules:     rules,
+		providers:        providers,
+		patterns:         patterns,
+		excludedPatterns: excludedPatterns,
+		rules:            rules,
 	}, nil
 }
 
 // aggregateAccess derives aggregate provider and model pattern grants from user access rules.
-func aggregateAccess(access UserAccess) (map[string]struct{}, []string) {
+func aggregateAccess(access UserAccess) (map[string]struct{}, []string, []string) {
 	normalized := normalizeUserAccess(access)
 	providerValues := append([]string{}, normalized.Providers...)
 	patternValues := append([]string{}, normalized.ModelPatterns...)
+	excludedPatternValues := append([]string{}, normalized.ExcludedModelPatterns...)
 	for _, rule := range normalized.Rules {
 		providerValues = append(providerValues, rule.Providers...)
 		patternValues = append(patternValues, rule.ModelPatterns...)
+		excludedPatternValues = append(excludedPatternValues, rule.ExcludedModelPatterns...)
 	}
 
 	providers := make(map[string]struct{})
@@ -413,18 +452,23 @@ func aggregateAccess(access UserAccess) (map[string]struct{}, []string) {
 	}
 	patterns := uniqueStrings(patternValues)
 	sort.Strings(patterns)
-	return providers, patterns
+	excludedPatterns := uniqueStrings(excludedPatternValues)
+	sort.Strings(excludedPatterns)
+	return providers, patterns, excludedPatterns
 }
 
 // normalizeAccessRule sorts and de-duplicates one access rule.
 func normalizeAccessRule(rule AccessRule) AccessRule {
 	providers := uniqueStrings(rule.Providers)
 	patterns := uniqueStrings(rule.ModelPatterns)
+	excludedPatterns := uniqueStrings(rule.ExcludedModelPatterns)
 	sort.Strings(providers)
 	sort.Strings(patterns)
+	sort.Strings(excludedPatterns)
 	return AccessRule{
-		Providers:     providers,
-		ModelPatterns: patterns,
+		Providers:             providers,
+		ModelPatterns:         patterns,
+		ExcludedModelPatterns: excludedPatterns,
 	}
 }
 
@@ -434,7 +478,7 @@ func normalizeAccessRules(rules []AccessRule) []AccessRule {
 	out := make([]AccessRule, 0, len(rules))
 	for _, rule := range rules {
 		rule = normalizeAccessRule(rule)
-		key := strings.Join(rule.Providers, "\x00") + "\x01" + strings.Join(rule.ModelPatterns, "\x00")
+		key := strings.Join(rule.Providers, "\x00") + "\x01" + strings.Join(rule.ModelPatterns, "\x00") + "\x01" + strings.Join(rule.ExcludedModelPatterns, "\x00")
 		if _, ok := seen[key]; ok {
 			continue
 		}
@@ -479,13 +523,16 @@ func compileSnapshot(snapshot Snapshot) (compiledSnapshot, error) {
 func normalizeUserAccess(access UserAccess) UserAccess {
 	providers := uniqueStrings(access.Providers)
 	patterns := uniqueStrings(access.ModelPatterns)
+	excludedPatterns := uniqueStrings(access.ExcludedModelPatterns)
 	rules := normalizeAccessRules(access.Rules)
 	sort.Strings(providers)
 	sort.Strings(patterns)
+	sort.Strings(excludedPatterns)
 	return UserAccess{
-		Providers:     providers,
-		ModelPatterns: patterns,
-		Rules:         rules,
+		Providers:             providers,
+		ModelPatterns:         patterns,
+		ExcludedModelPatterns: excludedPatterns,
+		Rules:                 rules,
 	}
 }
 

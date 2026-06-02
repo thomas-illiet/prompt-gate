@@ -37,6 +37,10 @@ func Middleware(snapshot *SnapshotStore, logger *slog.Logger) func(http.Handler)
 					writeJSON(w, http.StatusForbidden, map[string]string{"error": "group_access_denied"})
 					return
 				}
+				if isFilterableModelListRoute(providerType, r.URL.Path, r.Method) {
+					filterModelListResponse(w, r, next, snapshot, user.ID, providerName)
+					return
+				}
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -98,6 +102,18 @@ func isModelBypassRoute(providerType provider.ProviderType, path string) bool {
 	}
 }
 
+// isFilterableModelListRoute reports whether a provider model list response should be masked.
+func isFilterableModelListRoute(providerType provider.ProviderType, path, method string) bool {
+	if method != http.MethodGet {
+		return false
+	}
+	if providerType != provider.ProviderTypeOpenAI && providerType != provider.ProviderTypeOllama {
+		return false
+	}
+	providerPath := requestProviderPath(path)
+	return providerPath == "/v1/models" || providerPath == "/v1/models/"
+}
+
 // routeExactOrSubtree reports whether path matches route or a child route.
 func routeExactOrSubtree(path, route string) bool {
 	return path == route || strings.HasPrefix(path, route+"/")
@@ -132,6 +148,146 @@ func requestModel(r *http.Request) (string, error) {
 		return "", err
 	}
 	return strings.TrimSpace(payload.Model), nil
+}
+
+type responseCapture struct {
+	header     http.Header
+	statusCode int
+	body       bytes.Buffer
+}
+
+func newResponseCapture() *responseCapture {
+	return &responseCapture{
+		header: http.Header{},
+	}
+}
+
+func (c *responseCapture) Header() http.Header {
+	return c.header
+}
+
+func (c *responseCapture) WriteHeader(statusCode int) {
+	if c.statusCode == 0 {
+		c.statusCode = statusCode
+	}
+}
+
+func (c *responseCapture) Write(raw []byte) (int, error) {
+	if c.statusCode == 0 {
+		c.statusCode = http.StatusOK
+	}
+	return c.body.Write(raw)
+}
+
+func (c *responseCapture) status() int {
+	if c.statusCode == 0 {
+		return http.StatusOK
+	}
+	return c.statusCode
+}
+
+// filterModelListResponse masks upstream model list entries not allowed by group rules.
+func filterModelListResponse(w http.ResponseWriter, r *http.Request, next http.Handler, snapshot *SnapshotStore, userID, providerName string) {
+	capture := newResponseCapture()
+	next.ServeHTTP(capture, r)
+
+	statusCode := capture.status()
+	body := capture.body.Bytes()
+	if statusCode < http.StatusOK || statusCode >= http.StatusMultipleChoices {
+		writeCapturedResponse(w, capture.header, statusCode, body, false)
+		return
+	}
+
+	filtered, changed := filteredModelListBody(body, snapshot, userID, providerName)
+	writeCapturedResponse(w, capture.header, statusCode, filtered, changed)
+}
+
+func writeCapturedResponse(w http.ResponseWriter, header http.Header, statusCode int, body []byte, changed bool) {
+	for key, values := range header {
+		for _, value := range values {
+			w.Header().Add(key, value)
+		}
+	}
+	if changed {
+		w.Header().Del("Content-Length")
+	}
+	w.WriteHeader(statusCode)
+	_, _ = w.Write(body)
+}
+
+func filteredModelListBody(raw []byte, snapshot *SnapshotStore, userID, providerName string) ([]byte, bool) {
+	var payload map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return raw, false
+	}
+
+	changed := false
+	for _, key := range []string{"data", "models"} {
+		models, ok := payload[key]
+		if !ok {
+			continue
+		}
+		filtered, nextChanged, recognized := filterModelArray(models, snapshot, userID, providerName)
+		if !recognized {
+			return raw, false
+		}
+		if nextChanged {
+			payload[key] = filtered
+			changed = true
+		}
+	}
+	if !changed {
+		return raw, false
+	}
+
+	filtered, err := json.Marshal(payload)
+	if err != nil {
+		return raw, false
+	}
+	return filtered, true
+}
+
+func filterModelArray(raw json.RawMessage, snapshot *SnapshotStore, userID, providerName string) (json.RawMessage, bool, bool) {
+	var models []json.RawMessage
+	if err := json.Unmarshal(raw, &models); err != nil {
+		return raw, false, false
+	}
+
+	filtered := make([]json.RawMessage, 0, len(models))
+	for _, model := range models {
+		identifier := modelListIdentifier(model)
+		if identifier == "" || !snapshot.Allows(userID, providerName, identifier) {
+			continue
+		}
+		filtered = append(filtered, model)
+	}
+	if len(filtered) == len(models) {
+		return raw, false, true
+	}
+
+	next, err := json.Marshal(filtered)
+	if err != nil {
+		return raw, false, false
+	}
+	return next, true, true
+}
+
+func modelListIdentifier(raw json.RawMessage) string {
+	var payload struct {
+		ID          string `json:"id"`
+		Name        string `json:"name"`
+		DisplayName string `json:"display_name"`
+	}
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return ""
+	}
+	for _, value := range []string{payload.ID, payload.Name, payload.DisplayName} {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 // writeJSON sends a JSON response for group middleware errors.

@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import type {
   AccessGroup,
+  CreateGroupPayload,
   GroupModelPatternValidationPayload,
   GroupModelPatternValidationResponse,
-  GroupPayload,
+  UpdateGroupPayload,
 } from '~/types/groups'
 import type { Provider } from '~/types/providers'
 
@@ -18,7 +19,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   clearModelValidation: []
-  save: [payload: GroupPayload]
+  save: [payload: CreateGroupPayload | UpdateGroupPayload]
   validateModels: [payload: GroupModelPatternValidationPayload]
 }>()
 
@@ -28,6 +29,7 @@ const displayName = shallowRef('')
 const description = shallowRef('')
 const providerIds = shallowRef<string[]>([])
 const modelPatterns = shallowRef<string[]>([])
+const excludedModelPatterns = shallowRef<string[]>([])
 const hasSubmitted = shallowRef(false)
 const hasValidatedModels = shallowRef(false)
 const displayNameEdited = shallowRef(false)
@@ -37,6 +39,7 @@ const title = computed(() => (props.group ? 'Update group' : 'Create group'))
 const submitLabel = computed(() =>
   props.group ? 'Save group' : 'Create group',
 )
+const isEditing = computed(() => Boolean(props.group))
 const normalizedName = computed(() => name.value.trim().toLowerCase())
 const normalizedDisplayName = computed(() => displayName.value.trim())
 const providerItems = computed(() =>
@@ -54,7 +57,16 @@ const normalizedPatterns = computed(() =>
 const uniqueNormalizedPatterns = computed(() => [
   ...new Set(normalizedPatterns.value),
 ])
+const normalizedExcludedPatterns = computed(() =>
+  excludedModelPatterns.value.map((pattern) => pattern.trim()).filter(Boolean),
+)
+const uniqueNormalizedExcludedPatterns = computed(() => [
+  ...new Set(normalizedExcludedPatterns.value),
+])
 const nameError = computed(() => {
+  if (isEditing.value) {
+    return ''
+  }
   if (!hasSubmitted.value) {
     return ''
   }
@@ -85,7 +97,10 @@ const providerError = computed(() => {
   return ''
 })
 const currentRegexError = computed(() => {
-  for (const pattern of normalizedPatterns.value) {
+  for (const pattern of [
+    ...normalizedPatterns.value,
+    ...normalizedExcludedPatterns.value,
+  ]) {
     try {
       new RegExp(pattern)
     } catch {
@@ -99,7 +114,7 @@ const regexError = computed(() =>
 )
 const canSave = computed(
   () =>
-    Boolean(normalizedName.value) &&
+    (isEditing.value || Boolean(normalizedName.value)) &&
     Boolean(normalizedDisplayName.value) &&
     providerIds.value.length > 0 &&
     !nameError.value &&
@@ -109,7 +124,8 @@ const canSave = computed(
 )
 const canValidateModels = computed(
   () =>
-    uniqueNormalizedPatterns.value.length > 0 &&
+    (uniqueNormalizedPatterns.value.length > 0 ||
+      uniqueNormalizedExcludedPatterns.value.length > 0) &&
     !currentRegexError.value &&
     !props.modelValidationLoading,
 )
@@ -151,6 +167,7 @@ watch(
     modelPatterns.value = props.group?.modelPatterns.length
       ? props.group.modelPatterns
       : [allModelsPattern]
+    excludedModelPatterns.value = props.group?.excludedModelPatterns ?? []
     hasSubmitted.value = false
     hasValidatedModels.value = false
     emit('clearModelValidation')
@@ -165,7 +182,7 @@ watch(name, () => {
   displayName.value = formatDisplayName(name.value)
 })
 
-watch([providerIds, modelPatterns], () => {
+watch([providerIds, modelPatterns, excludedModelPatterns], () => {
   if (!isOpen.value) {
     return
   }
@@ -179,12 +196,22 @@ function save() {
     return
   }
 
-  emit('save', {
-    name: normalizedName.value,
+  const payload: UpdateGroupPayload = {
     displayName: normalizedDisplayName.value,
     description: description.value.trim(),
     providerIds: providerIds.value,
     modelPatterns: uniqueNormalizedPatterns.value,
+    excludedModelPatterns: uniqueNormalizedExcludedPatterns.value,
+  }
+
+  if (isEditing.value) {
+    emit('save', payload)
+    return
+  }
+
+  emit('save', {
+    ...payload,
+    name: normalizedName.value,
   })
 }
 
@@ -212,6 +239,7 @@ function validateModels() {
   emit('validateModels', {
     providerIds: providerIds.value,
     modelPatterns: uniqueNormalizedPatterns.value,
+    excludedModelPatterns: uniqueNormalizedExcludedPatterns.value,
   })
 }
 </script>
@@ -234,6 +262,7 @@ function validateModels() {
                 variant="outlined"
                 density="comfortable"
                 autocomplete="off"
+                :readonly="isEditing"
                 :error="Boolean(nameError)"
                 :error-messages="nameError ? [nameError] : []"
               />
@@ -281,18 +310,32 @@ function validateModels() {
 
             <v-col cols="12">
               <div class="admin-group-dialog__model-validation">
-                <v-combobox
-                  v-model="modelPatterns"
-                  label="Allowed model regex"
-                  placeholder=".*"
-                  variant="outlined"
-                  density="comfortable"
-                  multiple
-                  chips
-                  closable-chips
-                  :error="Boolean(regexError)"
-                  :error-messages="regexError ? [regexError] : []"
-                />
+                <div class="admin-group-dialog__model-patterns">
+                  <v-combobox
+                    v-model="modelPatterns"
+                    label="Allowed model regex"
+                    placeholder=".*"
+                    variant="outlined"
+                    density="comfortable"
+                    multiple
+                    chips
+                    closable-chips
+                    :error="Boolean(regexError)"
+                    :error-messages="regexError ? [regexError] : []"
+                  />
+                  <v-combobox
+                    v-model="excludedModelPatterns"
+                    label="Excluded model regex"
+                    placeholder="^bge"
+                    variant="outlined"
+                    density="comfortable"
+                    multiple
+                    chips
+                    closable-chips
+                    :error="Boolean(regexError)"
+                    :error-messages="regexError ? [regexError] : []"
+                  />
+                </div>
                 <v-btn
                   color="primary"
                   variant="tonal"
@@ -359,6 +402,11 @@ function validateModels() {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 12px;
   align-items: start;
+}
+
+.admin-group-dialog__model-patterns {
+  display: grid;
+  gap: 4px;
 }
 
 .admin-group-dialog__model-validation-button {

@@ -127,7 +127,12 @@ func (h *Handler) HandleAdminValidateGroupModelPatterns(w http.ResponseWriter, r
 	if !decodeRequestBody(w, r, &input) {
 		return
 	}
-	patterns, err := compileModelPatterns(input.ModelPatterns)
+	patterns, err := compileModelPatterns(input.ModelPatterns, true)
+	if err != nil {
+		writeGroupError(w, groups.ErrInvalidRegex)
+		return
+	}
+	excludedPatterns, err := compileModelPatterns(input.ExcludedModelPatterns, false)
 	if err != nil {
 		writeGroupError(w, groups.ErrInvalidRegex)
 		return
@@ -147,7 +152,7 @@ func (h *Handler) HandleAdminValidateGroupModelPatterns(w http.ResponseWriter, r
 		return
 	}
 
-	response := buildModelPatternValidationResponse(catalog, patterns)
+	response := buildModelPatternValidationResponse(catalog, patterns, excludedPatterns)
 	writeJSON(w, http.StatusOK, response)
 }
 
@@ -187,7 +192,7 @@ func writeGroupError(w http.ResponseWriter, err error) {
 }
 
 // compileModelPatterns compiles unique non-empty model regex patterns.
-func compileModelPatterns(patterns []string) ([]*regexp.Regexp, error) {
+func compileModelPatterns(patterns []string, defaultAll bool) ([]*regexp.Regexp, error) {
 	out := make([]*regexp.Regexp, 0, len(patterns))
 	seen := map[string]struct{}{}
 	for _, pattern := range patterns {
@@ -205,17 +210,24 @@ func compileModelPatterns(patterns []string) ([]*regexp.Regexp, error) {
 		seen[pattern] = struct{}{}
 		out = append(out, compiled)
 	}
+	if len(out) == 0 && defaultAll {
+		compiled, err := regexp.Compile(".*")
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, compiled)
+	}
 	return out, nil
 }
 
 // buildModelPatternValidationResponse summarizes model matches per provider and overall.
-func buildModelPatternValidationResponse(catalog []provider.ModelCatalogProvider, patterns []*regexp.Regexp) groups.ModelPatternValidationResponse {
+func buildModelPatternValidationResponse(catalog []provider.ModelCatalogProvider, patterns, excludedPatterns []*regexp.Regexp) groups.ModelPatternValidationResponse {
 	matchedModels := map[string]struct{}{}
 	providerResults := make([]groups.ModelPatternProviderValidationResult, 0, len(catalog))
 	unavailableProviderCount := 0
 
 	for _, providerResult := range catalog {
-		matches := matchedProviderModels(providerResult.Models, patterns)
+		matches := matchedProviderModels(providerResult.Models, patterns, excludedPatterns)
 		for _, model := range matches {
 			matchedModels[model] = struct{}{}
 		}
@@ -246,10 +258,13 @@ func buildModelPatternValidationResponse(catalog []provider.ModelCatalogProvider
 	}
 }
 
-// matchedProviderModels returns sorted unique models matching at least one pattern.
-func matchedProviderModels(models []string, patterns []*regexp.Regexp) []string {
+// matchedProviderModels returns sorted unique models matching allow patterns and no excluded patterns.
+func matchedProviderModels(models []string, patterns, excludedPatterns []*regexp.Regexp) []string {
 	matches := map[string]struct{}{}
 	for _, model := range models {
+		if matchesAnyModelPattern(model, excludedPatterns) {
+			continue
+		}
 		for _, pattern := range patterns {
 			if pattern.MatchString(model) {
 				matches[model] = struct{}{}
@@ -263,4 +278,13 @@ func matchedProviderModels(models []string, patterns []*regexp.Regexp) []string 
 	}
 	sort.Strings(out)
 	return out
+}
+
+func matchesAnyModelPattern(model string, patterns []*regexp.Regexp) bool {
+	for _, pattern := range patterns {
+		if pattern.MatchString(model) {
+			return true
+		}
+	}
+	return false
 }

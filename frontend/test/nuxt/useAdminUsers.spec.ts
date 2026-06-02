@@ -67,6 +67,7 @@ const group: AccessGroup = {
   description: 'Engineering access',
   providers: [],
   modelPatterns: ['^gpt-5'],
+  excludedModelPatterns: [],
   members: [],
   providerCount: 0,
   modelPatternCount: 1,

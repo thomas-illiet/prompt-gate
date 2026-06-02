@@ -59,12 +59,13 @@ func (GroupProvider) TableName() string {
 }
 
 type GroupModelPattern struct {
-	ID        uuid.UUID `gorm:"type:uuid;primaryKey"`
-	GroupID   uuid.UUID `gorm:"type:uuid;not null;index;uniqueIndex:idx_access_group_model_pattern"`
-	Group     Group     `gorm:"foreignKey:GroupID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
-	Pattern   string    `gorm:"not null;uniqueIndex:idx_access_group_model_pattern"`
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID          uuid.UUID             `gorm:"type:uuid;primaryKey"`
+	GroupID     uuid.UUID             `gorm:"type:uuid;not null;index;uniqueIndex:idx_access_group_model_pattern"`
+	Group       Group                 `gorm:"foreignKey:GroupID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE"`
+	Pattern     string                `gorm:"not null;uniqueIndex:idx_access_group_model_pattern"`
+	PatternType GroupModelPatternType `gorm:"column:pattern_type;not null;default:'allow';uniqueIndex:idx_access_group_model_pattern"`
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 // TableName returns the database table for group model patterns.
@@ -72,18 +73,31 @@ func (GroupModelPattern) TableName() string {
 	return "access_group_model_patterns"
 }
 
+type GroupModelPatternType string
+
+const (
+	GroupModelPatternTypeAllow   GroupModelPatternType = "allow"
+	GroupModelPatternTypeExclude GroupModelPatternType = "exclude"
+)
+
 // BeforeCreate assigns an ID and trims the model pattern before insertion.
 func (p *GroupModelPattern) BeforeCreate(_ *gorm.DB) error {
 	if p.ID == uuid.Nil {
 		p.ID = uuid.New()
 	}
 	p.Pattern = strings.TrimSpace(p.Pattern)
+	if p.PatternType == "" {
+		p.PatternType = GroupModelPatternTypeAllow
+	}
 	return nil
 }
 
-// BeforeUpdate trims the model pattern before updates.
+// BeforeUpdate trims the model pattern and defaults its type before updates.
 func (p *GroupModelPattern) BeforeUpdate(_ *gorm.DB) error {
 	p.Pattern = strings.TrimSpace(p.Pattern)
+	if p.PatternType == "" {
+		p.PatternType = GroupModelPatternTypeAllow
+	}
 	return nil
 }
 
@@ -119,18 +133,19 @@ type MemberSummary struct {
 }
 
 type GroupResponse struct {
-	ID                uuid.UUID         `json:"id"`
-	Name              string            `json:"name"`
-	DisplayName       string            `json:"displayName"`
-	Description       string            `json:"description"`
-	Providers         []ProviderSummary `json:"providers"`
-	ModelPatterns     []string          `json:"modelPatterns"`
-	Members           []MemberSummary   `json:"members"`
-	ProviderCount     int               `json:"providerCount"`
-	ModelPatternCount int               `json:"modelPatternCount"`
-	MemberCount       int               `json:"memberCount"`
-	CreatedAt         time.Time         `json:"createdAt"`
-	UpdatedAt         time.Time         `json:"updatedAt"`
+	ID                    uuid.UUID         `json:"id"`
+	Name                  string            `json:"name"`
+	DisplayName           string            `json:"displayName"`
+	Description           string            `json:"description"`
+	Providers             []ProviderSummary `json:"providers"`
+	ModelPatterns         []string          `json:"modelPatterns"`
+	ExcludedModelPatterns []string          `json:"excludedModelPatterns"`
+	Members               []MemberSummary   `json:"members"`
+	ProviderCount         int               `json:"providerCount"`
+	ModelPatternCount     int               `json:"modelPatternCount"`
+	MemberCount           int               `json:"memberCount"`
+	CreatedAt             time.Time         `json:"createdAt"`
+	UpdatedAt             time.Time         `json:"updatedAt"`
 }
 
 type ProfileGroupResponse struct {
@@ -156,19 +171,22 @@ type ListResult struct {
 }
 
 type CreateGroupInput struct {
-	Name          string   `json:"name"`
-	DisplayName   string   `json:"displayName"`
-	Description   string   `json:"description"`
-	ProviderIDs   []string `json:"providerIds"`
-	ModelPatterns []string `json:"modelPatterns"`
+	Name                  string   `json:"name"`
+	DisplayName           string   `json:"displayName"`
+	Description           string   `json:"description"`
+	ProviderIDs           []string `json:"providerIds"`
+	ModelPatterns         []string `json:"modelPatterns"`
+	ExcludedModelPatterns []string `json:"excludedModelPatterns"`
 }
 
 type UpdateGroupInput struct {
-	Name          *string   `json:"name,omitempty"`
-	DisplayName   *string   `json:"displayName,omitempty"`
-	Description   *string   `json:"description,omitempty"`
-	ProviderIDs   *[]string `json:"providerIds,omitempty"`
-	ModelPatterns *[]string `json:"modelPatterns,omitempty"`
+	// Name is decoded for tolerant PATCH handling but ignored because group names are immutable.
+	Name                  *string   `json:"name,omitempty"`
+	DisplayName           *string   `json:"displayName,omitempty"`
+	Description           *string   `json:"description,omitempty"`
+	ProviderIDs           *[]string `json:"providerIds,omitempty"`
+	ModelPatterns         *[]string `json:"modelPatterns,omitempty"`
+	ExcludedModelPatterns *[]string `json:"excludedModelPatterns,omitempty"`
 }
 
 type ReplaceUserGroupsInput struct {
@@ -176,8 +194,9 @@ type ReplaceUserGroupsInput struct {
 }
 
 type ValidateModelPatternsInput struct {
-	ProviderIDs   []string `json:"providerIds"`
-	ModelPatterns []string `json:"modelPatterns"`
+	ProviderIDs           []string `json:"providerIds"`
+	ModelPatterns         []string `json:"modelPatterns"`
+	ExcludedModelPatterns []string `json:"excludedModelPatterns"`
 }
 
 type ModelPatternValidationResponse struct {

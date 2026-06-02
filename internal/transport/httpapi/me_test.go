@@ -144,7 +144,7 @@ func TestHandleCurrentUserGroupsReturnsProfileSafeMemberships(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", recorder.Code, recorder.Body.String())
 	}
 	raw := recorder.Body.String()
-	for _, field := range []string{"providers", "modelPatterns", "members"} {
+	for _, field := range []string{"providers", "modelPatterns", "excludedModelPatterns", "members"} {
 		if strings.Contains(raw, field) {
 			t.Fatalf("profile group response leaked admin field %q: %s", field, raw)
 		}

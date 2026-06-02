@@ -111,6 +111,9 @@ func TestHandleAdminGroupsCreateAddMemberAndReplaceUserGroups(t *testing.T) {
 	if len(created.ModelPatterns) != 1 || created.ModelPatterns[0] != ".*" {
 		t.Fatalf("expected default all-model pattern, got %#v", created.ModelPatterns)
 	}
+	if len(created.ExcludedModelPatterns) != 0 {
+		t.Fatalf("expected empty excluded model patterns, got %#v", created.ExcludedModelPatterns)
+	}
 
 	addReq := httptest.NewRequest(http.MethodPut, "/api/v1/admin/groups/"+created.ID.String()+"/members/"+user.ID, nil)
 	addReq.SetPathValue("id", created.ID.String())
@@ -153,6 +156,55 @@ func TestHandleAdminGroupsCreateAddMemberAndReplaceUserGroups(t *testing.T) {
 	}
 	if len(replaced) != 0 {
 		t.Fatalf("expected memberships removed, got %#v", replaced)
+	}
+}
+
+// TestHandleAdminUpdateGroupIgnoresName verifies group technical names are immutable through PATCH.
+func TestHandleAdminUpdateGroupIgnoresName(t *testing.T) {
+	handler, service, _, openai, _ := newGroupsTestHandler(t)
+	ctx := context.Background()
+	created, err := service.CreateGroup(ctx, groups.CreateGroupInput{
+		Name:        "engineering",
+		DisplayName: "Engineering",
+		ProviderIDs: []string{openai.ID.String()},
+	})
+	if err != nil {
+		t.Fatalf("create group: %v", err)
+	}
+
+	req := httptest.NewRequest(
+		http.MethodPatch,
+		"/api/v1/admin/groups/"+created.ID.String(),
+		bytes.NewBufferString(`{"name":"platform","displayName":"Platform"}`),
+	)
+	req.SetPathValue("id", created.ID.String())
+	rec := httptest.NewRecorder()
+
+	handler.HandleAdminUpdateGroup(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var response groups.GroupResponse
+	if err := json.NewDecoder(rec.Body).Decode(&response); err != nil {
+		t.Fatalf("decode updated group: %v", err)
+	}
+	if response.Name != created.Name {
+		t.Fatalf("expected response name %q, got %q", created.Name, response.Name)
+	}
+	if response.DisplayName != "Platform" {
+		t.Fatalf("expected response display name Platform, got %q", response.DisplayName)
+	}
+
+	reloaded, err := service.GetGroup(ctx, created.ID.String())
+	if err != nil {
+		t.Fatalf("reload group: %v", err)
+	}
+	if reloaded.Name != created.Name {
+		t.Fatalf("expected stored name %q, got %q", created.Name, reloaded.Name)
+	}
+	if reloaded.DisplayName != "Platform" {
+		t.Fatalf("expected stored display name Platform, got %q", reloaded.DisplayName)
 	}
 }
 
@@ -269,6 +321,57 @@ func TestHandleAdminValidateGroupModelPatternsCountsRealMatches(t *testing.T) {
 	}
 }
 
+// TestHandleAdminValidateGroupModelPatternsAppliesExcludedPatterns verifies validation removes excluded matches.
+func TestHandleAdminValidateGroupModelPatternsAppliesExcludedPatterns(t *testing.T) {
+	handler, _, _, _, _ := newGroupsTestHandler(t)
+	ctx := context.Background()
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/models" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"id":"gpt-5-mini"},{"id":"bge-large"},{"id":"text-embedding-3-small"}]}`))
+	}))
+	t.Cleanup(upstream.Close)
+
+	providerRecord, err := handler.providers.CreateProvider(ctx, provider.CreateProviderInput{
+		Name:    "excluded-openai",
+		Type:    provider.ProviderTypeOpenAI,
+		BaseURL: upstream.URL,
+		Enabled: true,
+	})
+	if err != nil {
+		t.Fatalf("create provider: %v", err)
+	}
+
+	body, err := json.Marshal(groups.ValidateModelPatternsInput{
+		ProviderIDs:           []string{providerRecord.ID.String()},
+		ModelPatterns:         []string{`.*`},
+		ExcludedModelPatterns: []string{`^bge`},
+	})
+	if err != nil {
+		t.Fatalf("marshal validation request: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/groups/model-patterns/validate", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+	handler.HandleAdminValidateGroupModelPatterns(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var response groups.ModelPatternValidationResponse
+	if err := json.NewDecoder(rec.Body).Decode(&response); err != nil {
+		t.Fatalf("decode validation response: %v", err)
+	}
+	if response.MatchedModelCount != 2 {
+		t.Fatalf("expected 2 matched models after exclusion, got %#v", response)
+	}
+	if strings.Join(response.MatchedModels, ",") != "gpt-5-mini,text-embedding-3-small" {
+		t.Fatalf("unexpected matched models: %#v", response.MatchedModels)
+	}
+}
+
 // TestHandleAdminValidateGroupModelPatternsMarksDisabledProviderUnavailable verifies handle admin validate group model patterns marks disabled provider unavailable.
 func TestHandleAdminValidateGroupModelPatternsMarksDisabledProviderUnavailable(t *testing.T) {
 	handler, _, _, _, _ := newGroupsTestHandler(t)
@@ -320,6 +423,23 @@ func TestHandleAdminValidateGroupModelPatternsRejectsInvalidRegex(t *testing.T) 
 	}
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/groups/model-patterns/validate", bytes.NewReader(body))
 	rec := httptest.NewRecorder()
+	handler.HandleAdminValidateGroupModelPatterns(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "invalid_regex") {
+		t.Fatalf("expected invalid_regex error, got %s", rec.Body.String())
+	}
+
+	body, err = json.Marshal(groups.ValidateModelPatternsInput{
+		ExcludedModelPatterns: []string{"["},
+	})
+	if err != nil {
+		t.Fatalf("marshal validation request: %v", err)
+	}
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/admin/groups/model-patterns/validate", bytes.NewReader(body))
+	rec = httptest.NewRecorder()
 	handler.HandleAdminValidateGroupModelPatterns(rec, req)
 
 	if rec.Code != http.StatusBadRequest {

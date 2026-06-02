@@ -28,6 +28,7 @@ export interface AccessGroup {
   description: string
   providers: GroupProviderSummary[]
   modelPatterns: string[]
+  excludedModelPatterns: string[]
   members: GroupMemberSummary[]
   providerCount: number
   modelPatternCount: number
@@ -50,12 +51,16 @@ export interface GroupListResponse {
   total: number
 }
 
-export interface GroupPayload {
-  name: string
+export interface UpdateGroupPayload {
   displayName: string
   description: string
   providerIds: string[]
   modelPatterns: string[]
+  excludedModelPatterns: string[]
+}
+
+export interface CreateGroupPayload extends UpdateGroupPayload {
+  name: string
 }
 
 export interface ReplaceUserGroupsPayload {
@@ -65,6 +70,7 @@ export interface ReplaceUserGroupsPayload {
 export interface GroupModelPatternValidationPayload {
   providerIds: string[]
   modelPatterns: string[]
+  excludedModelPatterns: string[]
 }
 
 export interface GroupModelPatternProviderValidation {

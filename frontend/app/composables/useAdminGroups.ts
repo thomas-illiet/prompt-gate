@@ -1,10 +1,11 @@
 import type {
   AccessGroup,
+  CreateGroupPayload,
   GroupListResponse,
   GroupMemberSummary,
   GroupModelPatternValidationPayload,
   GroupModelPatternValidationResponse,
-  GroupPayload,
+  UpdateGroupPayload,
 } from '~/types/groups'
 import type { Provider } from '~/types/providers'
 import type { ServiceAccount } from '~/types/service-accounts'
@@ -131,7 +132,7 @@ export function useAdminGroups() {
     return selectedGroup.value
   }
 
-  async function createGroup(payload: GroupPayload) {
+  async function createGroup(payload: CreateGroupPayload) {
     return await runApiMutation(
       {
         loading: saving,
@@ -150,7 +151,7 @@ export function useAdminGroups() {
     )
   }
 
-  async function updateGroup(groupId: string, payload: GroupPayload) {
+  async function updateGroup(groupId: string, payload: UpdateGroupPayload) {
     return await runApiMutation(
       {
         loading: saving,

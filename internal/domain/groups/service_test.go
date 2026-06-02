@@ -361,6 +361,76 @@ func TestUserAccessCombinesGroupsWithoutCrossProduct(t *testing.T) {
 	}
 }
 
+// TestUserAccessHonorsProviderScopedExcludedModelRegex verifies excluded patterns deny matching models for the scoped provider.
+func TestUserAccessHonorsProviderScopedExcludedModelRegex(t *testing.T) {
+	service, _, user, openai, anthropic := newGroupTestService(t)
+	ctx := context.Background()
+
+	group, err := service.CreateGroup(ctx, CreateGroupInput{
+		Name:                  "engineering",
+		DisplayName:           "Engineering",
+		ProviderIDs:           []string{openai.ID.String()},
+		ModelPatterns:         []string{`.*`},
+		ExcludedModelPatterns: []string{`^bge`},
+	})
+	if err != nil {
+		t.Fatalf("create group: %v", err)
+	}
+	if _, err := service.ReplaceUserGroups(ctx, user.ID, []string{group.ID.String()}); err != nil {
+		t.Fatalf("replace user groups: %v", err)
+	}
+
+	access, err := service.UserAccess(ctx, user.ID)
+	if err != nil {
+		t.Fatalf("user access: %v", err)
+	}
+
+	if !access.Allows(openai.Name, "gpt-5-mini") {
+		t.Fatal("expected non-excluded OpenAI model to be allowed")
+	}
+	if access.Allows(openai.Name, "bge-m3") {
+		t.Fatal("expected excluded OpenAI model to be denied")
+	}
+	if access.Allows(anthropic.Name, "bge-m3") {
+		t.Fatal("expected excluded pattern not to cross-apply to another provider")
+	}
+}
+
+// TestCreateGroupStoresModelPatternsWithPatternTypes verifies allow and exclude patterns share one table.
+func TestCreateGroupStoresModelPatternsWithPatternTypes(t *testing.T) {
+	service, db, _, openai, _ := newGroupTestService(t)
+	ctx := context.Background()
+
+	group, err := service.CreateGroup(ctx, CreateGroupInput{
+		Name:                  "engineering",
+		DisplayName:           "Engineering",
+		ProviderIDs:           []string{openai.ID.String()},
+		ModelPatterns:         []string{`.*`},
+		ExcludedModelPatterns: []string{`^bge`},
+	})
+	if err != nil {
+		t.Fatalf("create group: %v", err)
+	}
+
+	var records []GroupModelPattern
+	if err := db.Where("group_id = ?", group.ID).Order("pattern_type ASC").Find(&records).Error; err != nil {
+		t.Fatalf("load model patterns: %v", err)
+	}
+	if len(records) != 2 {
+		t.Fatalf("expected 2 model pattern rows, got %#v", records)
+	}
+	values := map[GroupModelPatternType]string{}
+	for _, record := range records {
+		values[record.PatternType] = record.Pattern
+	}
+	if values[GroupModelPatternTypeAllow] != `.*` {
+		t.Fatalf("expected allow pattern in access_group_model_patterns, got %#v", values)
+	}
+	if values[GroupModelPatternTypeExclude] != `^bge` {
+		t.Fatalf("expected exclude pattern in access_group_model_patterns, got %#v", values)
+	}
+}
+
 // TestUserAccessReturnsEmptyForUserWithoutGroups verifies user access returns empty for user without groups.
 func TestUserAccessReturnsEmptyForUserWithoutGroups(t *testing.T) {
 	service, _, user, openai, _ := newGroupTestService(t)
@@ -370,7 +440,7 @@ func TestUserAccessReturnsEmptyForUserWithoutGroups(t *testing.T) {
 		t.Fatalf("user access: %v", err)
 	}
 
-	if len(access.Providers) != 0 || len(access.ModelPatterns) != 0 || len(access.Rules) != 0 {
+	if len(access.Providers) != 0 || len(access.ModelPatterns) != 0 || len(access.ExcludedModelPatterns) != 0 || len(access.Rules) != 0 {
 		t.Fatalf("expected empty access, got %#v", access)
 	}
 	if access.Allows(openai.Name, "gpt-5-mini") {
@@ -389,6 +459,16 @@ func TestCreateGroupRejectsInvalidRegex(t *testing.T) {
 	})
 	if !errors.Is(err, ErrInvalidRegex) {
 		t.Fatalf("expected ErrInvalidRegex, got %v", err)
+	}
+
+	_, err = service.CreateGroup(context.Background(), CreateGroupInput{
+		Name:                  "blocked",
+		DisplayName:           "Blocked",
+		ProviderIDs:           []string{openai.ID.String()},
+		ExcludedModelPatterns: []string{"["},
+	})
+	if !errors.Is(err, ErrInvalidRegex) {
+		t.Fatalf("expected ErrInvalidRegex for excluded pattern, got %v", err)
 	}
 }
 
@@ -486,6 +566,39 @@ func TestCreateGroupDefaultsEmptyModelPatternsToAllModels(t *testing.T) {
 	}
 	if len(group.ModelPatterns) != 1 || group.ModelPatterns[0] != defaultAllModelsPattern {
 		t.Fatalf("expected default all-model pattern, got %#v", group.ModelPatterns)
+	}
+	if len(group.ExcludedModelPatterns) != 0 {
+		t.Fatalf("expected empty excluded model patterns, got %#v", group.ExcludedModelPatterns)
+	}
+}
+
+// TestUpdateGroupIgnoresName verifies group technical names are immutable through updates.
+func TestUpdateGroupIgnoresName(t *testing.T) {
+	service, _, _, openai, _ := newGroupTestService(t)
+	ctx := context.Background()
+	group, err := service.CreateGroup(ctx, CreateGroupInput{
+		Name:        "engineering",
+		DisplayName: "Engineering",
+		ProviderIDs: []string{openai.ID.String()},
+	})
+	if err != nil {
+		t.Fatalf("create group: %v", err)
+	}
+
+	nextName := "platform"
+	nextDisplayName := "Platform"
+	updated, err := service.UpdateGroup(ctx, group.ID.String(), UpdateGroupInput{
+		Name:        &nextName,
+		DisplayName: &nextDisplayName,
+	})
+	if err != nil {
+		t.Fatalf("update group: %v", err)
+	}
+	if updated.Name != group.Name {
+		t.Fatalf("expected group name to remain %q, got %q", group.Name, updated.Name)
+	}
+	if updated.DisplayName != nextDisplayName {
+		t.Fatalf("expected display name %q, got %q", nextDisplayName, updated.DisplayName)
 	}
 }
 

@@ -5,8 +5,9 @@ import AdminGroupsFilters from '~/components/AdminGroups/AdminGroupsFilters.vue'
 import AdminGroupsTable from '~/components/AdminGroups/AdminGroupsTable.vue'
 import type {
   AccessGroup,
+  CreateGroupPayload,
   GroupModelPatternValidationPayload,
-  GroupPayload,
+  UpdateGroupPayload,
 } from '~/types/groups'
 
 definePageMeta({
@@ -42,11 +43,19 @@ async function openEditDialog(group: AccessGroup) {
   groupDialogOpen.value = true
 }
 
-async function saveGroup(payload: GroupPayload) {
+async function saveGroup(payload: CreateGroupPayload | UpdateGroupPayload) {
   if (adminGroups.selectedGroup.value) {
-    await adminGroups.updateGroup(adminGroups.selectedGroup.value.id, payload)
-  } else {
+    await adminGroups.updateGroup(adminGroups.selectedGroup.value.id, {
+      displayName: payload.displayName,
+      description: payload.description,
+      providerIds: payload.providerIds,
+      modelPatterns: payload.modelPatterns,
+      excludedModelPatterns: payload.excludedModelPatterns,
+    })
+  } else if ('name' in payload) {
     await adminGroups.createGroup(payload)
+  } else {
+    return
   }
   groupDialogOpen.value = false
   adminGroups.clearModelValidation()

@@ -40,7 +40,7 @@ func Run(ctx context.Context, db *gorm.DB) error {
 	}
 
 	slog.Info("running database migrations", "models", "groups")
-	if err := db.WithContext(ctx).AutoMigrate(&groups.Group{}, &groups.GroupProvider{}, &groups.GroupModelPattern{}, &groups.GroupMember{}); err != nil {
+	if err := groups.NewService(db).AutoMigrate(ctx); err != nil {
 		return fmt.Errorf("migrate groups: %w", err)
 	}
 

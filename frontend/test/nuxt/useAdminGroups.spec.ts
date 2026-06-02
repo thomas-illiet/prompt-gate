@@ -38,6 +38,7 @@ const group: AccessGroup = {
   description: 'Engineering access',
   providers: [],
   modelPatterns: ['^gpt-5'],
+  excludedModelPatterns: [],
   members: [],
   providerCount: 0,
   modelPatternCount: 1,
@@ -100,6 +101,7 @@ describe('useAdminGroups', () => {
       description: '',
       providerIds: [],
       modelPatterns: ['^gpt-5'],
+      excludedModelPatterns: [],
     })
 
     expect(apiFetch).toHaveBeenNthCalledWith(
@@ -112,11 +114,51 @@ describe('useAdminGroups', () => {
           description: '',
           providerIds: [],
           modelPatterns: ['^gpt-5'],
+          excludedModelPatterns: [],
         }),
         method: 'POST',
       }),
     )
     expect(adminGroups.groups.value).toEqual([group])
+  })
+
+  it('updates a group without sending its name', async () => {
+    const updatedGroup: AccessGroup = {
+      ...group,
+      displayName: 'Platform',
+      excludedModelPatterns: ['^bge'],
+    }
+    apiFetch
+      .mockResolvedValueOnce(groupResponse([group]))
+      .mockResolvedValueOnce(updatedGroup)
+      .mockResolvedValueOnce(groupResponse([updatedGroup]))
+
+    const adminGroups = useAdminGroups()
+    await vi.waitFor(() => expect(adminGroups.loading.value).toBe(false))
+
+    await adminGroups.updateGroup(group.id, {
+      displayName: 'Platform',
+      description: 'Engineering access',
+      providerIds: [],
+      modelPatterns: ['^gpt-5'],
+      excludedModelPatterns: ['^bge'],
+    })
+
+    expect(apiFetch).toHaveBeenNthCalledWith(
+      2,
+      `/api/v1/admin/groups/${group.id}`,
+      expect.objectContaining({
+        body: JSON.stringify({
+          displayName: 'Platform',
+          description: 'Engineering access',
+          providerIds: [],
+          modelPatterns: ['^gpt-5'],
+          excludedModelPatterns: ['^bge'],
+        }),
+        method: 'PATCH',
+      }),
+    )
+    expect(adminGroups.selectedGroup.value).toEqual(updatedGroup)
   })
 
   it('loads provider and member options across all pages', async () => {
@@ -221,6 +263,7 @@ describe('useAdminGroups', () => {
     await adminGroups.validateModelPatterns({
       providerIds: ['provider-id'],
       modelPatterns: ['^gpt-5'],
+      excludedModelPatterns: ['^bge'],
     })
 
     expect(apiFetch).toHaveBeenNthCalledWith(
@@ -230,6 +273,7 @@ describe('useAdminGroups', () => {
         body: JSON.stringify({
           providerIds: ['provider-id'],
           modelPatterns: ['^gpt-5'],
+          excludedModelPatterns: ['^bge'],
         }),
         method: 'POST',
       }),
