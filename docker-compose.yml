@@ -31,7 +31,7 @@ x-promptgate-environment: &promptgate-environment
 
 services:
   postgres:
-    image: postgres:17-alpine
+    image: postgres:18-alpine
     environment:
       POSTGRES_DB: promptgate
       POSTGRES_USER: postgres
@@ -47,7 +47,7 @@ services:
       retries: 20
 
   redis:
-    image: redis:7-alpine
+    image: redis:8-alpine
     command: ["redis-server", "--appendonly", "yes"]
     ports:
       - "6379:6379"
@@ -60,7 +60,7 @@ services:
       retries: 20
 
   keycloak:
-    image: quay.io/keycloak/keycloak:26.6.1
+    image: quay.io/keycloak/keycloak:26.6.2
     command:
       - start-dev
       - --import-realm
@@ -95,7 +95,7 @@ services:
     restart: "no"
 
   seed:
-    image: postgres:17-alpine
+    image: postgres:18-alpine
     environment:
       PGPASSWORD: postgres
     command:
@@ -139,7 +139,7 @@ services:
     restart: "no"
 
   seed-cache:
-    image: redis:7-alpine
+    image: redis:8-alpine
     command:
       [
         "redis-cli",
