@@ -59,7 +59,7 @@ function mountDialog(service: MonitoringService | null = degradedService) {
 }
 
 describe('AdminMonitoringServiceDetailsDialog', () => {
-  it('renders degraded check details and failure reason', () => {
+  it('renders degraded check details without duplicating the error message', () => {
     const wrapper = mountDialog()
 
     expect(wrapper.get('[data-test="dialog"]').attributes('data-title')).toBe(
@@ -74,7 +74,10 @@ describe('AdminMonitoringServiceDetailsDialog', () => {
     )
 
     const text = wrapper.text()
+    const errorMatches = text.match(/expected HTTP 204, got 500/g) ?? []
+
     expect(text).toContain('expected HTTP 204, got 500')
+    expect(errorMatches).toHaveLength(1)
     expect(text).toContain('Expected HTTP')
     expect(text).toContain('204')
     expect(text).toContain('Received HTTP')

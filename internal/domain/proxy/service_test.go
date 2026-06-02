@@ -12,7 +12,9 @@ import (
 	"promptgate/backend/internal/domain/auth"
 	tokenDomain "promptgate/backend/internal/domain/tokens"
 	"promptgate/backend/internal/domain/users"
+	"promptgate/backend/internal/platform/clientip"
 
+	aibrecorder "github.com/coder/aibridge/recorder"
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -138,6 +140,16 @@ func setInterceptionProvider(t *testing.T, db *gorm.DB, id, providerName, provid
 	}
 }
 
+// setInterceptionClientIP sets interception client IP.
+func setInterceptionClientIP(t *testing.T, db *gorm.DB, id, clientIP string) {
+	t.Helper()
+	if err := db.Model(&Interception{}).
+		Where("id = ?", id).
+		Update("client_ip", clientIP).Error; err != nil {
+		t.Fatalf("set interception client IP: %v", err)
+	}
+}
+
 // assertFloatClose asserts float close.
 func assertFloatClose(t *testing.T, got, want float64) {
 	t.Helper()
@@ -202,6 +214,33 @@ func TestAutoMigrateBackfillsEmbeddingTokenTypeAndDropsEndpoint(t *testing.T) {
 	}
 	if db.Migrator().HasColumn(&tokenUsageEndpointMigration{}, "endpoint") {
 		t.Fatal("expected legacy endpoint column to be dropped")
+	}
+}
+
+// TestRecordInterceptionPersistsClientIP verifies recorder stores the resolved request IP.
+func TestRecordInterceptionPersistsClientIP(t *testing.T) {
+	db, _ := newProxyServiceTestDB(t)
+	rec := NewRecorder(db)
+	ctx := clientip.ContextWithClientIP(context.Background(), "198.51.100.7")
+	interceptionID := "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"
+
+	if err := rec.RecordInterception(ctx, &aibrecorder.InterceptionRecord{
+		ID:           interceptionID,
+		InitiatorID:  "11111111-1111-1111-1111-111111111111",
+		Provider:     "openai",
+		ProviderName: "openai-main",
+		Model:        "gpt-5",
+		Metadata:     aibrecorder.Metadata{},
+	}); err != nil {
+		t.Fatalf("record interception: %v", err)
+	}
+
+	var record Interception
+	if err := db.First(&record, "id = ?", interceptionID).Error; err != nil {
+		t.Fatalf("load interception: %v", err)
+	}
+	if record.ClientIP != "198.51.100.7" {
+		t.Fatalf("expected client IP persisted, got %q", record.ClientIP)
 	}
 }
 
@@ -743,6 +782,7 @@ func TestListAdminPromptsSearchesFiltersIdentifiesUsersAndSortsTokens(t *testing
 	seedProxyInteraction(t, db, userOne, "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "Alpha first", "gpt-5", now.Add(-3*time.Hour), 10, 2)
 	seedProxyInteraction(t, db, userTwo, "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", "Beta prompt", "gpt-4o", now.Add(-2*time.Hour), 5, 1)
 	seedProxyInteraction(t, db, userTwo, "cccccccc-cccc-cccc-cccc-cccccccccccc", "Alpha newest", "gpt-5", now.Add(-1*time.Hour), 50, 1)
+	setInterceptionClientIP(t, db, "cccccccc-cccc-cccc-cccc-cccccccccccc", "198.51.100.7")
 
 	result, err := service.ListAdminPrompts(context.Background(), AdminPromptListParams{
 		Page:     1,
@@ -762,6 +802,9 @@ func TestListAdminPromptsSearchesFiltersIdentifiesUsersAndSortsTokens(t *testing
 	}
 	if result.Items[0].UserName != "Two" || result.Items[0].UserEmail != "two@example.com" || result.Items[0].UserPreferredUsername != "two" {
 		t.Fatalf("expected user identity on prompt row, got %#v", result.Items[0])
+	}
+	if result.Items[0].ClientIP != "198.51.100.7" {
+		t.Fatalf("expected admin prompt client IP, got %#v", result.Items[0])
 	}
 	if result.Items[0].InputTokens != 50 || result.Items[0].OutputTokens != 1 || result.Items[0].TotalTokens != 51 {
 		t.Fatalf("expected attached token totals, got %#v", result.Items[0])

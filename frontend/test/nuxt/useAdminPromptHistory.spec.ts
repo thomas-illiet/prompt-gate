@@ -43,6 +43,7 @@ const prompt: AdminPromptHistoryItem = {
   userName: 'Prompt User',
   userEmail: 'prompt@example.com',
   userPreferredUsername: 'prompt-user',
+  clientIp: '198.51.100.7',
   inputTokens: 10,
   outputTokens: 20,
   totalTokens: 30,

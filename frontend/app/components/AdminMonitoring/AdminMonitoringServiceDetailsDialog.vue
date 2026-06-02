@@ -45,9 +45,6 @@ const reason = computed(() => {
   if (!service.lastCheckedAt) {
     return 'No check has completed yet.'
   }
-  if (service.lastError) {
-    return service.lastError
-  }
   if (service.status === 'degraded') {
     return 'The latest check marked this service as degraded.'
   }

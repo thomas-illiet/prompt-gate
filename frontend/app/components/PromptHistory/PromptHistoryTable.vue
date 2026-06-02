@@ -13,6 +13,7 @@ import {
 import { appTableCenteredColumn } from '~/utils/table'
 
 type PromptHistoryTableItem = PromptHistoryItem | AdminPromptHistoryItem
+const PROMPT_PREVIEW_MAX_LENGTH = 220
 
 const props = withDefaults(
   defineProps<{
@@ -42,7 +43,9 @@ const emit = defineEmits<{
 }>()
 
 const headers = computed<DataTableHeader[]>(() => {
-  const baseHeaders: DataTableHeader[] = [{ title: 'Prompt', key: 'prompt' }]
+  const baseHeaders: DataTableHeader[] = [
+    { title: 'Prompt', key: 'prompt', width: 360 },
+  ]
   if (props.showUser) {
     baseHeaders.push({ title: 'User', key: 'userName' })
   }
@@ -67,7 +70,23 @@ const headers = computed<DataTableHeader[]>(() => {
       title: 'Created',
       key: 'createdAt',
     }),
+    appTableCenteredColumn({
+      title: 'Actions',
+      key: 'actions',
+      sortable: false,
+    }),
   ]
+})
+
+const selectedGraphItem = shallowRef<PromptHistoryTableItem | null>(null)
+const graphDialogOpen = shallowRef(false)
+const selectedGraphActorLabel = computed(() =>
+  selectedGraphItem.value ? requestActorLabel(selectedGraphItem.value) : '',
+)
+const promptPreviewById = computed(() => {
+  return new Map(
+    props.items.map((item) => [item.id, compactPromptPreview(item.prompt)]),
+  )
 })
 
 const summaryLabel = computed(() => {
@@ -83,6 +102,7 @@ const summaryLabel = computed(() => {
 
   return `Showing ${props.items.length} of ${props.total} prompts.`
 })
+
 const emptyState = computed(() => ({
   title: 'No prompts in view',
   text: `Send traffic through PromptGate and ${props.scopeLabel} will start filling in here.`,
@@ -95,6 +115,41 @@ function userLabel(item: PromptHistoryTableItem) {
   }
 
   return item.userName || item.userPreferredUsername || item.userId
+}
+
+// compactPromptPreview keeps table rows scannable while preserving full prompts in the detail dialog.
+function compactPromptPreview(prompt: string) {
+  const normalizedPrompt = prompt.replace(/\s+/g, ' ').trim()
+  if (!normalizedPrompt) {
+    return 'Empty prompt'
+  }
+
+  if (normalizedPrompt.length <= PROMPT_PREVIEW_MAX_LENGTH) {
+    return normalizedPrompt
+  }
+
+  return `${normalizedPrompt.slice(0, PROMPT_PREVIEW_MAX_LENGTH).trimEnd()}...`
+}
+
+function promptPreview(item: PromptHistoryTableItem) {
+  return (
+    promptPreviewById.value.get(item.id) ?? compactPromptPreview(item.prompt)
+  )
+}
+
+// requestActorLabel returns the graph's requester node label for each scope.
+function requestActorLabel(item: PromptHistoryTableItem) {
+  if (!props.showUser) {
+    return 'You'
+  }
+
+  return userLabel(item) || 'Unknown user'
+}
+
+// openRequestGraph selects the row displayed in the request graph dialog.
+function openRequestGraph(item: PromptHistoryTableItem) {
+  selectedGraphItem.value = item
+  graphDialogOpen.value = true
 }
 </script>
 
@@ -157,7 +212,12 @@ function userLabel(item: PromptHistoryTableItem) {
 
       <template #item.prompt="{ item }">
         <div class="prompt-history-table__prompt">
-          {{ item.prompt }}
+          <span
+            class="prompt-history-table__prompt-preview"
+            data-test="prompt-preview"
+          >
+            {{ promptPreview(item) }}
+          </span>
         </div>
       </template>
 
@@ -200,17 +260,53 @@ function userLabel(item: PromptHistoryTableItem) {
           {{ formatDateTime(item.createdAt) }}
         </span>
       </template>
+
+      <template #item.actions="{ item }">
+        <div class="app-table-center">
+          <v-tooltip text="View request graph">
+            <template #activator="{ props: tooltipProps }">
+              <v-btn
+                v-bind="tooltipProps"
+                aria-label="View request graph"
+                color="primary"
+                icon="mdi-transit-connection-variant"
+                size="small"
+                variant="text"
+                @click="openRequestGraph(item)"
+              />
+            </template>
+          </v-tooltip>
+        </div>
+      </template>
     </AppServerDataTable>
+
+    <PromptHistoryRequestGraphDialog
+      v-model="graphDialogOpen"
+      :actor-label="selectedGraphActorLabel"
+      :prompt="selectedGraphItem"
+    />
   </AppSectionCard>
 </template>
 
 <style scoped>
 .prompt-history-table__prompt {
-  min-width: 280px;
-  max-width: 720px;
-  padding-block: 10px;
+  width: clamp(220px, 28vw, 420px);
+  max-width: clamp(220px, 28vw, 420px);
+  padding-block: 8px;
+}
+
+.prompt-history-table__prompt-preview {
+  display: -webkit-box;
+  max-height: calc(1.35em * 2);
+  overflow: hidden;
   overflow-wrap: anywhere;
-  white-space: pre-wrap;
+  color: rgb(var(--app-shell-text-primary));
+  font-size: 0.875rem;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: normal;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .prompt-history-table__user {

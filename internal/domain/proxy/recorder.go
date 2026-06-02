@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"promptgate/backend/internal/platform/clientip"
+
 	aibrecorder "github.com/coder/aibridge/recorder"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -86,6 +88,7 @@ func (r *Recorder) RecordInterception(ctx context.Context, req *aibrecorder.Inte
 		Provider:     req.ProviderName,
 		ProviderType: req.Provider,
 		Model:        req.Model,
+		ClientIP:     clientip.FromContext(ctx),
 		StartedAt:    startedAt,
 		Metadata:     metadata,
 	}

@@ -69,6 +69,7 @@ func seedAdminPrompt(t *testing.T, db *gorm.DB) {
 		Provider:     "openai",
 		ProviderType: "openai",
 		Model:        "gpt-5",
+		ClientIP:     "198.51.100.7",
 		StartedAt:    at,
 		Metadata:     "{}",
 	}).Error; err != nil {
@@ -103,7 +104,7 @@ func TestHandleAdminListPromptsReturnsResult(t *testing.T) {
 	if err := json.NewDecoder(recorder.Body).Decode(&body); err != nil {
 		t.Fatalf("decode body: %v", err)
 	}
-	if body.Total != 1 || body.Items[0].Prompt != "Alpha prompt" || body.Items[0].UserEmail != "one@example.com" {
+	if body.Total != 1 || body.Items[0].Prompt != "Alpha prompt" || body.Items[0].UserEmail != "one@example.com" || body.Items[0].ClientIP != "198.51.100.7" {
 		t.Fatalf("unexpected admin prompt response: %#v", body)
 	}
 }

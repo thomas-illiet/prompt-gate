@@ -197,6 +197,7 @@ type AdminPromptHistoryItem struct {
 	UserName              string    `json:"userName"`
 	UserEmail             string    `json:"userEmail"`
 	UserPreferredUsername string    `json:"userPreferredUsername"`
+	ClientIP              string    `json:"clientIp"`
 	InputTokens           int64     `json:"inputTokens"`
 	OutputTokens          int64     `json:"outputTokens"`
 	TotalTokens           int64     `json:"totalTokens"`
@@ -260,6 +261,7 @@ type adminPromptRow struct {
 	UserName              string
 	UserEmail             string
 	UserPreferredUsername string
+	ClientIP              string
 	StartedAt             time.Time
 	EndedAt               *time.Time
 	CreatedAt             time.Time
@@ -883,6 +885,7 @@ func (s *Service) ListAdminPrompts(ctx context.Context, params AdminPromptListPa
 			users.name AS user_name,
 			users.email AS user_email,
 			users.preferred_username AS user_preferred_username,
+			interceptions.client_ip,
 			interceptions.started_at,
 			interceptions.ended_at,
 			user_prompts.created_at`).
@@ -1352,6 +1355,7 @@ func adminPromptRowsToItems(rows []adminPromptRow) []AdminPromptHistoryItem {
 			UserName:              row.UserName,
 			UserEmail:             row.UserEmail,
 			UserPreferredUsername: row.UserPreferredUsername,
+			ClientIP:              row.ClientIP,
 			DurationMs:            durationMilliseconds(row.StartedAt, row.EndedAt),
 			CreatedAt:             row.CreatedAt,
 		})

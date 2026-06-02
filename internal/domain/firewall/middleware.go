@@ -3,11 +3,10 @@ package firewall
 import (
 	"encoding/json"
 	"log/slog"
-	"net"
 	"net/http"
-	"strings"
 
 	"promptgate/backend/internal/domain/auth"
+	"promptgate/backend/internal/platform/clientip"
 )
 
 // Middleware enforces firewall decisions from an in-memory snapshot.
@@ -17,7 +16,7 @@ func Middleware(snapshot *SnapshotStore, trustForwardHeaders bool, logger *slog.
 	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			clientIP := clientIP(r, trustForwardHeaders)
+			clientIP := clientip.Resolve(r, trustForwardHeaders)
 			allowed, rule, err := allowsRequest(snapshot, clientIP, r)
 			if err != nil {
 				logger.Warn("firewall check failed", "error", err, "client_ip", clientIP)
@@ -47,26 +46,6 @@ func allowsRequest(snapshot *SnapshotStore, clientIP string, r *http.Request) (b
 		return snapshot.AllowsUser(clientIP, user)
 	}
 	return snapshot.Allows(clientIP)
-}
-
-// clientIP extracts the client IP, optionally trusting forwarding headers.
-func clientIP(r *http.Request, trustForwardHeaders bool) string {
-	if trustForwardHeaders {
-		if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
-			first, _, _ := strings.Cut(forwarded, ",")
-			if first = strings.TrimSpace(first); first != "" {
-				return first
-			}
-		}
-		if realIP := strings.TrimSpace(r.Header.Get("X-Real-IP")); realIP != "" {
-			return realIP
-		}
-	}
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err == nil {
-		return host
-	}
-	return r.RemoteAddr
 }
 
 // writeJSON sends a JSON response for firewall middleware errors.

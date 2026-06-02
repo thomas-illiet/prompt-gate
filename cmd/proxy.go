@@ -24,6 +24,7 @@ import (
 	localproxy "promptgate/backend/internal/domain/proxy"
 	"promptgate/backend/internal/domain/tokens"
 	"promptgate/backend/internal/domain/users"
+	"promptgate/backend/internal/platform/clientip"
 	"promptgate/backend/internal/platform/config"
 	"promptgate/backend/internal/platform/database"
 	"promptgate/backend/internal/platform/redisstore"
@@ -159,9 +160,11 @@ func runProxy() error {
 		Cache:        authCache,
 		Logger:       stdLogger,
 	})(
-		firewall.Middleware(firewallSnapshot, cfg.ProxyTrustForwardHeaders, stdLogger)(
-			groups.Middleware(accessSnapshot, stdLogger)(
-				auth.ActorMiddleware(manager),
+		clientip.Middleware(cfg.ProxyTrustForwardHeaders)(
+			firewall.Middleware(firewallSnapshot, cfg.ProxyTrustForwardHeaders, stdLogger)(
+				groups.Middleware(accessSnapshot, stdLogger)(
+					auth.ActorMiddleware(manager),
+				),
 			),
 		),
 	)

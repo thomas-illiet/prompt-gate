@@ -118,6 +118,7 @@ export interface AdminPromptHistoryItem extends PromptHistoryItem {
   userName: string
   userEmail: string
   userPreferredUsername: string
+  clientIp: string
 }
 
 export interface PromptHistoryResponse {
