@@ -12,6 +12,7 @@ import (
 	"promptgate/backend/internal/domain/provider"
 )
 
+// testProviderTypes returns provider types.
 func testProviderTypes(names ...string) map[string]provider.ProviderType {
 	all := map[string]provider.ProviderType{
 		"openai":    provider.ProviderTypeOpenAI,
@@ -25,6 +26,7 @@ func testProviderTypes(names ...string) map[string]provider.ProviderType {
 	return out
 }
 
+// TestMiddlewareAllowsModelRegexAndRestoresBody verifies middleware allows model regex and restores body.
 func TestMiddlewareAllowsModelRegexAndRestoresBody(t *testing.T) {
 	store := NewSnapshotStore(nil)
 	if err := store.SetSnapshot(Snapshot{
@@ -69,6 +71,7 @@ func TestMiddlewareAllowsModelRegexAndRestoresBody(t *testing.T) {
 	}
 }
 
+// TestMiddlewareDeniesUserWithoutGroup verifies middleware denies user without group.
 func TestMiddlewareDeniesUserWithoutGroup(t *testing.T) {
 	store := NewSnapshotStore(nil)
 	if err := store.SetSnapshot(Snapshot{
@@ -100,6 +103,7 @@ func TestMiddlewareDeniesUserWithoutGroup(t *testing.T) {
 	}
 }
 
+// TestMiddlewareDeniesRequestWithoutModel verifies middleware denies request without model.
 func TestMiddlewareDeniesRequestWithoutModel(t *testing.T) {
 	store := NewSnapshotStore(nil)
 	if err := store.SetSnapshot(Snapshot{
@@ -138,6 +142,7 @@ func TestMiddlewareDeniesRequestWithoutModel(t *testing.T) {
 	}
 }
 
+// TestMiddlewareAllowsWhitelistedProviderRoutesWithoutModel verifies middleware allows whitelisted provider routes without model.
 func TestMiddlewareAllowsWhitelistedProviderRoutesWithoutModel(t *testing.T) {
 	store := NewSnapshotStore(nil)
 	if err := store.SetSnapshot(Snapshot{
@@ -193,6 +198,7 @@ func TestMiddlewareAllowsWhitelistedProviderRoutesWithoutModel(t *testing.T) {
 	}
 }
 
+// TestMiddlewareDeniesWhitelistedProviderRouteWithoutProviderGrant verifies middleware denies whitelisted provider route without provider grant.
 func TestMiddlewareDeniesWhitelistedProviderRouteWithoutProviderGrant(t *testing.T) {
 	store := NewSnapshotStore(nil)
 	if err := store.SetSnapshot(Snapshot{
@@ -231,6 +237,7 @@ func TestMiddlewareDeniesWhitelistedProviderRouteWithoutProviderGrant(t *testing
 	}
 }
 
+// TestMiddlewareDeniesProviderGrantWithoutModelRegex verifies middleware denies provider grant without model regex.
 func TestMiddlewareDeniesProviderGrantWithoutModelRegex(t *testing.T) {
 	store := NewSnapshotStore(nil)
 	if err := store.SetSnapshot(Snapshot{
@@ -268,6 +275,7 @@ func TestMiddlewareDeniesProviderGrantWithoutModelRegex(t *testing.T) {
 	}
 }
 
+// TestMiddlewareAllowsMultipleProvidersFromOneGroupWithMatchingModelRegex verifies middleware allows multiple providers from one group with matching model regex.
 func TestMiddlewareAllowsMultipleProvidersFromOneGroupWithMatchingModelRegex(t *testing.T) {
 	store := NewSnapshotStore(nil)
 	if err := store.SetSnapshot(Snapshot{
@@ -310,6 +318,7 @@ func TestMiddlewareAllowsMultipleProvidersFromOneGroupWithMatchingModelRegex(t *
 	}
 }
 
+// TestMiddlewareDeniesUnknownProvider verifies middleware denies unknown provider.
 func TestMiddlewareDeniesUnknownProvider(t *testing.T) {
 	store := NewSnapshotStore(nil)
 	if err := store.SetSnapshot(Snapshot{

@@ -6,6 +6,7 @@ import (
 	"testing"
 )
 
+// TestCORSPermitsConfiguredOriginWithCredentials verifies CORS permits configured origin with credentials.
 func TestCORSPermitsConfiguredOriginWithCredentials(t *testing.T) {
 	handler := CORS([]string{"http://localhost:3000"})(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)

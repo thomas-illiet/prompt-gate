@@ -20,10 +20,12 @@ type recordingNotifier struct {
 	domains []string
 }
 
+// Notify records the notification domain for assertions.
 func (r *recordingNotifier) Notify(_ context.Context, domain string) {
 	r.domains = append(r.domains, domain)
 }
 
+// newGroupTestService creates group test service.
 func newGroupTestService(t *testing.T) (*Service, *gorm.DB, users.User, provider.Provider, provider.Provider) {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
@@ -78,6 +80,7 @@ func newGroupTestService(t *testing.T) (*Service, *gorm.DB, users.User, provider
 	return service, db, user, openai, anthropic
 }
 
+// TestSnapshotRequiresModelRegexAndHonorsProviderScope verifies snapshot requires model regex and honors provider scope.
 func TestSnapshotRequiresModelRegexAndHonorsProviderScope(t *testing.T) {
 	service, _, user, openai, anthropic := newGroupTestService(t)
 	ctx := context.Background()
@@ -124,6 +127,7 @@ func TestSnapshotRequiresModelRegexAndHonorsProviderScope(t *testing.T) {
 	}
 }
 
+// TestSetSnapshotRejectsLegacyAggregatedAccess verifies set snapshot rejects legacy aggregated access.
 func TestSetSnapshotRejectsLegacyAggregatedAccess(t *testing.T) {
 	store := NewSnapshotStore(nil)
 
@@ -148,6 +152,7 @@ func TestSetSnapshotRejectsLegacyAggregatedAccess(t *testing.T) {
 	}
 }
 
+// TestSetSnapshotRejectsMissingProviderTypes verifies set snapshot rejects missing provider types.
 func TestSetSnapshotRejectsMissingProviderTypes(t *testing.T) {
 	store := NewSnapshotStore(nil)
 
@@ -171,6 +176,7 @@ func TestSetSnapshotRejectsMissingProviderTypes(t *testing.T) {
 	}
 }
 
+// TestSnapshotDefaultsMissingModelRegexToAllModels verifies snapshot defaults missing model regex to all models.
 func TestSnapshotDefaultsMissingModelRegexToAllModels(t *testing.T) {
 	service, _, user, openai, anthropic := newGroupTestService(t)
 	ctx := context.Background()
@@ -207,6 +213,7 @@ func TestSnapshotDefaultsMissingModelRegexToAllModels(t *testing.T) {
 	}
 }
 
+// TestSnapshotCombinesMultipleGroupsWithUnionSemantics verifies snapshot combines multiple groups with union semantics.
 func TestSnapshotCombinesMultipleGroupsWithUnionSemantics(t *testing.T) {
 	service, db, user, openai, anthropic := newGroupTestService(t)
 	ctx := context.Background()
@@ -271,6 +278,7 @@ func TestSnapshotCombinesMultipleGroupsWithUnionSemantics(t *testing.T) {
 	}
 }
 
+// TestUserAccessHonorsProviderScopedModelRegex verifies user access honors provider scoped model regex.
 func TestUserAccessHonorsProviderScopedModelRegex(t *testing.T) {
 	service, _, user, openai, anthropic := newGroupTestService(t)
 	ctx := context.Background()
@@ -307,6 +315,7 @@ func TestUserAccessHonorsProviderScopedModelRegex(t *testing.T) {
 	}
 }
 
+// TestUserAccessCombinesGroupsWithoutCrossProduct verifies user access combines groups without cross product.
 func TestUserAccessCombinesGroupsWithoutCrossProduct(t *testing.T) {
 	service, _, user, openai, anthropic := newGroupTestService(t)
 	ctx := context.Background()
@@ -352,6 +361,7 @@ func TestUserAccessCombinesGroupsWithoutCrossProduct(t *testing.T) {
 	}
 }
 
+// TestUserAccessReturnsEmptyForUserWithoutGroups verifies user access returns empty for user without groups.
 func TestUserAccessReturnsEmptyForUserWithoutGroups(t *testing.T) {
 	service, _, user, openai, _ := newGroupTestService(t)
 
@@ -368,6 +378,7 @@ func TestUserAccessReturnsEmptyForUserWithoutGroups(t *testing.T) {
 	}
 }
 
+// TestCreateGroupRejectsInvalidRegex verifies create group rejects invalid regex.
 func TestCreateGroupRejectsInvalidRegex(t *testing.T) {
 	service, _, _, openai, _ := newGroupTestService(t)
 	_, err := service.CreateGroup(context.Background(), CreateGroupInput{
@@ -381,6 +392,7 @@ func TestCreateGroupRejectsInvalidRegex(t *testing.T) {
 	}
 }
 
+// TestListGroupsPagedSortsByComputedCounts verifies list groups paged sorts by computed counts.
 func TestListGroupsPagedSortsByComputedCounts(t *testing.T) {
 	service, _, _, openai, anthropic := newGroupTestService(t)
 	ctx := context.Background()
@@ -439,6 +451,7 @@ func TestListGroupsPagedSortsByComputedCounts(t *testing.T) {
 	}
 }
 
+// TestCreateGroupRequiresDisplayNameAndProvider verifies create group requires display name and provider.
 func TestCreateGroupRequiresDisplayNameAndProvider(t *testing.T) {
 	service, _, _, openai, _ := newGroupTestService(t)
 	ctx := context.Background()
@@ -460,6 +473,7 @@ func TestCreateGroupRequiresDisplayNameAndProvider(t *testing.T) {
 	}
 }
 
+// TestCreateGroupDefaultsEmptyModelPatternsToAllModels verifies create group defaults empty model patterns to all models.
 func TestCreateGroupDefaultsEmptyModelPatternsToAllModels(t *testing.T) {
 	service, _, _, openai, _ := newGroupTestService(t)
 	group, err := service.CreateGroup(context.Background(), CreateGroupInput{
@@ -475,6 +489,7 @@ func TestCreateGroupDefaultsEmptyModelPatternsToAllModels(t *testing.T) {
 	}
 }
 
+// TestGroupMutationsNotifyDomainGroups verifies group mutations notify domain groups.
 func TestGroupMutationsNotifyDomainGroups(t *testing.T) {
 	service, _, user, openai, _ := newGroupTestService(t)
 	ctx := context.Background()

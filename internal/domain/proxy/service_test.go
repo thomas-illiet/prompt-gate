@@ -18,6 +18,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
+// newProxyServiceTestDB creates proxy service test DB.
 func newProxyServiceTestDB(t *testing.T) (*gorm.DB, *Service) {
 	t.Helper()
 	dsn := fmt.Sprintf(
@@ -71,6 +72,7 @@ func newProxyServiceTestDB(t *testing.T) (*gorm.DB, *Service) {
 	return db, NewService(db)
 }
 
+// seedProxyInteraction seeds proxy interaction.
 func seedProxyInteraction(t *testing.T, db *gorm.DB, userID, id, prompt, model string, at time.Time, inputTokens, outputTokens int64) {
 	t.Helper()
 	endedAt := at.Add(90 * time.Second)
@@ -113,6 +115,7 @@ func seedProxyInteraction(t *testing.T, db *gorm.DB, userID, id, prompt, model s
 	}
 }
 
+// setInterceptionEndedAt sets interception ended at.
 func setInterceptionEndedAt(t *testing.T, db *gorm.DB, id string, endedAt *time.Time) {
 	t.Helper()
 	if err := db.Model(&Interception{}).
@@ -122,6 +125,7 @@ func setInterceptionEndedAt(t *testing.T, db *gorm.DB, id string, endedAt *time.
 	}
 }
 
+// setInterceptionProvider sets interception provider.
 func setInterceptionProvider(t *testing.T, db *gorm.DB, id, providerName, providerType string) {
 	t.Helper()
 	if err := db.Model(&Interception{}).
@@ -134,6 +138,7 @@ func setInterceptionProvider(t *testing.T, db *gorm.DB, id, providerName, provid
 	}
 }
 
+// assertFloatClose asserts float close.
 func assertFloatClose(t *testing.T, got, want float64) {
 	t.Helper()
 	if math.Abs(got-want) > 0.000000001 {
@@ -141,6 +146,7 @@ func assertFloatClose(t *testing.T, got, want float64) {
 	}
 }
 
+// TestAutoMigrateDropsModelThoughts verifies auto migrate drops model thoughts.
 func TestAutoMigrateDropsModelThoughts(t *testing.T) {
 	db, _ := newProxyServiceTestDB(t)
 	if err := db.Exec(`CREATE TABLE model_thoughts (
@@ -160,6 +166,7 @@ func TestAutoMigrateDropsModelThoughts(t *testing.T) {
 	}
 }
 
+// TestAutoMigrateBackfillsEmbeddingTokenTypeAndDropsEndpoint verifies auto migrate backfills embedding token type and drops endpoint.
 func TestAutoMigrateBackfillsEmbeddingTokenTypeAndDropsEndpoint(t *testing.T) {
 	db, _ := newProxyServiceTestDB(t)
 	now := time.Date(2026, 1, 30, 15, 0, 0, 0, time.UTC)
@@ -198,6 +205,7 @@ func TestAutoMigrateBackfillsEmbeddingTokenTypeAndDropsEndpoint(t *testing.T) {
 	}
 }
 
+// TestUsageSummaryAggregatesOnlyCurrentUser verifies usage summary aggregates only current user.
 func TestUsageSummaryAggregatesOnlyCurrentUser(t *testing.T) {
 	db, service := newProxyServiceTestDB(t)
 	now := time.Date(2026, 1, 30, 15, 0, 0, 0, time.UTC)
@@ -236,6 +244,7 @@ func TestUsageSummaryAggregatesOnlyCurrentUser(t *testing.T) {
 	}
 }
 
+// TestDashboardWidgetsAggregateByWindowAndDimension verifies dashboard widgets aggregate by window and dimension.
 func TestDashboardWidgetsAggregateByWindowAndDimension(t *testing.T) {
 	db, service := newProxyServiceTestDB(t)
 	now := time.Date(2026, 1, 30, 15, 0, 0, 0, time.UTC)
@@ -323,6 +332,7 @@ func TestDashboardWidgetsAggregateByWindowAndDimension(t *testing.T) {
 	}
 }
 
+// TestAdminDashboardWidgetsAggregateGlobally verifies admin dashboard widgets aggregate globally.
 func TestAdminDashboardWidgetsAggregateGlobally(t *testing.T) {
 	db, service := newProxyServiceTestDB(t)
 	now := time.Date(2026, 1, 30, 15, 0, 0, 0, time.UTC)
@@ -441,6 +451,7 @@ func TestAdminDashboardWidgetsAggregateGlobally(t *testing.T) {
 	assertFloatClose(t, topIdentities.Items[0].EstimatedCost.TotalUSD, 0.002085)
 }
 
+// TestDashboardTokensDifferentiatesCompletionAndEmbeddingTokens verifies dashboard tokens differentiates completion and embedding tokens.
 func TestDashboardTokensDifferentiatesCompletionAndEmbeddingTokens(t *testing.T) {
 	db, service := newProxyServiceTestDB(t)
 	now := time.Date(2026, 1, 30, 15, 0, 0, 0, time.UTC)
@@ -562,6 +573,7 @@ func TestDashboardTokensDifferentiatesCompletionAndEmbeddingTokens(t *testing.T)
 	assertFloatClose(t, embeddingModel.EstimatedCost.EmbeddingUSD, 0.00000034)
 }
 
+// TestUsageCostEstimatesCanBeOverriddenAndDisabled verifies usage cost estimates can be overridden and disabled.
 func TestUsageCostEstimatesCanBeOverriddenAndDisabled(t *testing.T) {
 	db, service := newProxyServiceTestDB(t)
 	service = NewService(db, WithUsageCost(UsageCostConfig{
@@ -637,6 +649,7 @@ func TestUsageCostEstimatesCanBeOverriddenAndDisabled(t *testing.T) {
 	}
 }
 
+// TestDashboardAllTimeWithoutActivityReturnsEmptyDaily verifies dashboard all time without activity returns empty daily.
 func TestDashboardAllTimeWithoutActivityReturnsEmptyDaily(t *testing.T) {
 	_, service := newProxyServiceTestDB(t)
 	now := time.Date(2026, 1, 30, 15, 0, 0, 0, time.UTC)
@@ -650,6 +663,7 @@ func TestDashboardAllTimeWithoutActivityReturnsEmptyDaily(t *testing.T) {
 	}
 }
 
+// TestListPromptsPaginatesSearchesAndIsolatesUsers verifies list prompts paginates searches and isolates users.
 func TestListPromptsPaginatesSearchesAndIsolatesUsers(t *testing.T) {
 	db, service := newProxyServiceTestDB(t)
 	now := time.Date(2026, 1, 30, 15, 0, 0, 0, time.UTC)
@@ -683,6 +697,7 @@ func TestListPromptsPaginatesSearchesAndIsolatesUsers(t *testing.T) {
 	}
 }
 
+// TestListPromptsSortsByDuration verifies list prompts sorts by duration.
 func TestListPromptsSortsByDuration(t *testing.T) {
 	db, service := newProxyServiceTestDB(t)
 	now := time.Date(2026, 1, 30, 15, 0, 0, 0, time.UTC)
@@ -718,6 +733,7 @@ func TestListPromptsSortsByDuration(t *testing.T) {
 	}
 }
 
+// TestListAdminPromptsSearchesFiltersIdentifiesUsersAndSortsTokens verifies list admin prompts searches filters identifies users and sorts tokens.
 func TestListAdminPromptsSearchesFiltersIdentifiesUsersAndSortsTokens(t *testing.T) {
 	db, service := newProxyServiceTestDB(t)
 	now := time.Date(2026, 1, 30, 15, 0, 0, 0, time.UTC)
@@ -803,6 +819,7 @@ func TestListAdminPromptsSearchesFiltersIdentifiesUsersAndSortsTokens(t *testing
 	}
 }
 
+// TestListAdminPromptsRejectsInvalidSort verifies list admin prompts rejects invalid sort.
 func TestListAdminPromptsRejectsInvalidSort(t *testing.T) {
 	_, service := newProxyServiceTestDB(t)
 	_, err := service.ListAdminPrompts(context.Background(), AdminPromptListParams{
@@ -816,6 +833,7 @@ func TestListAdminPromptsRejectsInvalidSort(t *testing.T) {
 	}
 }
 
+// TestUsageSummaryRejectsInvalidWindow verifies usage summary rejects invalid window.
 func TestUsageSummaryRejectsInvalidWindow(t *testing.T) {
 	_, service := newProxyServiceTestDB(t)
 	if _, err := service.UsageSummary(context.Background(), "11111111-1111-1111-1111-111111111111", 14, time.Now()); err == nil {

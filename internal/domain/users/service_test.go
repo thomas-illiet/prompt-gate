@@ -18,6 +18,7 @@ type recordingTokenRevoker struct {
 	calls [][]string
 }
 
+// RevokeUserTokensTx records revoked user ids for assertions.
 func (r *recordingTokenRevoker) RevokeUserTokensTx(_ context.Context, _ *gorm.DB, userIDs []string, _ time.Time) (int64, error) {
 	copied := append([]string(nil), userIDs...)
 	r.calls = append(r.calls, copied)
@@ -46,6 +47,7 @@ func newTestService(t *testing.T) *Service {
 	return service
 }
 
+// createUsageTables creates usage tables.
 func createUsageTables(t *testing.T, db *gorm.DB) {
 	t.Helper()
 
@@ -68,6 +70,7 @@ func createUsageTables(t *testing.T, db *gorm.DB) {
 	}
 }
 
+// seedTokenConsumption seeds token consumption.
 func seedTokenConsumption(t *testing.T, db *gorm.DB, userID, interceptionID string, inputTokens, outputTokens int64) {
 	t.Helper()
 
@@ -89,6 +92,7 @@ func seedTokenConsumption(t *testing.T, db *gorm.DB, userID, interceptionID stri
 	}
 }
 
+// adminUserByID returns admin user by ID.
 func adminUserByID(t *testing.T, items []AdminUser, id string) AdminUser {
 	t.Helper()
 
@@ -101,6 +105,7 @@ func adminUserByID(t *testing.T, items []AdminUser, id string) AdminUser {
 	return AdminUser{}
 }
 
+// serviceAccountByID returns service account by ID.
 func serviceAccountByID(t *testing.T, items []ServiceAccount, id string) ServiceAccount {
 	t.Helper()
 
@@ -250,6 +255,7 @@ func TestDeleteAndRecreateUserKeepsNoneRoleWhenTableNotEmpty(t *testing.T) {
 	}
 }
 
+// TestCreateServiceAccountForcesServiceTypeAndUserRole verifies service account creation forces service type and user role.
 func TestCreateServiceAccountForcesServiceTypeAndUserRole(t *testing.T) {
 	service := newTestService(t)
 	ctx := context.Background()
@@ -287,6 +293,7 @@ func TestCreateServiceAccountForcesServiceTypeAndUserRole(t *testing.T) {
 	}
 }
 
+// TestListUsersIncludesHistoricalTokenConsumption verifies list users includes historical token consumption.
 func TestListUsersIncludesHistoricalTokenConsumption(t *testing.T) {
 	service := newTestService(t)
 	ctx := context.Background()
@@ -333,6 +340,7 @@ func TestListUsersIncludesHistoricalTokenConsumption(t *testing.T) {
 	}
 }
 
+// TestListServiceAccountsIncludesHistoricalTokenConsumption verifies list service accounts includes historical token consumption.
 func TestListServiceAccountsIncludesHistoricalTokenConsumption(t *testing.T) {
 	service := newTestService(t)
 	ctx := context.Background()
@@ -374,6 +382,7 @@ func TestListServiceAccountsIncludesHistoricalTokenConsumption(t *testing.T) {
 	}
 }
 
+// TestServiceAccountIdentifierValidationAndConflict verifies service account identifier validation and conflict.
 func TestServiceAccountIdentifierValidationAndConflict(t *testing.T) {
 	service := newTestService(t)
 	ctx := context.Background()
@@ -410,6 +419,7 @@ func TestServiceAccountIdentifierValidationAndConflict(t *testing.T) {
 	}
 }
 
+// TestUpdateUserValidatesExpirationAndRevokesTokensWhenRoleBecomesNone verifies update user validates expiration and revokes tokens when role becomes none.
 func TestUpdateUserValidatesExpirationAndRevokesTokensWhenRoleBecomesNone(t *testing.T) {
 	service := newTestService(t)
 	revoker := &recordingTokenRevoker{}
@@ -464,6 +474,7 @@ func TestUpdateUserValidatesExpirationAndRevokesTokensWhenRoleBecomesNone(t *tes
 	}
 }
 
+// TestUpdateAccountNotesPersistClearValidateAndRespectAccountType verifies account notes persist, clear, validate, and respect account type.
 func TestUpdateAccountNotesPersistClearValidateAndRespectAccountType(t *testing.T) {
 	service := newTestService(t)
 	ctx := context.Background()
@@ -539,6 +550,7 @@ func TestUpdateAccountNotesPersistClearValidateAndRespectAccountType(t *testing.
 	}
 }
 
+// TestExpireAccessClearsExpiredRolesAndRevokesTokens verifies expire access clears expired roles and revokes tokens.
 func TestExpireAccessClearsExpiredRolesAndRevokesTokens(t *testing.T) {
 	service := newTestService(t)
 	revoker := &recordingTokenRevoker{}

@@ -19,6 +19,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
+// newServiceAccountsTestHandler creates service accounts test handler.
 func newServiceAccountsTestHandler(t *testing.T) (*Handler, *users.Service, *tokens.Service) {
 	t.Helper()
 
@@ -49,6 +50,7 @@ func newServiceAccountsTestHandler(t *testing.T) (*Handler, *users.Service, *tok
 	return NewHandler(userService, tokenService, firewallService, nil, nil, nil), userService, tokenService
 }
 
+// TestHandleAdminCreateServiceAccountRejectsInvalidIdentifier verifies handle admin create service account rejects invalid identifier.
 func TestHandleAdminCreateServiceAccountRejectsInvalidIdentifier(t *testing.T) {
 	handler, _, _ := newServiceAccountsTestHandler(t)
 	req := httptest.NewRequest(
@@ -65,6 +67,7 @@ func TestHandleAdminCreateServiceAccountRejectsInvalidIdentifier(t *testing.T) {
 	}
 }
 
+// TestHandleAdminUpdateServiceAccountNoteStoresNote verifies handle admin update service account note stores note.
 func TestHandleAdminUpdateServiceAccountNoteStoresNote(t *testing.T) {
 	handler, userService, _ := newServiceAccountsTestHandler(t)
 	ctx := context.Background()
@@ -116,6 +119,7 @@ func TestHandleAdminUpdateServiceAccountNoteStoresNote(t *testing.T) {
 	}
 }
 
+// TestHandleAdminUpdateServiceAccountNoteErrors verifies handle admin update service account note errors.
 func TestHandleAdminUpdateServiceAccountNoteErrors(t *testing.T) {
 	handler, userService, _ := newServiceAccountsTestHandler(t)
 	ctx := context.Background()
@@ -170,6 +174,7 @@ func TestHandleAdminUpdateServiceAccountNoteErrors(t *testing.T) {
 	}
 }
 
+// TestHandleAdminCreateServiceAccountTokenRejectsTTLAbove365 verifies handle admin create service account token rejects TTL above 365.
 func TestHandleAdminCreateServiceAccountTokenRejectsTTLAbove365(t *testing.T) {
 	handler, userService, _ := newServiceAccountsTestHandler(t)
 	ctx := context.Background()
@@ -198,6 +203,7 @@ func TestHandleAdminCreateServiceAccountTokenRejectsTTLAbove365(t *testing.T) {
 	}
 }
 
+// TestHandleAdminListServiceAccountTokensFiltersRevokedByDefault verifies handle admin list service account tokens filters revoked by default.
 func TestHandleAdminListServiceAccountTokensFiltersRevokedByDefault(t *testing.T) {
 	handler, userService, tokenService := newServiceAccountsTestHandler(t)
 	ctx := context.Background()
@@ -271,6 +277,7 @@ func TestHandleAdminListServiceAccountTokensFiltersRevokedByDefault(t *testing.T
 	}
 }
 
+// TestHandleAdminServiceAccountFirewallRules verifies handle admin service account firewall rules.
 func TestHandleAdminServiceAccountFirewallRules(t *testing.T) {
 	handler, userService, _ := newServiceAccountsTestHandler(t)
 	ctx := context.Background()
@@ -328,6 +335,7 @@ func TestHandleAdminServiceAccountFirewallRules(t *testing.T) {
 	}
 }
 
+// TestHandleAdminServiceAccountFirewallSimulateDefaultsToDeny verifies handle admin service account firewall simulate defaults to deny.
 func TestHandleAdminServiceAccountFirewallSimulateDefaultsToDeny(t *testing.T) {
 	handler, userService, _ := newServiceAccountsTestHandler(t)
 	ctx := context.Background()
@@ -363,6 +371,7 @@ func TestHandleAdminServiceAccountFirewallSimulateDefaultsToDeny(t *testing.T) {
 	}
 }
 
+// TestHandleAdminServiceAccountFirewallRuleConflict verifies handle admin service account firewall rule conflict.
 func TestHandleAdminServiceAccountFirewallRuleConflict(t *testing.T) {
 	handler, userService, _ := newServiceAccountsTestHandler(t)
 	ctx := context.Background()

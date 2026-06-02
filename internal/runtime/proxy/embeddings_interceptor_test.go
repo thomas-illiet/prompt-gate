@@ -27,6 +27,7 @@ type embeddingTestRecorder struct {
 	modelThoughts []recorder.ModelThoughtRecord
 }
 
+// RecordInterception records interception for assertions.
 func (r *embeddingTestRecorder) RecordInterception(_ context.Context, req *recorder.InterceptionRecord) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -34,6 +35,7 @@ func (r *embeddingTestRecorder) RecordInterception(_ context.Context, req *recor
 	return nil
 }
 
+// RecordInterceptionEnded records interception ended for assertions.
 func (r *embeddingTestRecorder) RecordInterceptionEnded(_ context.Context, req *recorder.InterceptionRecordEnded) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -41,6 +43,7 @@ func (r *embeddingTestRecorder) RecordInterceptionEnded(_ context.Context, req *
 	return nil
 }
 
+// RecordTokenUsage records token usage for assertions.
 func (r *embeddingTestRecorder) RecordTokenUsage(_ context.Context, req *recorder.TokenUsageRecord) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -48,6 +51,7 @@ func (r *embeddingTestRecorder) RecordTokenUsage(_ context.Context, req *recorde
 	return nil
 }
 
+// RecordPromptUsage records prompt usage for assertions.
 func (r *embeddingTestRecorder) RecordPromptUsage(_ context.Context, req *recorder.PromptUsageRecord) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -55,6 +59,7 @@ func (r *embeddingTestRecorder) RecordPromptUsage(_ context.Context, req *record
 	return nil
 }
 
+// RecordToolUsage records tool usage for assertions.
 func (r *embeddingTestRecorder) RecordToolUsage(_ context.Context, req *recorder.ToolUsageRecord) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -62,6 +67,7 @@ func (r *embeddingTestRecorder) RecordToolUsage(_ context.Context, req *recorder
 	return nil
 }
 
+// RecordModelThought records model thought for assertions.
 func (r *embeddingTestRecorder) RecordModelThought(_ context.Context, req *recorder.ModelThoughtRecord) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -69,6 +75,7 @@ func (r *embeddingTestRecorder) RecordModelThought(_ context.Context, req *recor
 	return nil
 }
 
+// TestOpenAIEmbeddingsForwardAndRecordUsage verifies OpenAI embeddings forward and record usage.
 func TestOpenAIEmbeddingsForwardAndRecordUsage(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -134,6 +141,7 @@ func TestOpenAIEmbeddingsForwardAndRecordUsage(t *testing.T) {
 	}
 }
 
+// TestOpenAIEmbeddingsRecordTotalTokensOnlyUsage verifies OpenAI embeddings record total tokens only usage.
 func TestOpenAIEmbeddingsRecordTotalTokensOnlyUsage(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -166,6 +174,7 @@ func TestOpenAIEmbeddingsRecordTotalTokensOnlyUsage(t *testing.T) {
 	}
 }
 
+// TestOpenAIEmbeddingsRecordsProviderUsageMismatchWarning verifies OpenAI embeddings records provider usage mismatch warning.
 func TestOpenAIEmbeddingsRecordsProviderUsageMismatchWarning(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -198,6 +207,7 @@ func TestOpenAIEmbeddingsRecordsProviderUsageMismatchWarning(t *testing.T) {
 	}
 }
 
+// TestOpenAIEmbeddingsRecordsZeroWithoutUsage verifies OpenAI embeddings records zero without usage.
 func TestOpenAIEmbeddingsRecordsZeroWithoutUsage(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -230,6 +240,7 @@ func TestOpenAIEmbeddingsRecordsZeroWithoutUsage(t *testing.T) {
 	}
 }
 
+// TestOpenAIEmbeddingsRecordsZeroForUnknownModelWithoutUsage verifies OpenAI embeddings records zero for unknown model without usage.
 func TestOpenAIEmbeddingsRecordsZeroForUnknownModelWithoutUsage(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -262,6 +273,7 @@ func TestOpenAIEmbeddingsRecordsZeroForUnknownModelWithoutUsage(t *testing.T) {
 	}
 }
 
+// TestEmbeddingsUpstreamErrorDoesNotRecordTokenUsage verifies embeddings upstream error does not record token usage.
 func TestEmbeddingsUpstreamErrorDoesNotRecordTokenUsage(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -292,6 +304,7 @@ func TestEmbeddingsUpstreamErrorDoesNotRecordTokenUsage(t *testing.T) {
 	}
 }
 
+// TestOllamaEmbeddingsForwardAndRecordUsage verifies Ollama embeddings forward and record usage.
 func TestOllamaEmbeddingsForwardAndRecordUsage(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/embeddings" {
@@ -336,6 +349,7 @@ func TestOllamaEmbeddingsForwardAndRecordUsage(t *testing.T) {
 	}
 }
 
+// newEmbeddingTestBridge creates embedding test bridge.
 func newEmbeddingTestBridge(t *testing.T, provider coderbridge.Provider, rec recorder.Recorder) *coderbridge.RequestBridge {
 	t.Helper()
 	bridge, err := coderbridge.NewRequestBridge(t.Context(), []coderbridge.Provider{provider}, rec, nil, slogtest.Make(t, nil), nil, embeddingsTestTracer)
@@ -345,6 +359,7 @@ func newEmbeddingTestBridge(t *testing.T, provider coderbridge.Provider, rec rec
 	return bridge
 }
 
+// withEmbeddingActor adds an authenticated actor to the embedding request.
 func withEmbeddingActor(r *http.Request) *http.Request {
 	ctx := coderbridge.AsActor(r.Context(), "11111111-1111-1111-1111-111111111111", coderbridge.Metadata{})
 	return r.WithContext(ctx)

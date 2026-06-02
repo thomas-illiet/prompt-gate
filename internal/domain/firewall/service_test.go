@@ -13,6 +13,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
+// newFirewallServiceTestServices creates firewall service test services.
 func newFirewallServiceTestServices(t *testing.T) (*Service, *users.Service, *gorm.DB) {
 	t.Helper()
 
@@ -37,6 +38,7 @@ func newFirewallServiceTestServices(t *testing.T) (*Service, *users.Service, *go
 	return firewallService, userService, db
 }
 
+// TestServiceAccountFirewallRulesAreScopedByAccount verifies service account firewall rules are scoped by account.
 func TestServiceAccountFirewallRulesAreScopedByAccount(t *testing.T) {
 	firewallService, userService, _ := newFirewallServiceTestServices(t)
 	ctx := context.Background()
@@ -84,6 +86,7 @@ func TestServiceAccountFirewallRulesAreScopedByAccount(t *testing.T) {
 	}
 }
 
+// TestServiceAccountAllowsDefaultsToDeny verifies service account allows defaults to deny.
 func TestServiceAccountAllowsDefaultsToDeny(t *testing.T) {
 	firewallService, userService, _ := newFirewallServiceTestServices(t)
 	ctx := context.Background()
@@ -122,6 +125,7 @@ func TestServiceAccountAllowsDefaultsToDeny(t *testing.T) {
 	}
 }
 
+// TestServiceAccountFirewallRulesAreDeletedWithAccount verifies service account firewall rules are deleted with account.
 func TestServiceAccountFirewallRulesAreDeletedWithAccount(t *testing.T) {
 	firewallService, userService, db := newFirewallServiceTestServices(t)
 	ctx := context.Background()
@@ -157,6 +161,7 @@ func TestServiceAccountFirewallRulesAreDeletedWithAccount(t *testing.T) {
 	}
 }
 
+// TestSnapshotUsesServiceAccountOverrideBeforeGlobalRules verifies snapshot uses service account override before global rules.
 func TestSnapshotUsesServiceAccountOverrideBeforeGlobalRules(t *testing.T) {
 	firewallService, userService, _ := newFirewallServiceTestServices(t)
 	ctx := context.Background()

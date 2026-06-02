@@ -2,6 +2,7 @@ package auth
 
 import "testing"
 
+// TestFrontendRedirectURLDefaultsToDashboard verifies frontend redirect URL defaults to dashboard.
 func TestFrontendRedirectURLDefaultsToDashboard(t *testing.T) {
 	service := OIDCService{frontendBaseURL: "http://localhost:8080"}
 

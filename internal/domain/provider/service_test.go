@@ -34,6 +34,7 @@ func newTestService(t *testing.T) (*Service, *gorm.DB) {
 	return service, db
 }
 
+// TestHelpSetupLoadsModelsAndRedactsAPIKeys verifies help setup loads models and redacts API keys.
 func TestHelpSetupLoadsModelsAndRedactsAPIKeys(t *testing.T) {
 	service, _ := newTestService(t)
 	ctx := context.Background()
@@ -91,6 +92,7 @@ func TestHelpSetupLoadsModelsAndRedactsAPIKeys(t *testing.T) {
 	}
 }
 
+// TestHelpSetupSkipsAnthropicModelListing verifies help setup skips Anthropic model listing.
 func TestHelpSetupSkipsAnthropicModelListing(t *testing.T) {
 	service, _ := newTestService(t)
 	ctx := context.Background()
@@ -133,6 +135,7 @@ func TestHelpSetupSkipsAnthropicModelListing(t *testing.T) {
 	}
 }
 
+// TestHelpSetupForProviderNamesFiltersProvidersAndModels verifies help setup for provider names filters providers and models.
 func TestHelpSetupForProviderNamesFiltersProvidersAndModels(t *testing.T) {
 	service, _ := newTestService(t)
 	ctx := context.Background()
@@ -197,6 +200,7 @@ func TestHelpSetupForProviderNamesFiltersProvidersAndModels(t *testing.T) {
 	}
 }
 
+// TestModelCatalogSkipsAnthropicModelListing verifies model catalog skips Anthropic model listing.
 func TestModelCatalogSkipsAnthropicModelListing(t *testing.T) {
 	service, _ := newTestService(t)
 	ctx := context.Background()

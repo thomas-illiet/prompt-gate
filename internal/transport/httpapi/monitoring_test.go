@@ -15,6 +15,7 @@ import (
 	"gorm.io/gorm"
 )
 
+// newHTTPMonitoringService creates HTTP monitoring service.
 func newHTTPMonitoringService(t *testing.T) (*monitoring.Service, *gorm.DB) {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
@@ -28,6 +29,7 @@ func newHTTPMonitoringService(t *testing.T) (*monitoring.Service, *gorm.DB) {
 	return service, db
 }
 
+// TestHandleMonitoringStatusReturnsDegradedServicesWithoutURLs verifies handle monitoring status returns degraded services without URLs.
 func TestHandleMonitoringStatusReturnsDegradedServicesWithoutURLs(t *testing.T) {
 	service, db := newHTTPMonitoringService(t)
 	ctx := context.Background()

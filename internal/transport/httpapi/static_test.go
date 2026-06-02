@@ -9,6 +9,7 @@ import (
 	"testing"
 )
 
+// TestStaticAssetsHandlerServesFilesAndSPAFallback verifies static assets handler serves files and SPA fallback.
 func TestStaticAssetsHandlerServesFilesAndSPAFallback(t *testing.T) {
 	root := t.TempDir()
 	writeStaticTestFile(t, root, "index.html", "index shell")
@@ -92,6 +93,7 @@ func TestStaticAssetsHandlerServesFilesAndSPAFallback(t *testing.T) {
 	}
 }
 
+// TestStaticAssetsHandlerFallsBackToIndexWhen200IsMissing verifies static assets handler falls back to index when 200 is missing.
 func TestStaticAssetsHandlerFallsBackToIndexWhen200IsMissing(t *testing.T) {
 	root := t.TempDir()
 	writeStaticTestFile(t, root, "index.html", "index shell")
@@ -109,6 +111,7 @@ func TestStaticAssetsHandlerFallsBackToIndexWhen200IsMissing(t *testing.T) {
 	}
 }
 
+// writeStaticTestFile writes static test file.
 func writeStaticTestFile(t *testing.T, root string, name string, content string) {
 	t.Helper()
 

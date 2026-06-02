@@ -24,6 +24,7 @@ import (
 	"gorm.io/gorm"
 )
 
+// testUserProfile returns user profile.
 func testUserProfile() auth.UserProfile {
 	return auth.UserProfile{
 		ID:                "11111111-1111-1111-1111-111111111111",
@@ -38,6 +39,7 @@ func testUserProfile() auth.UserProfile {
 	}
 }
 
+// TestHandleCurrentUserUsageRejectsInvalidWindow verifies handle current user usage rejects invalid window.
 func TestHandleCurrentUserUsageRejectsInvalidWindow(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/me/usage?days=14", nil)
 	req = req.WithContext(auth.ContextWithUser(context.Background(), testUserProfile()))
@@ -58,6 +60,7 @@ func TestHandleCurrentUserUsageRejectsInvalidWindow(t *testing.T) {
 	}
 }
 
+// TestParseUsageWindowAcceptsDashboardWindowsAndLegacyDays verifies parse usage window accepts dashboard windows and legacy days.
 func TestParseUsageWindowAcceptsDashboardWindowsAndLegacyDays(t *testing.T) {
 	for _, test := range []struct {
 		path string
@@ -80,6 +83,7 @@ func TestParseUsageWindowAcceptsDashboardWindowsAndLegacyDays(t *testing.T) {
 	}
 }
 
+// TestParseUsageWindowRejectsInvalidWindow verifies parse usage window rejects invalid window.
 func TestParseUsageWindowRejectsInvalidWindow(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/me/dashboard/tokens?window=14d", nil)
 	if _, err := parseUsageWindow(req); err == nil {
@@ -87,6 +91,7 @@ func TestParseUsageWindowRejectsInvalidWindow(t *testing.T) {
 	}
 }
 
+// TestHandleCurrentUserGroupsReturnsProfileSafeMemberships verifies handle current user groups returns profile safe memberships.
 func TestHandleCurrentUserGroupsReturnsProfileSafeMemberships(t *testing.T) {
 	groupService, db := newHTTPGroupService(t)
 	profile := testUserProfile()
@@ -156,6 +161,7 @@ func TestHandleCurrentUserGroupsReturnsProfileSafeMemberships(t *testing.T) {
 	}
 }
 
+// TestHandleCurrentUserPromptsRejectsInvalidPagination verifies handle current user prompts rejects invalid pagination.
 func TestHandleCurrentUserPromptsRejectsInvalidPagination(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/me/prompts?page=0", nil)
 	req = req.WithContext(auth.ContextWithUser(context.Background(), testUserProfile()))
@@ -176,6 +182,7 @@ func TestHandleCurrentUserPromptsRejectsInvalidPagination(t *testing.T) {
 	}
 }
 
+// TestHandleHelpSetupReturnsUserScopedRedactedProviderMetadata verifies handle help setup returns user scoped redacted provider metadata.
 func TestHandleHelpSetupReturnsUserScopedRedactedProviderMetadata(t *testing.T) {
 	providerService, groupService, db := newHTTPSetupServices(t)
 	ctx := context.Background()
@@ -276,6 +283,7 @@ func TestHandleHelpSetupReturnsUserScopedRedactedProviderMetadata(t *testing.T) 
 	}
 }
 
+// TestHandleHelpSetupReturnsAnthropicWithoutModelFetch verifies handle help setup returns Anthropic without model fetch.
 func TestHandleHelpSetupReturnsAnthropicWithoutModelFetch(t *testing.T) {
 	providerService, groupService, db := newHTTPSetupServices(t)
 	ctx := context.Background()
@@ -354,6 +362,7 @@ func TestHandleHelpSetupReturnsAnthropicWithoutModelFetch(t *testing.T) {
 	}
 }
 
+// TestHandleHelpSetupReturnsEmptyProvidersWithoutGroupAccess verifies handle help setup returns empty providers without group access.
 func TestHandleHelpSetupReturnsEmptyProvidersWithoutGroupAccess(t *testing.T) {
 	providerService, groupService, db := newHTTPSetupServices(t)
 	ctx := context.Background()
@@ -403,6 +412,7 @@ func TestHandleHelpSetupReturnsEmptyProvidersWithoutGroupAccess(t *testing.T) {
 	}
 }
 
+// newHTTPSetupServices creates HTTP setup services.
 func newHTTPSetupServices(t *testing.T) (*provider.Service, *groups.Service, *gorm.DB) {
 	t.Helper()
 
@@ -428,6 +438,7 @@ func newHTTPSetupServices(t *testing.T) (*provider.Service, *groups.Service, *go
 	return providerService, groupService, db
 }
 
+// createHTTPUser creates HTTP user.
 func createHTTPUser(t *testing.T, db *gorm.DB, profile auth.UserProfile) {
 	t.Helper()
 
@@ -447,6 +458,7 @@ func createHTTPUser(t *testing.T, db *gorm.DB, profile auth.UserProfile) {
 	}
 }
 
+// newHTTPGroupService creates HTTP group service.
 func newHTTPGroupService(t *testing.T) (*groups.Service, *gorm.DB) {
 	t.Helper()
 

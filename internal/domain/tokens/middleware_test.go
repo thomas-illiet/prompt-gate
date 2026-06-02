@@ -81,6 +81,7 @@ func TestMiddlewareUsesCacheAndStripsProviderCredentials(t *testing.T) {
 	}
 }
 
+// TestMiddlewareWithOptionsRejectsCookieSessionWithoutBearer verifies middleware with options rejects cookie session without bearer.
 func TestMiddlewareWithOptionsRejectsCookieSessionWithoutBearer(t *testing.T) {
 	tokenService, userService, _, user := newTokenTestServices(t)
 	sessionStore := auth.NewSessionStore(userService, time.Hour)
@@ -106,6 +107,7 @@ func TestMiddlewareWithOptionsRejectsCookieSessionWithoutBearer(t *testing.T) {
 	}
 }
 
+// TestMiddlewareWithOptionsRejectsMissingAuthCredentials verifies middleware with options rejects missing auth credentials.
 func TestMiddlewareWithOptionsRejectsMissingAuthCredentials(t *testing.T) {
 	tokenService, userService, _, _ := newTokenTestServices(t)
 	handler := MiddlewareWithOptions(MiddlewareOptions{

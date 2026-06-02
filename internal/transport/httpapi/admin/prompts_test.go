@@ -18,6 +18,7 @@ import (
 	"gorm.io/gorm"
 )
 
+// newPromptsTestHandler creates prompts test handler.
 func newPromptsTestHandler(t *testing.T) (*Handler, *gorm.DB) {
 	t.Helper()
 
@@ -56,6 +57,7 @@ func newPromptsTestHandler(t *testing.T) (*Handler, *gorm.DB) {
 	return NewHandler(userService, nil, nil, nil, nil, nil, proxy.NewService(db)), db
 }
 
+// seedAdminPrompt seeds admin prompt.
 func seedAdminPrompt(t *testing.T, db *gorm.DB) {
 	t.Helper()
 	at := time.Date(2026, 1, 30, 15, 0, 0, 0, time.UTC)
@@ -83,6 +85,7 @@ func seedAdminPrompt(t *testing.T, db *gorm.DB) {
 	}
 }
 
+// TestHandleAdminListPromptsReturnsResult verifies handle admin list prompts returns result.
 func TestHandleAdminListPromptsReturnsResult(t *testing.T) {
 	handler, db := newPromptsTestHandler(t)
 	seedAdminPrompt(t, db)
@@ -105,6 +108,7 @@ func TestHandleAdminListPromptsReturnsResult(t *testing.T) {
 	}
 }
 
+// TestHandleAdminListPromptsRejectsInvalidSort verifies handle admin list prompts rejects invalid sort.
 func TestHandleAdminListPromptsRejectsInvalidSort(t *testing.T) {
 	handler, _ := newPromptsTestHandler(t)
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/prompts?sortBy=unknown", nil)
@@ -125,6 +129,7 @@ func TestHandleAdminListPromptsRejectsInvalidSort(t *testing.T) {
 	}
 }
 
+// TestHandleAdminListPromptsRequiresProxyService verifies handle admin list prompts requires proxy service.
 func TestHandleAdminListPromptsRequiresProxyService(t *testing.T) {
 	handler := NewHandler(nil, nil, nil, nil, nil, nil)
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/prompts", nil)

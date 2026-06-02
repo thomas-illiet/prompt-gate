@@ -98,10 +98,12 @@ func isModelBypassRoute(providerType provider.ProviderType, path string) bool {
 	}
 }
 
+// routeExactOrSubtree reports whether path matches route or a child route.
 func routeExactOrSubtree(path, route string) bool {
 	return path == route || strings.HasPrefix(path, route+"/")
 }
 
+// routeSubtree reports whether path is under routePrefix.
 func routeSubtree(path, routePrefix string) bool {
 	return strings.HasPrefix(path, routePrefix)
 }

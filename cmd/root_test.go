@@ -6,6 +6,7 @@ import (
 	"testing"
 )
 
+// TestRootCommandIncludesRuntimeSubcommands verifies root command includes runtime subcommands.
 func TestRootCommandIncludesRuntimeSubcommands(t *testing.T) {
 	root := NewRootCommand()
 	for _, name := range []string{"api", "proxy", "migrate", "schedule"} {
@@ -15,6 +16,7 @@ func TestRootCommandIncludesRuntimeSubcommands(t *testing.T) {
 	}
 }
 
+// TestRootCommandIncludesEnvFileFlag verifies root command includes env file flag.
 func TestRootCommandIncludesEnvFileFlag(t *testing.T) {
 	root := NewRootCommand()
 	if flag := root.PersistentFlags().Lookup("env-file"); flag == nil {
@@ -22,6 +24,7 @@ func TestRootCommandIncludesEnvFileFlag(t *testing.T) {
 	}
 }
 
+// TestLoadEnvFileSearchesParentDirectories verifies load env file searches parent directories.
 func TestLoadEnvFileSearchesParentDirectories(t *testing.T) {
 	tempDir := t.TempDir()
 	nestedDir := filepath.Join(tempDir, "dev", "backend")
@@ -45,6 +48,7 @@ func TestLoadEnvFileSearchesParentDirectories(t *testing.T) {
 	}
 }
 
+// TestLoadEnvFileDoesNotOverrideNonEmptyEnvironment verifies load env file does not override non empty environment.
 func TestLoadEnvFileDoesNotOverrideNonEmptyEnvironment(t *testing.T) {
 	tempDir := t.TempDir()
 	envFilePath := filepath.Join(tempDir, ".env")
@@ -63,6 +67,7 @@ func TestLoadEnvFileDoesNotOverrideNonEmptyEnvironment(t *testing.T) {
 	}
 }
 
+// TestLoadEnvFileUsesExplicitPath verifies load env file uses explicit path.
 func TestLoadEnvFileUsesExplicitPath(t *testing.T) {
 	tempDir := t.TempDir()
 	explicitEnvFilePath := filepath.Join(tempDir, "local.env")

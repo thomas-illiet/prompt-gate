@@ -6,6 +6,7 @@ import (
 	"testing"
 )
 
+// TestSecurityHeadersAddsBaselineBrowserHardening verifies security headers adds baseline browser hardening.
 func TestSecurityHeadersAddsBaselineBrowserHardening(t *testing.T) {
 	handler := SecurityHeaders()(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)

@@ -16,6 +16,7 @@ import (
 	"gorm.io/gorm"
 )
 
+// newMonitoringTestHandler creates monitoring test handler.
 func newMonitoringTestHandler(t *testing.T) (*Handler, *monitoring.Service) {
 	t.Helper()
 
@@ -35,6 +36,7 @@ func newMonitoringTestHandler(t *testing.T) (*Handler, *monitoring.Service) {
 	return NewHandler(nil, nil, nil, nil, nil, nil, service), service
 }
 
+// TestHandleAdminListMonitoringServicesReturnsUnavailableWhenDependencyMissing verifies handle admin list monitoring services returns unavailable when dependency missing.
 func TestHandleAdminListMonitoringServicesReturnsUnavailableWhenDependencyMissing(t *testing.T) {
 	handler := NewHandler(nil, nil, nil, nil, nil, nil)
 	req := httptest.NewRequest(
@@ -58,6 +60,7 @@ func TestHandleAdminListMonitoringServicesReturnsUnavailableWhenDependencyMissin
 	}
 }
 
+// TestHandleAdminListMonitoringServicesReturnsPagedServices verifies handle admin list monitoring services returns paged services.
 func TestHandleAdminListMonitoringServicesReturnsPagedServices(t *testing.T) {
 	handler, service := newMonitoringTestHandler(t)
 	_, err := service.CreateService(context.Background(), monitoring.CreateServiceInput{
@@ -92,6 +95,7 @@ func TestHandleAdminListMonitoringServicesReturnsPagedServices(t *testing.T) {
 	}
 }
 
+// TestHandleAdminCreateMonitoringServiceRejectsInvalidStatus verifies handle admin create monitoring service rejects invalid status.
 func TestHandleAdminCreateMonitoringServiceRejectsInvalidStatus(t *testing.T) {
 	handler, _ := newMonitoringTestHandler(t)
 	req := httptest.NewRequest(
@@ -115,6 +119,7 @@ func TestHandleAdminCreateMonitoringServiceRejectsInvalidStatus(t *testing.T) {
 	}
 }
 
+// TestHandleAdminCheckMonitoringServiceReturnsPersistedResult verifies handle admin check monitoring service returns persisted result.
 func TestHandleAdminCheckMonitoringServiceReturnsPersistedResult(t *testing.T) {
 	handler, service := newMonitoringTestHandler(t)
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {

@@ -8,6 +8,7 @@ import (
 	"time"
 )
 
+// setRequiredAPIEnv sets required API env.
 func setRequiredAPIEnv(t *testing.T) {
 	t.Helper()
 
@@ -22,6 +23,7 @@ func setRequiredAPIEnv(t *testing.T) {
 	t.Setenv("PROMPTGATE_REDIS_URL", "redis://localhost:6379/0")
 }
 
+// TestLoadApiDefaultSessionTTL verifies load API default session TTL.
 func TestLoadApiDefaultSessionTTL(t *testing.T) {
 	setRequiredAPIEnv(t)
 
@@ -34,6 +36,7 @@ func TestLoadApiDefaultSessionTTL(t *testing.T) {
 	}
 }
 
+// TestLoadApiCustomSessionTTL verifies load API custom session TTL.
 func TestLoadApiCustomSessionTTL(t *testing.T) {
 	setRequiredAPIEnv(t)
 	t.Setenv("PROMPTGATE_SESSION_TTL", "12h")
@@ -47,6 +50,7 @@ func TestLoadApiCustomSessionTTL(t *testing.T) {
 	}
 }
 
+// TestLoadApiProxyBaseURLOverride verifies load API proxy base URL override.
 func TestLoadApiProxyBaseURLOverride(t *testing.T) {
 	setRequiredAPIEnv(t)
 	t.Setenv("PROMPTGATE_PROXY_BASE_URL", "https://proxy.example.com/promptgate/")
@@ -60,6 +64,7 @@ func TestLoadApiProxyBaseURLOverride(t *testing.T) {
 	}
 }
 
+// TestLoadApiProxyBaseURLFallback verifies load API proxy base URL fallback.
 func TestLoadApiProxyBaseURLFallback(t *testing.T) {
 	setRequiredAPIEnv(t)
 	t.Setenv("PROMPTGATE_BACKEND_BASE_URL", "http://127.0.0.1:8080")
@@ -74,6 +79,7 @@ func TestLoadApiProxyBaseURLFallback(t *testing.T) {
 	}
 }
 
+// TestLoadApiUsageCostDefaults verifies load API usage cost defaults.
 func TestLoadApiUsageCostDefaults(t *testing.T) {
 	setRequiredAPIEnv(t)
 
@@ -89,6 +95,7 @@ func TestLoadApiUsageCostDefaults(t *testing.T) {
 	}
 }
 
+// TestLoadApiUsageCostOverrideAndDisable verifies load API usage cost override and disable.
 func TestLoadApiUsageCostOverrideAndDisable(t *testing.T) {
 	setRequiredAPIEnv(t)
 	t.Setenv("PROMPTGATE_USAGE_COST_ENABLED", "false")
@@ -108,6 +115,7 @@ func TestLoadApiUsageCostOverrideAndDisable(t *testing.T) {
 	}
 }
 
+// TestLoadApiRejectsInvalidUsageCostRates verifies load API rejects invalid usage cost rates.
 func TestLoadApiRejectsInvalidUsageCostRates(t *testing.T) {
 	for _, test := range []struct {
 		name  string
@@ -134,6 +142,7 @@ func TestLoadApiRejectsInvalidUsageCostRates(t *testing.T) {
 	}
 }
 
+// TestLoadApiReadsStaticAssetsDir verifies load API reads static assets dir.
 func TestLoadApiReadsStaticAssetsDir(t *testing.T) {
 	setRequiredAPIEnv(t)
 	staticDir := t.TempDir()
@@ -148,6 +157,7 @@ func TestLoadApiReadsStaticAssetsDir(t *testing.T) {
 	}
 }
 
+// TestLoadApiReadsKeycloakCACertPath verifies load API reads Keycloak CA cert path.
 func TestLoadApiReadsKeycloakCACertPath(t *testing.T) {
 	setRequiredAPIEnv(t)
 	caCertPath := filepath.Join(t.TempDir(), "keycloak-ca.pem")
@@ -165,6 +175,7 @@ func TestLoadApiReadsKeycloakCACertPath(t *testing.T) {
 	}
 }
 
+// TestLoadApiRejectsInvalidKeycloakCACertPath verifies load API rejects invalid Keycloak CA cert path.
 func TestLoadApiRejectsInvalidKeycloakCACertPath(t *testing.T) {
 	setRequiredAPIEnv(t)
 	t.Setenv("PROMPTGATE_KEYCLOAK_CA_CERT_PATH", "/definitely/not/a/keycloak-ca.pem")
@@ -174,6 +185,7 @@ func TestLoadApiRejectsInvalidKeycloakCACertPath(t *testing.T) {
 	}
 }
 
+// TestLoadApiRejectsKeycloakCACertDirectory verifies load API rejects Keycloak CA cert directory.
 func TestLoadApiRejectsKeycloakCACertDirectory(t *testing.T) {
 	setRequiredAPIEnv(t)
 	t.Setenv("PROMPTGATE_KEYCLOAK_CA_CERT_PATH", t.TempDir())
@@ -183,6 +195,7 @@ func TestLoadApiRejectsKeycloakCACertDirectory(t *testing.T) {
 	}
 }
 
+// TestLoadApiRejectsInvalidStaticAssetsDir verifies load API rejects invalid static assets dir.
 func TestLoadApiRejectsInvalidStaticAssetsDir(t *testing.T) {
 	setRequiredAPIEnv(t)
 	t.Setenv("PROMPTGATE_STATIC_ASSETS_DIR", "/definitely/not/a/static/assets/dir")
@@ -192,6 +205,7 @@ func TestLoadApiRejectsInvalidStaticAssetsDir(t *testing.T) {
 	}
 }
 
+// TestLoadApiRejectsNonPositiveSessionTTL verifies load API rejects non-positive session TTL.
 func TestLoadApiRejectsNonPositiveSessionTTL(t *testing.T) {
 	setRequiredAPIEnv(t)
 	t.Setenv("PROMPTGATE_SESSION_TTL", "0")
@@ -201,6 +215,7 @@ func TestLoadApiRejectsNonPositiveSessionTTL(t *testing.T) {
 	}
 }
 
+// TestLoadApiRequiresRedisURL verifies load API requires Redis URL.
 func TestLoadApiRequiresRedisURL(t *testing.T) {
 	setRequiredAPIEnv(t)
 	t.Setenv("PROMPTGATE_REDIS_URL", "")
@@ -210,6 +225,7 @@ func TestLoadApiRequiresRedisURL(t *testing.T) {
 	}
 }
 
+// TestLoadProxyReadsSessionAndCORSConfig verifies load proxy reads session and CORS config.
 func TestLoadProxyReadsSessionAndCORSConfig(t *testing.T) {
 	t.Setenv("PROMPTGATE_DATABASE_URL", "postgres://postgres:postgres@localhost:5432/promptgate?sslmode=disable")
 	t.Setenv("PROMPTGATE_JWT_SECRET", "0123456789abcdef0123456789abcdef")

@@ -61,6 +61,7 @@ func TestParseClientAddrRejectsNonLoopbackIPv6(t *testing.T) {
 	}
 }
 
+// TestMiddlewareUsesServiceAccountOverride verifies middleware uses service account override.
 func TestMiddlewareUsesServiceAccountOverride(t *testing.T) {
 	serviceAccountID := "service-account-id"
 	snapshot := NewSnapshotStore(nil)
@@ -94,6 +95,7 @@ func TestMiddlewareUsesServiceAccountOverride(t *testing.T) {
 	}
 }
 
+// TestMiddlewareServiceAccountOverrideDefaultsToDeny verifies middleware service account override defaults to deny.
 func TestMiddlewareServiceAccountOverrideDefaultsToDeny(t *testing.T) {
 	serviceAccountID := "service-account-id"
 	snapshot := NewSnapshotStore(nil)

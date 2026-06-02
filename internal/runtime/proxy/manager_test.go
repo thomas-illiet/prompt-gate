@@ -22,6 +22,7 @@ import (
 	"gorm.io/gorm"
 )
 
+// TestWatchReloadsAccessGroupsFromRedisEvent verifies watch reloads access groups from Redis event.
 func TestWatchReloadsAccessGroupsFromRedisEvent(t *testing.T) {
 	ctx := context.Background()
 	srv := miniredis.RunT(t)
@@ -85,6 +86,7 @@ func TestWatchReloadsAccessGroupsFromRedisEvent(t *testing.T) {
 	t.Fatal("timed out waiting for group access snapshot reload")
 }
 
+// TestRefreshAccessGroupsFallsBackWhenRedisSnapshotIsLegacy verifies refresh access groups falls back when Redis snapshot is legacy.
 func TestRefreshAccessGroupsFallsBackWhenRedisSnapshotIsLegacy(t *testing.T) {
 	ctx := context.Background()
 	srv := miniredis.RunT(t)
@@ -128,6 +130,7 @@ func TestRefreshAccessGroupsFallsBackWhenRedisSnapshotIsLegacy(t *testing.T) {
 	}
 }
 
+// newManagerGroupService creates manager group service.
 func newManagerGroupService(t *testing.T) (*groups.Service, string) {
 	t.Helper()
 	ctx := context.Background()

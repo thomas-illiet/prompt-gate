@@ -19,6 +19,7 @@ import (
 	"gorm.io/gorm"
 )
 
+// newDashboardTestHandler creates dashboard test handler.
 func newDashboardTestHandler(t *testing.T) (*Handler, *gorm.DB) {
 	t.Helper()
 
@@ -74,6 +75,7 @@ func newDashboardTestHandler(t *testing.T) (*Handler, *gorm.DB) {
 	return NewHandler(userService, nil, nil, nil, nil, nil, proxy.NewService(db)), db
 }
 
+// seedDashboardUsage seeds dashboard usage.
 func seedDashboardUsage(t *testing.T, db *gorm.DB, userID string, id string, at time.Time, inputTokens int64, outputTokens int64) {
 	t.Helper()
 	if err := db.Create(&proxy.Interception{
@@ -99,6 +101,7 @@ func seedDashboardUsage(t *testing.T, db *gorm.DB, userID string, id string, at 
 	}
 }
 
+// TestHandleAdminDashboardTokensReturnsGlobalResult verifies handle admin dashboard tokens returns global result.
 func TestHandleAdminDashboardTokensReturnsGlobalResult(t *testing.T) {
 	handler, db := newDashboardTestHandler(t)
 	now := time.Now().UTC().Add(-time.Hour)
@@ -122,6 +125,7 @@ func TestHandleAdminDashboardTokensReturnsGlobalResult(t *testing.T) {
 	}
 }
 
+// TestHandleAdminDashboardAdoptionReturnsResult verifies handle admin dashboard adoption returns result.
 func TestHandleAdminDashboardAdoptionReturnsResult(t *testing.T) {
 	handler, db := newDashboardTestHandler(t)
 	now := time.Now().UTC().Add(-time.Hour)
@@ -154,6 +158,7 @@ func TestHandleAdminDashboardAdoptionReturnsResult(t *testing.T) {
 	}
 }
 
+// TestHandleAdminDashboardRejectsInvalidWindow verifies handle admin dashboard rejects invalid window.
 func TestHandleAdminDashboardRejectsInvalidWindow(t *testing.T) {
 	handler, _ := newDashboardTestHandler(t)
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/dashboard/tokens?window=14d", nil)

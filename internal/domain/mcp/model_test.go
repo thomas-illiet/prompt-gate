@@ -2,6 +2,7 @@ package mcp
 
 import "testing"
 
+// TestMCPHeadersScanLegacyBooleanMap verifies MCP headers scan legacy boolean map.
 func TestMCPHeadersScanLegacyBooleanMap(t *testing.T) {
 	var headers MCPHeaders
 	if err := headers.Scan([]byte(`{"Authorization":true,"X-Trace":"visible"}`)); err != nil {
@@ -22,6 +23,7 @@ func TestMCPHeadersScanLegacyBooleanMap(t *testing.T) {
 	}
 }
 
+// TestMCPHeadersScanStructuredBooleanValue verifies MCP headers scan structured boolean value.
 func TestMCPHeadersScanStructuredBooleanValue(t *testing.T) {
 	var headers MCPHeaders
 	if err := headers.Scan([]byte(`[{"name":"X-Flag","value":true,"sensitive":false}]`)); err != nil {
@@ -37,6 +39,7 @@ func TestMCPHeadersScanStructuredBooleanValue(t *testing.T) {
 	}
 }
 
+// headerByName returns header by name.
 func headerByName(headers MCPHeaders, name string) MCPHeader {
 	for _, header := range headers {
 		if header.Name == name {

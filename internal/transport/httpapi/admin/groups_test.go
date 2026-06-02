@@ -21,6 +21,7 @@ import (
 	"gorm.io/gorm"
 )
 
+// newGroupsTestHandler creates groups test handler.
 func newGroupsTestHandler(t *testing.T) (*Handler, *groups.Service, users.User, provider.Provider, provider.Provider) {
 	t.Helper()
 	dsn := fmt.Sprintf(
@@ -81,6 +82,7 @@ func newGroupsTestHandler(t *testing.T) (*Handler, *groups.Service, users.User, 
 	return NewHandler(nil, nil, nil, groupService, providerService, nil), groupService, user, openai, anthropic
 }
 
+// TestHandleAdminGroupsCreateAddMemberAndReplaceUserGroups verifies handle admin groups create add member and replace user groups.
 func TestHandleAdminGroupsCreateAddMemberAndReplaceUserGroups(t *testing.T) {
 	handler, _, user, openai, anthropic := newGroupsTestHandler(t)
 
@@ -154,6 +156,7 @@ func TestHandleAdminGroupsCreateAddMemberAndReplaceUserGroups(t *testing.T) {
 	}
 }
 
+// TestHandleAdminCreateGroupRejectsInvalidRegex verifies handle admin create group rejects invalid regex.
 func TestHandleAdminCreateGroupRejectsInvalidRegex(t *testing.T) {
 	handler, _, _, openai, _ := newGroupsTestHandler(t)
 	body, err := json.Marshal(groups.CreateGroupInput{
@@ -177,6 +180,7 @@ func TestHandleAdminCreateGroupRejectsInvalidRegex(t *testing.T) {
 	}
 }
 
+// TestHandleAdminCreateGroupRejectsMissingDisplayNameAndProvider verifies handle admin create group rejects missing display name and provider.
 func TestHandleAdminCreateGroupRejectsMissingDisplayNameAndProvider(t *testing.T) {
 	handler, _, _, openai, _ := newGroupsTestHandler(t)
 
@@ -215,6 +219,7 @@ func TestHandleAdminCreateGroupRejectsMissingDisplayNameAndProvider(t *testing.T
 	}
 }
 
+// TestHandleAdminValidateGroupModelPatternsCountsRealMatches verifies handle admin validate group model patterns counts real matches.
 func TestHandleAdminValidateGroupModelPatternsCountsRealMatches(t *testing.T) {
 	handler, _, _, _, _ := newGroupsTestHandler(t)
 	ctx := context.Background()
@@ -264,6 +269,7 @@ func TestHandleAdminValidateGroupModelPatternsCountsRealMatches(t *testing.T) {
 	}
 }
 
+// TestHandleAdminValidateGroupModelPatternsMarksDisabledProviderUnavailable verifies handle admin validate group model patterns marks disabled provider unavailable.
 func TestHandleAdminValidateGroupModelPatternsMarksDisabledProviderUnavailable(t *testing.T) {
 	handler, _, _, _, _ := newGroupsTestHandler(t)
 	ctx := context.Background()
@@ -303,6 +309,7 @@ func TestHandleAdminValidateGroupModelPatternsMarksDisabledProviderUnavailable(t
 	}
 }
 
+// TestHandleAdminValidateGroupModelPatternsRejectsInvalidRegex verifies handle admin validate group model patterns rejects invalid regex.
 func TestHandleAdminValidateGroupModelPatternsRejectsInvalidRegex(t *testing.T) {
 	handler, _, _, _, _ := newGroupsTestHandler(t)
 	body, err := json.Marshal(groups.ValidateModelPatternsInput{

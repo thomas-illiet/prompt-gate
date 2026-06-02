@@ -11,6 +11,7 @@ import (
 	"promptgate/backend/internal/platform/config"
 )
 
+// TestAdminDashboardRoutesRequireAdminRole verifies admin dashboard routes require admin role.
 func TestAdminDashboardRoutesRequireAdminRole(t *testing.T) {
 	sessionStore := auth.NewSessionStore(nil, time.Hour)
 	session, err := sessionStore.CreateSession(testUserProfile(), "id-token")

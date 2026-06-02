@@ -56,6 +56,7 @@ func newTokenTestServices(t *testing.T) (*Service, *users.Service, *gorm.DB, aut
 	return tokenService, userService, db, userProfile(user)
 }
 
+// createUsageTables creates usage tables.
 func createUsageTables(t *testing.T, db *gorm.DB) {
 	t.Helper()
 
@@ -112,6 +113,7 @@ func TestDeleteUserCascadesTokens(t *testing.T) {
 	}
 }
 
+// TestDeleteServiceAccountCascadesTokens verifies delete service account cascades tokens.
 func TestDeleteServiceAccountCascadesTokens(t *testing.T) {
 	tokenService, userService, db, _ := newTokenTestServices(t)
 	ctx := context.Background()
@@ -164,6 +166,7 @@ func TestValidateTokenAcceptsActiveUserToken(t *testing.T) {
 	}
 }
 
+// TestCreateTokenAcceptsRequestedTTLWithin365Days verifies create token accepts requested TTL within 365 days.
 func TestCreateTokenAcceptsRequestedTTLWithin365Days(t *testing.T) {
 	tokenService, _, _, user := newTokenTestServices(t)
 	ctx := context.Background()
@@ -181,6 +184,7 @@ func TestCreateTokenAcceptsRequestedTTLWithin365Days(t *testing.T) {
 	}
 }
 
+// TestCreateTokenRejectsRequestedTTLOutsideRange verifies create token rejects requested TTL outside range.
 func TestCreateTokenRejectsRequestedTTLOutsideRange(t *testing.T) {
 	tokenService, _, _, user := newTokenTestServices(t)
 	ctx := context.Background()
@@ -192,12 +196,14 @@ func TestCreateTokenRejectsRequestedTTLOutsideRange(t *testing.T) {
 	}
 }
 
+// TestTokenSearchConditionCastsIDBeforeLowercase verifies token search condition casts ID before lowercase.
 func TestTokenSearchConditionCastsIDBeforeLowercase(t *testing.T) {
 	if !strings.Contains(tokenSearchCondition, "LOWER(CAST(id AS TEXT))") {
 		t.Fatalf("expected token search condition to cast uuid id before LOWER, got %q", tokenSearchCondition)
 	}
 }
 
+// TestListTokensPagedSearchesByID verifies list tokens paged searches by ID.
 func TestListTokensPagedSearchesByID(t *testing.T) {
 	tokenService, _, _, user := newTokenTestServices(t)
 	ctx := context.Background()
@@ -229,6 +235,7 @@ func TestListTokensPagedSearchesByID(t *testing.T) {
 	}
 }
 
+// TestValidateTokenAcceptsActiveServiceAccountAndRejectsInactive verifies validate token accepts active service account and rejects inactive.
 func TestValidateTokenAcceptsActiveServiceAccountAndRejectsInactive(t *testing.T) {
 	tokenService, userService, _, _ := newTokenTestServices(t)
 	ctx := context.Background()
@@ -299,6 +306,7 @@ func TestValidateTokenRejectsRevokedTokenAndInactiveUser(t *testing.T) {
 	}
 }
 
+// TestRevokeTokenRejectsDifferentOwner verifies revoke token rejects different owner.
 func TestRevokeTokenRejectsDifferentOwner(t *testing.T) {
 	tokenService, _, db, user := newTokenTestServices(t)
 	ctx := context.Background()
@@ -321,6 +329,7 @@ func TestRevokeTokenRejectsDifferentOwner(t *testing.T) {
 	}
 }
 
+// TestUpdateUserRoleNoneRevokesActiveTokens verifies update user role none revokes active tokens.
 func TestUpdateUserRoleNoneRevokesActiveTokens(t *testing.T) {
 	tokenService, userService, db, user := newTokenTestServices(t)
 	ctx := context.Background()

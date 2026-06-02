@@ -19,6 +19,7 @@ import (
 	"gorm.io/gorm"
 )
 
+// TestNewAPIHandlerWiresMonitoringService verifies new API handler wires monitoring service.
 func TestNewAPIHandlerWiresMonitoringService(t *testing.T) {
 	dsn := fmt.Sprintf(
 		"file:%s?mode=memory&cache=shared",

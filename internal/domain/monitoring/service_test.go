@@ -15,6 +15,7 @@ import (
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
+// RoundTrip executes the test transport function.
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
 	return f(r)
 }
@@ -33,6 +34,7 @@ func newTestService(t *testing.T) (*Service, *gorm.DB) {
 	return service, db
 }
 
+// TestCreateServiceValidatesAndDefaults verifies create service validates and defaults.
 func TestCreateServiceValidatesAndDefaults(t *testing.T) {
 	service, _ := newTestService(t)
 
@@ -65,6 +67,7 @@ func TestCreateServiceValidatesAndDefaults(t *testing.T) {
 	}
 }
 
+// TestCreateServiceRejectsInvalidInput verifies create service rejects invalid input.
 func TestCreateServiceRejectsInvalidInput(t *testing.T) {
 	service, _ := newTestService(t)
 	ctx := context.Background()
@@ -103,6 +106,7 @@ func TestCreateServiceRejectsInvalidInput(t *testing.T) {
 	}
 }
 
+// TestCheckServicePersistsSuccessAndUnexpectedStatus verifies check service persists success and unexpected status.
 func TestCheckServicePersistsSuccessAndUnexpectedStatus(t *testing.T) {
 	service, _ := newTestService(t)
 	ctx := context.Background()
@@ -150,6 +154,7 @@ func TestCheckServicePersistsSuccessAndUnexpectedStatus(t *testing.T) {
 	}
 }
 
+// TestCheckServicePersistsNetworkError verifies check service persists network error.
 func TestCheckServicePersistsNetworkError(t *testing.T) {
 	service, _ := newTestService(t)
 	service.SetHTTPClient(&http.Client{
@@ -181,6 +186,7 @@ func TestCheckServicePersistsNetworkError(t *testing.T) {
 	}
 }
 
+// TestListEnabledDueFiltersByIntervalAndEnabledState verifies list enabled due filters by interval and enabled state.
 func TestListEnabledDueFiltersByIntervalAndEnabledState(t *testing.T) {
 	service, db := newTestService(t)
 	ctx := context.Background()
@@ -214,6 +220,7 @@ func TestListEnabledDueFiltersByIntervalAndEnabledState(t *testing.T) {
 	}
 }
 
+// TestCurrentStatusOnlyReturnsEnabledDegradedServicesWithoutURLs verifies current status only returns enabled degraded services without URLs.
 func TestCurrentStatusOnlyReturnsEnabledDegradedServicesWithoutURLs(t *testing.T) {
 	service, db := newTestService(t)
 	ctx := context.Background()

@@ -40,6 +40,7 @@ func newUsersTestHandler(t *testing.T) (*Handler, *users.Service) {
 	return NewHandler(service, nil, nil, nil, nil, nil), service
 }
 
+// createAdminUsersUsageTables creates admin users usage tables.
 func createAdminUsersUsageTables(t *testing.T, db *gorm.DB) {
 	t.Helper()
 
@@ -62,6 +63,7 @@ func createAdminUsersUsageTables(t *testing.T, db *gorm.DB) {
 	}
 }
 
+// TestHandleAdminUpdateUserStoresExpiration verifies handle admin update user stores expiration.
 func TestHandleAdminUpdateUserStoresExpiration(t *testing.T) {
 	handler, service := newUsersTestHandler(t)
 	ctx := context.Background()
@@ -109,6 +111,7 @@ func TestHandleAdminUpdateUserStoresExpiration(t *testing.T) {
 	}
 }
 
+// TestHandleAdminUpdateUserNoteStoresNote verifies handle admin update user note stores note.
 func TestHandleAdminUpdateUserNoteStoresNote(t *testing.T) {
 	handler, service := newUsersTestHandler(t)
 	ctx := context.Background()
@@ -161,6 +164,7 @@ func TestHandleAdminUpdateUserNoteStoresNote(t *testing.T) {
 	}
 }
 
+// TestHandleAdminUpdateUserNoteErrors verifies handle admin update user note errors.
 func TestHandleAdminUpdateUserNoteErrors(t *testing.T) {
 	handler, service := newUsersTestHandler(t)
 	ctx := context.Background()

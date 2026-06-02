@@ -16,6 +16,7 @@ type testUserResolver struct {
 	err  error
 }
 
+// UserByID returns a test user profile by id.
 func (r testUserResolver) UserByID(context.Context, string) (UserProfile, error) {
 	if r.err != nil {
 		return UserProfile{}, r.err
@@ -23,6 +24,7 @@ func (r testUserResolver) UserByID(context.Context, string) (UserProfile, error)
 	return r.user, nil
 }
 
+// testUser returns user.
 func testUser(id string) UserProfile {
 	return UserProfile{
 		ID:                id,
@@ -37,6 +39,7 @@ func testUser(id string) UserProfile {
 	}
 }
 
+// newRedisSessionStorePair creates Redis session store pair.
 func newRedisSessionStorePair(t *testing.T, ttl time.Duration) (*miniredis.Miniredis, *SessionStore, *SessionStore) {
 	t.Helper()
 
@@ -59,6 +62,7 @@ func newRedisSessionStorePair(t *testing.T, ttl time.Duration) (*miniredis.Minir
 		NewRedisSessionStore(testUserResolver{user: user}, ttl, storeB)
 }
 
+// TestSessionStoreMemorySessionExpiresAndRefreshesUser verifies session store memory session expires and refreshes user.
 func TestSessionStoreMemorySessionExpiresAndRefreshesUser(t *testing.T) {
 	original := testUser("user-1")
 	refreshed := original
@@ -92,6 +96,7 @@ func TestSessionStoreMemorySessionExpiresAndRefreshesUser(t *testing.T) {
 	}
 }
 
+// TestRedisSessionStoreSharesSessionAcrossStores verifies Redis session store shares session across stores.
 func TestRedisSessionStoreSharesSessionAcrossStores(t *testing.T) {
 	_, storeA, storeB := newRedisSessionStorePair(t, time.Hour)
 
@@ -109,6 +114,7 @@ func TestRedisSessionStoreSharesSessionAcrossStores(t *testing.T) {
 	}
 }
 
+// TestRedisSessionStoreDeletesSessionOnLogout verifies Redis session store deletes session on logout.
 func TestRedisSessionStoreDeletesSessionOnLogout(t *testing.T) {
 	_, storeA, storeB := newRedisSessionStorePair(t, time.Hour)
 
@@ -123,6 +129,7 @@ func TestRedisSessionStoreDeletesSessionOnLogout(t *testing.T) {
 	}
 }
 
+// TestRedisSessionStoreExpiresSession verifies Redis session store expires session.
 func TestRedisSessionStoreExpiresSession(t *testing.T) {
 	srv, storeA, storeB := newRedisSessionStorePair(t, time.Second)
 
@@ -137,6 +144,7 @@ func TestRedisSessionStoreExpiresSession(t *testing.T) {
 	}
 }
 
+// TestRedisSessionStoreDeletesSessionWhenUserMissing verifies Redis session store deletes session when user missing.
 func TestRedisSessionStoreDeletesSessionWhenUserMissing(t *testing.T) {
 	srv := miniredis.RunT(t)
 	redisStore, err := redisstore.NewRequired(context.Background(), "redis://"+srv.Addr(), time.Minute, nil)
@@ -160,6 +168,7 @@ func TestRedisSessionStoreDeletesSessionWhenUserMissing(t *testing.T) {
 	}
 }
 
+// TestRedisAuthorizationRequestSharedAndConsumedOnce verifies Redis authorization request shared and consumed once.
 func TestRedisAuthorizationRequestSharedAndConsumedOnce(t *testing.T) {
 	_, storeA, storeB := newRedisSessionStorePair(t, time.Hour)
 
@@ -180,6 +189,7 @@ func TestRedisAuthorizationRequestSharedAndConsumedOnce(t *testing.T) {
 	}
 }
 
+// TestRedisAuthorizationRequestExpires verifies Redis authorization request expires.
 func TestRedisAuthorizationRequestExpires(t *testing.T) {
 	srv, storeA, storeB := newRedisSessionStorePair(t, time.Hour)
 

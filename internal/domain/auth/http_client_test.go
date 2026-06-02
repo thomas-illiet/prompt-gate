@@ -9,6 +9,7 @@ import (
 	"testing"
 )
 
+// TestNewKeycloakHTTPClientTrustsCACertPath verifies new Keycloak HTTP client trusts CA cert path.
 func TestNewKeycloakHTTPClientTrustsCACertPath(t *testing.T) {
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
@@ -39,6 +40,7 @@ func TestNewKeycloakHTTPClientTrustsCACertPath(t *testing.T) {
 	}
 }
 
+// TestNewKeycloakHTTPClientRejectsInvalidPEM verifies new Keycloak HTTP client rejects invalid PEM.
 func TestNewKeycloakHTTPClientRejectsInvalidPEM(t *testing.T) {
 	caCertPath := filepath.Join(t.TempDir(), "keycloak-ca.pem")
 	if err := os.WriteFile(caCertPath, []byte("not a certificate"), 0o600); err != nil {
