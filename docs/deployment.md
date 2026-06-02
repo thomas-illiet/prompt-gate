@@ -83,7 +83,7 @@ Run the API:
 ```sh
 docker run --rm \
   -p 8080:8080 \
-  -v /path/to/keycloak-ca.pem:/run/secrets/keycloak-ca.pem:ro \
+  -v /path/to/custom-ca.pem:/run/secrets/custom-ca.pem:ro \
   -e PROMPTGATE_PORT=8080 \
   -e PROMPTGATE_DATABASE_URL=postgres://postgres:postgres@db:5432/promptgate?sslmode=disable \
   -e PROMPTGATE_REDIS_URL=redis://redis:6379/0 \
@@ -91,7 +91,7 @@ docker run --rm \
   -e PROMPTGATE_KEYCLOAK_JWKS_URL=https://keycloak.example.com/realms/promptgate/protocol/openid-connect/certs \
   -e PROMPTGATE_KEYCLOAK_CLIENT_ID=promptgate-backend \
   -e PROMPTGATE_KEYCLOAK_CLIENT_SECRET=change-me \
-  -e PROMPTGATE_KEYCLOAK_CA_CERT_PATH=/run/secrets/keycloak-ca.pem \
+  -e PROMPTGATE_CA_FILE=/run/secrets/custom-ca.pem \
   -e PROMPTGATE_FRONTEND_BASE_URL=https://app.example.com \
   -e PROMPTGATE_BACKEND_BASE_URL=https://api.example.com \
   -e PROMPTGATE_PROXY_BASE_URL=https://proxy.example.com \
@@ -100,8 +100,8 @@ docker run --rm \
   ghcr.io/thomas-illiet/prompt-gate:v0.1.0
 ```
 
-Omit the CA certificate volume and `PROMPTGATE_KEYCLOAK_CA_CERT_PATH` when
-Keycloak uses a publicly trusted certificate.
+Omit the CA certificate volume and `PROMPTGATE_CA_FILE` when Keycloak and
+monitored HTTPS services use publicly trusted certificates.
 
 Run the proxy:
 

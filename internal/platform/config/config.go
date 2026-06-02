@@ -24,7 +24,7 @@ type Config struct {
 	KeycloakJWKSURL              string
 	KeycloakClientID             string
 	KeycloakClientSecret         string
-	KeycloakCACertPath           string
+	CAFile                       string
 	FrontendBaseURL              string
 	BackendBaseURL               string
 	ProxyBaseURL                 string
@@ -83,7 +83,7 @@ func LoadApi() (Config, error) {
 		KeycloakJWKSURL:              strings.TrimSpace(v.GetString("keycloak_jwks_url")),
 		KeycloakClientID:             strings.TrimSpace(v.GetString("keycloak_client_id")),
 		KeycloakClientSecret:         strings.TrimSpace(v.GetString("keycloak_client_secret")),
-		KeycloakCACertPath:           strings.TrimSpace(v.GetString("keycloak_ca_cert_path")),
+		CAFile:                       strings.TrimSpace(v.GetString("ca_file")),
 		FrontendBaseURL:              strings.TrimRight(strings.TrimSpace(v.GetString("frontend_base_url")), "/"),
 		BackendBaseURL:               strings.TrimRight(strings.TrimSpace(v.GetString("backend_base_url")), "/"),
 		ProxyBaseURL:                 strings.TrimRight(strings.TrimSpace(v.GetString("proxy_base_url")), "/"),
@@ -117,14 +117,8 @@ func LoadApi() (Config, error) {
 		return Config{}, errors.New("PROMPTGATE_KEYCLOAK_CLIENT_ID is required")
 	}
 
-	if cfg.KeycloakCACertPath != "" {
-		info, err := os.Stat(cfg.KeycloakCACertPath)
-		if err != nil {
-			return Config{}, fmt.Errorf("PROMPTGATE_KEYCLOAK_CA_CERT_PATH is not accessible: %w", err)
-		}
-		if info.IsDir() {
-			return Config{}, errors.New("PROMPTGATE_KEYCLOAK_CA_CERT_PATH must be a file")
-		}
+	if err := validateOptionalFile("PROMPTGATE_CA_FILE", cfg.CAFile); err != nil {
+		return Config{}, err
 	}
 
 	if cfg.FrontendBaseURL == "" {
@@ -193,6 +187,7 @@ func LoadSchedule() (Config, error) {
 	cfg := Config{
 		LogLevel:                     v.GetString("log_level"),
 		DatabaseURL:                  strings.TrimSpace(v.GetString("database_url")),
+		CAFile:                       strings.TrimSpace(v.GetString("ca_file")),
 		JWTSecret:                    strings.TrimSpace(v.GetString("jwt_secret")),
 		SecretsKey:                   strings.TrimSpace(v.GetString("secrets_key")),
 		TokenCleanupInterval:         v.GetDuration("token_cleanup_interval"),
@@ -216,6 +211,9 @@ func LoadSchedule() (Config, error) {
 	}
 	if cfg.RedisURL == "" {
 		return Config{}, errors.New("PROMPTGATE_REDIS_URL is required")
+	}
+	if err := validateOptionalFile("PROMPTGATE_CA_FILE", cfg.CAFile); err != nil {
+		return Config{}, err
 	}
 
 	return cfg, nil
@@ -330,6 +328,21 @@ func parseNonNegativeFloat(v *viper.Viper, key string, envName string) (float64,
 		return 0, fmt.Errorf("%s must be greater than or equal to zero", envName)
 	}
 	return value, nil
+}
+
+func validateOptionalFile(envName string, filePath string) error {
+	filePath = strings.TrimSpace(filePath)
+	if filePath == "" {
+		return nil
+	}
+	info, err := os.Stat(filePath)
+	if err != nil {
+		return fmt.Errorf("%s is not accessible: %w", envName, err)
+	}
+	if info.IsDir() {
+		return fmt.Errorf("%s must be a file", envName)
+	}
+	return nil
 }
 
 // ListenAddress returns the address the server should bind to, ensuring it starts with ":".

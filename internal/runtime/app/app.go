@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 
 	"gorm.io/gorm"
 
@@ -18,6 +19,7 @@ import (
 	"promptgate/backend/internal/domain/users"
 	"promptgate/backend/internal/platform/config"
 	"promptgate/backend/internal/platform/database"
+	platformhttp "promptgate/backend/internal/platform/httpclient"
 	"promptgate/backend/internal/platform/redisstore"
 	"promptgate/backend/internal/platform/secrets"
 )
@@ -61,6 +63,17 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	providerService := provider.NewService(db, secretCipher)
 	mcpService := mcp.NewService(db, secretCipher)
 	monitoringService := monitoring.NewService(db)
+	caHTTPClient, err := platformhttp.NewWithCAFile(cfg.CAFile, 0)
+	if err != nil {
+		return nil, fmt.Errorf("initialize CA HTTP client: %w", err)
+	}
+	if caHTTPClient != nil {
+		slog.Info("loaded CA file", "path", cfg.CAFile)
+		monitoringService.SetHTTPClient(&http.Client{
+			Transport: caHTTPClient.Transport,
+			Timeout:   monitoring.DefaultCheckTimeout,
+		})
+	}
 	proxyService := proxy.NewService(db, proxy.WithUsageCost(proxy.UsageCostConfig{
 		Enabled: cfg.UsageCost.Enabled,
 		Rates: proxy.CostRates{
@@ -86,16 +99,8 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	var sessionStore *auth.SessionStore
 	var oidcService *auth.OIDCService
 	if cfg.KeycloakIssuerURL != "" || cfg.KeycloakJWKSURL != "" {
-		keycloakHTTPClient, err := auth.NewKeycloakHTTPClient(cfg.KeycloakCACertPath)
-		if err != nil {
-			return nil, err
-		}
-		if keycloakHTTPClient != nil {
-			slog.Info("loaded Keycloak CA certificate", "path", cfg.KeycloakCACertPath)
-		}
-
 		slog.Info("initializing token validator", "issuer", cfg.KeycloakIssuerURL)
-		validator, err = auth.NewValidator(ctx, cfg.KeycloakIssuerURL, cfg.KeycloakJWKSURL, auth.WithValidatorHTTPClient(keycloakHTTPClient))
+		validator, err = auth.NewValidator(ctx, cfg.KeycloakIssuerURL, cfg.KeycloakJWKSURL, auth.WithValidatorHTTPClient(caHTTPClient))
 		if err != nil {
 			return nil, err
 		}
@@ -110,7 +115,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		slog.Info("session store ready")
 
 		slog.Info("initializing OIDC service")
-		oidcService, err = auth.NewOIDCService(ctx, cfg, validator, sessionStore, userService, keycloakHTTPClient)
+		oidcService, err = auth.NewOIDCService(ctx, cfg, validator, sessionStore, userService, caHTTPClient)
 		if err != nil {
 			return nil, err
 		}

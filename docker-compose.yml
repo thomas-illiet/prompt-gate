@@ -16,7 +16,7 @@ x-promptgate-environment: &promptgate-environment
   PROMPTGATE_KEYCLOAK_JWKS_URL: http://keycloak.localhost:8082/realms/promptgate/protocol/openid-connect/certs
   PROMPTGATE_KEYCLOAK_CLIENT_ID: promptgate-backend
   PROMPTGATE_KEYCLOAK_CLIENT_SECRET: ""
-  PROMPTGATE_KEYCLOAK_CA_CERT_PATH: ""
+  PROMPTGATE_CA_FILE: ""
   PROMPTGATE_FRONTEND_BASE_URL: http://localhost:8080
   PROMPTGATE_BACKEND_BASE_URL: http://localhost:8080
   PROMPTGATE_PROXY_BASE_URL: http://localhost:8081

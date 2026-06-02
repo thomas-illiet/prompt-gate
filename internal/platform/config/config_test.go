@@ -23,6 +23,16 @@ func setRequiredAPIEnv(t *testing.T) {
 	t.Setenv("PROMPTGATE_REDIS_URL", "redis://localhost:6379/0")
 }
 
+// setRequiredScheduleEnv sets required schedule env.
+func setRequiredScheduleEnv(t *testing.T) {
+	t.Helper()
+
+	t.Setenv("PROMPTGATE_DATABASE_URL", "postgres://postgres:postgres@localhost:5432/promptgate?sslmode=disable")
+	t.Setenv("PROMPTGATE_JWT_SECRET", "0123456789abcdef0123456789abcdef")
+	t.Setenv("PROMPTGATE_SECRETS_KEY", "0123456789abcdef0123456789abcdef")
+	t.Setenv("PROMPTGATE_REDIS_URL", "redis://localhost:6379/0")
+}
+
 // TestLoadApiDefaultSessionTTL verifies load API default session TTL.
 func TestLoadApiDefaultSessionTTL(t *testing.T) {
 	setRequiredAPIEnv(t)
@@ -157,41 +167,55 @@ func TestLoadApiReadsStaticAssetsDir(t *testing.T) {
 	}
 }
 
-// TestLoadApiReadsKeycloakCACertPath verifies load API reads Keycloak CA cert path.
-func TestLoadApiReadsKeycloakCACertPath(t *testing.T) {
+// TestLoadApiReadsCAFile verifies load API reads the global CA file.
+func TestLoadApiReadsCAFile(t *testing.T) {
 	setRequiredAPIEnv(t)
-	caCertPath := filepath.Join(t.TempDir(), "keycloak-ca.pem")
-	if err := os.WriteFile(caCertPath, []byte("not validated here"), 0o600); err != nil {
+	caFile := filepath.Join(t.TempDir(), "ca.pem")
+	if err := os.WriteFile(caFile, []byte("not validated here"), 0o600); err != nil {
 		t.Fatalf("write ca cert: %v", err)
 	}
-	t.Setenv("PROMPTGATE_KEYCLOAK_CA_CERT_PATH", caCertPath)
+	t.Setenv("PROMPTGATE_CA_FILE", caFile)
 
 	cfg, err := LoadApi()
 	if err != nil {
 		t.Fatalf("load api config: %v", err)
 	}
-	if cfg.KeycloakCACertPath != caCertPath {
-		t.Fatalf("expected Keycloak CA cert path %q, got %q", caCertPath, cfg.KeycloakCACertPath)
+	if cfg.CAFile != caFile {
+		t.Fatalf("expected CA file %q, got %q", caFile, cfg.CAFile)
 	}
 }
 
-// TestLoadApiRejectsInvalidKeycloakCACertPath verifies load API rejects invalid Keycloak CA cert path.
-func TestLoadApiRejectsInvalidKeycloakCACertPath(t *testing.T) {
+// TestLoadApiRejectsInvalidCAFile verifies load API rejects invalid CA file.
+func TestLoadApiRejectsInvalidCAFile(t *testing.T) {
+	setRequiredAPIEnv(t)
+	t.Setenv("PROMPTGATE_CA_FILE", "/definitely/not/a/ca.pem")
+
+	if _, err := LoadApi(); err == nil {
+		t.Fatal("expected invalid CA file to fail")
+	}
+}
+
+// TestLoadApiRejectsCAFileDirectory verifies load API rejects CA file directories.
+func TestLoadApiRejectsCAFileDirectory(t *testing.T) {
+	setRequiredAPIEnv(t)
+	t.Setenv("PROMPTGATE_CA_FILE", t.TempDir())
+
+	if _, err := LoadApi(); err == nil {
+		t.Fatal("expected CA file directory to fail")
+	}
+}
+
+// TestLoadApiIgnoresLegacyKeycloakCAEnv verifies the old Keycloak CA env var is not a fallback.
+func TestLoadApiIgnoresLegacyKeycloakCAEnv(t *testing.T) {
 	setRequiredAPIEnv(t)
 	t.Setenv("PROMPTGATE_KEYCLOAK_CA_CERT_PATH", "/definitely/not/a/keycloak-ca.pem")
 
-	if _, err := LoadApi(); err == nil {
-		t.Fatal("expected invalid Keycloak CA cert path to fail")
+	cfg, err := LoadApi()
+	if err != nil {
+		t.Fatalf("load api config: %v", err)
 	}
-}
-
-// TestLoadApiRejectsKeycloakCACertDirectory verifies load API rejects Keycloak CA cert directory.
-func TestLoadApiRejectsKeycloakCACertDirectory(t *testing.T) {
-	setRequiredAPIEnv(t)
-	t.Setenv("PROMPTGATE_KEYCLOAK_CA_CERT_PATH", t.TempDir())
-
-	if _, err := LoadApi(); err == nil {
-		t.Fatal("expected Keycloak CA cert directory to fail")
+	if cfg.CAFile != "" {
+		t.Fatalf("expected legacy Keycloak CA env to be ignored, got %q", cfg.CAFile)
 	}
 }
 
@@ -222,6 +246,44 @@ func TestLoadApiRequiresRedisURL(t *testing.T) {
 
 	if _, err := LoadApi(); err == nil {
 		t.Fatal("expected missing redis url to fail")
+	}
+}
+
+// TestLoadScheduleReadsCAFile verifies load schedule reads the global CA file.
+func TestLoadScheduleReadsCAFile(t *testing.T) {
+	setRequiredScheduleEnv(t)
+	caFile := filepath.Join(t.TempDir(), "ca.pem")
+	if err := os.WriteFile(caFile, []byte("not validated here"), 0o600); err != nil {
+		t.Fatalf("write ca cert: %v", err)
+	}
+	t.Setenv("PROMPTGATE_CA_FILE", caFile)
+
+	cfg, err := LoadSchedule()
+	if err != nil {
+		t.Fatalf("load schedule config: %v", err)
+	}
+	if cfg.CAFile != caFile {
+		t.Fatalf("expected CA file %q, got %q", caFile, cfg.CAFile)
+	}
+}
+
+// TestLoadScheduleRejectsInvalidCAFile verifies load schedule rejects invalid CA file.
+func TestLoadScheduleRejectsInvalidCAFile(t *testing.T) {
+	setRequiredScheduleEnv(t)
+	t.Setenv("PROMPTGATE_CA_FILE", "/definitely/not/a/ca.pem")
+
+	if _, err := LoadSchedule(); err == nil {
+		t.Fatal("expected invalid CA file to fail")
+	}
+}
+
+// TestLoadScheduleRejectsCAFileDirectory verifies load schedule rejects CA file directories.
+func TestLoadScheduleRejectsCAFileDirectory(t *testing.T) {
+	setRequiredScheduleEnv(t)
+	t.Setenv("PROMPTGATE_CA_FILE", t.TempDir())
+
+	if _, err := LoadSchedule(); err == nil {
+		t.Fatal("expected CA file directory to fail")
 	}
 }
 

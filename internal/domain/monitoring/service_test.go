@@ -2,12 +2,17 @@ package monitoring
 
 import (
 	"context"
+	"encoding/pem"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"promptgate/backend/internal/platform/httpclient"
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
@@ -183,6 +188,50 @@ func TestCheckServicePersistsNetworkError(t *testing.T) {
 	}
 	if checked.ConsecutiveFailures != 1 || !strings.Contains(checked.LastError, "dial failed") {
 		t.Fatalf("expected network failure metadata, got %#v", checked)
+	}
+}
+
+// TestCheckServiceUsesConfiguredHTTPClientCA verifies monitoring checks use the injected CA-aware client.
+func TestCheckServiceUsesConfiguredHTTPClientCA(t *testing.T) {
+	service, _ := newTestService(t)
+	ctx := context.Background()
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(upstream.Close)
+
+	caFile := filepath.Join(t.TempDir(), "ca.pem")
+	caCert := pem.EncodeToMemory(&pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: upstream.Certificate().Raw,
+	})
+	if err := os.WriteFile(caFile, caCert, 0o600); err != nil {
+		t.Fatalf("write ca cert: %v", err)
+	}
+
+	client, err := httpclient.NewWithCAFile(caFile, DefaultCheckTimeout)
+	if err != nil {
+		t.Fatalf("create HTTP client: %v", err)
+	}
+	service.SetHTTPClient(client)
+
+	created, err := service.CreateService(ctx, CreateServiceInput{
+		Name:               "tls",
+		URL:                upstream.URL,
+		ExpectedStatusCode: http.StatusNoContent,
+		IntervalSeconds:    60,
+		Enabled:            true,
+	})
+	if err != nil {
+		t.Fatalf("create service: %v", err)
+	}
+
+	checked, err := service.CheckService(ctx, created.ID.String())
+	if err != nil {
+		t.Fatalf("check service: %v", err)
+	}
+	if checked.Status != StatusOK || checked.LastStatusCode == nil || *checked.LastStatusCode != http.StatusNoContent {
+		t.Fatalf("expected successful TLS check, got %#v", checked)
 	}
 }
 

@@ -31,7 +31,7 @@ dotenv file.
 | `PROMPTGATE_PROXY_PORT` | API, proxy | `8081` | Proxy server listen port. The API also uses it to derive `PROMPTGATE_PROXY_BASE_URL` when no explicit proxy base URL is set. |
 | `PROMPTGATE_LOG_LEVEL` | API, proxy, schedule, migrate | `info` | Log level. Supported values are `debug`, `info`, `warn`, `warning`, and `error`; unknown values fall back to `info`. |
 | `PROMPTGATE_KEYCLOAK_CLIENT_SECRET` | API | empty | Optional OIDC client secret. Set it when the OIDC client is confidential. |
-| `PROMPTGATE_KEYCLOAK_CA_CERT_PATH` | API | empty | Optional path to a PEM-encoded CA certificate file used to trust Keycloak HTTPS endpoints. |
+| `PROMPTGATE_CA_FILE` | API, schedule | empty | Optional path to a PEM-encoded CA certificate file. API uses it for Keycloak HTTPS endpoints and monitoring checks; schedule uses it for monitoring checks. |
 | `PROMPTGATE_PROXY_BASE_URL` | API | derived from `PROMPTGATE_BACKEND_BASE_URL` and `PROMPTGATE_PROXY_PORT` | Public proxy origin shown to clients. Set it explicitly when the proxy is served from a different host, path, or externally mapped port. |
 | `PROMPTGATE_STATIC_ASSETS_DIR` | API | empty | Optional directory containing frontend static assets. When set, the API serves files from this directory and falls back to the SPA shell for frontend routes. |
 | `PROMPTGATE_SESSION_COOKIE_NAME` | API, proxy | `promptgate_session` | Browser session cookie name. |
@@ -99,7 +99,7 @@ PROMPTGATE_KEYCLOAK_ISSUER_URL=http://localhost:8082/realms/promptgate
 PROMPTGATE_KEYCLOAK_JWKS_URL=http://localhost:8082/realms/promptgate/protocol/openid-connect/certs
 PROMPTGATE_KEYCLOAK_CLIENT_ID=promptgate-backend
 PROMPTGATE_KEYCLOAK_CLIENT_SECRET=
-PROMPTGATE_KEYCLOAK_CA_CERT_PATH=
+PROMPTGATE_CA_FILE=
 PROMPTGATE_FRONTEND_BASE_URL=http://localhost:3000
 PROMPTGATE_BACKEND_BASE_URL=http://localhost:8080
 PROMPTGATE_PROXY_BASE_URL=http://localhost:8081
@@ -128,8 +128,9 @@ PROMPTGATE_USAGE_COST_EMBEDDING=0.02
   derives it from `PROMPTGATE_BACKEND_BASE_URL` and `PROMPTGATE_PROXY_PORT`.
 - `PROMPTGATE_CORS_ALLOWED_ORIGINS` should contain origins only, without paths
   or trailing slashes.
-- `PROMPTGATE_KEYCLOAK_CA_CERT_PATH` must point to a readable PEM file. Mount
-  the file into the API container when Keycloak uses a private or internal CA.
+- `PROMPTGATE_CA_FILE` must point to a readable PEM file. Mount the file into
+  API and schedule containers when Keycloak or monitored HTTPS services use a
+  private or internal CA.
 - `PROMPTGATE_SECRETS_KEY` protects stored downstream provider credentials and
   sensitive MCP headers. Rotating it requires a deliberate secret migration
   plan.
