@@ -13,6 +13,8 @@ definePageMeta({
 
 const adminMonitoring = useAdminMonitoring()
 const serviceDialogOpen = shallowRef(false)
+const detailsDialogOpen = shallowRef(false)
+const detailsLoading = shallowRef(false)
 const deleteDialog = useTargetDialog<MonitoringService>()
 const toggleDialog = useTargetDialog<MonitoringService>()
 const toggleConfirm = useToggleConfirmDialog(toggleDialog.target, {
@@ -51,6 +53,20 @@ function openCreateDialog() {
 async function openEditDialog(service: MonitoringService) {
   await adminMonitoring.loadService(service.id)
   serviceDialogOpen.value = true
+}
+
+async function openDetailsDialog(service: MonitoringService) {
+  adminMonitoring.selectedService.value = service
+  detailsDialogOpen.value = true
+
+  detailsLoading.value = true
+  try {
+    await adminMonitoring.loadService(service.id)
+  } catch {
+    // Keep showing the row snapshot when the fresh detail request fails.
+  } finally {
+    detailsLoading.value = false
+  }
 }
 
 async function saveService(payload: MonitoringServicePayload) {
@@ -129,6 +145,7 @@ async function confirmDelete() {
           @check="checkService"
           @create="openCreateDialog"
           @delete="deleteDialog.open"
+          @details="openDetailsDialog"
           @edit="openEditDialog"
           @refresh="adminMonitoring.reload"
           @toggle="toggleDialog.open"
@@ -144,6 +161,12 @@ async function confirmDelete() {
       :loading="adminMonitoring.saving.value"
       :service="adminMonitoring.selectedService.value"
       @save="saveService"
+    />
+
+    <AdminMonitoringServiceDetailsDialog
+      v-model="detailsDialogOpen"
+      :loading="detailsLoading"
+      :service="adminMonitoring.selectedService.value"
     />
 
     <AppConfirmDialog

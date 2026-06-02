@@ -20,6 +20,7 @@ const emit = defineEmits<{
   check: [service: MonitoringService]
   create: []
   delete: [service: MonitoringService]
+  details: [service: MonitoringService]
   edit: [service: MonitoringService]
   refresh: []
   toggle: [service: MonitoringService]
@@ -76,6 +77,12 @@ function intervalLabel(seconds: number) {
 }
 
 const rowActions: AppRowAction<MonitoringService>[] = [
+  {
+    icon: 'mdi-information-outline',
+    key: 'details',
+    onSelect: (service) => emit('details', service),
+    title: 'Details',
+  },
   {
     icon: 'mdi-play-circle-outline',
     key: 'check',
