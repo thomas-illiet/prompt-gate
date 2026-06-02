@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-FROM node:24-alpine AS frontend-builder
+FROM node:26-alpine AS frontend-builder
 
 WORKDIR /src/frontend
 
@@ -11,7 +11,7 @@ COPY frontend/ ./
 ENV NUXT_PUBLIC_API_BASE_URL=
 RUN npm run generate
 
-FROM golang:1.25.6-bookworm AS builder
+FROM golang:1.26.3-bookworm AS builder
 
 WORKDIR /src
 
