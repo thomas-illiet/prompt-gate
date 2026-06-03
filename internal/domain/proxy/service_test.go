@@ -158,6 +158,80 @@ func assertFloatClose(t *testing.T, got, want float64) {
 	}
 }
 
+// mustAggregateUsageKPIs computes dashboard KPI fixtures from raw proxy records.
+func mustAggregateUsageKPIs(t *testing.T, service *Service) {
+	t.Helper()
+	if err := service.db.WithContext(context.Background()).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&ProxyDailyUsageBreakdown{}).Error; err != nil {
+			return fmt.Errorf("clear usage breakdown kpis: %w", err)
+		}
+		if err := tx.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&ProxyDailyUsageKPI{}).Error; err != nil {
+			return fmt.Errorf("clear usage kpis: %w", err)
+		}
+
+		var interceptions []Interception
+		if err := tx.Find(&interceptions).Error; err != nil {
+			return fmt.Errorf("load fixture interceptions: %w", err)
+		}
+		interceptionsByID := make(map[string]Interception, len(interceptions))
+		for _, interception := range interceptions {
+			interceptionsByID[interception.ID] = interception
+			if err := aggregateInterceptionStarted(tx, interception); err != nil {
+				return err
+			}
+			if err := aggregateInterceptionDuration(tx, interception); err != nil {
+				return err
+			}
+		}
+
+		var prompts []UserPrompt
+		if err := tx.Find(&prompts).Error; err != nil {
+			return fmt.Errorf("load fixture prompts: %w", err)
+		}
+		for _, prompt := range prompts {
+			interception, ok := interceptionsByID[prompt.InterceptionID]
+			if !ok {
+				continue
+			}
+			if err := aggregatePromptUsage(tx, interception, prompt); err != nil {
+				return err
+			}
+		}
+
+		var tokenUsages []TokenUsage
+		if err := tx.Find(&tokenUsages).Error; err != nil {
+			return fmt.Errorf("load fixture token usage: %w", err)
+		}
+		for _, usage := range tokenUsages {
+			interception, ok := interceptionsByID[usage.InterceptionID]
+			if !ok {
+				continue
+			}
+			if err := aggregateTokenUsage(tx, interception, usage); err != nil {
+				return err
+			}
+		}
+
+		var toolUsages []ToolUsage
+		if err := tx.Find(&toolUsages).Error; err != nil {
+			return fmt.Errorf("load fixture tool usage: %w", err)
+		}
+		for _, usage := range toolUsages {
+			interception, ok := interceptionsByID[usage.InterceptionID]
+			if !ok {
+				continue
+			}
+			if err := aggregateToolUsage(tx, interception, usage); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	}); err != nil {
+		t.Fatalf("aggregate usage kpis: %v", err)
+	}
+}
+
 // TestAutoMigrateDropsModelThoughts verifies auto migrate drops model thoughts.
 func TestAutoMigrateDropsModelThoughts(t *testing.T) {
 	db, _ := newProxyServiceTestDB(t)
@@ -263,6 +337,7 @@ func TestUsageSummaryAggregatesOnlyCurrentUser(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatalf("seed tool usage: %v", err)
 	}
+	mustAggregateUsageKPIs(t, service)
 
 	summary, err := service.UsageSummary(context.Background(), "11111111-1111-1111-1111-111111111111", 7, now)
 	if err != nil {
@@ -303,6 +378,7 @@ func TestDashboardWidgetsAggregateByWindowAndDimension(t *testing.T) {
 
 	pendingEndedAt := (*time.Time)(nil)
 	setInterceptionEndedAt(t, db, "cccccccc-cccc-cccc-cccc-cccccccccccc", pendingEndedAt)
+	mustAggregateUsageKPIs(t, service)
 
 	tokens, err := service.DashboardTokens(context.Background(), userID, UsageWindow7Days, now)
 	if err != nil {
@@ -436,6 +512,7 @@ func TestAdminDashboardWidgetsAggregateGlobally(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatalf("seed tokens: %v", err)
 	}
+	mustAggregateUsageKPIs(t, service)
 
 	userTokens, err := service.DashboardTokens(context.Background(), userID, UsageWindow7Days, now)
 	if err != nil {
@@ -543,6 +620,7 @@ func TestDashboardTokensDifferentiatesCompletionAndEmbeddingTokens(t *testing.T)
 	}).Error; err != nil {
 		t.Fatalf("seed token usage: %v", err)
 	}
+	mustAggregateUsageKPIs(t, service)
 
 	tokens, err := service.DashboardTokens(context.Background(), userID, UsageWindow7Days, now)
 	if err != nil {
@@ -650,6 +728,7 @@ func TestUsageCostEstimatesCanBeOverriddenAndDisabled(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatalf("seed token usage: %v", err)
 	}
+	mustAggregateUsageKPIs(t, service)
 
 	tokens, err := service.DashboardTokens(context.Background(), userID, UsageWindow7Days, now)
 	if err != nil {

@@ -4,17 +4,16 @@ All application configuration is read from environment variables prefixed with
 `PROMPTGATE_`. Durations use Go duration syntax such as `250ms`, `5m`, `1h`, or
 `8h`.
 
-The CLI also loads the nearest `.env` file automatically before running
-`promptgate api`, `promptgate proxy`, `promptgate migrate`, or
-`promptgate schedule`. Use `--env-file /path/to/file.env` to load a specific
+The CLI also loads the nearest `.env` file automatically before running any
+Prompt Gate command. Use `--env-file /path/to/file.env` to load a specific
 dotenv file.
 
 ## Required Variables
 
 | Variable | Used by | Default | Required | Description |
 | --- | --- | --- | --- | --- |
-| `PROMPTGATE_DATABASE_URL` | API, proxy, schedule, migrate | none | Yes | PostgreSQL connection string. Example: `postgres://postgres:postgres@localhost:5432/promptgate?sslmode=disable`. |
-| `PROMPTGATE_REDIS_URL` | API, proxy, schedule | none | Yes | Redis connection URL. Example: `redis://localhost:6379/0`. |
+| `PROMPTGATE_DATABASE_URL` | API, proxy, worker, schedule, migrate | none | Yes | PostgreSQL connection string. Example: `postgres://postgres:postgres@localhost:5432/promptgate?sslmode=disable`. |
+| `PROMPTGATE_REDIS_URL` | API, proxy, worker, schedule | none | Yes | Redis connection URL. Example: `redis://localhost:6379/0`. |
 | `PROMPTGATE_JWT_SECRET` | API, proxy, schedule | none | Yes | Secret used for Prompt Gate API token signing and validation. Must be at least 32 characters. |
 | `PROMPTGATE_SECRETS_KEY` | API, proxy, schedule | none | Yes | Base64-encoded 32-byte key used for stored provider and MCP secrets. Keep stable across restarts and deployments. |
 | `PROMPTGATE_KEYCLOAK_ISSUER_URL` | API | none | API only | OIDC issuer URL. Example: `https://keycloak.example.com/realms/promptgate`. |
@@ -29,7 +28,7 @@ dotenv file.
 | --- | --- | --- | --- |
 | `PROMPTGATE_PORT` | API | `8080` | API server listen port. Values may be `8080` or `:8080`. |
 | `PROMPTGATE_PROXY_PORT` | API, proxy | `8081` | Proxy server listen port. The API also uses it to derive `PROMPTGATE_PROXY_BASE_URL` when no explicit proxy base URL is set. |
-| `PROMPTGATE_LOG_LEVEL` | API, proxy, schedule, migrate | `info` | Log level. Supported values are `debug`, `info`, `warn`, `warning`, and `error`; unknown values fall back to `info`. |
+| `PROMPTGATE_LOG_LEVEL` | API, proxy, worker, schedule, migrate | `info` | Log level. Supported values are `debug`, `info`, `warn`, `warning`, and `error`; unknown values fall back to `info`. |
 | `PROMPTGATE_KEYCLOAK_CLIENT_SECRET` | API | empty | Optional OIDC client secret. Set it when the OIDC client is confidential. |
 | `PROMPTGATE_CA_FILE` | API, schedule | empty | Optional path to a PEM-encoded CA certificate file. API uses it for Keycloak HTTPS endpoints and monitoring checks; schedule uses it for monitoring checks. |
 | `PROMPTGATE_PROXY_BASE_URL` | API | derived from `PROMPTGATE_BACKEND_BASE_URL` and `PROMPTGATE_PROXY_PORT` | Public proxy origin shown to clients. Set it explicitly when the proxy is served from a different host, path, or externally mapped port. |
@@ -40,8 +39,14 @@ dotenv file.
 | `PROMPTGATE_TOKEN_CLEANUP_INTERVAL` | API, schedule | `1h` | Interval for expired token cleanup. |
 | `PROMPTGATE_USER_ACCESS_EXPIRATION_INTERVAL` | API, schedule | `1h` | Interval for user access expiration jobs. |
 | `PROMPTGATE_PROXY_TRUST_FORWARD_HEADERS` | proxy | `false` | Whether the proxy trusts `X-Forwarded-For` and `X-Real-IP`. Enable only behind trusted infrastructure. |
-| `PROMPTGATE_REDIS_CACHE_TTL` | API, proxy, schedule | `5m` | TTL for Redis-backed cache entries and snapshots. |
+| `PROMPTGATE_REDIS_CACHE_TTL` | API, proxy, worker, schedule | `5m` | TTL for Redis-backed cache entries and snapshots. |
 | `PROMPTGATE_PROXY_RELOAD_DEBOUNCE` | API, proxy, schedule | `250ms` | Debounce duration for proxy provider and MCP reload notifications. |
+| `PROMPTGATE_WORKER_BATCH_SIZE` | worker | `100` | Maximum Redis Stream events read per worker batch. |
+| `PROMPTGATE_WORKER_BLOCK_TIMEOUT` | worker | `5s` | Long-poll timeout for new Redis Stream events. |
+| `PROMPTGATE_WORKER_PENDING_IDLE_TIMEOUT` | worker | `30s` | Minimum idle time before a worker can reclaim pending usage events. |
+| `PROMPTGATE_WORKER_CONSUMER_NAME` | worker | generated | Optional Redis consumer name. Leave empty for `hostname-pid-random`. |
+| `PROMPTGATE_USAGE_RAW_RETENTION` | schedule | `2160h` | Retention for raw proxy usage rows used by prompt exploration. |
+| `PROMPTGATE_USAGE_RAW_CLEANUP_INTERVAL` | schedule | `1h` | Interval for raw proxy usage cleanup. |
 | `PROMPTGATE_USAGE_COST_ENABLED` | API | `true` | Enables dashboard usage cost estimates. Set to `false` to omit cost fields from web API responses. |
 | `PROMPTGATE_USAGE_COST_INPUT` | API | `5.00` | Estimated USD price per 1M completion input tokens. |
 | `PROMPTGATE_USAGE_COST_OUTPUT` | API | `30.00` | Estimated USD price per 1M completion output tokens. |
@@ -81,6 +86,13 @@ PROMPTGATE_JWT_SECRET
 PROMPTGATE_SECRETS_KEY
 ```
 
+`promptgate worker` requires:
+
+```sh
+PROMPTGATE_DATABASE_URL
+PROMPTGATE_REDIS_URL
+```
+
 `promptgate migrate` requires:
 
 ```sh
@@ -114,6 +126,12 @@ PROMPTGATE_USER_ACCESS_EXPIRATION_INTERVAL=1h
 PROMPTGATE_PROXY_TRUST_FORWARD_HEADERS=false
 PROMPTGATE_REDIS_CACHE_TTL=5m
 PROMPTGATE_PROXY_RELOAD_DEBOUNCE=250ms
+PROMPTGATE_WORKER_BATCH_SIZE=100
+PROMPTGATE_WORKER_BLOCK_TIMEOUT=5s
+PROMPTGATE_WORKER_PENDING_IDLE_TIMEOUT=30s
+PROMPTGATE_WORKER_CONSUMER_NAME=
+PROMPTGATE_USAGE_RAW_RETENTION=2160h
+PROMPTGATE_USAGE_RAW_CLEANUP_INTERVAL=1h
 PROMPTGATE_USAGE_COST_ENABLED=true
 PROMPTGATE_USAGE_COST_INPUT=5.00
 PROMPTGATE_USAGE_COST_OUTPUT=30.00

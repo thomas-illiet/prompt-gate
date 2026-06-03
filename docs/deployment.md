@@ -29,15 +29,17 @@ Use explicit commands for the other processes:
 /app/promptgate proxy
 /app/promptgate migrate
 /app/promptgate schedule
+/app/promptgate worker
 ```
 
 Recommended production layout:
 
 | Process | Replica guidance | Notes |
 | --- | --- | --- |
-| `migrate` | One-off job | Run before API, proxy, or scheduler for each release. |
+| `migrate` | One-off job | Run before API, proxy, worker, or scheduler for each release. |
 | `api` | One or more replicas | Serves browser/API traffic and optionally static frontend assets. |
-| `proxy` | One or more replicas | Serves LLM traffic and subscribes to Redis reload events. |
+| `proxy` | One or more replicas | Serves LLM traffic, subscribes to Redis reload events, and enqueues usage events. |
+| `worker` | One or more replicas | Consumes Redis usage events and updates raw usage plus dashboard KPI tables. |
 | `schedule` | One replica | The current scheduler has no distributed lock. |
 
 ## Runtime Dependencies
@@ -45,7 +47,7 @@ Recommended production layout:
 Prompt Gate requires:
 
 - PostgreSQL for durable data
-- Redis for sessions, auth cache, snapshots, and config reload events
+- Redis for sessions, auth cache, snapshots, config reload events, and usage event streams
 - Keycloak or another OIDC-compatible provider
 - public API, proxy, and frontend origins configured with `PROMPTGATE_*`
 
@@ -63,8 +65,9 @@ reference.
 4. Run migrations with `/app/promptgate migrate`.
 5. Start the API with `/app/promptgate api`.
 6. Start the proxy with `/app/promptgate proxy`.
-7. Start the scheduler with `/app/promptgate schedule`.
-8. Configure provider, MCP, firewall, users, service accounts, and tokens
+7. Start one or more workers with `/app/promptgate worker`.
+8. Start the scheduler with `/app/promptgate schedule`.
+9. Configure provider, MCP, firewall, users, service accounts, and tokens
    through the admin API or frontend.
 
 ## Container Examples
@@ -116,6 +119,16 @@ docker run --rm \
   -e PROMPTGATE_SECRETS_KEY=MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY= \
   ghcr.io/thomas-illiet/prompt-gate:v0.1.0 \
   /app/promptgate proxy
+```
+
+Run the worker:
+
+```sh
+docker run --rm \
+  -e PROMPTGATE_DATABASE_URL=postgres://postgres:postgres@db:5432/promptgate?sslmode=disable \
+  -e PROMPTGATE_REDIS_URL=redis://redis:6379/0 \
+  ghcr.io/thomas-illiet/prompt-gate:v0.1.0 \
+  /app/promptgate worker
 ```
 
 Run the scheduler:

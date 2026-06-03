@@ -33,6 +33,14 @@ func setRequiredScheduleEnv(t *testing.T) {
 	t.Setenv("PROMPTGATE_REDIS_URL", "redis://localhost:6379/0")
 }
 
+// setRequiredWorkerEnv sets required worker env.
+func setRequiredWorkerEnv(t *testing.T) {
+	t.Helper()
+
+	t.Setenv("PROMPTGATE_DATABASE_URL", "postgres://postgres:postgres@localhost:5432/promptgate?sslmode=disable")
+	t.Setenv("PROMPTGATE_REDIS_URL", "redis://localhost:6379/0")
+}
+
 // TestLoadApiDefaultSessionTTL verifies load API default session TTL.
 func TestLoadApiDefaultSessionTTL(t *testing.T) {
 	setRequiredAPIEnv(t)
@@ -267,6 +275,22 @@ func TestLoadScheduleReadsCAFile(t *testing.T) {
 	}
 }
 
+// TestLoadScheduleUsageRawCleanupDefaults verifies load schedule raw usage cleanup defaults.
+func TestLoadScheduleUsageRawCleanupDefaults(t *testing.T) {
+	setRequiredScheduleEnv(t)
+
+	cfg, err := LoadSchedule()
+	if err != nil {
+		t.Fatalf("load schedule config: %v", err)
+	}
+	if cfg.UsageRawRetention != 90*24*time.Hour {
+		t.Fatalf("expected raw usage retention 2160h, got %s", cfg.UsageRawRetention)
+	}
+	if cfg.UsageRawCleanupInterval != time.Hour {
+		t.Fatalf("expected raw usage cleanup interval 1h, got %s", cfg.UsageRawCleanupInterval)
+	}
+}
+
 // TestLoadScheduleRejectsInvalidCAFile verifies load schedule rejects invalid CA file.
 func TestLoadScheduleRejectsInvalidCAFile(t *testing.T) {
 	setRequiredScheduleEnv(t)
@@ -284,6 +308,33 @@ func TestLoadScheduleRejectsCAFileDirectory(t *testing.T) {
 
 	if _, err := LoadSchedule(); err == nil {
 		t.Fatal("expected CA file directory to fail")
+	}
+}
+
+// TestLoadWorkerDefaultsAndOverrides verifies worker-specific config values.
+func TestLoadWorkerDefaultsAndOverrides(t *testing.T) {
+	setRequiredWorkerEnv(t)
+	t.Setenv("PROMPTGATE_WORKER_BATCH_SIZE", "42")
+	t.Setenv("PROMPTGATE_WORKER_BLOCK_TIMEOUT", "2s")
+	t.Setenv("PROMPTGATE_WORKER_PENDING_IDLE_TIMEOUT", "3s")
+	t.Setenv("PROMPTGATE_WORKER_CONSUMER_NAME", "worker-a")
+
+	cfg, err := LoadWorker()
+	if err != nil {
+		t.Fatalf("load worker config: %v", err)
+	}
+	if cfg.WorkerBatchSize != 42 || cfg.WorkerBlockTimeout != 2*time.Second || cfg.WorkerPendingIdleTimeout != 3*time.Second || cfg.WorkerConsumerName != "worker-a" {
+		t.Fatalf("unexpected worker config: %#v", cfg)
+	}
+}
+
+// TestLoadWorkerRequiresRedisURL verifies worker startup requires Redis.
+func TestLoadWorkerRequiresRedisURL(t *testing.T) {
+	setRequiredWorkerEnv(t)
+	t.Setenv("PROMPTGATE_REDIS_URL", "")
+
+	if _, err := LoadWorker(); err == nil {
+		t.Fatal("expected missing redis url to fail")
 	}
 }
 

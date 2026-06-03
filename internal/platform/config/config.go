@@ -40,6 +40,12 @@ type Config struct {
 	RedisURL                     string
 	RedisCacheTTL                time.Duration
 	ProxyReloadDebounce          time.Duration
+	WorkerBatchSize              int64
+	WorkerBlockTimeout           time.Duration
+	WorkerPendingIdleTimeout     time.Duration
+	WorkerConsumerName           string
+	UsageRawRetention            time.Duration
+	UsageRawCleanupInterval      time.Duration
 	UsageCost                    UsageCostConfig
 }
 
@@ -183,6 +189,8 @@ func LoadSchedule() (Config, error) {
 	v.SetDefault("user_access_expiration_interval", "1h")
 	v.SetDefault("redis_cache_ttl", "5m")
 	v.SetDefault("proxy_reload_debounce", "250ms")
+	v.SetDefault("usage_raw_retention", "2160h")
+	v.SetDefault("usage_raw_cleanup_interval", "1h")
 
 	cfg := Config{
 		LogLevel:                     v.GetString("log_level"),
@@ -195,6 +203,8 @@ func LoadSchedule() (Config, error) {
 		RedisURL:                     strings.TrimSpace(v.GetString("redis_url")),
 		RedisCacheTTL:                v.GetDuration("redis_cache_ttl"),
 		ProxyReloadDebounce:          v.GetDuration("proxy_reload_debounce"),
+		UsageRawRetention:            v.GetDuration("usage_raw_retention"),
+		UsageRawCleanupInterval:      v.GetDuration("usage_raw_cleanup_interval"),
 	}
 
 	if cfg.DatabaseURL == "" {
@@ -214,6 +224,12 @@ func LoadSchedule() (Config, error) {
 	}
 	if err := validateOptionalFile("PROMPTGATE_CA_FILE", cfg.CAFile); err != nil {
 		return Config{}, err
+	}
+	if cfg.UsageRawRetention <= 0 {
+		return Config{}, errors.New("PROMPTGATE_USAGE_RAW_RETENTION must be greater than zero")
+	}
+	if cfg.UsageRawCleanupInterval <= 0 {
+		return Config{}, errors.New("PROMPTGATE_USAGE_RAW_CLEANUP_INTERVAL must be greater than zero")
 	}
 
 	return cfg, nil
@@ -290,6 +306,48 @@ func LoadMigration() (Config, error) {
 
 	if cfg.DatabaseURL == "" {
 		return Config{}, errors.New("PROMPTGATE_DATABASE_URL is required")
+	}
+
+	return cfg, nil
+}
+
+// LoadWorker reads configuration required to run the generic background worker.
+func LoadWorker() (Config, error) {
+	v := viper.New()
+	v.SetEnvPrefix("PROMPTGATE")
+	v.AutomaticEnv()
+
+	v.SetDefault("log_level", "info")
+	v.SetDefault("redis_cache_ttl", "5m")
+	v.SetDefault("worker_batch_size", 100)
+	v.SetDefault("worker_block_timeout", "5s")
+	v.SetDefault("worker_pending_idle_timeout", "30s")
+
+	cfg := Config{
+		LogLevel:                 v.GetString("log_level"),
+		DatabaseURL:              strings.TrimSpace(v.GetString("database_url")),
+		RedisURL:                 strings.TrimSpace(v.GetString("redis_url")),
+		RedisCacheTTL:            v.GetDuration("redis_cache_ttl"),
+		WorkerBatchSize:          v.GetInt64("worker_batch_size"),
+		WorkerBlockTimeout:       v.GetDuration("worker_block_timeout"),
+		WorkerPendingIdleTimeout: v.GetDuration("worker_pending_idle_timeout"),
+		WorkerConsumerName:       strings.TrimSpace(v.GetString("worker_consumer_name")),
+	}
+
+	if cfg.DatabaseURL == "" {
+		return Config{}, errors.New("PROMPTGATE_DATABASE_URL is required")
+	}
+	if cfg.RedisURL == "" {
+		return Config{}, errors.New("PROMPTGATE_REDIS_URL is required")
+	}
+	if cfg.WorkerBatchSize <= 0 {
+		return Config{}, errors.New("PROMPTGATE_WORKER_BATCH_SIZE must be greater than zero")
+	}
+	if cfg.WorkerBlockTimeout <= 0 {
+		return Config{}, errors.New("PROMPTGATE_WORKER_BLOCK_TIMEOUT must be greater than zero")
+	}
+	if cfg.WorkerPendingIdleTimeout <= 0 {
+		return Config{}, errors.New("PROMPTGATE_WORKER_PENDING_IDLE_TIMEOUT must be greater than zero")
 	}
 
 	return cfg, nil

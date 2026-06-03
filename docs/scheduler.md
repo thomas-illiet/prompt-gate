@@ -16,6 +16,7 @@ It does not expose HTTP routes. It runs until the process receives `SIGINT` or
 | Token cleanup | `1h` | Marks stored tokens as expired when `expires_at` is in the past and `expired_at` is still empty. |
 | User access expiration | `1h` | Removes app access for users whose `expires_at` has passed and revokes their active tokens. |
 | Monitoring checks | `15s` scheduler tick, per-service intervals | Runs due HTTP/S checks and marks enabled services `ok` or `degraded`. |
+| Raw usage cleanup | `1h` | Deletes raw proxy usage rows older than `PROMPTGATE_USAGE_RAW_RETENTION`; dashboard KPI rows are retained. |
 
 The access expiration job runs once immediately on startup and then repeats on
 its interval. The token cleanup job starts its ticker and runs on the first
@@ -31,11 +32,13 @@ flowchart TD
     App --> TokenJob["Start token cleanup goroutine"]
     App --> AccessJob["Start user access expiration goroutine"]
     App --> MonitoringJob["Start monitoring checker goroutine"]
+    App --> UsageCleanup["Start raw usage cleanup goroutine"]
     TokenJob --> DB["Update token expired_at"]
     AccessJob --> DB
     AccessJob --> Redis["Publish auth config event"]
     MonitoringJob --> DB
     MonitoringJob --> HTTP["HTTP/S services"]
+    UsageCleanup --> DB
 ```
 
 When user access expires, affected users are assigned role `none`, their
@@ -70,6 +73,8 @@ Optional scheduler settings:
 | `PROMPTGATE_USER_ACCESS_EXPIRATION_INTERVAL` | `1h` | Interval for user access expiration. |
 | `PROMPTGATE_REDIS_CACHE_TTL` | `5m` | Redis TTL used by shared services. |
 | `PROMPTGATE_PROXY_RELOAD_DEBOUNCE` | `250ms` | Loaded for shared configuration consistency; scheduler jobs do not use it directly. |
+| `PROMPTGATE_USAGE_RAW_RETENTION` | `2160h` | Retention for raw proxy usage tables used by prompt exploration. |
+| `PROMPTGATE_USAGE_RAW_CLEANUP_INTERVAL` | `1h` | Interval for raw proxy usage cleanup. |
 
 Durations use Go duration syntax such as `30m`, `1h`, or `24h`.
 

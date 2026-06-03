@@ -150,4 +150,6 @@ func (a *App) StartBackgroundJobs(ctx context.Context) {
 	a.Users.StartAccessExpiration(ctx, a.Config.UserAccessExpirationInterval)
 	slog.Info("starting monitoring checker goroutine", "tick", monitoring.DefaultSchedulerTick)
 	a.Monitoring.StartScheduler(ctx, monitoring.DefaultSchedulerTick)
+	slog.Info("starting raw usage cleanup goroutine", "retention", a.Config.UsageRawRetention, "interval", a.Config.UsageRawCleanupInterval)
+	a.Proxy.StartRawUsageCleanup(ctx, a.Config.UsageRawRetention, a.Config.UsageRawCleanupInterval)
 }

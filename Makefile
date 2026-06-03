@@ -22,10 +22,15 @@ export PROMPTGATE_USER_ACCESS_EXPIRATION_INTERVAL="$${PROMPTGATE_USER_ACCESS_EXP
 export PROMPTGATE_PROXY_PORT="$${PROMPTGATE_PROXY_PORT:-8081}"; \
 export PROMPTGATE_PROXY_TRUST_FORWARD_HEADERS="$${PROMPTGATE_PROXY_TRUST_FORWARD_HEADERS:-false}"; \
 export PROMPTGATE_REDIS_CACHE_TTL="$${PROMPTGATE_REDIS_CACHE_TTL:-5m}"; \
-export PROMPTGATE_PROXY_RELOAD_DEBOUNCE="$${PROMPTGATE_PROXY_RELOAD_DEBOUNCE:-250ms}"
+export PROMPTGATE_PROXY_RELOAD_DEBOUNCE="$${PROMPTGATE_PROXY_RELOAD_DEBOUNCE:-250ms}"; \
+export PROMPTGATE_WORKER_BATCH_SIZE="$${PROMPTGATE_WORKER_BATCH_SIZE:-100}"; \
+export PROMPTGATE_WORKER_BLOCK_TIMEOUT="$${PROMPTGATE_WORKER_BLOCK_TIMEOUT:-5s}"; \
+export PROMPTGATE_WORKER_PENDING_IDLE_TIMEOUT="$${PROMPTGATE_WORKER_PENDING_IDLE_TIMEOUT:-30s}"; \
+export PROMPTGATE_USAGE_RAW_RETENTION="$${PROMPTGATE_USAGE_RAW_RETENTION:-2160h}"; \
+export PROMPTGATE_USAGE_RAW_CLEANUP_INTERVAL="$${PROMPTGATE_USAGE_RAW_CLEANUP_INTERVAL:-1h}"
 endef
 
-.PHONY: help all deps fmt fmt-check vet test build clean migrate run-api run-proxy run-schedule run-all
+.PHONY: help all deps fmt fmt-check vet test build clean migrate run-api run-proxy run-worker run-schedule run-all
 
 help: ## Show available targets.
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z0-9_-]+:.*##/ {printf "  %-12s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -70,18 +75,24 @@ run-proxy: ## Run proxy server.
 	@$(LOAD_ENV); \
 	$(GO) run . proxy
 
+run-worker: ## Run generic background worker.
+	@$(LOAD_ENV); \
+	$(GO) run . worker
+
 run-schedule: ## Run scheduled background jobs.
 	@$(LOAD_ENV); \
 	$(GO) run . schedule
 
-run-all: ## Run migrations, schedule worker, API server, and proxy server.
+run-all: ## Run migrations, worker, scheduler, API server, and proxy server.
 	@$(LOAD_ENV); \
 	$(GO) run . migrate; \
+	$(GO) run . worker & \
+	worker_pid=$$!; \
 	$(GO) run . schedule & \
 	schedule_pid=$$!; \
 	$(GO) run . api & \
 	api_pid=$$!; \
 	$(GO) run . proxy & \
 	proxy_pid=$$!; \
-	trap 'kill $$schedule_pid $$api_pid $$proxy_pid 2>/dev/null || true; wait $$schedule_pid $$api_pid $$proxy_pid 2>/dev/null || true' INT TERM EXIT; \
-	wait $$schedule_pid $$api_pid $$proxy_pid
+	trap 'kill $$worker_pid $$schedule_pid $$api_pid $$proxy_pid 2>/dev/null || true; wait $$worker_pid $$schedule_pid $$api_pid $$proxy_pid 2>/dev/null || true' INT TERM EXIT; \
+	wait $$worker_pid $$schedule_pid $$api_pid $$proxy_pid

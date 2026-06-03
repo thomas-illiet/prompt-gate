@@ -1,6 +1,6 @@
 # Architecture
 
-Prompt Gate Backend is a Go service layer split into four runtime commands from
+Prompt Gate Backend is a Go service layer split into five runtime commands from
 one binary. Each command has a narrow operational responsibility and shares the
 same domain packages.
 
@@ -11,15 +11,17 @@ flowchart LR
     Browser["Browser session"] --> API["promptgate api"]
     Admin["Admin UI"] --> API
     Client["LLM client"] --> Proxy["promptgate proxy"]
+    Worker["promptgate worker"] --> WorkerJobs["Usage event jobs"]
     Schedule["promptgate schedule"] --> Jobs["Cleanup jobs"]
     Migrate["promptgate migrate"] --> DB["PostgreSQL"]
 
     API --> DB
-    Proxy --> DB
+    WorkerJobs --> DB
     Jobs --> DB
 
     API --> Redis["Redis"]
     Proxy --> Redis
+    WorkerJobs --> Redis
     Jobs --> Redis
 
     API --> OIDC["OIDC provider"]
@@ -30,9 +32,10 @@ flowchart LR
 | Command | Responsibility |
 | --- | --- |
 | `promptgate api` | HTTP API, OIDC browser login, sessions, user/admin routes, token creation, provider and MCP configuration, firewall management, optional static frontend hosting. |
-| `promptgate proxy` | API-token authentication for LLM traffic, firewall enforcement, provider routing, MCP proxying, usage and prompt recording, hot reload. |
-| `promptgate schedule` | Background token expiration marking and user access expiration. |
-| `promptgate migrate` | GORM migrations for users, tokens, firewall rules, providers, MCP servers, and proxy recorder tables. |
+| `promptgate proxy` | API-token authentication for LLM traffic, firewall enforcement, provider routing, MCP proxying, Redis usage event enqueueing, hot reload. |
+| `promptgate worker` | Redis Stream consumer for proxy usage events, raw usage persistence, and dashboard KPI aggregation. |
+| `promptgate schedule` | Background token expiration marking, user access expiration, monitoring checks, and raw proxy usage cleanup. |
+| `promptgate migrate` | GORM migrations for users, tokens, firewall rules, providers, MCP servers, proxy recorder tables, and dashboard KPI tables. |
 
 ## Package Layout
 
@@ -61,7 +64,8 @@ PostgreSQL is the source of truth for durable application data:
 - firewall rules
 - LLM provider definitions
 - MCP server definitions
-- proxy interceptions, token usage, prompts, and tool usage
+- proxy interceptions, token usage, prompts, and tool usage for prompt exploration
+- daily dashboard KPI aggregates and processed usage event ids
 
 Redis is required by the current runtime configuration. It is used for:
 
@@ -69,6 +73,7 @@ Redis is required by the current runtime configuration. It is used for:
 - proxy auth cache entries
 - provider, MCP, and firewall snapshots
 - config version counters and hot-reload events
+- proxy usage event stream `promptgate:usage:events`
 
 ## Request Flows
 
@@ -105,6 +110,7 @@ sequenceDiagram
     participant P as Proxy
     participant R as Redis
     participant D as PostgreSQL
+    participant W as Worker
     participant U as Provider or MCP
 
     C->>P: Bearer Prompt Gate API token
@@ -112,7 +118,9 @@ sequenceDiagram
     P->>D: Validate token hash and user when cache misses
     P->>P: Apply firewall snapshot
     P->>U: Forward request through AIBridge
-    P->>D: Record interception, prompts, tokens, tools
+    P->>R: XADD usage events
+    W->>R: XREADGROUP usage events
+    W->>D: Persist raw rows and increment KPI aggregates
     P-->>C: Stream or return provider response
 ```
 
@@ -148,7 +156,7 @@ version, which invalidates old cache keys.
 3. firewall
 4. providers
 5. MCP
-6. proxy recorder tables
+6. proxy recorder and dashboard KPI tables
 
-Run migrations before starting API, proxy, or scheduler processes in a new
-environment.
+Run migrations before starting API, proxy, worker, or scheduler processes in a
+new environment.

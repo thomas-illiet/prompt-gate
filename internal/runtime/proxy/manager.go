@@ -13,13 +13,13 @@ import (
 	cdrslog "cdr.dev/slog/v3"
 	coderbridge "github.com/coder/aibridge"
 	codermcp "github.com/coder/aibridge/mcp"
+	aibrecorder "github.com/coder/aibridge/recorder"
 	"go.opentelemetry.io/otel/trace"
 
 	"promptgate/backend/internal/domain/firewall"
 	"promptgate/backend/internal/domain/groups"
 	localmcp "promptgate/backend/internal/domain/mcp"
 	localprovider "promptgate/backend/internal/domain/provider"
-	localproxy "promptgate/backend/internal/domain/proxy"
 	"promptgate/backend/internal/domain/tokens"
 	"promptgate/backend/internal/platform/configevents"
 	"promptgate/backend/internal/platform/redisstore"
@@ -28,7 +28,7 @@ import (
 type Options struct {
 	Providers        *localprovider.Service
 	MCP              *localmcp.Service
-	Recorder         *localproxy.Recorder
+	Recorder         aibrecorder.Recorder
 	FirewallSnapshot *firewall.SnapshotStore
 	AccessSnapshot   *groups.SnapshotStore
 	AuthCache        tokens.AuthCache

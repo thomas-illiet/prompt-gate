@@ -78,6 +78,9 @@ func newDashboardTestHandler(t *testing.T) (*Handler, *gorm.DB) {
 // seedDashboardUsage seeds dashboard usage.
 func seedDashboardUsage(t *testing.T, db *gorm.DB, userID string, id string, at time.Time, inputTokens int64, outputTokens int64) {
 	t.Helper()
+	createdAt := time.Now().UTC()
+	day := time.Date(at.UTC().Year(), at.UTC().Month(), at.UTC().Day(), 0, 0, 0, 0, time.UTC)
+	totalTokens := inputTokens + outputTokens
 	if err := db.Create(&proxy.Interception{
 		ID:           id,
 		InitiatorID:  userID,
@@ -98,6 +101,21 @@ func seedDashboardUsage(t *testing.T, db *gorm.DB, userID string, id string, at 
 		CreatedAt:          at.Add(time.Minute),
 	}).Error; err != nil {
 		t.Fatalf("seed token usage: %v", err)
+	}
+	if err := db.Create(&proxy.ProxyDailyUsageKPI{
+		Day:                    day,
+		InitiatorID:            userID,
+		Requests:               1,
+		InputTokens:            inputTokens,
+		OutputTokens:           outputTokens,
+		CompletionInputTokens:  inputTokens,
+		CompletionOutputTokens: outputTokens,
+		CompletionTokens:       totalTokens,
+		TotalTokens:            totalTokens,
+		CreatedAt:              createdAt,
+		UpdatedAt:              createdAt,
+	}).Error; err != nil {
+		t.Fatalf("seed dashboard kpi: %v", err)
 	}
 }
 

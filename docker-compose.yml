@@ -28,6 +28,11 @@ x-promptgate-environment: &promptgate-environment
   PROMPTGATE_PROXY_TRUST_FORWARD_HEADERS: "false"
   PROMPTGATE_REDIS_CACHE_TTL: 5m
   PROMPTGATE_PROXY_RELOAD_DEBOUNCE: 250ms
+  PROMPTGATE_WORKER_BATCH_SIZE: 100
+  PROMPTGATE_WORKER_BLOCK_TIMEOUT: 5s
+  PROMPTGATE_WORKER_PENDING_IDLE_TIMEOUT: 30s
+  PROMPTGATE_USAGE_RAW_RETENTION: 2160h
+  PROMPTGATE_USAGE_RAW_CLEANUP_INTERVAL: 1h
 
 services:
   postgres:
@@ -199,6 +204,20 @@ services:
       seed:
         condition: service_completed_successfully
       seed-cache:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  worker:
+    <<: *promptgate-image
+    command: ["/app/promptgate", "worker"]
+    environment:
+      <<: *promptgate-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
         condition: service_completed_successfully
     restart: unless-stopped
 

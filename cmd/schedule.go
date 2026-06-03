@@ -51,6 +51,10 @@ func runSchedule() error {
 		cfg.TokenCleanupInterval,
 		"user_access_expiration_interval",
 		cfg.UserAccessExpirationInterval,
+		"usage_raw_retention",
+		cfg.UsageRawRetention,
+		"usage_raw_cleanup_interval",
+		cfg.UsageRawCleanupInterval,
 	)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

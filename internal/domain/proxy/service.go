@@ -355,22 +355,21 @@ func (s *Service) UsageSummary(ctx context.Context, userID string, days int, now
 		dailyByDate[summary.Daily[i].Date] = &summary.Daily[i]
 	}
 
-	models := map[string]*UsageBreakdown{}
-	providers := map[string]*UsageBreakdown{}
-	if err := s.loadRequestUsage(ctx, userID, resolved.StartsAt, resolved.EndsAt, &summary, dailyByDate, models, providers, nil); err != nil {
-		return UsageSummary{}, err
-	}
-	if err := s.loadPromptUsage(ctx, userID, resolved.StartsAt, resolved.EndsAt, &summary, dailyByDate); err != nil {
-		return UsageSummary{}, err
-	}
-	if err := s.loadTokenUsage(ctx, userID, resolved.StartsAt, resolved.EndsAt, &summary, dailyByDate, models, providers, nil); err != nil {
+	scope := currentUserDashboardScope(userID)
+	if err := s.loadAggregatedUsage(ctx, scope, resolved.StartsAt, resolved.EndsAt, &summary, dailyByDate); err != nil {
 		return UsageSummary{}, err
 	}
 	s.attachEstimatedCosts(&summary.Totals, summary.Daily)
-	s.attachBreakdownEstimatedCosts(models, providers)
-	if err := s.loadToolUsage(ctx, userID, resolved.StartsAt, resolved.EndsAt, &summary); err != nil {
+
+	models, err := s.aggregatedBreakdowns(ctx, scope, resolved.StartsAt, resolved.EndsAt, dashboardBreakdownModels)
+	if err != nil {
 		return UsageSummary{}, err
 	}
+	providers, err := s.aggregatedBreakdowns(ctx, scope, resolved.StartsAt, resolved.EndsAt, dashboardBreakdownProviderNames)
+	if err != nil {
+		return UsageSummary{}, err
+	}
+	s.attachBreakdownEstimatedCosts(models, providers)
 
 	recent, err := s.ListPrompts(ctx, userID, PromptListParams{Page: 1, PageSize: 5})
 	if err != nil {
@@ -400,25 +399,9 @@ func (s *Service) dashboardTokens(ctx context.Context, scope dashboardUsageScope
 		return DashboardTokensResponse{}, err
 	}
 
-	var rows []tokenUsageRow
-	query := s.db.WithContext(ctx).
-		Table("token_usages").
-		Select(`token_usages.input_tokens,
-				token_usages.output_tokens,
-				token_usages.cache_read_input_tokens,
-				token_usages.cache_write_input_tokens,
-				token_usages.type,
-				token_usages.metadata`).
-		Joins("JOIN interceptions ON interceptions.id = token_usages.interception_id")
-	query = scope.applyInitiatorFilter(query, "interceptions.initiator_id").
-		Where("token_usages.created_at >= ? AND token_usages.created_at <= ?", resolved.StartsAt, resolved.EndsAt)
-	if err := query.Scan(&rows).Error; err != nil {
-		return DashboardTokensResponse{}, fmt.Errorf("load dashboard tokens: %w", err)
-	}
-
-	var totals UsageTotals
-	for _, row := range rows {
-		accumulateTokenTotals(&totals, row)
+	totals, err := s.aggregatedUsageTotals(ctx, scope, resolved.StartsAt, resolved.EndsAt)
+	if err != nil {
+		return DashboardTokensResponse{}, err
 	}
 
 	response := DashboardTokensResponse{
@@ -455,17 +438,14 @@ func (s *Service) dashboardMessages(ctx context.Context, scope dashboardUsageSco
 		return DashboardMessagesResponse{}, err
 	}
 
-	var messages int64
-	query := s.db.WithContext(ctx).Model(&Interception{})
-	query = scope.applyInitiatorFilter(query, "initiator_id").
-		Where("started_at >= ? AND started_at <= ?", resolved.StartsAt, resolved.EndsAt)
-	if err := query.Count(&messages).Error; err != nil {
-		return DashboardMessagesResponse{}, fmt.Errorf("load dashboard messages: %w", err)
+	totals, err := s.aggregatedUsageTotals(ctx, scope, resolved.StartsAt, resolved.EndsAt)
+	if err != nil {
+		return DashboardMessagesResponse{}, err
 	}
 
 	return DashboardMessagesResponse{
 		UsageWindowMeta: resolved.UsageWindowMeta,
-		Messages:        messages,
+		Messages:        totals.Requests,
 	}, nil
 }
 
@@ -486,29 +466,14 @@ func (s *Service) dashboardDuration(ctx context.Context, scope dashboardUsageSco
 		return DashboardDurationResponse{}, err
 	}
 
-	var rows []struct {
-		StartedAt time.Time
-		EndedAt   *time.Time
-	}
-	query := s.db.WithContext(ctx).
-		Model(&Interception{}).
-		Select("started_at, ended_at")
-	query = scope.applyInitiatorFilter(query, "initiator_id").
-		Where("started_at >= ? AND started_at <= ?", resolved.StartsAt, resolved.EndsAt)
-	if err := query.Scan(&rows).Error; err != nil {
-		return DashboardDurationResponse{}, fmt.Errorf("load dashboard duration: %w", err)
-	}
-
-	var totalDurationMs int64
-	for _, row := range rows {
-		if duration := durationMilliseconds(row.StartedAt, row.EndedAt); duration != nil {
-			totalDurationMs += *duration
-		}
+	totals, err := s.aggregatedUsageTotals(ctx, scope, resolved.StartsAt, resolved.EndsAt)
+	if err != nil {
+		return DashboardDurationResponse{}, err
 	}
 
 	return DashboardDurationResponse{
 		UsageWindowMeta: resolved.UsageWindowMeta,
-		TotalDurationMs: totalDurationMs,
+		TotalDurationMs: totals.TotalDurationMs,
 	}, nil
 }
 
@@ -539,13 +504,7 @@ func (s *Service) dashboardActivity(ctx context.Context, scope dashboardUsageSco
 		dailyByDate[summary.Daily[i].Date] = &summary.Daily[i]
 	}
 
-	if err := s.loadRequestUsageScoped(ctx, scope, resolved.StartsAt, resolved.EndsAt, &summary, dailyByDate, nil, nil, nil); err != nil {
-		return DashboardActivityResponse{}, err
-	}
-	if err := s.loadPromptUsageScoped(ctx, scope, resolved.StartsAt, resolved.EndsAt, &summary, dailyByDate); err != nil {
-		return DashboardActivityResponse{}, err
-	}
-	if err := s.loadTokenUsageScoped(ctx, scope, resolved.StartsAt, resolved.EndsAt, &summary, dailyByDate, nil, nil, nil); err != nil {
+	if err := s.loadAggregatedUsage(ctx, scope, resolved.StartsAt, resolved.EndsAt, &summary, dailyByDate); err != nil {
 		return DashboardActivityResponse{}, err
 	}
 	s.attachEstimatedCosts(&summary.Totals, summary.Daily)
@@ -593,29 +552,14 @@ func (s *Service) dashboardBreakdown(ctx context.Context, scope dashboardUsageSc
 		return DashboardBreakdownResponse{}, err
 	}
 
-	var models map[string]*UsageBreakdown
-	var providers map[string]*UsageBreakdown
-	var providerTypes map[string]*UsageBreakdown
-	var values map[string]*UsageBreakdown
 	switch target {
-	case dashboardBreakdownModels:
-		models = map[string]*UsageBreakdown{}
-		values = models
-	case dashboardBreakdownProviderNames:
-		providers = map[string]*UsageBreakdown{}
-		values = providers
-	case dashboardBreakdownProviderTypes:
-		providerTypes = map[string]*UsageBreakdown{}
-		values = providerTypes
+	case dashboardBreakdownModels, dashboardBreakdownProviderNames, dashboardBreakdownProviderTypes:
 	default:
 		return DashboardBreakdownResponse{}, ErrInvalidSort
 	}
 
-	summary := UsageSummary{}
-	if err := s.loadRequestUsageScoped(ctx, scope, resolved.StartsAt, resolved.EndsAt, &summary, nil, models, providers, providerTypes); err != nil {
-		return DashboardBreakdownResponse{}, err
-	}
-	if err := s.loadTokenUsageScoped(ctx, scope, resolved.StartsAt, resolved.EndsAt, &summary, nil, models, providers, providerTypes); err != nil {
+	values, err := s.aggregatedBreakdowns(ctx, scope, resolved.StartsAt, resolved.EndsAt, target)
+	if err != nil {
 		return DashboardBreakdownResponse{}, err
 	}
 	s.attachBreakdownEstimatedCosts(values)
@@ -633,11 +577,11 @@ func (s *Service) AdminDashboardAdoption(ctx context.Context, window UsageWindow
 		return DashboardAdoptionResponse{}, err
 	}
 
-	activeUsers, err := s.countActiveIdentities(ctx, auth.UserTypeUser, resolved.StartsAt, resolved.EndsAt)
+	activeUsers, err := s.countActiveIdentitiesFromKPIs(ctx, auth.UserTypeUser, resolved.StartsAt, resolved.EndsAt)
 	if err != nil {
 		return DashboardAdoptionResponse{}, err
 	}
-	activeServiceAccounts, err := s.countActiveIdentities(ctx, auth.UserTypeService, resolved.StartsAt, resolved.EndsAt)
+	activeServiceAccounts, err := s.countActiveIdentitiesFromKPIs(ctx, auth.UserTypeService, resolved.StartsAt, resolved.EndsAt)
 	if err != nil {
 		return DashboardAdoptionResponse{}, err
 	}
@@ -661,70 +605,9 @@ func (s *Service) AdminDashboardTopIdentities(ctx context.Context, window UsageW
 		return DashboardBreakdownResponse{}, err
 	}
 
-	type identityRequestRow struct {
-		InitiatorID string
-		Name        string
-		Requests    int64
-	}
-	var requestRows []identityRequestRow
-	if err := s.db.WithContext(ctx).
-		Table("interceptions").
-		Select(`interceptions.initiator_id,
-			COALESCE(NULLIF(users.name, ''), NULLIF(users.preferred_username, ''), NULLIF(users.email, ''), CAST(users.id AS TEXT)) AS name,
-			COUNT(DISTINCT interceptions.id) AS requests`).
-		Joins("JOIN users ON users.id = interceptions.initiator_id").
-		Where("interceptions.started_at >= ? AND interceptions.started_at <= ?", resolved.StartsAt, resolved.EndsAt).
-		Group("interceptions.initiator_id, users.id, users.name, users.preferred_username, users.email").
-		Scan(&requestRows).Error; err != nil {
-		return DashboardBreakdownResponse{}, fmt.Errorf("load dashboard top identity requests: %w", err)
-	}
-
-	itemsByID := map[string]*UsageBreakdown{}
-	for _, row := range requestRows {
-		breakdownByKey(itemsByID, row.InitiatorID, row.Name).Requests += row.Requests
-	}
-
-	type identityTokenUsageRow struct {
-		InitiatorID           string
-		Name                  string
-		InputTokens           int64
-		OutputTokens          int64
-		CacheReadInputTokens  int64
-		CacheWriteInputTokens int64
-		Type                  string
-		Metadata              string
-	}
-	var tokenRows []identityTokenUsageRow
-	if err := s.db.WithContext(ctx).
-		Table("token_usages").
-		Select(`interceptions.initiator_id,
-			COALESCE(NULLIF(users.name, ''), NULLIF(users.preferred_username, ''), NULLIF(users.email, ''), CAST(users.id AS TEXT)) AS name,
-			token_usages.input_tokens,
-			token_usages.output_tokens,
-			token_usages.cache_read_input_tokens,
-			token_usages.cache_write_input_tokens,
-			token_usages.type,
-			token_usages.metadata`).
-		Joins("JOIN interceptions ON interceptions.id = token_usages.interception_id").
-		Joins("JOIN users ON users.id = interceptions.initiator_id").
-		Where("interceptions.started_at >= ? AND interceptions.started_at <= ?", resolved.StartsAt, resolved.EndsAt).
-		Where("token_usages.created_at >= ? AND token_usages.created_at <= ?", resolved.StartsAt, resolved.EndsAt).
-		Scan(&tokenRows).Error; err != nil {
-		return DashboardBreakdownResponse{}, fmt.Errorf("load dashboard top identity tokens: %w", err)
-	}
-
-	for _, row := range tokenRows {
-		accumulateBreakdownTokenTotals(
-			breakdownByKey(itemsByID, row.InitiatorID, row.Name),
-			tokenUsageRow{
-				InputTokens:           row.InputTokens,
-				OutputTokens:          row.OutputTokens,
-				CacheReadInputTokens:  row.CacheReadInputTokens,
-				CacheWriteInputTokens: row.CacheWriteInputTokens,
-				Type:                  row.Type,
-				Metadata:              row.Metadata,
-			},
-		)
+	itemsByID, err := s.aggregatedTopIdentities(ctx, resolved.StartsAt, resolved.EndsAt)
+	if err != nil {
+		return DashboardBreakdownResponse{}, err
 	}
 	s.attachBreakdownEstimatedCosts(itemsByID)
 
@@ -1458,20 +1341,20 @@ func (s *Service) firstUserActivityAt(ctx context.Context, userID string) (time.
 // firstActivityAt returns the earliest recorded request for a dashboard scope.
 func (s *Service) firstActivityAt(ctx context.Context, scope dashboardUsageScope) (time.Time, bool, error) {
 	var row struct {
-		StartedAt time.Time
+		Day time.Time
 	}
 	query := s.db.WithContext(ctx).
-		Model(&Interception{}).
-		Select("started_at")
+		Model(&ProxyDailyUsageKPI{}).
+		Select("day")
 	query = scope.applyInitiatorFilter(query, "initiator_id").
-		Order("started_at ASC")
+		Order("day ASC")
 	if err := query.Take(&row).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return time.Time{}, false, nil
 		}
 		return time.Time{}, false, fmt.Errorf("load first activity: %w", err)
 	}
-	return row.StartedAt, true, nil
+	return row.Day, true, nil
 }
 
 // buildDailyBuckets creates empty daily usage buckets for a window.

@@ -19,6 +19,7 @@ Compose starts:
 - a seed job for a local Ollama provider
 - the API on `http://localhost:8080`
 - the proxy on `http://localhost:8081`
+- the worker
 - the scheduler
 
 Local credentials:
@@ -66,10 +67,11 @@ Run the backend processes:
 make migrate
 make run-api
 make run-proxy
+make run-worker
 make run-schedule
 ```
 
-For convenience, run migrations, scheduler, API, and proxy from one terminal:
+For convenience, run migrations, worker, scheduler, API, and proxy from one terminal:
 
 ```sh
 make run-all
@@ -83,6 +85,7 @@ command. This applies to:
 ```sh
 go run . api
 go run . proxy
+go run . worker
 go run . migrate
 go run . schedule
 ```
@@ -105,8 +108,9 @@ for ports, base URLs, CORS, session name, and interval values.
 | `make migrate` | Run database migrations. |
 | `make run-api` | Run the API process. |
 | `make run-proxy` | Run the proxy process. |
+| `make run-worker` | Run the generic worker process. |
 | `make run-schedule` | Run the scheduler process. |
-| `make run-all` | Run migrations, scheduler, API, and proxy together. |
+| `make run-all` | Run migrations, worker, scheduler, API, and proxy together. |
 | `make clean` | Remove local binaries. |
 
 ## Frontend Notes

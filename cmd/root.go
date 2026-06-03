@@ -41,6 +41,7 @@ func NewRootCommand() *cobra.Command {
 		newProxyCommand(),
 		newMigrateCommand(),
 		newScheduleCommand(),
+		newWorkerCommand(),
 	)
 
 	return root

@@ -13,14 +13,16 @@ binary:
 - `api` runs the HTTP API, OIDC login flow, admin endpoints, and
   optional static frontend hosting.
 - `proxy` runs the LLM proxy that validates Prompt Gate API tokens,
-  applies firewall rules, routes to configured providers, and records usage.
-- `schedule` runs recurring background jobs.
+  applies firewall rules, routes to configured providers, and enqueues usage.
+- `worker` consumes proxy usage events, stores raw prompt exploration data, and
+  updates dashboard KPI aggregates.
+- `schedule` runs recurring background jobs, including raw usage cleanup.
 - `migrate` applies database schema migrations.
 
 ## Quick Start
 
 The fastest local path is Docker Compose. It starts PostgreSQL, Redis,
-Keycloak, migrations, the API, the proxy, the schedule worker, and a seeded
+Keycloak, migrations, the API, the proxy, the worker, the scheduler, and a seeded
 local Ollama provider.
 
 ```sh
@@ -44,6 +46,7 @@ make test
 make migrate
 make run-api
 make run-proxy
+make run-worker
 make run-schedule
 ```
 
@@ -89,6 +92,8 @@ The default container command starts the API:
 
 Prompt Gate stores durable state in PostgreSQL and uses Redis for browser
 sessions, proxy auth caching, configuration snapshots, and hot-reload events.
+Proxy usage events also flow through Redis before workers persist them to
+PostgreSQL.
 OIDC handles browser identity, while Prompt Gate API tokens authenticate proxy
 traffic from applications and service accounts.
 
@@ -96,11 +101,12 @@ traffic from applications and service accounts.
 flowchart LR
     Browser["Browser"] --> API["promptgate api"]
     Client["LLM client"] --> Proxy["promptgate proxy"]
+    Worker["promptgate worker"] --> Postgres["PostgreSQL"]
     Schedule["promptgate schedule"] --> Postgres["PostgreSQL"]
     API --> Postgres
-    Proxy --> Postgres
     API --> Redis["Redis"]
     Proxy --> Redis
+    Worker --> Redis
     Schedule --> Redis
     API --> OIDC["OIDC provider"]
     Proxy --> Providers["OpenAI, Anthropic, Ollama"]

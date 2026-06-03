@@ -97,7 +97,7 @@ func runProxy() error {
 	groupService := groups.NewService(db)
 	providerService := localprovider.NewService(db, secretCipher)
 	mcpService := localmcp.NewService(db, secretCipher)
-	recorder := localproxy.NewRecorder(db)
+	recorder := localproxy.NewRedisRecorder(redisStore, stdLogger)
 	tracer := otel.GetTracerProvider().Tracer("promptgate-proxy")
 
 	authCache := tokens.NewRedisAuthCache(redisStore, cfg.RedisCacheTTL, stdLogger)

@@ -62,6 +62,15 @@ func (s *Store) TTL() time.Duration {
 	return s.ttl
 }
 
+// Client returns the underlying Redis client for features that need Redis commands
+// outside the small JSON/cache helpers.
+func (s *Store) Client() *redis.Client {
+	if !s.Enabled() {
+		return nil
+	}
+	return s.client
+}
+
 // Close closes the Redis client when one is configured.
 func (s *Store) Close() error {
 	if !s.Enabled() {
