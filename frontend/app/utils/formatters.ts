@@ -15,6 +15,25 @@ export function formatDateTime(value: string | null | undefined) {
   }).format(date)
 }
 
+// formatDate renders optional date values for the French locale.
+export function formatDate(value: string | null | undefined) {
+  if (!value) {
+    return 'Unknown'
+  }
+
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(value)
+    ? new Date(`${value}T00:00:00Z`)
+    : new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return 'Unknown'
+  }
+
+  return new Intl.DateTimeFormat('fr-FR', {
+    dateStyle: 'medium',
+    timeZone: 'UTC',
+  }).format(date)
+}
+
 // formatNumber renders optional numbers for the French locale.
 export function formatNumber(value: number | null | undefined) {
   if (value == null || Number.isNaN(value)) {
@@ -22,6 +41,18 @@ export function formatNumber(value: number | null | undefined) {
   }
 
   return new Intl.NumberFormat('fr-FR').format(value)
+}
+
+// formatCompactNumber renders large values in a compact, scannable format.
+export function formatCompactNumber(value: number | null | undefined) {
+  if (value == null || Number.isNaN(value)) {
+    return '0'
+  }
+
+  return new Intl.NumberFormat('fr-FR', {
+    maximumFractionDigits: value >= 1000 ? 1 : 0,
+    notation: 'compact',
+  }).format(value)
 }
 
 // formatCurrencyUsd renders optional USD amounts, including tiny usage estimates.

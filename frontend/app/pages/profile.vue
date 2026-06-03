@@ -13,6 +13,7 @@ definePageMeta({
 const authStore = useAuthStore()
 const { user } = storeToRefs(authStore)
 const profileGroups = useProfileGroups()
+const profileTokenUsage = useProfileTokenUsage()
 
 const displayName = computed(
   () =>
@@ -116,6 +117,15 @@ async function logout() {
 
       <v-col cols="12" lg="4">
         <ProfileQuickActions :actions="quickActions" @logout="logout" />
+      </v-col>
+
+      <v-col cols="12">
+        <ProfileTokenUsageSection
+          :error="profileTokenUsage.error.value"
+          :loading="profileTokenUsage.loading.value"
+          :summary="profileTokenUsage.summary.value"
+          @retry="profileTokenUsage.reload"
+        />
       </v-col>
 
       <v-col cols="12" lg="7">
