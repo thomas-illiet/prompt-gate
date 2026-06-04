@@ -7,6 +7,8 @@ export interface SubscriptionPlan {
   isDefault: boolean
   assignedUsersCount: number
   assignedServiceAccountsCount: number
+  assignedDirectAccountsCount: number
+  assignedIndirectAccountsCount: number
   assignedAccountsCount: number
   createdAt: string
   updatedAt: string

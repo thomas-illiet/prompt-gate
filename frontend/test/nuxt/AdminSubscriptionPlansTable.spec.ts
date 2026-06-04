@@ -13,6 +13,8 @@ const plan: SubscriptionPlan = {
   isDefault: false,
   assignedUsersCount: 1,
   assignedServiceAccountsCount: 1,
+  assignedDirectAccountsCount: 2,
+  assignedIndirectAccountsCount: 0,
   assignedAccountsCount: 2,
   createdAt: '2026-01-01T00:00:00Z',
   updatedAt: '2026-01-01T00:00:00Z',
@@ -51,20 +53,26 @@ describe('AdminSubscriptionPlansTable', () => {
     const wrapper = mountTable()
 
     expect(wrapper.text()).toContain('2 accounts')
-    expect(wrapper.text()).toContain('1 user, 1 service account')
+    expect(wrapper.text()).toContain(
+      '2 direct assignments, 0 indirect assignments',
+    )
   })
 
-  it('shows an empty assignment caption when no accounts are attached', () => {
+  it('shows direct and indirect assignment counts when no direct accounts are attached', () => {
     const wrapper = mountTable([
       {
         ...plan,
         assignedUsersCount: 0,
         assignedServiceAccountsCount: 0,
-        assignedAccountsCount: 0,
+        assignedDirectAccountsCount: 0,
+        assignedIndirectAccountsCount: 3,
+        assignedAccountsCount: 3,
       },
     ])
 
-    expect(wrapper.text()).toContain('0 accounts')
-    expect(wrapper.text()).toContain('No direct assignments')
+    expect(wrapper.text()).toContain('3 accounts')
+    expect(wrapper.text()).toContain(
+      '0 direct assignments, 3 indirect assignments',
+    )
   })
 })

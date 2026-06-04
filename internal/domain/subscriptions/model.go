@@ -56,17 +56,19 @@ type AssignPlanInput struct {
 }
 
 type PlanResponse struct {
-	ID                           string    `json:"id"`
-	Name                         string    `json:"name"`
-	Description                  string    `json:"description"`
-	Quota5HTokens                *int64    `json:"quota5hTokens"`
-	Quota7DTokens                *int64    `json:"quota7dTokens"`
-	IsDefault                    bool      `json:"isDefault"`
-	AssignedUsersCount           int64     `json:"assignedUsersCount"`
-	AssignedServiceAccountsCount int64     `json:"assignedServiceAccountsCount"`
-	AssignedAccountsCount        int64     `json:"assignedAccountsCount"`
-	CreatedAt                    time.Time `json:"createdAt"`
-	UpdatedAt                    time.Time `json:"updatedAt"`
+	ID                            string    `json:"id"`
+	Name                          string    `json:"name"`
+	Description                   string    `json:"description"`
+	Quota5HTokens                 *int64    `json:"quota5hTokens"`
+	Quota7DTokens                 *int64    `json:"quota7dTokens"`
+	IsDefault                     bool      `json:"isDefault"`
+	AssignedUsersCount            int64     `json:"assignedUsersCount"`
+	AssignedServiceAccountsCount  int64     `json:"assignedServiceAccountsCount"`
+	AssignedDirectAccountsCount   int64     `json:"assignedDirectAccountsCount"`
+	AssignedIndirectAccountsCount int64     `json:"assignedIndirectAccountsCount"`
+	AssignedAccountsCount         int64     `json:"assignedAccountsCount"`
+	CreatedAt                     time.Time `json:"createdAt"`
+	UpdatedAt                     time.Time `json:"updatedAt"`
 }
 
 type PlanListParams struct {

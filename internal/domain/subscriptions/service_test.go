@@ -137,6 +137,10 @@ func TestListPlansPagedIncludesAssignmentCounts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create free plan: %v", err)
 	}
+	free, err = service.UpdatePlan(ctx, free.ID, PlanInput{Name: "Free", IsDefault: true})
+	if err != nil {
+		t.Fatalf("set free as default plan: %v", err)
+	}
 
 	proID := pro.ID
 	if _, err := service.AssignUserPlan(ctx, user.ID, &proID); err != nil {
@@ -180,6 +184,21 @@ func TestListPlansPagedIncludesAssignmentCounts(t *testing.T) {
 		t.Fatalf("assign free user plan: %v", err)
 	}
 
+	inheritedServiceAccount := users.User{
+		ID:                "44444444-4444-4444-4444-444444444444",
+		ExternalSub:       "inherited-worker",
+		Email:             "inherited@example.com",
+		PreferredUsername: "inherited",
+		Name:              "Inherited Worker",
+		Type:              auth.UserTypeService,
+		Role:              auth.RoleUser,
+		IsActive:          true,
+		LastLoginAt:       time.Now().UTC(),
+	}
+	if err := service.db.Create(&inheritedServiceAccount).Error; err != nil {
+		t.Fatalf("create inherited service account: %v", err)
+	}
+
 	result, err := service.ListPlansPaged(ctx, PlanListParams{
 		Page:     1,
 		PageSize: 10,
@@ -196,12 +215,16 @@ func TestListPlansPagedIncludesAssignmentCounts(t *testing.T) {
 	}
 	if plansByName["Pro"].AssignedUsersCount != 1 ||
 		plansByName["Pro"].AssignedServiceAccountsCount != 1 ||
+		plansByName["Pro"].AssignedDirectAccountsCount != 2 ||
+		plansByName["Pro"].AssignedIndirectAccountsCount != 0 ||
 		plansByName["Pro"].AssignedAccountsCount != 2 {
 		t.Fatalf("unexpected pro assignment counts: %#v", plansByName["Pro"])
 	}
 	if plansByName["Free"].AssignedUsersCount != 1 ||
 		plansByName["Free"].AssignedServiceAccountsCount != 0 ||
-		plansByName["Free"].AssignedAccountsCount != 1 {
+		plansByName["Free"].AssignedDirectAccountsCount != 1 ||
+		plansByName["Free"].AssignedIndirectAccountsCount != 1 ||
+		plansByName["Free"].AssignedAccountsCount != 2 {
 		t.Fatalf("unexpected free assignment counts: %#v", plansByName["Free"])
 	}
 
@@ -211,6 +234,16 @@ func TestListPlansPagedIncludesAssignmentCounts(t *testing.T) {
 	}
 	if reloaded.AssignedAccountsCount != 2 {
 		t.Fatalf("expected get plan to include assignment count, got %#v", reloaded)
+	}
+
+	reloadedDefault, err := service.GetPlan(ctx, free.ID)
+	if err != nil {
+		t.Fatalf("get default plan: %v", err)
+	}
+	if reloadedDefault.AssignedDirectAccountsCount != 1 ||
+		reloadedDefault.AssignedIndirectAccountsCount != 1 ||
+		reloadedDefault.AssignedAccountsCount != 2 {
+		t.Fatalf("expected get default plan to include inherited assignment count, got %#v", reloadedDefault)
 	}
 }
 

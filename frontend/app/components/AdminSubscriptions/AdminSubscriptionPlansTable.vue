@@ -94,21 +94,16 @@ function assignedAccountsLabel(plan: SubscriptionPlan) {
   return count === 1 ? '1 account' : `${formatNumber(count)} accounts`
 }
 
+function assignmentCountLabel(count: number, kind: 'direct' | 'indirect') {
+  const suffix = count === 1 ? 'assignment' : 'assignments'
+  return `${formatNumber(count)} ${kind} ${suffix}`
+}
+
 function assignmentBreakdownLabel(plan: SubscriptionPlan) {
-  if (plan.assignedAccountsCount === 0) {
-    return 'No direct assignments'
-  }
-
-  const usersLabel =
-    plan.assignedUsersCount === 1
-      ? '1 user'
-      : `${formatNumber(plan.assignedUsersCount)} users`
-  const serviceAccountsLabel =
-    plan.assignedServiceAccountsCount === 1
-      ? '1 service account'
-      : `${formatNumber(plan.assignedServiceAccountsCount)} service accounts`
-
-  return `${usersLabel}, ${serviceAccountsLabel}`
+  return [
+    assignmentCountLabel(plan.assignedDirectAccountsCount, 'direct'),
+    assignmentCountLabel(plan.assignedIndirectAccountsCount, 'indirect'),
+  ].join(', ')
 }
 </script>
 

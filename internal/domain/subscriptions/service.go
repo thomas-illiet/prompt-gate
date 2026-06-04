@@ -47,8 +47,9 @@ type planAssignmentCountRow struct {
 }
 
 type planAssignmentCounts struct {
-	Users           int64
-	ServiceAccounts int64
+	Users            int64
+	ServiceAccounts  int64
+	IndirectAccounts int64
 }
 
 func NewService(db *gorm.DB) *Service {
@@ -127,7 +128,7 @@ func (s *Service) ListPlansPaged(ctx context.Context, params PlanListParams) (Pl
 	}
 
 	items := make([]PlanResponse, 0, len(records))
-	assignmentCounts, err := s.planAssignmentCountLookup(ctx, planIDs(records))
+	assignmentCounts, err := s.planAssignmentCountLookup(ctx, records)
 	if err != nil {
 		return PlanListResult{}, err
 	}
@@ -544,33 +545,45 @@ func planIDs(records []SubscriptionPlan) []string {
 	return ids
 }
 
+func inheritedAssignmentPlanID(records []SubscriptionPlan) string {
+	for _, record := range records {
+		if record.IsDefault {
+			return record.ID
+		}
+	}
+	return ""
+}
+
 func planResponseWithAssignmentCounts(plan SubscriptionPlan, counts planAssignmentCounts) PlanResponse {
 	response := planResponse(plan)
 	response.AssignedUsersCount = counts.Users
 	response.AssignedServiceAccountsCount = counts.ServiceAccounts
-	response.AssignedAccountsCount = counts.Users + counts.ServiceAccounts
+	response.AssignedDirectAccountsCount = counts.Users + counts.ServiceAccounts
+	response.AssignedIndirectAccountsCount = counts.IndirectAccounts
+	response.AssignedAccountsCount = response.AssignedDirectAccountsCount + counts.IndirectAccounts
 	return response
 }
 
 func (s *Service) planResponseWithCurrentAssignmentCounts(ctx context.Context, plan SubscriptionPlan) (PlanResponse, error) {
-	counts, err := s.planAssignmentCountLookup(ctx, []string{plan.ID})
+	counts, err := s.planAssignmentCountLookup(ctx, []SubscriptionPlan{plan})
 	if err != nil {
 		return PlanResponse{}, err
 	}
 	return planResponseWithAssignmentCounts(plan, counts[plan.ID]), nil
 }
 
-func (s *Service) planAssignmentCountLookup(ctx context.Context, planIDs []string) (map[string]planAssignmentCounts, error) {
-	countsByPlanID := make(map[string]planAssignmentCounts, len(planIDs))
-	if len(planIDs) == 0 {
+func (s *Service) planAssignmentCountLookup(ctx context.Context, plans []SubscriptionPlan) (map[string]planAssignmentCounts, error) {
+	countsByPlanID := make(map[string]planAssignmentCounts, len(plans))
+	if len(plans) == 0 {
 		return countsByPlanID, nil
 	}
 
+	ids := planIDs(plans)
 	var rows []planAssignmentCountRow
 	if err := s.db.WithContext(ctx).
 		Model(&users.User{}).
 		Select("subscription_plan_id, type, COUNT(*) AS count").
-		Where("subscription_plan_id IN ?", planIDs).
+		Where("subscription_plan_id IN ?", ids).
 		Group("subscription_plan_id, type").
 		Scan(&rows).Error; err != nil {
 		return nil, fmt.Errorf("count subscription plan assignments: %w", err)
@@ -585,6 +598,19 @@ func (s *Service) planAssignmentCountLookup(ctx context.Context, planIDs []strin
 			counts.ServiceAccounts = row.Count
 		}
 		countsByPlanID[row.SubscriptionPlanID] = counts
+	}
+
+	if inheritedPlanID := inheritedAssignmentPlanID(plans); inheritedPlanID != "" {
+		var indirectAccounts int64
+		if err := s.db.WithContext(ctx).
+			Model(&users.User{}).
+			Where("subscription_plan_id IS NULL").
+			Count(&indirectAccounts).Error; err != nil {
+			return nil, fmt.Errorf("count inherited subscription plan assignments: %w", err)
+		}
+		counts := countsByPlanID[inheritedPlanID]
+		counts.IndirectAccounts = indirectAccounts
+		countsByPlanID[inheritedPlanID] = counts
 	}
 	return countsByPlanID, nil
 }
