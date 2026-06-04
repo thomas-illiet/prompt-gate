@@ -1,277 +1,60 @@
 <script setup lang="ts">
-import { curveBumpX, curveBumpY, line } from 'd3'
-
-import type {
-  AdminPromptHistoryItem,
-  PromptHistoryItem,
-} from '~/types/user-service'
-import { formatDurationMs, formatNumber } from '~/utils/formatters'
-
-type PromptHistoryGraphItem = PromptHistoryItem | AdminPromptHistoryItem
+import {
+  buildPromptHistoryGraphLayout,
+  clamp,
+  promptHistoryGraphConfig,
+  promptHistoryGraphEdgeLabelLeft,
+  promptHistoryGraphNodeLeft,
+  promptHistoryGraphNodeTop,
+  type PromptHistoryGraphEdge,
+  type PromptHistoryGraphItem,
+  type PromptHistoryGraphNode,
+  type PromptHistoryGraphPosition,
+} from '~/utils/prompt-history-graph'
 
 const props = defineProps<{
   actorLabel: string
   prompt: PromptHistoryGraphItem
 }>()
 
-interface GraphNode {
-  column: number
-  key: string
-  row: number
-  title: string
-  subtitle: string
-  x: number
-  y: number
-}
-
-interface GraphNodeSeed {
-  key: string
-  title: string
-  subtitle: string
-}
-
-interface GraphEdge {
-  key: string
-  label: string
-  labelWidth: number
-  labelX: number
-  labelY: number
-  path: string
-}
-
-interface GraphEdgeSeed {
-  key: string
-  label: string
-  labelWidth: number
-}
-
-const graphWidth = 1100
-const graphMarginX = 48
-const graphMarginY = 42
-const graphBottomMetricSpace = 70
-const maxColumns = 3
-const nodeWidth = 160
-const nodeHeight = 78
-const rowGap = 118
-const edgeLabelHeight = 28
-const arrowInset = 18
+const {
+  edgeLabelHeight,
+  graphBottomMetricSpace,
+  graphMarginX,
+  graphMarginY,
+  graphWidth,
+  nodeHeight,
+  nodeWidth,
+} = promptHistoryGraphConfig
 const graphSvg = useTemplateRef<SVGSVGElement>('graphSvg')
 const draggedNodeKey = shallowRef<string | null>(null)
 const dragOffset = reactive({ x: 0, y: 0 })
-const nodePositions = shallowRef<Record<string, { x: number; y: number }>>({})
-const d3HorizontalLine = line<[number, number]>()
-  .x((point) => point[0])
-  .y((point) => point[1])
-  .curve(curveBumpX)
-const d3VerticalLine = line<[number, number]>()
-  .x((point) => point[0])
-  .y((point) => point[1])
-  .curve(curveBumpY)
+const nodePositions = shallowRef<Record<string, PromptHistoryGraphPosition>>({})
 
-const markerId = computed(
-  () =>
-    `prompt-request-arrow-${props.prompt.id.replace(/[^A-Za-z0-9_-]/g, '-')}`,
-)
-
-const requestEdgeLabel = computed(() => {
-  const ip = clientIpLabel(props.prompt)
-  return ip ? `IP ${ip}` : 'request'
-})
-
-const nodeSeeds = computed<GraphNodeSeed[]>(() => [
-  {
-    key: 'actor',
-    title: truncateLabel(props.actorLabel || 'You', 18),
-    subtitle: 'Requester',
-  },
-  {
-    key: 'gateway',
-    title: 'PromptGate',
-    subtitle: 'Gateway',
-  },
-  {
-    key: 'provider',
-    title: truncateLabel(props.prompt.provider, 18),
-    subtitle: providerTypeLabel(props.prompt.providerType),
-  },
-  {
-    key: 'model',
-    title: truncateLabel(props.prompt.model, 20),
-    subtitle: 'Model',
-  },
-  {
-    key: 'response',
-    title: 'Response',
-    subtitle: formatDurationMs(props.prompt.durationMs),
-  },
-])
-
-const edgeSeeds = computed<GraphEdgeSeed[]>(() => [
-  {
-    key: 'request',
-    label: requestEdgeLabel.value,
-    labelWidth: edgeLabelWidth(requestEdgeLabel.value, 88),
-  },
-  {
-    key: 'input',
-    label: `${formatNumber(props.prompt.inputTokens)} input`,
-    labelWidth: edgeLabelWidth(
-      `${formatNumber(props.prompt.inputTokens)} input`,
-      118,
-    ),
-  },
-  {
-    key: 'route',
-    label: 'route',
-    labelWidth: 76,
-  },
-  {
-    key: 'output',
-    label: `${formatNumber(props.prompt.outputTokens)} output`,
-    labelWidth: edgeLabelWidth(
-      `${formatNumber(props.prompt.outputTokens)} output`,
-      126,
-    ),
-  },
-])
-
-const columnCount = computed(() =>
-  Math.min(maxColumns, Math.max(nodeSeeds.value.length, 1)),
-)
-
-const rowCount = computed(() =>
-  Math.ceil(nodeSeeds.value.length / columnCount.value),
-)
-
-const graphHeight = computed(
-  () =>
-    graphMarginY +
-    rowCount.value * nodeHeight +
-    Math.max(rowCount.value - 1, 0) * rowGap +
-    graphBottomMetricSpace,
-)
-
-const nodes = computed<GraphNode[]>(() =>
-  nodeSeeds.value.map((node, index) => {
-    const row = Math.floor(index / columnCount.value)
-    const column = index % columnCount.value
-    const rowStartIndex = row * columnCount.value
-    const nodesInRow = Math.min(
-      columnCount.value,
-      nodeSeeds.value.length - rowStartIndex,
-    )
-    const fallback = {
-      x: rowNodeX(column, nodesInRow),
-      y: graphMarginY + nodeHeight / 2 + row * (nodeHeight + rowGap),
-    }
-    const position = nodePositions.value[node.key] ?? fallback
-
-    return {
-      ...node,
-      column,
-      row,
-      x: position.x,
-      y: position.y,
-    }
+const graphLayout = computed(() =>
+  buildPromptHistoryGraphLayout({
+    actorLabel: props.actorLabel,
+    nodePositions: nodePositions.value,
+    prompt: props.prompt,
   }),
 )
+const markerId = computed(() => graphLayout.value.markerId)
+const graphHeight = computed(() => graphLayout.value.graphHeight)
+const nodes = computed(() => graphLayout.value.nodes)
+const edges = computed(() => graphLayout.value.edges)
+const durationLabel = computed(() => graphLayout.value.durationLabel)
+const durationLabelY = computed(() => graphLayout.value.durationLabelY)
 
-const edges = computed<GraphEdge[]>(() =>
-  edgeSeeds.value.map((edge, index) => {
-    const source = nodes.value[index]
-    const target = nodes.value[index + 1]
-    if (!source || !target) {
-      return {
-        ...edge,
-        labelX: graphWidth / 2,
-        labelY: graphMarginY,
-        path: '',
-      }
-    }
-
-    return {
-      ...edge,
-      ...edgeLayout(edge, source, target),
-    }
-  }),
-)
-
-const durationLabel = computed(
-  () => `duration: ${formatDurationMs(props.prompt.durationMs)}`,
-)
-
-const durationLabelY = computed(() => graphHeight.value - 28)
-
-function nodeLeft(node: GraphNode) {
-  return node.x - nodeWidth / 2
+function nodeLeft(node: PromptHistoryGraphNode) {
+  return promptHistoryGraphNodeLeft(node)
 }
 
-function nodeTop(node: GraphNode) {
-  return node.y - nodeHeight / 2
+function nodeTop(node: PromptHistoryGraphNode) {
+  return promptHistoryGraphNodeTop(node)
 }
 
-function edgeLabelLeft(edge: GraphEdge) {
-  return clamp(
-    edge.labelX - edge.labelWidth / 2,
-    8,
-    graphWidth - edge.labelWidth - 8,
-  )
-}
-
-function edgeLabelWidth(label: string, minWidth: number) {
-  return Math.max(minWidth, label.length * 7 + 28)
-}
-
-function rowNodeX(column: number, nodesInRow: number) {
-  const left = graphMarginX + nodeWidth / 2
-  const right = graphWidth - graphMarginX - nodeWidth / 2
-  if (nodesInRow <= 1) {
-    return graphWidth / 2
-  }
-
-  const columnsToFill =
-    nodesInRow < columnCount.value ? nodesInRow - 1 : columnCount.value - 1
-  return left + (column * (right - left)) / columnsToFill
-}
-
-function edgeLayout(edge: GraphEdgeSeed, source: GraphNode, target: GraphNode) {
-  if (source.row === target.row) {
-    const direction = source.x <= target.x ? 1 : -1
-    const startX = source.x + direction * (nodeWidth / 2 + arrowInset)
-    const endX = target.x - direction * (nodeWidth / 2 + arrowInset)
-    const labelX = (startX + endX) / 2
-    const labelY = source.y - edgeLabelHeight / 2
-    const path =
-      d3HorizontalLine([
-        [startX, source.y],
-        [endX, target.y],
-      ]) ?? ''
-
-    return { labelX, labelY, path }
-  }
-
-  const startY = source.y + nodeHeight / 2 + arrowInset
-  const endY = target.y - nodeHeight / 2 - arrowInset
-  const turnY = (startY + endY) / 2
-  const labelX = (source.x + target.x) / 2
-  const labelY = turnY - edgeLabelHeight / 2
-  const path =
-    d3VerticalLine([
-      [source.x, startY],
-      [source.x, turnY],
-      [target.x, turnY],
-      [target.x, endY],
-    ]) ?? ''
-
-  return { labelX, labelY, path }
-}
-
-function clientIpLabel(prompt: PromptHistoryGraphItem) {
-  if (!('clientIp' in prompt)) {
-    return ''
-  }
-
-  return prompt.clientIp.trim() || 'unknown'
+function edgeLabelLeft(edge: PromptHistoryGraphEdge) {
+  return promptHistoryGraphEdgeLabelLeft(edge)
 }
 
 function pointerPoint(event: PointerEvent) {
@@ -292,7 +75,7 @@ function pointerPoint(event: PointerEvent) {
   return point.matrixTransform(matrix.inverse())
 }
 
-function startNodeDrag(node: GraphNode, event: PointerEvent) {
+function startNodeDrag(node: PromptHistoryGraphNode, event: PointerEvent) {
   if (event.button !== 0) {
     return
   }
@@ -342,10 +125,6 @@ function stopNodeDrag() {
   draggedNodeKey.value = null
 }
 
-function clamp(value: number, min: number, max: number) {
-  return Math.min(Math.max(value, min), max)
-}
-
 watch(
   () => props.prompt.id,
   () => {
@@ -353,22 +132,6 @@ watch(
     draggedNodeKey.value = null
   },
 )
-
-function truncateLabel(value: string, maxLength: number) {
-  if (value.length <= maxLength) {
-    return value
-  }
-
-  return `${value.slice(0, Math.max(maxLength - 1, 1))}...`
-}
-
-function providerTypeLabel(providerType: string) {
-  if (!providerType) {
-    return 'Provider'
-  }
-
-  return providerType.charAt(0).toUpperCase() + providerType.slice(1)
-}
 </script>
 
 <template>

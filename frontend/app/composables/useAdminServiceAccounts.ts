@@ -17,6 +17,11 @@ import type {
 } from '~/types/service-accounts'
 import type { AssignSubscriptionPlanPayload } from '~/types/subscriptions'
 import { Notify } from '~/stores/notification'
+import {
+  adminServiceAccountPath,
+  adminServiceAccountsPath,
+  withApiQuery,
+} from '~/utils/api-paths'
 import { toApiErrorMessage } from '~/utils/api-error'
 
 const ERROR_MESSAGES = {
@@ -76,7 +81,7 @@ export function useAdminServiceAccounts() {
   const accountList = useQueryList<ServiceAccount>({
     fetch: (queryString) =>
       apiFetch<ServiceAccountListResponse>(
-        `/api/v1/admin/service-accounts?${queryString}`,
+        `${adminServiceAccountsPath}?${queryString}`,
       ),
     initialSortBy: 'createdAt',
     initialSortDir: 'desc',
@@ -114,7 +119,7 @@ export function useAdminServiceAccounts() {
       },
       async () => {
         const account = await apiJson<ServiceAccount>(
-          '/api/v1/admin/service-accounts',
+          adminServiceAccountsPath,
           payload,
           { method: 'POST' },
         )
@@ -125,7 +130,9 @@ export function useAdminServiceAccounts() {
     )
   }
 
-  async function createAccountWithSubscription(payload: ServiceAccountFormPayload) {
+  async function createAccountWithSubscription(
+    payload: ServiceAccountFormPayload,
+  ) {
     const account = await createAccount({
       identifier: payload.identifier,
       name: payload.name,
@@ -144,7 +151,7 @@ export function useAdminServiceAccounts() {
   // loadAccount fetches one service account for editing.
   async function loadAccount(accountId: string) {
     selectedAccount.value = await apiFetch<ServiceAccount>(
-      `/api/v1/admin/service-accounts/${accountId}`,
+      adminServiceAccountPath(accountId),
     )
     return selectedAccount.value
   }
@@ -162,7 +169,7 @@ export function useAdminServiceAccounts() {
       },
       async () => {
         const account = await apiJson<ServiceAccount>(
-          `/api/v1/admin/service-accounts/${accountId}`,
+          adminServiceAccountPath(accountId),
           payload,
           { method: 'PATCH' },
         )
@@ -206,7 +213,7 @@ export function useAdminServiceAccounts() {
       async () => {
         const payload: AssignSubscriptionPlanPayload = { planId }
         const account = await apiJson<ServiceAccount>(
-          `/api/v1/admin/service-accounts/${accountId}/subscription-plan`,
+          adminServiceAccountPath(accountId, 'subscription-plan'),
           payload,
           { method: 'PUT' },
         )
@@ -228,7 +235,7 @@ export function useAdminServiceAccounts() {
       },
       async () => {
         const account = await apiJson<ServiceAccount>(
-          `/api/v1/admin/service-accounts/${accountId}/note`,
+          adminServiceAccountPath(accountId, 'note'),
           { note },
           { method: 'PATCH' },
         )
@@ -251,7 +258,7 @@ export function useAdminServiceAccounts() {
         toErrorMessage: toAdminServiceAccountErrorMessage,
       },
       async () => {
-        await apiFetch<unknown>(`/api/v1/admin/service-accounts/${accountId}`, {
+        await apiFetch<unknown>(adminServiceAccountPath(accountId), {
           method: 'DELETE',
         })
         await fetchAccounts()
@@ -275,7 +282,7 @@ export function useAdminServiceAccounts() {
       }
 
       const response = await apiFetch<TokenListResponse>(
-        `/api/v1/admin/service-accounts/${accountId}/tokens?${params.toString()}`,
+        withApiQuery(adminServiceAccountPath(accountId, 'tokens'), params),
       )
       tokens.value = response.items
       tokenTotal.value = response.total
@@ -318,7 +325,10 @@ export function useAdminServiceAccounts() {
         sortDir: firewallSortDir.value,
       })
       const response = await apiFetch<FirewallRuleListResponse>(
-        `/api/v1/admin/service-accounts/${accountId}/firewall/rules?${params.toString()}`,
+        withApiQuery(
+          adminServiceAccountPath(accountId, 'firewall', 'rules'),
+          params,
+        ),
       )
       firewallRules.value = response.items
       firewallTotal.value = response.total
@@ -362,7 +372,7 @@ export function useAdminServiceAccounts() {
       },
       async () => {
         const response = await apiJson<FirewallRule>(
-          `/api/v1/admin/service-accounts/${accountId}/firewall/rules`,
+          adminServiceAccountPath(accountId, 'firewall', 'rules'),
           payload,
           { method: 'POST' },
         )
@@ -387,7 +397,7 @@ export function useAdminServiceAccounts() {
       },
       async () => {
         const response = await apiJson<FirewallRule>(
-          `/api/v1/admin/service-accounts/${accountId}/firewall/rules/${ruleId}`,
+          adminServiceAccountPath(accountId, 'firewall', 'rules', ruleId),
           payload,
           { method: 'PATCH' },
         )
@@ -408,7 +418,13 @@ export function useAdminServiceAccounts() {
       { loading: saving, toErrorMessage: toAdminServiceAccountErrorMessage },
       async () => {
         const response = await apiJson<FirewallRule>(
-          `/api/v1/admin/service-accounts/${accountId}/firewall/rules/${ruleId}/priority`,
+          adminServiceAccountPath(
+            accountId,
+            'firewall',
+            'rules',
+            ruleId,
+            'priority',
+          ),
           { direction },
           { method: 'PATCH' },
         )
@@ -429,7 +445,7 @@ export function useAdminServiceAccounts() {
       },
       async () => {
         await apiFetch<unknown>(
-          `/api/v1/admin/service-accounts/${accountId}/firewall/rules/${ruleId}`,
+          adminServiceAccountPath(accountId, 'firewall', 'rules', ruleId),
           { method: 'DELETE' },
         )
         await loadFirewallRules(accountId)
@@ -443,7 +459,7 @@ export function useAdminServiceAccounts() {
 
     try {
       return await apiJson<FirewallSimulationResponse>(
-        `/api/v1/admin/service-accounts/${accountId}/firewall/simulate`,
+        adminServiceAccountPath(accountId, 'firewall', 'simulate'),
         { clientIp },
         { method: 'POST' },
       )
@@ -470,7 +486,7 @@ export function useAdminServiceAccounts() {
       },
       async () => {
         const response = await apiJson<CreatedTokenResponse>(
-          `/api/v1/admin/service-accounts/${accountId}/tokens`,
+          adminServiceAccountPath(accountId, 'tokens'),
           payload,
           { method: 'POST' },
         )
@@ -496,7 +512,7 @@ export function useAdminServiceAccounts() {
       },
       async () => {
         await apiFetch<unknown>(
-          `/api/v1/admin/service-accounts/${accountId}/tokens/${tokenId}`,
+          adminServiceAccountPath(accountId, 'tokens', tokenId),
           { method: 'DELETE' },
         )
         await loadTokens(accountId, includeRevoked)

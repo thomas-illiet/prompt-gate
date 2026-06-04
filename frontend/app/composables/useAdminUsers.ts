@@ -19,6 +19,12 @@ import {
   hasRequiredRole,
   isBlockedUser,
 } from '~/utils/auth'
+import {
+  adminGroupsPath,
+  adminUserPath,
+  adminUsersPath,
+  withApiQuery,
+} from '~/utils/api-paths'
 import { toApiErrorMessage } from '~/utils/api-error'
 
 const ERROR_MESSAGES = {
@@ -70,7 +76,7 @@ export function useAdminUsers() {
   const queryList = useQueryList<AdminUser>({
     debounceMs: 80,
     fetch: (queryString) =>
-      apiFetch<UserListResponse>(`/api/v1/admin/users?${queryString}`),
+      apiFetch<UserListResponse>(`${adminUsersPath}?${queryString}`),
     initialSortBy: 'lastLoginAt',
     initialSortDir: 'desc',
     params: () => ({
@@ -119,9 +125,7 @@ export function useAdminUsers() {
 
   // loadUser fetches one user for editing.
   async function loadUser(userId: string) {
-    selectedUser.value = await apiFetch<AdminUser>(
-      `/api/v1/admin/users/${userId}`,
-    )
+    selectedUser.value = await apiFetch<AdminUser>(adminUserPath(userId))
     return selectedUser.value
   }
 
@@ -138,7 +142,7 @@ export function useAdminUsers() {
       })
 
       const response = await apiFetch<UserTokenListResponse>(
-        `/api/v1/admin/users/${userId}/tokens?${params.toString()}`,
+        withApiQuery(adminUserPath(userId, 'tokens'), params),
       )
       tokens.value = response.items
       tokenTotal.value = response.total
@@ -166,7 +170,7 @@ export function useAdminUsers() {
           sortDir: 'asc',
         })
         const response = await apiFetch<GroupListResponse>(
-          `/api/v1/admin/groups?${params.toString()}`,
+          withApiQuery(adminGroupsPath, params),
         )
         items.push(...response.items)
         if (items.length >= response.total || response.items.length === 0) {
@@ -189,7 +193,7 @@ export function useAdminUsers() {
     userGroupsLoading.value = true
     try {
       userGroups.value = await apiFetch<AccessGroup[]>(
-        `/api/v1/admin/users/${userId}/groups`,
+        adminUserPath(userId, 'groups'),
       )
       return userGroups.value
     } catch (error) {
@@ -211,7 +215,7 @@ export function useAdminUsers() {
       async () => {
         const payload: ReplaceUserGroupsPayload = { groupIds }
         userGroups.value = await apiJson<AccessGroup[]>(
-          `/api/v1/admin/users/${userId}/groups`,
+          adminUserPath(userId, 'groups'),
           payload,
           { method: 'PUT' },
         )
@@ -249,7 +253,7 @@ export function useAdminUsers() {
       },
       async () => {
         const updatedUser = await apiJson<AdminUser>(
-          `/api/v1/admin/users/${userId}`,
+          adminUserPath(userId),
           payload,
           { method: 'PATCH' },
         )
@@ -275,7 +279,7 @@ export function useAdminUsers() {
       async () => {
         const payload: AssignSubscriptionPlanPayload = { planId }
         const updatedUser = await apiJson<AdminUser>(
-          `/api/v1/admin/users/${userId}/subscription-plan`,
+          adminUserPath(userId, 'subscription-plan'),
           payload,
           { method: 'PUT' },
         )
@@ -317,7 +321,7 @@ export function useAdminUsers() {
       },
       async () => {
         const updatedUser = await apiJson<AdminUser>(
-          `/api/v1/admin/users/${userId}/note`,
+          adminUserPath(userId, 'note'),
           { note },
           { method: 'PATCH' },
         )
@@ -340,7 +344,7 @@ export function useAdminUsers() {
         toErrorMessage: toAdminUserErrorMessage,
       },
       async () => {
-        await apiFetch(`/api/v1/admin/users/${userId}`, {
+        await apiFetch(adminUserPath(userId), {
           method: 'DELETE',
         })
 
@@ -364,10 +368,9 @@ export function useAdminUsers() {
         toErrorMessage: toAdminUserErrorMessage,
       },
       async () => {
-        await apiFetch<unknown>(
-          `/api/v1/admin/users/${userId}/tokens/${tokenId}`,
-          { method: 'DELETE' },
-        )
+        await apiFetch<unknown>(adminUserPath(userId, 'tokens', tokenId), {
+          method: 'DELETE',
+        })
         await loadTokens(userId)
       },
     )
