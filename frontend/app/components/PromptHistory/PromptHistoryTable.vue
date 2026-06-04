@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useLocalStorage } from '@vueuse/core'
 import type { DataTableHeader } from 'vuetify'
 
 import type {
@@ -13,10 +14,39 @@ import {
 import { appTableCenteredColumn } from '~/utils/table'
 
 type PromptHistoryTableItem = PromptHistoryItem | AdminPromptHistoryItem
+type PromptHistoryColumnKey =
+  | 'actions'
+  | 'clientIp'
+  | 'createdAt'
+  | 'durationMs'
+  | 'inputTokens'
+  | 'model'
+  | 'outputTokens'
+  | 'prompt'
+  | 'provider'
+  | 'totalTokens'
+  | 'userName'
+
+interface PromptHistoryColumnDefinition {
+  adminOnly?: boolean
+  defaultVisible: boolean
+  header: DataTableHeader
+  key: PromptHistoryColumnKey
+  required?: boolean
+}
+
 const PROMPT_PREVIEW_MAX_LENGTH = 220
+const DEFAULT_COLUMN_PREFERENCES_KEY = 'promptgate.promptHistory.columns.v1'
+const REQUIRED_COLUMN_KEYS = new Set<PromptHistoryColumnKey>([
+  'prompt',
+  'createdAt',
+  'actions',
+])
 
 const props = withDefaults(
   defineProps<{
+    columnPreferencesKey?: string
+    enableColumnPicker?: boolean
     items: PromptHistoryTableItem[]
     loading: boolean
     page: number
@@ -29,6 +59,8 @@ const props = withDefaults(
     total: number
   }>(),
   {
+    columnPreferencesKey: DEFAULT_COLUMN_PREFERENCES_KEY,
+    enableColumnPicker: false,
     scopeLabel: 'your history',
     showUser: false,
     title: 'Prompt history',
@@ -42,40 +74,125 @@ const emit = defineEmits<{
   'update:sort': [sortBy: string, sortDir: 'asc' | 'desc']
 }>()
 
-const headers = computed<DataTableHeader[]>(() => {
-  const baseHeaders: DataTableHeader[] = [
-    { title: 'Prompt', key: 'prompt', width: 360 },
-  ]
-  if (props.showUser) {
-    baseHeaders.push({ title: 'User', key: 'userName' })
-  }
-
-  return [
-    ...baseHeaders,
-    { title: 'Provider', key: 'provider' },
-    { title: 'Model', key: 'model' },
-    appTableCenteredColumn({
+const columnDefinitions = computed<PromptHistoryColumnDefinition[]>(() => [
+  {
+    defaultVisible: true,
+    header: { title: 'Prompt', key: 'prompt', width: 360 },
+    key: 'prompt',
+    required: true,
+  },
+  {
+    adminOnly: true,
+    defaultVisible: true,
+    header: { title: 'User', key: 'userName' },
+    key: 'userName',
+  },
+  {
+    defaultVisible: true,
+    header: { title: 'Provider', key: 'provider' },
+    key: 'provider',
+  },
+  {
+    defaultVisible: true,
+    header: { title: 'Model', key: 'model' },
+    key: 'model',
+  },
+  {
+    defaultVisible: false,
+    header: appTableCenteredColumn({
       title: 'Input tokens',
       key: 'inputTokens',
     }),
-    appTableCenteredColumn({
+    key: 'inputTokens',
+  },
+  {
+    defaultVisible: false,
+    header: appTableCenteredColumn({
       title: 'Output tokens',
       key: 'outputTokens',
     }),
-    appTableCenteredColumn({
+    key: 'outputTokens',
+  },
+  {
+    defaultVisible: false,
+    header: appTableCenteredColumn({
+      title: 'Total tokens',
+      key: 'totalTokens',
+    }),
+    key: 'totalTokens',
+  },
+  {
+    defaultVisible: false,
+    header: appTableCenteredColumn({
       title: 'Duration',
       key: 'durationMs',
     }),
-    appTableCenteredColumn({
+    key: 'durationMs',
+  },
+  {
+    adminOnly: true,
+    defaultVisible: false,
+    header: { title: 'Client IP', key: 'clientIp' },
+    key: 'clientIp',
+  },
+  {
+    defaultVisible: true,
+    header: appTableCenteredColumn({
       title: 'Created',
       key: 'createdAt',
     }),
-    appTableCenteredColumn({
+    key: 'createdAt',
+    required: true,
+  },
+  {
+    defaultVisible: true,
+    header: appTableCenteredColumn({
       title: 'Actions',
       key: 'actions',
       sortable: false,
     }),
-  ]
+    key: 'actions',
+    required: true,
+  },
+])
+
+const availableColumnDefinitions = computed(() =>
+  columnDefinitions.value.filter(
+    (definition) => !definition.adminOnly || props.showUser,
+  ),
+)
+
+const availableColumnKeys = computed(
+  () =>
+    new Set(
+      availableColumnDefinitions.value.map((definition) => definition.key),
+    ),
+)
+
+const defaultVisibleColumnKeys = computed(() =>
+  availableColumnDefinitions.value
+    .filter((definition) => definition.defaultVisible || definition.required)
+    .map((definition) => definition.key),
+)
+
+const persistedVisibleColumnKeys = useLocalStorage<PromptHistoryColumnKey[]>(
+  props.columnPreferencesKey,
+  defaultVisibleColumnKeys.value,
+)
+
+const visibleColumnKeys = computed(() => {
+  if (!props.enableColumnPicker) {
+    return availableColumnDefinitions.value.map((definition) => definition.key)
+  }
+
+  return normalizeVisibleColumnKeys(persistedVisibleColumnKeys.value)
+})
+
+const headers = computed<DataTableHeader[]>(() => {
+  const visible = new Set(visibleColumnKeys.value)
+  return availableColumnDefinitions.value
+    .filter((definition) => visible.has(definition.key))
+    .map((definition) => definition.header)
 })
 
 const selectedGraphItem = shallowRef<PromptHistoryTableItem | null>(null)
@@ -108,6 +225,69 @@ const emptyState = computed(() => ({
   text: `Send traffic through PromptGate and ${props.scopeLabel} will start filling in here.`,
 }))
 
+// normalizeVisibleColumnKeys keeps persisted preferences compatible with the current scope.
+function normalizeVisibleColumnKeys(keys: readonly PromptHistoryColumnKey[]) {
+  const normalized = new Set<PromptHistoryColumnKey>()
+  for (const key of keys) {
+    if (availableColumnKeys.value.has(key)) {
+      normalized.add(key)
+    }
+  }
+
+  for (const key of REQUIRED_COLUMN_KEYS) {
+    if (availableColumnKeys.value.has(key)) {
+      normalized.add(key)
+    }
+  }
+
+  if (normalized.size === 0) {
+    return defaultVisibleColumnKeys.value
+  }
+
+  return availableColumnDefinitions.value
+    .map((definition) => definition.key)
+    .filter((key) => normalized.has(key))
+}
+
+// isColumnVisible reports whether the column is currently rendered.
+function isColumnVisible(key: PromptHistoryColumnKey) {
+  return visibleColumnKeys.value.includes(key)
+}
+
+// toggleColumn updates persisted visibility while preserving required columns.
+function toggleColumn(key: PromptHistoryColumnKey, visible: boolean) {
+  if (REQUIRED_COLUMN_KEYS.has(key)) {
+    return
+  }
+
+  const next = new Set(visibleColumnKeys.value)
+  if (visible) {
+    next.add(key)
+  } else {
+    next.delete(key)
+  }
+
+  persistedVisibleColumnKeys.value = availableColumnDefinitions.value
+    .map((definition) => definition.key)
+    .filter((definitionKey) => next.has(definitionKey))
+
+  resetSortIfHidden(key)
+}
+
+// resetColumns restores the scope-specific default column set.
+function resetColumns() {
+  const previouslySortedColumn = props.sortBy as PromptHistoryColumnKey
+  persistedVisibleColumnKeys.value = defaultVisibleColumnKeys.value
+  resetSortIfHidden(previouslySortedColumn)
+}
+
+// resetSortIfHidden avoids keeping the table sorted by a hidden column.
+function resetSortIfHidden(key: PromptHistoryColumnKey) {
+  if (props.sortBy === key && !visibleColumnKeys.value.includes(key)) {
+    emit('update:sort', 'createdAt', 'desc')
+  }
+}
+
 // userLabel returns the best available display identity for admin prompt rows.
 function userLabel(item: PromptHistoryTableItem) {
   if (!('userId' in item)) {
@@ -115,6 +295,15 @@ function userLabel(item: PromptHistoryTableItem) {
   }
 
   return item.userName || item.userPreferredUsername || item.userId
+}
+
+// clientIpLabel returns the client IP for admin prompt rows.
+function clientIpLabel(item: PromptHistoryTableItem) {
+  if (!('clientIp' in item)) {
+    return ''
+  }
+
+  return item.clientIp || 'Unknown'
 }
 
 // compactPromptPreview keeps table rows scannable while preserving full prompts in the detail dialog.
@@ -160,6 +349,61 @@ function openRequestGraph(item: PromptHistoryTableItem) {
     :subtitle="summaryLabel"
   >
     <template #actions>
+      <v-menu
+        v-if="props.enableColumnPicker"
+        location="bottom end"
+        :close-on-content-click="false"
+        offset="8"
+      >
+        <template #activator="{ props: menuProps }">
+          <v-btn
+            v-bind="menuProps"
+            color="primary"
+            variant="tonal"
+            rounded="xl"
+            prepend-icon="mdi-table-column"
+          >
+            Columns
+          </v-btn>
+        </template>
+
+        <v-card class="prompt-history-table__columns-menu" min-width="240">
+          <v-list density="compact">
+            <v-list-item
+              v-for="definition in availableColumnDefinitions"
+              :key="definition.key"
+              class="prompt-history-table__column-item"
+            >
+              <v-checkbox
+                :model-value="isColumnVisible(definition.key)"
+                :disabled="definition.required"
+                :label="String(definition.header.title)"
+                color="primary"
+                density="compact"
+                hide-details
+                @update:model-value="
+                  toggleColumn(definition.key, Boolean($event))
+                "
+              />
+            </v-list-item>
+          </v-list>
+
+          <v-divider />
+
+          <v-card-actions>
+            <v-spacer />
+            <v-btn
+              color="primary"
+              variant="text"
+              rounded="lg"
+              @click="resetColumns"
+            >
+              Reset
+            </v-btn>
+          </v-card-actions>
+        </v-card>
+      </v-menu>
+
       <v-btn
         color="primary"
         variant="tonal"
@@ -249,9 +493,21 @@ function openRequestGraph(item: PromptHistoryTableItem) {
         </span>
       </template>
 
+      <template #item.totalTokens="{ item }">
+        <span class="app-table-text">
+          {{ formatNumber(item.totalTokens) }}
+        </span>
+      </template>
+
       <template #item.durationMs="{ item }">
         <span class="app-table-text">
           {{ formatDurationMs(item.durationMs) }}
+        </span>
+      </template>
+
+      <template #item.clientIp="{ item }">
+        <span class="app-table-text">
+          {{ clientIpLabel(item) }}
         </span>
       </template>
 
@@ -313,5 +569,17 @@ function openRequestGraph(item: PromptHistoryTableItem) {
   min-width: 180px;
   display: grid;
   gap: 2px;
+}
+
+.prompt-history-table__columns-menu {
+  max-height: min(520px, calc(100vh - 120px));
+}
+
+.prompt-history-table__column-item {
+  min-height: 38px;
+}
+
+.prompt-history-table__column-item :deep(.v-selection-control) {
+  min-height: 34px;
 }
 </style>

@@ -66,6 +66,8 @@ const totalLabel = computed(() =>
         </v-alert>
 
         <PromptHistoryTable
+          column-preferences-key="promptgate.adminPromptHistory.columns.v1"
+          enable-column-picker
           title="All prompts"
           scope-label="admin history"
           show-user

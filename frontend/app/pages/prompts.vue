@@ -48,6 +48,8 @@ const totalLabel = computed(() =>
         </v-alert>
 
         <PromptHistoryTable
+          column-preferences-key="promptgate.promptHistory.columns.v1"
+          enable-column-picker
           :items="promptHistory.prompts.value"
           :loading="promptHistory.loading.value"
           :page="promptHistory.page.value"
