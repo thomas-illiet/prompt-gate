@@ -223,8 +223,9 @@ function parseDateKey(value: string | undefined) {
 }
 
 .profile-token-heatmap__scroll {
-  overflow-x: auto;
-  padding: 2px 2px 8px;
+  box-sizing: border-box;
+  overflow-x: clip;
+  padding: 2px;
   width: 100%;
 }
 
