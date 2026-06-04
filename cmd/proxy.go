@@ -28,6 +28,7 @@ import (
 	"promptgate/backend/internal/platform/clientip"
 	"promptgate/backend/internal/platform/config"
 	"promptgate/backend/internal/platform/database"
+	platformhttp "promptgate/backend/internal/platform/httpclient"
 	"promptgate/backend/internal/platform/redisstore"
 	"promptgate/backend/internal/platform/secrets"
 	proxyruntime "promptgate/backend/internal/runtime/proxy"
@@ -107,6 +108,16 @@ func runProxy() error {
 	}
 	recorder := subscriptions.NewQuotaRecorder(localproxy.NewRedisRecorder(redisStore, stdLogger), subscriptionStore, stdLogger)
 	tracer := otel.GetTracerProvider().Tracer("promptgate-proxy")
+	proxyHTTPClient := &http.Client{Timeout: cfg.ProxyUpstreamTimeout}
+	caHTTPClient, err := platformhttp.NewWithCAFile(cfg.CAFile, cfg.ProxyUpstreamTimeout)
+	if err != nil {
+		stdLogger.Error("failed to initialize proxy CA HTTP client", "error", err)
+		return err
+	}
+	if caHTTPClient != nil {
+		stdLogger.Info("loaded proxy CA file", "path", cfg.CAFile)
+		proxyHTTPClient = caHTTPClient
+	}
 
 	authCache := tokens.NewRedisAuthCache(redisStore, cfg.RedisCacheTTL, stdLogger)
 	authCache.SyncVersion(ctx)
@@ -114,17 +125,20 @@ func runProxy() error {
 	accessSnapshot := groups.NewSnapshotStore(groupService)
 
 	manager, err := proxyruntime.NewManager(ctx, proxyruntime.Options{
-		Providers:        providerService,
-		MCP:              mcpService,
-		Recorder:         recorder,
-		FirewallSnapshot: firewallSnapshot,
-		AccessSnapshot:   accessSnapshot,
-		AuthCache:        authCache,
-		Redis:            redisStore,
-		Logger:           stdLogger,
-		BridgeLogger:     bridgeLogger,
-		Tracer:           tracer,
-		ReloadDebounce:   cfg.ProxyReloadDebounce,
+		Providers:                providerService,
+		MCP:                      mcpService,
+		Recorder:                 recorder,
+		FirewallSnapshot:         firewallSnapshot,
+		AccessSnapshot:           accessSnapshot,
+		AuthCache:                authCache,
+		Redis:                    redisStore,
+		HTTPClient:               proxyHTTPClient,
+		Logger:                   stdLogger,
+		BridgeLogger:             bridgeLogger,
+		Tracer:                   tracer,
+		ReloadDebounce:           cfg.ProxyReloadDebounce,
+		MaxBufferedRequestBytes:  cfg.ProxyMaxBufferedRequestBytes,
+		MaxBufferedResponseBytes: cfg.ProxyMaxBufferedResponseBytes,
 	})
 	if err != nil {
 		stdLogger.Error("failed to initialize proxy runtime", "error", err)
@@ -171,7 +185,9 @@ func runProxy() error {
 	})(
 		clientip.Middleware(cfg.ProxyTrustForwardHeaders)(
 			firewall.Middleware(firewallSnapshot, cfg.ProxyTrustForwardHeaders, stdLogger)(
-				groups.Middleware(accessSnapshot, stdLogger)(
+				groups.MiddlewareWithOptions(accessSnapshot, stdLogger, groups.MiddlewareOptions{
+					MaxBufferedRequestBytes: cfg.ProxyMaxBufferedRequestBytes,
+				})(
 					subscriptions.Middleware(subscriptionStore, stdLogger)(
 						auth.ActorMiddleware(manager),
 					),

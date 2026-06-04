@@ -1,7 +1,8 @@
 package runtime
 
 import (
-	"io"
+	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -9,25 +10,37 @@ import (
 	"github.com/coder/aibridge/config"
 	"github.com/coder/aibridge/intercept"
 	"go.opentelemetry.io/otel/trace"
+
+	"promptgate/backend/internal/platform/proxylimits"
 )
 
 const routeEmbeddings = "/embeddings"
 
 // openAIProvider extends aibridge's OpenAI provider with embeddings support.
 type openAIProvider struct {
-	inner coderbridge.Provider
-	key   string
+	inner                    coderbridge.Provider
+	key                      string
+	maxBufferedRequestBytes  int64
+	maxBufferedResponseBytes int64
+	httpClient               *http.Client
 }
 
 // newOpenAIProvider wraps the aibridge OpenAI provider with Prompt Gate extensions.
-func newOpenAIProvider(name, baseURL, key string) *openAIProvider {
+func newOpenAIProvider(name, baseURL, key string, opts ...providerRuntimeOptions) *openAIProvider {
+	runtimeOpts := defaultProviderRuntimeOptions()
+	if len(opts) > 0 {
+		runtimeOpts = normalizeProviderRuntimeOptions(opts[0])
+	}
 	return &openAIProvider{
 		inner: coderbridge.NewOpenAIProvider(coderbridge.OpenAIConfig{
 			Name:    name,
 			BaseURL: baseURL,
 			Key:     key,
 		}),
-		key: key,
+		key:                      key,
+		maxBufferedRequestBytes:  runtimeOpts.maxBufferedRequestBytes,
+		maxBufferedResponseBytes: runtimeOpts.maxBufferedResponseBytes,
+		httpClient:               runtimeOpts.httpClient,
 	}
 }
 
@@ -53,11 +66,18 @@ func (p *openAIProvider) CreateInterceptor(w http.ResponseWriter, r *http.Reques
 		return p.inner.CreateInterceptor(w, r, tracer)
 	}
 
-	raw, err := io.ReadAll(r.Body)
+	raw, err := proxylimits.ReadAll(r.Body, p.maxBufferedRequestBytes)
 	if err != nil {
+		if errors.Is(err, proxylimits.ErrExceeded) {
+			writeRequestBodyTooLarge(w)
+			return nil, fmt.Errorf("read embeddings request body: %w", err)
+		}
 		return nil, err
 	}
-	return newEmbeddingInterceptor(p, raw, tracer, p.key), nil
+	return newEmbeddingInterceptor(p, raw, tracer, p.key, providerRuntimeOptions{
+		httpClient:               p.httpClient,
+		maxBufferedResponseBytes: p.maxBufferedResponseBytes,
+	}), nil
 }
 
 // RoutePrefix returns the provider route prefix handled by the proxy.

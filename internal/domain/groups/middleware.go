@@ -3,6 +3,7 @@ package groups
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -10,12 +11,25 @@ import (
 
 	"promptgate/backend/internal/domain/auth"
 	"promptgate/backend/internal/domain/provider"
+	"promptgate/backend/internal/platform/proxylimits"
 )
+
+type MiddlewareOptions struct {
+	MaxBufferedRequestBytes int64
+}
 
 // Middleware enforces group-based provider and model access from an in-memory snapshot.
 func Middleware(snapshot *SnapshotStore, logger *slog.Logger) func(http.Handler) http.Handler {
+	return MiddlewareWithOptions(snapshot, logger, MiddlewareOptions{})
+}
+
+// MiddlewareWithOptions enforces group-based provider and model access with explicit buffering limits.
+func MiddlewareWithOptions(snapshot *SnapshotStore, logger *slog.Logger, opts MiddlewareOptions) func(http.Handler) http.Handler {
 	if logger == nil {
 		logger = slog.Default()
+	}
+	if opts.MaxBufferedRequestBytes <= 0 {
+		opts.MaxBufferedRequestBytes = proxylimits.DefaultMaxBufferedRequestBytes
 	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -45,8 +59,13 @@ func Middleware(snapshot *SnapshotStore, logger *slog.Logger) func(http.Handler)
 				return
 			}
 
-			model, err := requestModel(r)
+			model, err := requestModel(r, opts.MaxBufferedRequestBytes)
 			if err != nil {
+				if errors.Is(err, proxylimits.ErrExceeded) {
+					logger.Warn("group access denied for oversized request body", "provider", providerName, "user_id", user.ID, "limit_bytes", opts.MaxBufferedRequestBytes)
+					writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "request_body_too_large"})
+					return
+				}
 				logger.Warn("group access denied", "provider", providerName, "model", model, "user_id", user.ID)
 				writeJSON(w, http.StatusForbidden, map[string]string{"error": "group_access_denied"})
 				return
@@ -125,11 +144,11 @@ func routeSubtree(path, routePrefix string) bool {
 }
 
 // requestModel reads and restores the request body while extracting the JSON model field.
-func requestModel(r *http.Request) (string, error) {
+func requestModel(r *http.Request, maxBufferedRequestBytes int64) (string, error) {
 	if r.Body == nil {
 		return "", nil
 	}
-	raw, err := io.ReadAll(r.Body)
+	raw, err := proxylimits.ReadAll(r.Body, maxBufferedRequestBytes)
 	if err != nil {
 		return "", err
 	}

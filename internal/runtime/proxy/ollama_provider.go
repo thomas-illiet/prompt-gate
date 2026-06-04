@@ -2,8 +2,8 @@ package runtime
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 
@@ -15,21 +15,33 @@ import (
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
+
+	"promptgate/backend/internal/platform/proxylimits"
 )
 
 // ollamaProvider adapts Ollama's OpenAI-compatible API to promptgate.
 type ollamaProvider struct {
-	baseURL string
-	key     string
-	name    string
+	baseURL                  string
+	key                      string
+	name                     string
+	maxBufferedRequestBytes  int64
+	maxBufferedResponseBytes int64
+	httpClient               *http.Client
 }
 
 // newOllamaProvider creates an Ollama provider adapter with a normalized base URL.
-func newOllamaProvider(name, baseURL, key string) *ollamaProvider {
+func newOllamaProvider(name, baseURL, key string, opts ...providerRuntimeOptions) *ollamaProvider {
+	runtimeOpts := defaultProviderRuntimeOptions()
+	if len(opts) > 0 {
+		runtimeOpts = normalizeProviderRuntimeOptions(opts[0])
+	}
 	return &ollamaProvider{
-		baseURL: strings.TrimRight(baseURL, "/"),
-		key:     key,
-		name:    name,
+		baseURL:                  strings.TrimRight(baseURL, "/"),
+		key:                      key,
+		name:                     name,
+		maxBufferedRequestBytes:  runtimeOpts.maxBufferedRequestBytes,
+		maxBufferedResponseBytes: runtimeOpts.maxBufferedResponseBytes,
+		httpClient:               runtimeOpts.httpClient,
 	}
 }
 
@@ -94,7 +106,7 @@ func (p *ollamaProvider) InjectAuthHeader(headers *http.Header) {
 
 // CreateInterceptor creates the blocking or streaming chat completion interceptor.
 func (p *ollamaProvider) CreateInterceptor(
-	_ http.ResponseWriter,
+	w http.ResponseWriter,
 	r *http.Request,
 	tracer trace.Tracer,
 ) (_ intercept.Interceptor, outErr error) {
@@ -109,12 +121,19 @@ func (p *ollamaProvider) CreateInterceptor(
 		return nil, aibprovider.ErrUnknownRoute
 	}
 
-	raw, err := io.ReadAll(r.Body)
+	raw, err := proxylimits.ReadAll(r.Body, p.maxBufferedRequestBytes)
 	if err != nil {
+		if errors.Is(err, proxylimits.ErrExceeded) {
+			writeRequestBodyTooLarge(w)
+			return nil, fmt.Errorf("read request body: %w", err)
+		}
 		return nil, fmt.Errorf("read request body: %w", err)
 	}
 	if path == routeEmbeddings {
-		interceptor := newEmbeddingInterceptor(p, raw, tracer, p.key)
+		interceptor := newEmbeddingInterceptor(p, raw, tracer, p.key, providerRuntimeOptions{
+			httpClient:               p.httpClient,
+			maxBufferedResponseBytes: p.maxBufferedResponseBytes,
+		})
 		span.SetAttributes(interceptor.TraceAttributes(r)...)
 		return interceptor, nil
 	}

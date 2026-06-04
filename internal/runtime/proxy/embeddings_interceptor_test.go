@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -25,6 +26,12 @@ type embeddingTestRecorder struct {
 	promptUsages  []recorder.PromptUsageRecord
 	toolUsages    []recorder.ToolUsageRecord
 	modelThoughts []recorder.ModelThoughtRecord
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (fn roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return fn(req)
 }
 
 // RecordInterception records interception for assertions.
@@ -301,6 +308,145 @@ func TestEmbeddingsUpstreamErrorDoesNotRecordTokenUsage(t *testing.T) {
 	}
 	if len(rec.tokenUsages) != 0 {
 		t.Fatalf("expected no token usage on upstream error, got %#v", rec.tokenUsages)
+	}
+}
+
+// TestOpenAIEmbeddingsUsesInjectedHTTPClient verifies embeddings do not use http.DefaultClient.
+func TestOpenAIEmbeddingsUsesInjectedHTTPClient(t *testing.T) {
+	var called bool
+	client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+		called = true
+		if req.URL.String() != "https://upstream.example/v1/embeddings?encoding_format=float" {
+			t.Fatalf("unexpected upstream url: %s", req.URL.String())
+		}
+		if req.Header.Get("Authorization") != "Bearer provider-key" {
+			t.Fatalf("expected provider auth, got %q", req.Header.Get("Authorization"))
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body: io.NopCloser(strings.NewReader(
+				`{"object":"list","data":[],"model":"text-embedding-3-small","usage":{"prompt_tokens":2,"total_tokens":2}}`,
+			)),
+			Request: req,
+		}, nil
+	})}
+
+	rec := &embeddingTestRecorder{}
+	bridge := newEmbeddingTestBridge(
+		t,
+		newOpenAIProvider("openai", "https://upstream.example/v1", "provider-key", providerRuntimeOptions{
+			httpClient: client,
+		}),
+		rec,
+	)
+
+	req := httptest.NewRequest(http.MethodPost, "/openai/v1/embeddings?encoding_format=float", strings.NewReader(`{"model":"text-embedding-3-small","input":"hello"}`))
+	recorder := httptest.NewRecorder()
+
+	bridge.ServeHTTP(recorder, withEmbeddingActor(req))
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", recorder.Code, recorder.Body.String())
+	}
+	if !called {
+		t.Fatal("expected injected http client to be used")
+	}
+}
+
+// TestOpenAIEmbeddingsRejectsOversizedRequest verifies provider-level request buffering is bounded.
+func TestOpenAIEmbeddingsRejectsOversizedRequest(t *testing.T) {
+	rec := &embeddingTestRecorder{}
+	body := `{"model":"text-embedding-3-small","input":"hello"}`
+	bridge := newEmbeddingTestBridge(
+		t,
+		newOpenAIProvider("openai", "https://upstream.example/v1", "provider-key", providerRuntimeOptions{
+			maxBufferedRequestBytes: int64(len(body) - 1),
+		}),
+		rec,
+	)
+
+	req := httptest.NewRequest(http.MethodPost, "/openai/v1/embeddings", strings.NewReader(body))
+	recorder := httptest.NewRecorder()
+
+	bridge.ServeHTTP(recorder, withEmbeddingActor(req))
+
+	if recorder.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("expected 413, got %d: %s", recorder.Code, recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), "request_body_too_large") {
+		t.Fatalf("unexpected response: %s", recorder.Body.String())
+	}
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	if len(rec.intercepts) != 0 {
+		t.Fatalf("expected no interception records, got %#v", rec.intercepts)
+	}
+}
+
+// TestOllamaEmbeddingsRejectsOversizedRequest verifies Ollama provider-level buffering is bounded.
+func TestOllamaEmbeddingsRejectsOversizedRequest(t *testing.T) {
+	rec := &embeddingTestRecorder{}
+	body := `{"model":"nomic-embed-text","input":"hello"}`
+	bridge := newEmbeddingTestBridge(
+		t,
+		newOllamaProvider("ollama-local", "https://upstream.example/v1", "", providerRuntimeOptions{
+			maxBufferedRequestBytes: int64(len(body) - 1),
+		}),
+		rec,
+	)
+
+	req := httptest.NewRequest(http.MethodPost, "/ollama-local/v1/embeddings", strings.NewReader(body))
+	recorder := httptest.NewRecorder()
+
+	bridge.ServeHTTP(recorder, withEmbeddingActor(req))
+
+	if recorder.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("expected 413, got %d: %s", recorder.Code, recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), "request_body_too_large") {
+		t.Fatalf("unexpected response: %s", recorder.Body.String())
+	}
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	if len(rec.intercepts) != 0 {
+		t.Fatalf("expected no interception records, got %#v", rec.intercepts)
+	}
+}
+
+// TestOpenAIEmbeddingsRejectsOversizedUpstreamResponse verifies response buffering is bounded.
+func TestOpenAIEmbeddingsRejectsOversizedUpstreamResponse(t *testing.T) {
+	upstreamBody := `{"object":"list","data":[],"model":"text-embedding-3-small","usage":{"prompt_tokens":7,"total_tokens":7}}`
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(upstreamBody))
+	}))
+	t.Cleanup(upstream.Close)
+
+	rec := &embeddingTestRecorder{}
+	bridge := newEmbeddingTestBridge(
+		t,
+		newOpenAIProvider("openai", upstream.URL+"/v1", "provider-key", providerRuntimeOptions{
+			maxBufferedResponseBytes: int64(len(upstreamBody) - 1),
+		}),
+		rec,
+	)
+
+	req := httptest.NewRequest(http.MethodPost, "/openai/v1/embeddings", strings.NewReader(`{"model":"text-embedding-3-small","input":"hello"}`))
+	recorder := httptest.NewRecorder()
+
+	bridge.ServeHTTP(recorder, withEmbeddingActor(req))
+
+	if recorder.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502, got %d: %s", recorder.Code, recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), "response_body_too_large") {
+		t.Fatalf("unexpected response: %s", recorder.Body.String())
+	}
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+	if len(rec.tokenUsages) != 0 {
+		t.Fatalf("expected no token usage on oversized upstream response, got %#v", rec.tokenUsages)
 	}
 }
 

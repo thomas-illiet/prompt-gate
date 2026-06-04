@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/spf13/viper"
+
+	"promptgate/backend/internal/platform/proxylimits"
 )
 
 type Config struct {
@@ -40,6 +42,9 @@ type Config struct {
 	RedisURL                      string
 	RedisCacheTTL                 time.Duration
 	ProxyReloadDebounce           time.Duration
+	ProxyMaxBufferedRequestBytes  int64
+	ProxyMaxBufferedResponseBytes int64
+	ProxyUpstreamTimeout          time.Duration
 	WorkerBatchSize               int64
 	WorkerBlockTimeout            time.Duration
 	WorkerPendingIdleTimeout      time.Duration
@@ -254,11 +259,15 @@ func LoadProxy() (Config, error) {
 	v.SetDefault("proxy_trust_forward_headers", false)
 	v.SetDefault("redis_cache_ttl", "5m")
 	v.SetDefault("proxy_reload_debounce", "250ms")
+	v.SetDefault("proxy_max_buffered_request_bytes", proxylimits.DefaultMaxBufferedRequestBytes)
+	v.SetDefault("proxy_max_buffered_response_bytes", proxylimits.DefaultMaxBufferedResponseBytes)
+	v.SetDefault("proxy_upstream_timeout", proxylimits.DefaultUpstreamTimeout)
 
 	cfg := Config{
 		Port:                     v.GetString("proxy_port"),
 		LogLevel:                 v.GetString("log_level"),
 		DatabaseURL:              strings.TrimSpace(v.GetString("database_url")),
+		CAFile:                   strings.TrimSpace(v.GetString("ca_file")),
 		FrontendBaseURL:          strings.TrimRight(strings.TrimSpace(v.GetString("frontend_base_url")), "/"),
 		SessionCookieName:        v.GetString("session_cookie_name"),
 		SessionTTL:               v.GetDuration("session_ttl"),
@@ -269,6 +278,13 @@ func LoadProxy() (Config, error) {
 		RedisURL:                 strings.TrimSpace(v.GetString("redis_url")),
 		RedisCacheTTL:            v.GetDuration("redis_cache_ttl"),
 		ProxyReloadDebounce:      v.GetDuration("proxy_reload_debounce"),
+		ProxyMaxBufferedRequestBytes: v.GetInt64(
+			"proxy_max_buffered_request_bytes",
+		),
+		ProxyMaxBufferedResponseBytes: v.GetInt64(
+			"proxy_max_buffered_response_bytes",
+		),
+		ProxyUpstreamTimeout: v.GetDuration("proxy_upstream_timeout"),
 	}
 
 	if cfg.DatabaseURL == "" {
@@ -288,6 +304,18 @@ func LoadProxy() (Config, error) {
 	}
 	if cfg.RedisURL == "" {
 		return Config{}, errors.New("PROMPTGATE_REDIS_URL is required")
+	}
+	if err := validateOptionalFile("PROMPTGATE_CA_FILE", cfg.CAFile); err != nil {
+		return Config{}, err
+	}
+	if cfg.ProxyMaxBufferedRequestBytes <= 0 {
+		return Config{}, errors.New("PROMPTGATE_PROXY_MAX_BUFFERED_REQUEST_BYTES must be greater than zero")
+	}
+	if cfg.ProxyMaxBufferedResponseBytes <= 0 {
+		return Config{}, errors.New("PROMPTGATE_PROXY_MAX_BUFFERED_RESPONSE_BYTES must be greater than zero")
+	}
+	if cfg.ProxyUpstreamTimeout <= 0 {
+		return Config{}, errors.New("PROMPTGATE_PROXY_UPSTREAM_TIMEOUT must be greater than zero")
 	}
 	if len(cfg.CORSAllowedOrigins) == 0 && cfg.FrontendBaseURL != "" {
 		cfg.CORSAllowedOrigins = []string{cfg.FrontendBaseURL}

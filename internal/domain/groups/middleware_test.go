@@ -72,6 +72,94 @@ func TestMiddlewareAllowsModelRegexAndRestoresBody(t *testing.T) {
 	}
 }
 
+// TestMiddlewareAllowsRequestBodyAtConfiguredLimit verifies configured body limits are inclusive.
+func TestMiddlewareAllowsRequestBodyAtConfiguredLimit(t *testing.T) {
+	store := NewSnapshotStore(nil)
+	if err := store.SetSnapshot(Snapshot{
+		KnownProviders: []string{"openai"},
+		ProviderTypes:  testProviderTypes("openai"),
+		Users: map[string]UserAccess{
+			"user-id": {
+				Rules: []AccessRule{{
+					Providers:     []string{"openai"},
+					ModelPatterns: []string{`^gpt-5`},
+				}},
+			},
+		},
+	}); err != nil {
+		t.Fatalf("set snapshot: %v", err)
+	}
+
+	body := `{"model":"gpt-5-mini"}`
+	handler := MiddlewareWithOptions(store, nil, MiddlewareOptions{
+		MaxBufferedRequestBytes: int64(len(body)),
+	})(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		if string(raw) != body {
+			t.Fatalf("body was not restored: %q", raw)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	req := httptest.NewRequest(http.MethodPost, "/openai/v1/chat/completions", strings.NewReader(body))
+	req = req.WithContext(auth.ContextWithUser(req.Context(), auth.UserProfile{
+		ID:       "user-id",
+		Role:     auth.RoleUser,
+		IsActive: true,
+	}))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestMiddlewareRejectsOversizedRequestBody verifies oversized requests fail before proxying.
+func TestMiddlewareRejectsOversizedRequestBody(t *testing.T) {
+	store := NewSnapshotStore(nil)
+	if err := store.SetSnapshot(Snapshot{
+		KnownProviders: []string{"openai"},
+		ProviderTypes:  testProviderTypes("openai"),
+		Users: map[string]UserAccess{
+			"user-id": {
+				Rules: []AccessRule{{
+					Providers:     []string{"openai"},
+					ModelPatterns: []string{`^gpt-5`},
+				}},
+			},
+		},
+	}); err != nil {
+		t.Fatalf("set snapshot: %v", err)
+	}
+
+	body := `{"model":"gpt-5-mini"}`
+	handler := MiddlewareWithOptions(store, nil, MiddlewareOptions{
+		MaxBufferedRequestBytes: int64(len(body) - 1),
+	})(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Fatal("next should not be called")
+	}))
+
+	req := httptest.NewRequest(http.MethodPost, "/openai/v1/chat/completions", strings.NewReader(body))
+	req = req.WithContext(auth.ContextWithUser(req.Context(), auth.UserProfile{
+		ID:       "user-id",
+		Role:     auth.RoleUser,
+		IsActive: true,
+	}))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("expected 413, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "request_body_too_large") {
+		t.Fatalf("unexpected response: %s", rec.Body.String())
+	}
+}
+
 // TestMiddlewareDeniesUserWithoutGroup verifies middleware denies user without group.
 func TestMiddlewareDeniesUserWithoutGroup(t *testing.T) {
 	store := NewSnapshotStore(nil)

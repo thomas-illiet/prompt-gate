@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -21,6 +21,8 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
+
+	"promptgate/backend/internal/platform/proxylimits"
 )
 
 const unknownEmbeddingModel = "coder-aibridge-unknown"
@@ -45,25 +47,30 @@ var responseHeadersExcludedFromCopy = map[string]struct{}{
 
 // embeddingInterceptor forwards OpenAI-compatible embedding requests and records token usage.
 type embeddingInterceptor struct {
-	id         uuid.UUID
-	provider   coderbridge.Provider
-	rawBody    []byte
-	model      string
-	tracer     trace.Tracer
-	logger     cdrslog.Logger
-	recorder   recorder.Recorder
-	credential intercept.CredentialInfo
+	id                       uuid.UUID
+	provider                 coderbridge.Provider
+	rawBody                  []byte
+	model                    string
+	tracer                   trace.Tracer
+	logger                   cdrslog.Logger
+	recorder                 recorder.Recorder
+	credential               intercept.CredentialInfo
+	httpClient               *http.Client
+	maxBufferedResponseBytes int64
 }
 
 // newEmbeddingInterceptor creates an interceptor for a single OpenAI-compatible embeddings request.
-func newEmbeddingInterceptor(provider coderbridge.Provider, rawBody []byte, tracer trace.Tracer, credential string) *embeddingInterceptor {
+func newEmbeddingInterceptor(provider coderbridge.Provider, rawBody []byte, tracer trace.Tracer, credential string, opts providerRuntimeOptions) *embeddingInterceptor {
+	opts = normalizeProviderRuntimeOptions(opts)
 	return &embeddingInterceptor{
-		id:         uuid.New(),
-		provider:   provider,
-		rawBody:    rawBody,
-		model:      embeddingModel(rawBody),
-		tracer:     tracer,
-		credential: intercept.NewCredentialInfo(intercept.CredentialKindCentralized, credential),
+		id:                       uuid.New(),
+		provider:                 provider,
+		rawBody:                  rawBody,
+		model:                    embeddingModel(rawBody),
+		tracer:                   tracer,
+		credential:               intercept.NewCredentialInfo(intercept.CredentialKindCentralized, credential),
+		httpClient:               opts.httpClient,
+		maxBufferedResponseBytes: opts.maxBufferedResponseBytes,
 	}
 }
 
@@ -105,7 +112,7 @@ func (i *embeddingInterceptor) ProcessRequest(w http.ResponseWriter, r *http.Req
 	upstreamReq.Header = intercept.PrepareClientHeaders(r.Header)
 	i.provider.InjectAuthHeader(&upstreamReq.Header)
 
-	resp, err := http.DefaultClient.Do(upstreamReq)
+	resp, err := i.httpClient.Do(upstreamReq)
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		i.logger.Warn(ctx, "embeddings upstream request failed", cdrslog.Error(err))
@@ -114,8 +121,14 @@ func (i *embeddingInterceptor) ProcessRequest(w http.ResponseWriter, r *http.Req
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := proxylimits.ReadAll(resp.Body, i.maxBufferedResponseBytes)
 	if err != nil {
+		if errors.Is(err, proxylimits.ErrExceeded) {
+			span.SetStatus(codes.Error, err.Error())
+			i.logger.Warn(ctx, "embeddings upstream response exceeded buffer limit", cdrslog.F("limit_bytes", i.maxBufferedResponseBytes))
+			http.Error(w, "response_body_too_large", http.StatusBadGateway)
+			return nil
+		}
 		return fmt.Errorf("read embeddings upstream response: %w", err)
 	}
 

@@ -347,6 +347,9 @@ func TestLoadProxyReadsSessionAndCORSConfig(t *testing.T) {
 	t.Setenv("PROMPTGATE_FRONTEND_BASE_URL", "http://localhost:3000")
 	t.Setenv("PROMPTGATE_SESSION_COOKIE_NAME", "custom_session")
 	t.Setenv("PROMPTGATE_SESSION_TTL", "12h")
+	t.Setenv("PROMPTGATE_PROXY_MAX_BUFFERED_REQUEST_BYTES", "1024")
+	t.Setenv("PROMPTGATE_PROXY_MAX_BUFFERED_RESPONSE_BYTES", "2048")
+	t.Setenv("PROMPTGATE_PROXY_UPSTREAM_TIMEOUT", "3m")
 
 	cfg, err := LoadProxy()
 	if err != nil {
@@ -360,5 +363,14 @@ func TestLoadProxyReadsSessionAndCORSConfig(t *testing.T) {
 	}
 	if len(cfg.CORSAllowedOrigins) == 0 || cfg.CORSAllowedOrigins[0] != "http://localhost:3000" {
 		t.Fatalf("unexpected cors origins: %#v", cfg.CORSAllowedOrigins)
+	}
+	if cfg.ProxyMaxBufferedRequestBytes != 1024 {
+		t.Fatalf("unexpected request buffer limit: %d", cfg.ProxyMaxBufferedRequestBytes)
+	}
+	if cfg.ProxyMaxBufferedResponseBytes != 2048 {
+		t.Fatalf("unexpected response buffer limit: %d", cfg.ProxyMaxBufferedResponseBytes)
+	}
+	if cfg.ProxyUpstreamTimeout != 3*time.Minute {
+		t.Fatalf("expected custom upstream timeout 3m, got %s", cfg.ProxyUpstreamTimeout)
 	}
 }

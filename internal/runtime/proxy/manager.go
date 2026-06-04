@@ -26,17 +26,20 @@ import (
 )
 
 type Options struct {
-	Providers        *localprovider.Service
-	MCP              *localmcp.Service
-	Recorder         aibrecorder.Recorder
-	FirewallSnapshot *firewall.SnapshotStore
-	AccessSnapshot   *groups.SnapshotStore
-	AuthCache        tokens.AuthCache
-	Redis            *redisstore.Store
-	Logger           *slog.Logger
-	BridgeLogger     cdrslog.Logger
-	Tracer           trace.Tracer
-	ReloadDebounce   time.Duration
+	Providers                *localprovider.Service
+	MCP                      *localmcp.Service
+	Recorder                 aibrecorder.Recorder
+	FirewallSnapshot         *firewall.SnapshotStore
+	AccessSnapshot           *groups.SnapshotStore
+	AuthCache                tokens.AuthCache
+	Redis                    *redisstore.Store
+	HTTPClient               *http.Client
+	Logger                   *slog.Logger
+	BridgeLogger             cdrslog.Logger
+	Tracer                   trace.Tracer
+	ReloadDebounce           time.Duration
+	MaxBufferedRequestBytes  int64
+	MaxBufferedResponseBytes int64
 }
 
 type Manager struct {
@@ -56,6 +59,11 @@ func NewManager(ctx context.Context, opts Options) (*Manager, error) {
 	if opts.ReloadDebounce <= 0 {
 		opts.ReloadDebounce = 250 * time.Millisecond
 	}
+	opts.HTTPClient = normalizeProviderRuntimeOptions(providerRuntimeOptions{
+		httpClient:               opts.HTTPClient,
+		maxBufferedRequestBytes:  opts.MaxBufferedRequestBytes,
+		maxBufferedResponseBytes: opts.MaxBufferedResponseBytes,
+	}).httpClient
 	manager := &Manager{opts: opts}
 	if opts.FirewallSnapshot != nil {
 		if err := opts.FirewallSnapshot.Refresh(ctx); err != nil {
@@ -246,6 +254,7 @@ func (m *Manager) buildProviders(ctx context.Context) ([]coderbridge.Provider, e
 	if err != nil {
 		return nil, err
 	}
+	runtimeOpts := m.providerRuntimeOptions()
 	providers := make([]coderbridge.Provider, 0, len(records))
 	for _, record := range records {
 		apiKey, err := m.opts.Providers.DecryptAPIKey(record)
@@ -254,7 +263,7 @@ func (m *Manager) buildProviders(ctx context.Context) ([]coderbridge.Provider, e
 		}
 		switch record.Type {
 		case localprovider.ProviderTypeOpenAI:
-			providers = append(providers, newOpenAIProvider(record.Name, record.BaseURL, apiKey))
+			providers = append(providers, newOpenAIProvider(record.Name, record.BaseURL, apiKey, runtimeOpts))
 		case localprovider.ProviderTypeAnthropic:
 			providers = append(providers, coderbridge.NewAnthropicProvider(coderbridge.AnthropicConfig{
 				Name:    record.Name,
@@ -262,12 +271,20 @@ func (m *Manager) buildProviders(ctx context.Context) ([]coderbridge.Provider, e
 				Key:     apiKey,
 			}, nil))
 		case localprovider.ProviderTypeOllama:
-			providers = append(providers, newOllamaProvider(record.Name, record.BaseURL, apiKey))
+			providers = append(providers, newOllamaProvider(record.Name, record.BaseURL, apiKey, runtimeOpts))
 		default:
 			m.opts.Logger.Warn("unsupported provider ignored", "name", record.Name, "type", record.Type)
 		}
 	}
 	return providers, nil
+}
+
+func (m *Manager) providerRuntimeOptions() providerRuntimeOptions {
+	return normalizeProviderRuntimeOptions(providerRuntimeOptions{
+		httpClient:               m.opts.HTTPClient,
+		maxBufferedRequestBytes:  m.opts.MaxBufferedRequestBytes,
+		maxBufferedResponseBytes: m.opts.MaxBufferedResponseBytes,
+	})
 }
 
 // buildMCPProxy converts enabled MCP records into an MCP server proxier.
