@@ -35,13 +35,6 @@ func NewRecorder(db *gorm.DB) *Recorder {
 
 // AutoMigrate migrates proxy recorder tables.
 func AutoMigrate(ctx context.Context, db *gorm.DB) error {
-	migrator := db.WithContext(ctx).Migrator()
-	if migrator.HasTable("model_thoughts") {
-		if err := migrator.DropTable("model_thoughts"); err != nil {
-			return fmt.Errorf("drop model thoughts table: %w", err)
-		}
-	}
-
 	if err := db.WithContext(ctx).AutoMigrate(
 		&Interception{},
 		&TokenUsage{},
@@ -60,7 +53,17 @@ func AutoMigrate(ctx context.Context, db *gorm.DB) error {
 		Update("type", tokenUsageTypeEmbedding).Error; err != nil {
 		return fmt.Errorf("backfill token usage type from metadata: %w", err)
 	}
+	return nil
+}
 
+// MigrateLegacySchema applies explicit destructive cleanup for legacy proxy schema artifacts.
+func MigrateLegacySchema(ctx context.Context, db *gorm.DB) error {
+	migrator := db.WithContext(ctx).Migrator()
+	if migrator.HasTable("model_thoughts") {
+		if err := migrator.DropTable("model_thoughts"); err != nil {
+			return fmt.Errorf("drop model thoughts table: %w", err)
+		}
+	}
 	if migrator.HasColumn(&tokenUsageEndpointMigration{}, "endpoint") {
 		if err := db.WithContext(ctx).
 			Table("token_usages").

@@ -232,8 +232,34 @@ func mustAggregateUsageKPIs(t *testing.T, service *Service) {
 	}
 }
 
-// TestAutoMigrateDropsModelThoughts verifies auto migrate drops model thoughts.
-func TestAutoMigrateDropsModelThoughts(t *testing.T) {
+// TestAutoMigrateDoesNotDropLegacyArtifacts verifies auto migrate is not destructive.
+func TestAutoMigrateDoesNotDropLegacyArtifacts(t *testing.T) {
+	db, _ := newProxyServiceTestDB(t)
+	if err := db.Exec(`CREATE TABLE model_thoughts (
+		id text primary key,
+		interception_id text not null,
+		content text not null
+	)`).Error; err != nil {
+		t.Fatalf("create stale model thoughts table: %v", err)
+	}
+	if err := db.Exec(`ALTER TABLE token_usages ADD COLUMN endpoint text NOT NULL DEFAULT ''`).Error; err != nil {
+		t.Fatalf("add legacy endpoint column: %v", err)
+	}
+
+	if err := AutoMigrate(context.Background(), db); err != nil {
+		t.Fatalf("migrate proxy: %v", err)
+	}
+
+	if !db.Migrator().HasTable("model_thoughts") {
+		t.Fatal("expected stale model_thoughts table to remain after AutoMigrate")
+	}
+	if !db.Migrator().HasColumn(&tokenUsageEndpointMigration{}, "endpoint") {
+		t.Fatal("expected legacy endpoint column to remain after AutoMigrate")
+	}
+}
+
+// TestMigrateLegacySchemaDropsModelThoughts verifies explicit legacy migration drops model thoughts.
+func TestMigrateLegacySchemaDropsModelThoughts(t *testing.T) {
 	db, _ := newProxyServiceTestDB(t)
 	if err := db.Exec(`CREATE TABLE model_thoughts (
 		id text primary key,
@@ -243,8 +269,11 @@ func TestAutoMigrateDropsModelThoughts(t *testing.T) {
 		t.Fatalf("create stale model thoughts table: %v", err)
 	}
 
-	if err := AutoMigrate(context.Background(), db); err != nil {
-		t.Fatalf("migrate proxy: %v", err)
+	if err := MigrateLegacySchema(context.Background(), db); err != nil {
+		t.Fatalf("migrate proxy legacy schema: %v", err)
+	}
+	if err := MigrateLegacySchema(context.Background(), db); err != nil {
+		t.Fatalf("migrate proxy legacy schema second run: %v", err)
 	}
 
 	if db.Migrator().HasTable("model_thoughts") {
@@ -252,8 +281,8 @@ func TestAutoMigrateDropsModelThoughts(t *testing.T) {
 	}
 }
 
-// TestAutoMigrateBackfillsEmbeddingTokenTypeAndDropsEndpoint verifies auto migrate backfills embedding token type and drops endpoint.
-func TestAutoMigrateBackfillsEmbeddingTokenTypeAndDropsEndpoint(t *testing.T) {
+// TestMigrateLegacySchemaBackfillsEmbeddingTokenTypeAndDropsEndpoint verifies explicit legacy migration drops endpoint.
+func TestMigrateLegacySchemaBackfillsEmbeddingTokenTypeAndDropsEndpoint(t *testing.T) {
 	db, _ := newProxyServiceTestDB(t)
 	now := time.Date(2026, 1, 30, 15, 0, 0, 0, time.UTC)
 	seedProxyInteraction(t, db, "11111111-1111-1111-1111-111111111111", "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "", "text-embedding-3-small", now, 0, 0)
@@ -275,8 +304,11 @@ func TestAutoMigrateBackfillsEmbeddingTokenTypeAndDropsEndpoint(t *testing.T) {
 		t.Fatalf("seed legacy endpoint: %v", err)
 	}
 
-	if err := AutoMigrate(context.Background(), db); err != nil {
-		t.Fatalf("migrate proxy: %v", err)
+	if err := MigrateLegacySchema(context.Background(), db); err != nil {
+		t.Fatalf("migrate proxy legacy schema: %v", err)
+	}
+	if err := MigrateLegacySchema(context.Background(), db); err != nil {
+		t.Fatalf("migrate proxy legacy schema second run: %v", err)
 	}
 
 	var usage TokenUsage

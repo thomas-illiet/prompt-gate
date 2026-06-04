@@ -64,6 +64,9 @@ func Run(ctx context.Context, db *gorm.DB) error {
 	if err := proxy.AutoMigrate(ctx, db); err != nil {
 		return fmt.Errorf("migrate proxy: %w", err)
 	}
+	if err := proxy.MigrateLegacySchema(ctx, db); err != nil {
+		return fmt.Errorf("migrate proxy legacy schema: %w", err)
+	}
 
 	slog.Info("database migrations completed")
 	return nil
