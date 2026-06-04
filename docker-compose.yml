@@ -33,10 +33,11 @@ x-promptgate-environment: &promptgate-environment
   PROMPTGATE_WORKER_PENDING_IDLE_TIMEOUT: 30s
   PROMPTGATE_USAGE_RAW_RETENTION: 2160h
   PROMPTGATE_USAGE_RAW_CLEANUP_INTERVAL: 1h
+  PROMPTGATE_SUBSCRIPTION_QUOTA_SYNC_INTERVAL: 5m
 
 services:
   postgres:
-    image: postgres:17-alpine
+    image: postgres:18-alpine
     environment:
       POSTGRES_DB: promptgate
       POSTGRES_USER: postgres
@@ -44,7 +45,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
@@ -100,7 +101,7 @@ services:
     restart: "no"
 
   seed:
-    image: postgres:17-alpine
+    image: postgres:18-alpine
     environment:
       PGPASSWORD: postgres
     command:
