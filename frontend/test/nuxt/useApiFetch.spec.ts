@@ -8,6 +8,7 @@ const {
   authStore,
   clearSessionMock,
   fetchMock,
+  initializeMock,
   navigateToMock,
   refreshMock,
   useAuthStoreMock,
@@ -15,11 +16,13 @@ const {
   useRuntimeConfigMock,
   waitUntilReadyMock,
 } = vi.hoisted(() => {
+  const initializeMock = vi.fn(async () => undefined)
   const waitUntilReadyMock = vi.fn(async () => undefined)
   const clearSessionMock = vi.fn()
   const refreshMock = vi.fn(async () => true)
   const authStore = {
     clearSession: clearSessionMock,
+    initialize: initializeMock,
     isAuthenticated: true,
     refresh: refreshMock,
     waitUntilReady: waitUntilReadyMock,
@@ -29,6 +32,7 @@ const {
     authStore,
     clearSessionMock,
     fetchMock: vi.fn(),
+    initializeMock,
     navigateToMock: vi.fn(async () => undefined),
     refreshMock,
     useAuthStoreMock: vi.fn(() => authStore),
@@ -61,6 +65,7 @@ describe('useApiFetch', () => {
     authStore.isAuthenticated = true
     clearSessionMock.mockClear()
     fetchMock.mockReset()
+    initializeMock.mockClear()
     navigateToMock.mockClear()
     refreshMock.mockReset()
     refreshMock.mockResolvedValue(true)
