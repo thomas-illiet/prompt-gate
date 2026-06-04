@@ -53,12 +53,11 @@ describe('AdminSubscriptionPlansTable', () => {
     const wrapper = mountTable()
 
     expect(wrapper.text()).toContain('2 accounts')
-    expect(wrapper.text()).toContain(
-      '2 direct assignments, 0 indirect assignments',
-    )
+    expect(wrapper.text()).not.toContain('direct assignments')
+    expect(wrapper.text()).not.toContain('indirect assignments')
   })
 
-  it('shows direct and indirect assignment counts when no direct accounts are attached', () => {
+  it('shows only the effective account count when no direct accounts are attached', () => {
     const wrapper = mountTable([
       {
         ...plan,
@@ -71,8 +70,7 @@ describe('AdminSubscriptionPlansTable', () => {
     ])
 
     expect(wrapper.text()).toContain('3 accounts')
-    expect(wrapper.text()).toContain(
-      '0 direct assignments, 3 indirect assignments',
-    )
+    expect(wrapper.text()).not.toContain('0 direct assignments')
+    expect(wrapper.text()).not.toContain('3 indirect assignments')
   })
 })

@@ -93,18 +93,6 @@ function assignedAccountsLabel(plan: SubscriptionPlan) {
   const count = plan.assignedAccountsCount
   return count === 1 ? '1 account' : `${formatNumber(count)} accounts`
 }
-
-function assignmentCountLabel(count: number, kind: 'direct' | 'indirect') {
-  const suffix = count === 1 ? 'assignment' : 'assignments'
-  return `${formatNumber(count)} ${kind} ${suffix}`
-}
-
-function assignmentBreakdownLabel(plan: SubscriptionPlan) {
-  return [
-    assignmentCountLabel(plan.assignedDirectAccountsCount, 'direct'),
-    assignmentCountLabel(plan.assignedIndirectAccountsCount, 'indirect'),
-  ].join(', ')
-}
 </script>
 
 <template>
@@ -169,14 +157,9 @@ function assignmentBreakdownLabel(plan: SubscriptionPlan) {
       </template>
 
       <template #item.assignedAccountsCount="{ item }">
-        <div class="subscription-plans-table__count-cell">
-          <span class="app-table-text app-table-text--strong">
-            {{ assignedAccountsLabel(item) }}
-          </span>
-          <span class="app-table-text app-table-text--muted">
-            {{ assignmentBreakdownLabel(item) }}
-          </span>
-        </div>
+        <span class="app-table-text app-table-text--strong">
+          {{ assignedAccountsLabel(item) }}
+        </span>
       </template>
 
       <template #item.quota5hTokens="{ item }">
@@ -210,12 +193,3 @@ function assignmentBreakdownLabel(plan: SubscriptionPlan) {
     </AppServerDataTable>
   </AppSectionCard>
 </template>
-
-<style scoped>
-.subscription-plans-table__count-cell {
-  display: grid;
-  min-width: 0;
-  gap: 2px;
-  justify-items: center;
-}
-</style>
