@@ -37,13 +37,26 @@ function profileDays(
   )
 }
 
+function mountHeatmap(days: ProfileTokenUsageDay[]) {
+  return mount(ProfileTokenHeatmap, {
+    props: { days },
+    global: {
+      stubs: {
+        VTooltip: {
+          props: ['text'],
+          template:
+            '<span :data-tooltip="text"><slot name="activator" :props="{}" /></span>',
+        },
+      },
+    },
+  })
+}
+
 describe('ProfileTokenHeatmap', () => {
   it('renders one day cell per profile day and aligns them into weeks', () => {
-    const wrapper = mount(ProfileTokenHeatmap, {
-      props: {
-        days: profileDays('2025-06-04', (index) => (index % 11) * 10, 365),
-      },
-    })
+    const wrapper = mountHeatmap(
+      profileDays('2025-06-04', (index) => (index % 11) * 10, 365),
+    )
 
     expect(wrapper.findAll('[data-test="token-heatmap-cell"]')).toHaveLength(
       365,
@@ -62,16 +75,14 @@ describe('ProfileTokenHeatmap', () => {
     expect(monthLabels).toContain('Jan')
   })
 
-  it('assigns token intensity levels and native tooltip labels', () => {
-    const wrapper = mount(ProfileTokenHeatmap, {
-      props: {
-        days: profileDays(
-          '2026-01-01',
-          (index) => [0, 25, 50, 75, 100][index] ?? 0,
-          5,
-        ),
-      },
-    })
+  it('assigns token intensity levels and tooltip labels', () => {
+    const wrapper = mountHeatmap(
+      profileDays(
+        '2026-01-01',
+        (index) => [0, 25, 50, 75, 100][index] ?? 0,
+        5,
+      ),
+    )
     const cells = wrapper.findAll('[data-test="token-heatmap-cell"]')
 
     expect(cells.map((cell) => cell.attributes('data-level'))).toEqual([
@@ -82,6 +93,6 @@ describe('ProfileTokenHeatmap', () => {
       '4',
     ])
     expect(cells[4]?.attributes('title')).toContain('100 tokens')
-    expect(cells[4]?.attributes('aria-label')).toContain('1 requests')
+    expect(cells[4]?.attributes('aria-label')).toContain('1 message')
   })
 })

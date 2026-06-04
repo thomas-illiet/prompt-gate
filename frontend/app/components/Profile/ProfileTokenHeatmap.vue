@@ -64,7 +64,8 @@ const weeks = computed<HeatmapWeek[]>(() => {
 })
 
 const gridTemplateColumns = computed(
-  () => `repeat(${weeks.value.length}, var(--profile-token-cell-size))`,
+  () =>
+    `repeat(${weeks.value.length}, minmax(var(--profile-token-cell-min-size), 1fr))`,
 )
 
 function activityLevel(day: ProfileTokenUsageDay) {
@@ -86,9 +87,17 @@ function activityLevel(day: ProfileTokenUsageDay) {
 }
 
 function cellLabel(day: ProfileTokenUsageDay) {
-  return `${formatDate(day.date)}: ${formatNumber(
+  return `${formatDate(day.date)}: ${formatTokenCount(
     day.totalTokens,
-  )} tokens, ${formatNumber(day.requests)} requests`
+  )}, ${formatMessageCount(day.requests)}`
+}
+
+function formatTokenCount(value: number) {
+  return `${formatNumber(value)} ${value === 1 ? 'token' : 'tokens'}`
+}
+
+function formatMessageCount(value: number) {
+  return `${formatNumber(value)} ${value === 1 ? 'message' : 'messages'}`
 }
 
 function monthLabelForWeek(cells: HeatmapCell[], weekIndex: number) {
@@ -161,21 +170,30 @@ function parseDateKey(value: string | undefined) {
           :style="{ gridTemplateColumns }"
         >
           <template v-for="week in weeks" :key="week.key">
-            <span
-              v-for="cell in week.cells"
-              :key="cell.key"
-              class="profile-token-heatmap__cell"
-              :class="{
-                'profile-token-heatmap__cell--empty': !cell.day,
-                [`profile-token-heatmap__cell--level-${cell.day ? activityLevel(cell.day) : 0}`]:
-                  true,
-              }"
-              :title="cell.day ? cellLabel(cell.day) : undefined"
-              :aria-hidden="cell.day ? undefined : true"
-              :aria-label="cell.day ? cellLabel(cell.day) : undefined"
-              :data-level="cell.day ? activityLevel(cell.day) : undefined"
-              :data-test="cell.day ? 'token-heatmap-cell' : undefined"
-            />
+            <template v-for="cell in week.cells" :key="cell.key">
+              <v-tooltip
+                v-if="cell.day"
+                :text="cellLabel(cell.day)"
+                location="top"
+              >
+                <template #activator="{ props: tooltipProps }">
+                  <span
+                    v-bind="tooltipProps"
+                    class="profile-token-heatmap__cell"
+                    :class="`profile-token-heatmap__cell--level-${activityLevel(cell.day)}`"
+                    :title="cellLabel(cell.day)"
+                    :aria-label="cellLabel(cell.day)"
+                    :data-level="activityLevel(cell.day)"
+                    data-test="token-heatmap-cell"
+                  />
+                </template>
+              </v-tooltip>
+              <span
+                v-else
+                class="profile-token-heatmap__cell profile-token-heatmap__cell--empty profile-token-heatmap__cell--level-0"
+                aria-hidden="true"
+              />
+            </template>
           </template>
         </div>
       </div>
@@ -198,20 +216,24 @@ function parseDateKey(value: string | undefined) {
   display: grid;
   gap: 14px;
   min-width: 0;
-  --profile-token-cell-size: 12px;
+  --profile-token-cell-min-size: 10px;
   --profile-token-cell-gap: 4px;
+  --profile-token-legend-cell-size: 12px;
+  --profile-token-weekday-width: 30px;
 }
 
 .profile-token-heatmap__scroll {
   overflow-x: auto;
   padding: 2px 2px 8px;
+  width: 100%;
 }
 
 .profile-token-heatmap__grid {
   display: grid;
-  grid-template-columns: 28px max-content;
+  grid-template-columns: var(--profile-token-weekday-width) minmax(0, 1fr);
   gap: 6px 10px;
-  min-width: max-content;
+  min-width: min-content;
+  width: 100%;
 }
 
 .profile-token-heatmap__month-spacer {
@@ -240,12 +262,19 @@ function parseDateKey(value: string | undefined) {
   grid-column: 1;
   grid-row: 2;
   display: grid;
-  grid-template-rows: repeat(7, var(--profile-token-cell-size));
+  align-self: stretch;
+  grid-template-rows: repeat(7, minmax(0, 1fr));
   gap: var(--profile-token-cell-gap);
   color: rgb(var(--app-shell-text-muted));
   font-size: 0.67rem;
   font-weight: 650;
-  line-height: var(--profile-token-cell-size);
+  line-height: 1;
+}
+
+.profile-token-heatmap__weekdays span {
+  display: flex;
+  align-items: center;
+  min-height: var(--profile-token-cell-min-size);
 }
 
 .profile-token-heatmap__cells {
@@ -253,16 +282,23 @@ function parseDateKey(value: string | undefined) {
   grid-row: 2;
   display: grid;
   grid-auto-flow: column;
-  grid-template-rows: repeat(7, var(--profile-token-cell-size));
+  grid-template-rows: repeat(7, auto);
   gap: var(--profile-token-cell-gap);
+  min-width: min-content;
+  width: 100%;
 }
 
 .profile-token-heatmap__cell {
-  width: var(--profile-token-cell-size);
-  height: var(--profile-token-cell-size);
+  display: block;
+  aspect-ratio: 1;
+  min-width: var(--profile-token-cell-min-size);
   border: 1px solid rgba(var(--app-shell-border), 0.34);
   border-radius: 3px;
   background: rgba(var(--app-shell-surface-muted), 0.78);
+}
+
+.profile-token-heatmap__cells .profile-token-heatmap__cell {
+  width: 100%;
 }
 
 .profile-token-heatmap__cell--empty {
@@ -299,14 +335,16 @@ function parseDateKey(value: string | undefined) {
   font-weight: 650;
 }
 
+.profile-token-heatmap__legend .profile-token-heatmap__cell {
+  width: var(--profile-token-legend-cell-size);
+  min-width: var(--profile-token-legend-cell-size);
+}
+
 @media (max-width: 720px) {
   .profile-token-heatmap {
-    --profile-token-cell-size: 10px;
+    --profile-token-cell-min-size: 9px;
     --profile-token-cell-gap: 3px;
-  }
-
-  .profile-token-heatmap__grid {
-    grid-template-columns: 24px max-content;
+    --profile-token-weekday-width: 26px;
   }
 }
 </style>
