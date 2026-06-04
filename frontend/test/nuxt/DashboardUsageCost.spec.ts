@@ -8,6 +8,7 @@ import DashboardBreakdownBarChart from '../../app/components/Dashboard/Dashboard
 import DashboardBreakdownPieChart from '../../app/components/Dashboard/DashboardBreakdownPieChart.vue'
 import DashboardBreakdownWidget from '../../app/components/Dashboard/DashboardBreakdownWidget.vue'
 import DashboardTokensKpi from '../../app/components/Dashboard/DashboardTokensKpi.vue'
+import DashboardUsageCostKpi from '../../app/components/Dashboard/DashboardUsageCostKpi.vue'
 import DashboardUsageLineChart from '../../app/components/Dashboard/DashboardUsageLineChart.vue'
 import type {
   DashboardActivityResponse,
@@ -224,6 +225,79 @@ describe('dashboard usage cost display', () => {
 
     const caption = wrapper.get('[data-test="kpi"]').attributes('data-caption')
     expect(caption).toBe('')
+  })
+
+  it('renders the user usage estimated cost KPI when estimatedCost is present', () => {
+    widgetState.data.value = tokensResponse(estimatedCost(0.01, 0.1, 0.02))
+
+    const wrapper = mount(DashboardUsageCostKpi, {
+      props: { scope: 'self', window: '7d' },
+      global: {
+        stubs: {
+          DashboardKpiCard: {
+            props: ['animate', 'caption', 'formatter', 'title', 'value'],
+            template: `
+              <section
+                data-test="cost-kpi"
+                :data-animate="String(animate)"
+                :data-caption="caption"
+                :data-title="title"
+              >
+                {{ formatter(value) }}
+              </section>
+            `,
+          },
+        },
+      },
+    })
+
+    const kpi = wrapper.get('[data-test="cost-kpi"]')
+    expect(kpi.text()).toBe('$0.13')
+    expect(kpi.attributes('data-caption')).toBe('User usage estimate')
+    expect(kpi.attributes('data-title')).toBe('Estimated cost')
+    expect(kpi.attributes('data-animate')).toBe('false')
+  })
+
+  it('renders the global usage estimated cost KPI when estimatedCost is present', () => {
+    widgetState.data.value = tokensResponse(estimatedCost(0.01, 0.1, 0.02))
+
+    const wrapper = mount(DashboardUsageCostKpi, {
+      props: { scope: 'global', window: '7d' },
+      global: {
+        stubs: {
+          DashboardKpiCard: {
+            props: ['caption', 'formatter', 'value'],
+            template:
+              '<section data-test="cost-kpi" :data-caption="caption">{{ formatter(value ?? 0) }}</section>',
+          },
+        },
+      },
+    })
+
+    const kpi = wrapper.get('[data-test="cost-kpi"]')
+    expect(kpi.text()).toBe('$0.13')
+    expect(kpi.attributes('data-caption')).toBe('Global usage estimate')
+  })
+
+  it('renders an unavailable caption when estimatedCost is absent', () => {
+    widgetState.data.value = tokensResponse()
+
+    const wrapper = mount(DashboardUsageCostKpi, {
+      props: { scope: 'global', window: '7d' },
+      global: {
+        stubs: {
+          DashboardKpiCard: {
+            props: ['caption', 'formatter', 'value'],
+            template:
+              '<section data-test="cost-kpi" :data-caption="caption">{{ formatter(value ?? 0) }}</section>',
+          },
+        },
+      },
+    })
+
+    const kpi = wrapper.get('[data-test="cost-kpi"]')
+    expect(kpi.text()).toBe('$0.00')
+    expect(kpi.attributes('data-caption')).toBe('Cost estimate unavailable')
   })
 
   it('keeps the activity summary cost-free when estimatedCost is present', () => {

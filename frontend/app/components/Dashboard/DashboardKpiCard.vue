@@ -6,11 +6,13 @@ const props = withDefaults(
     error?: string | null
     formatter?: (value: number) => string
     icon: string
+    animate?: boolean
     loading?: boolean
     title: string
     value?: number | null
   }>(),
   {
+    animate: true,
     caption: '',
     error: null,
     formatter: (value: number) => value.toString(),
@@ -56,7 +58,7 @@ function shouldAnimateValue() {
 function animateValue(nextValue: number) {
   cancelValueAnimation()
 
-  if (!shouldAnimateValue()) {
+  if (!props.animate || !shouldAnimateValue()) {
     animatedValue.value = nextValue
     return
   }

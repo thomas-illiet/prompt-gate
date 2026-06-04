@@ -87,6 +87,11 @@ function mountPage() {
           template:
             '<div data-test="tokens" :data-scope="scope" :data-window="window" />',
         },
+        DashboardUsageCostKpi: {
+          props: ['scope', 'window'],
+          template:
+            '<div data-test="usage-cost" :data-scope="scope" :data-window="window" />',
+        },
         DashboardTopIdentitiesChart: {
           props: ['window'],
           template: '<div data-test="top-identities" :data-window="window" />',
@@ -138,6 +143,9 @@ describe('DashboardPage', () => {
     expect(wrapper.get('[data-test="tokens"]').attributes('data-scope')).toBe(
       'self',
     )
+    expect(
+      wrapper.get('[data-test="usage-cost"]').attributes('data-scope'),
+    ).toBe('self')
     expect(wrapper.find('[data-test="adoption"]').exists()).toBe(false)
   })
 
@@ -150,6 +158,9 @@ describe('DashboardPage', () => {
     expect(wrapper.get('[data-test="tokens"]').attributes('data-scope')).toBe(
       'global',
     )
+    expect(
+      wrapper.get('[data-test="usage-cost"]').attributes('data-scope'),
+    ).toBe('global')
     expect(wrapper.find('[data-test="adoption"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="top-identities"]').exists()).toBe(true)
   })
@@ -163,6 +174,9 @@ describe('DashboardPage', () => {
     expect(wrapper.get('[data-test="tokens"]').attributes('data-scope')).toBe(
       'self',
     )
+    expect(
+      wrapper.get('[data-test="usage-cost"]').attributes('data-scope'),
+    ).toBe('self')
     expect(wrapper.find('[data-test="adoption"]').exists()).toBe(false)
   })
 

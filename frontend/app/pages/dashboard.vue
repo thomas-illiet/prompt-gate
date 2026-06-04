@@ -63,16 +63,22 @@ watch(
     </div>
 
     <v-row>
-      <v-col cols="12" md="4">
+      <v-col cols="6" lg="3">
+        <DashboardUsageCostKpi
+          :window="selectedWindow"
+          :scope="dashboardScope"
+        />
+      </v-col>
+      <v-col cols="6" lg="3">
         <DashboardTokensKpi :window="selectedWindow" :scope="dashboardScope" />
       </v-col>
-      <v-col cols="12" md="4">
+      <v-col cols="6" lg="3">
         <DashboardMessagesKpi
           :window="selectedWindow"
           :scope="dashboardScope"
         />
       </v-col>
-      <v-col cols="12" md="4">
+      <v-col cols="6" lg="3">
         <DashboardDurationKpi
           :window="selectedWindow"
           :scope="dashboardScope"
