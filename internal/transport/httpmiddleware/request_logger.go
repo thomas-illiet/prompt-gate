@@ -5,6 +5,8 @@ import (
 	"net"
 	"net/http"
 	"time"
+
+	"promptgate/backend/internal/platform/clientip"
 )
 
 type loggingResponseWriter struct {
@@ -56,14 +58,10 @@ func RequestLogger(logger *slog.Logger) Middleware {
 	}
 }
 
-// requestRemoteAddr returns the client IP from X-Forwarded-For, X-Real-IP, or RemoteAddr.
+// requestRemoteAddr returns the resolved context client IP or falls back to RemoteAddr.
 func requestRemoteAddr(r *http.Request) string {
-	if forwardedFor := r.Header.Get("X-Forwarded-For"); forwardedFor != "" {
-		return forwardedFor
-	}
-
-	if realIP := r.Header.Get("X-Real-IP"); realIP != "" {
-		return realIP
+	if resolved := clientip.FromContext(r.Context()); resolved != "" {
+		return resolved
 	}
 
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
