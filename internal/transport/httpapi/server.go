@@ -12,6 +12,7 @@ import (
 	"promptgate/backend/internal/domain/monitoring"
 	"promptgate/backend/internal/domain/provider"
 	"promptgate/backend/internal/domain/proxy"
+	"promptgate/backend/internal/domain/subscriptions"
 	"promptgate/backend/internal/domain/tokens"
 	"promptgate/backend/internal/domain/users"
 	"promptgate/backend/internal/platform/config"
@@ -22,35 +23,39 @@ import (
 )
 
 type Dependencies struct {
-	Config     config.Config
-	DB         *gorm.DB
-	Users      *users.Service
-	Tokens     *tokens.Service
-	Firewall   *firewall.Service
-	Groups     *groups.Service
-	Providers  *provider.Service
-	MCP        *mcp.Service
-	Monitoring *monitoring.Service
-	Proxy      *proxy.Service
-	OIDC       *auth.OIDCService
-	Sessions   *auth.SessionStore
+	Config        config.Config
+	DB            *gorm.DB
+	Users         *users.Service
+	Tokens        *tokens.Service
+	Firewall      *firewall.Service
+	Groups        *groups.Service
+	Providers     *provider.Service
+	MCP           *mcp.Service
+	Monitoring    *monitoring.Service
+	Proxy         *proxy.Service
+	Subscriptions *subscriptions.Service
+	QuotaRedis    *subscriptions.RedisStore
+	OIDC          *auth.OIDCService
+	Sessions      *auth.SessionStore
 }
 
 // NewHandler builds and returns the HTTP handler with all routes and middleware configured.
 func NewHandler(a Dependencies) http.Handler {
 	srv := server{
-		config:       a.Config,
-		db:           a.DB,
-		oidcService:  a.OIDC,
-		sessionStore: a.Sessions,
-		userService:  a.Users,
-		tokenService: a.Tokens,
-		groups:       a.Groups,
-		proxyService: a.Proxy,
-		providers:    a.Providers,
-		monitoring:   a.Monitoring,
+		config:        a.Config,
+		db:            a.DB,
+		oidcService:   a.OIDC,
+		sessionStore:  a.Sessions,
+		userService:   a.Users,
+		tokenService:  a.Tokens,
+		groups:        a.Groups,
+		proxyService:  a.Proxy,
+		providers:     a.Providers,
+		monitoring:    a.Monitoring,
+		subscriptions: a.Subscriptions,
+		quotaRedis:    a.QuotaRedis,
 	}
-	adminH := admin.NewHandler(a.Users, a.Tokens, a.Firewall, a.Groups, a.Providers, a.MCP, a.Proxy, a.Monitoring)
+	adminH := admin.NewHandler(a.Users, a.Tokens, a.Firewall, a.Groups, a.Providers, a.MCP, a.Proxy, a.Monitoring, a.Subscriptions)
 
 	cfg := a.Config
 	sessionStore := a.Sessions
@@ -82,6 +87,15 @@ func NewHandler(a Dependencies) http.Handler {
 		"GET /api/v1/me/prompts",
 		middleware.Chain(
 			http.HandlerFunc(srv.handleCurrentUserPrompts),
+			middleware.RequireSession(sessionStore, cfg.SessionCookieName),
+			middleware.RequireAppAccess(),
+			middleware.RequireRoles(auth.RoleUser, auth.RoleManager, auth.RoleAdmin),
+		),
+	)
+	mux.Handle(
+		"GET /api/v1/me/quota",
+		middleware.Chain(
+			http.HandlerFunc(srv.handleCurrentUserQuota),
 			middleware.RequireSession(sessionStore, cfg.SessionCookieName),
 			middleware.RequireAppAccess(),
 			middleware.RequireRoles(auth.RoleUser, auth.RoleManager, auth.RoleAdmin),
@@ -197,6 +211,10 @@ func NewHandler(a Dependencies) http.Handler {
 		middleware.Chain(http.HandlerFunc(adminH.HandleAdminReplaceUserGroups), adminMiddlewares...),
 	)
 	mux.Handle(
+		"PUT /api/v1/admin/users/{id}/subscription-plan",
+		middleware.Chain(http.HandlerFunc(adminH.HandleAdminAssignUserSubscriptionPlan), adminMiddlewares...),
+	)
+	mux.Handle(
 		"GET /api/v1/admin/prompts",
 		middleware.Chain(http.HandlerFunc(adminH.HandleAdminListPrompts), adminMiddlewares...),
 	)
@@ -273,6 +291,10 @@ func NewHandler(a Dependencies) http.Handler {
 		middleware.Chain(http.HandlerFunc(adminH.HandleAdminRevokeServiceAccountToken), adminMiddlewares...),
 	)
 	mux.Handle(
+		"PUT /api/v1/admin/service-accounts/{id}/subscription-plan",
+		middleware.Chain(http.HandlerFunc(adminH.HandleAdminAssignServiceAccountSubscriptionPlan), adminMiddlewares...),
+	)
+	mux.Handle(
 		"GET /api/v1/admin/service-accounts/{id}/firewall/rules",
 		middleware.Chain(http.HandlerFunc(adminH.HandleAdminListServiceAccountFirewallRules), adminMiddlewares...),
 	)
@@ -327,6 +349,30 @@ func NewHandler(a Dependencies) http.Handler {
 	mux.Handle(
 		"DELETE /api/v1/admin/firewall/rules/{id}",
 		middleware.Chain(http.HandlerFunc(adminH.HandleAdminDeleteFirewallRule), adminMiddlewares...),
+	)
+	mux.Handle(
+		"GET /api/v1/admin/subscriptions",
+		middleware.Chain(http.HandlerFunc(adminH.HandleAdminListSubscriptionPlans), adminMiddlewares...),
+	)
+	mux.Handle(
+		"POST /api/v1/admin/subscriptions",
+		middleware.Chain(http.HandlerFunc(adminH.HandleAdminCreateSubscriptionPlan), adminMiddlewares...),
+	)
+	mux.Handle(
+		"GET /api/v1/admin/subscriptions/{id}",
+		middleware.Chain(http.HandlerFunc(adminH.HandleAdminGetSubscriptionPlan), adminMiddlewares...),
+	)
+	mux.Handle(
+		"PATCH /api/v1/admin/subscriptions/{id}",
+		middleware.Chain(http.HandlerFunc(adminH.HandleAdminUpdateSubscriptionPlan), adminMiddlewares...),
+	)
+	mux.Handle(
+		"PUT /api/v1/admin/subscriptions/{id}/default",
+		middleware.Chain(http.HandlerFunc(adminH.HandleAdminSetDefaultSubscriptionPlan), adminMiddlewares...),
+	)
+	mux.Handle(
+		"DELETE /api/v1/admin/subscriptions/{id}",
+		middleware.Chain(http.HandlerFunc(adminH.HandleAdminDeleteSubscriptionPlan), adminMiddlewares...),
 	)
 	mux.Handle(
 		"GET /api/v1/admin/groups",

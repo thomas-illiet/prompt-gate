@@ -55,6 +55,8 @@ func runSchedule() error {
 		cfg.UsageRawRetention,
 		"usage_raw_cleanup_interval",
 		cfg.UsageRawCleanupInterval,
+		"subscription_quota_sync_interval",
+		cfg.SubscriptionQuotaSyncInterval,
 	)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

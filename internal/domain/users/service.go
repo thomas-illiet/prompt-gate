@@ -38,6 +38,7 @@ type User struct {
 	Name                    string        `gorm:"not null"`
 	Type                    auth.UserType `gorm:"type:varchar(16);not null;default:'user';index"`
 	Role                    auth.AppRole  `gorm:"type:varchar(16);not null;index"`
+	SubscriptionPlanID      *string       `gorm:"column:subscription_plan_id;type:uuid;index"`
 	Note                    string        `gorm:"type:text;not null;default:''"`
 	IsActive                bool          `gorm:"not null;default:true;index"`
 	FirewallOverrideEnabled bool          `gorm:"column:firewall_override_enabled;not null;default:false;index"`
@@ -48,21 +49,25 @@ type User struct {
 }
 
 type AdminUser struct {
-	ID                string        `json:"id"`
-	Sub               string        `json:"sub"`
-	PreferredUsername string        `json:"preferredUsername"`
-	Email             string        `json:"email"`
-	Name              string        `json:"name"`
-	Type              auth.UserType `json:"type"`
-	Role              auth.AppRole  `json:"role"`
-	Note              string        `json:"note"`
-	IsActive          bool          `json:"isActive"`
-	InputTokens       int64         `json:"inputTokens"`
-	OutputTokens      int64         `json:"outputTokens"`
-	ExpiresAt         *time.Time    `json:"expiresAt"`
-	LastLoginAt       time.Time     `json:"lastLoginAt"`
-	CreatedAt         time.Time     `json:"createdAt"`
-	UpdatedAt         time.Time     `json:"updatedAt"`
+	ID                        string                   `json:"id"`
+	Sub                       string                   `json:"sub"`
+	PreferredUsername         string                   `json:"preferredUsername"`
+	Email                     string                   `json:"email"`
+	Name                      string                   `json:"name"`
+	Type                      auth.UserType            `json:"type"`
+	Role                      auth.AppRole             `json:"role"`
+	SubscriptionPlanID        *string                  `json:"subscriptionPlanId"`
+	SubscriptionPlan          *AccountSubscriptionPlan `json:"subscriptionPlan,omitempty"`
+	EffectiveSubscriptionPlan *AccountSubscriptionPlan `json:"effectiveSubscriptionPlan,omitempty"`
+	QuotaState                *AccountQuotaState       `json:"quotaState,omitempty"`
+	Note                      string                   `json:"note"`
+	IsActive                  bool                     `json:"isActive"`
+	InputTokens               int64                    `json:"inputTokens"`
+	OutputTokens              int64                    `json:"outputTokens"`
+	ExpiresAt                 *time.Time               `json:"expiresAt"`
+	LastLoginAt               time.Time                `json:"lastLoginAt"`
+	CreatedAt                 time.Time                `json:"createdAt"`
+	UpdatedAt                 time.Time                `json:"updatedAt"`
 }
 
 type ListParams struct {
@@ -84,17 +89,43 @@ type ListResult struct {
 }
 
 type ServiceAccount struct {
-	ID                      string       `json:"id"`
-	Identifier              string       `json:"identifier"`
-	Name                    string       `json:"name"`
-	Role                    auth.AppRole `json:"role"`
-	Note                    string       `json:"note"`
-	IsActive                bool         `json:"isActive"`
-	FirewallOverrideEnabled bool         `json:"firewallOverrideEnabled"`
-	InputTokens             int64        `json:"inputTokens"`
-	OutputTokens            int64        `json:"outputTokens"`
-	CreatedAt               time.Time    `json:"createdAt"`
-	UpdatedAt               time.Time    `json:"updatedAt"`
+	ID                        string                   `json:"id"`
+	Identifier                string                   `json:"identifier"`
+	Name                      string                   `json:"name"`
+	Role                      auth.AppRole             `json:"role"`
+	SubscriptionPlanID        *string                  `json:"subscriptionPlanId"`
+	SubscriptionPlan          *AccountSubscriptionPlan `json:"subscriptionPlan,omitempty"`
+	EffectiveSubscriptionPlan *AccountSubscriptionPlan `json:"effectiveSubscriptionPlan,omitempty"`
+	QuotaState                *AccountQuotaState       `json:"quotaState,omitempty"`
+	Note                      string                   `json:"note"`
+	IsActive                  bool                     `json:"isActive"`
+	FirewallOverrideEnabled   bool                     `json:"firewallOverrideEnabled"`
+	InputTokens               int64                    `json:"inputTokens"`
+	OutputTokens              int64                    `json:"outputTokens"`
+	CreatedAt                 time.Time                `json:"createdAt"`
+	UpdatedAt                 time.Time                `json:"updatedAt"`
+}
+
+type AccountSubscriptionPlan struct {
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	Description   string `json:"description"`
+	Quota5HTokens *int64 `json:"quota5hTokens"`
+	Quota7DTokens *int64 `json:"quota7dTokens"`
+	IsDefault     bool   `json:"isDefault"`
+}
+
+type AccountQuotaState struct {
+	HasSubscription bool       `json:"hasSubscription"`
+	PlanID          *string    `json:"planId"`
+	PlanName        string     `json:"planName"`
+	Used5HTokens    int64      `json:"used5hTokens"`
+	Quota5HTokens   *int64     `json:"quota5hTokens"`
+	Reset5HAt       *time.Time `json:"reset5hAt"`
+	Used7DTokens    int64      `json:"used7dTokens"`
+	Quota7DTokens   *int64     `json:"quota7dTokens"`
+	Reset7DAt       *time.Time `json:"reset7dAt"`
+	SyncedAt        *time.Time `json:"syncedAt"`
 }
 
 type ServiceAccountListParams struct {
@@ -998,19 +1029,20 @@ func (u *User) profile() auth.UserProfile {
 // adminUser maps the database User record to an AdminUser response with audit timestamps.
 func (u *User) adminUser() AdminUser {
 	return AdminUser{
-		ID:                u.ID,
-		Sub:               u.ExternalSub,
-		PreferredUsername: u.PreferredUsername,
-		Email:             u.Email,
-		Name:              u.Name,
-		Type:              u.Type,
-		Role:              u.Role,
-		Note:              u.Note,
-		IsActive:          u.IsActive,
-		ExpiresAt:         u.ExpiresAt,
-		LastLoginAt:       u.LastLoginAt,
-		CreatedAt:         u.CreatedAt,
-		UpdatedAt:         u.UpdatedAt,
+		ID:                 u.ID,
+		Sub:                u.ExternalSub,
+		PreferredUsername:  u.PreferredUsername,
+		Email:              u.Email,
+		Name:               u.Name,
+		Type:               u.Type,
+		Role:               u.Role,
+		SubscriptionPlanID: u.SubscriptionPlanID,
+		Note:               u.Note,
+		IsActive:           u.IsActive,
+		ExpiresAt:          u.ExpiresAt,
+		LastLoginAt:        u.LastLoginAt,
+		CreatedAt:          u.CreatedAt,
+		UpdatedAt:          u.UpdatedAt,
 	}
 }
 
@@ -1021,6 +1053,7 @@ func (u *User) serviceAccount() ServiceAccount {
 		Identifier:              u.PreferredUsername,
 		Name:                    u.Name,
 		Role:                    auth.RoleUser,
+		SubscriptionPlanID:      u.SubscriptionPlanID,
 		Note:                    u.Note,
 		IsActive:                u.IsActive,
 		FirewallOverrideEnabled: u.FirewallOverrideEnabled,

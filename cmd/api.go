@@ -112,17 +112,19 @@ func runAPI() error {
 // newAPIHandler wires runtime app services into the public HTTP API handler.
 func newAPIHandler(a *app.App) http.Handler {
 	return httpapi.NewHandler(httpapi.Dependencies{
-		Config:     a.Config,
-		DB:         a.DB,
-		Users:      a.Users,
-		Tokens:     a.Tokens,
-		Firewall:   a.Firewall,
-		Groups:     a.Groups,
-		Providers:  a.Providers,
-		MCP:        a.MCP,
-		Monitoring: a.Monitoring,
-		Proxy:      a.Proxy,
-		OIDC:       a.OIDC,
-		Sessions:   a.Sessions,
+		Config:        a.Config,
+		DB:            a.DB,
+		Users:         a.Users,
+		Tokens:        a.Tokens,
+		Firewall:      a.Firewall,
+		Groups:        a.Groups,
+		Providers:     a.Providers,
+		MCP:           a.MCP,
+		Monitoring:    a.Monitoring,
+		Proxy:         a.Proxy,
+		Subscriptions: a.Subscriptions,
+		QuotaRedis:    a.QuotaRedis,
+		OIDC:          a.OIDC,
+		Sessions:      a.Sessions,
 	})
 }

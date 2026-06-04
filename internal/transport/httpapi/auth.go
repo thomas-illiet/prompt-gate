@@ -11,22 +11,25 @@ import (
 	"promptgate/backend/internal/domain/monitoring"
 	"promptgate/backend/internal/domain/provider"
 	"promptgate/backend/internal/domain/proxy"
+	"promptgate/backend/internal/domain/subscriptions"
 	"promptgate/backend/internal/domain/tokens"
 	"promptgate/backend/internal/domain/users"
 	"promptgate/backend/internal/platform/config"
 )
 
 type server struct {
-	config       config.Config
-	db           *gorm.DB
-	oidcService  *auth.OIDCService
-	sessionStore *auth.SessionStore
-	userService  *users.Service
-	tokenService *tokens.Service
-	groups       *groups.Service
-	proxyService *proxy.Service
-	providers    *provider.Service
-	monitoring   *monitoring.Service
+	config        config.Config
+	db            *gorm.DB
+	oidcService   *auth.OIDCService
+	sessionStore  *auth.SessionStore
+	userService   *users.Service
+	tokenService  *tokens.Service
+	groups        *groups.Service
+	proxyService  *proxy.Service
+	providers     *provider.Service
+	monitoring    *monitoring.Service
+	subscriptions *subscriptions.Service
+	quotaRedis    *subscriptions.RedisStore
 }
 
 // handleLogin initiates the OIDC authorization flow and redirects to the provider.

@@ -15,6 +15,7 @@ import (
 	"promptgate/backend/internal/domain/monitoring"
 	"promptgate/backend/internal/domain/provider"
 	"promptgate/backend/internal/domain/proxy"
+	"promptgate/backend/internal/domain/subscriptions"
 	"promptgate/backend/internal/domain/tokens"
 	"promptgate/backend/internal/domain/users"
 	"promptgate/backend/internal/platform/config"
@@ -26,20 +27,22 @@ import (
 
 // App holds all shared resources for the application lifetime.
 type App struct {
-	Config     config.Config
-	DB         *gorm.DB
-	Users      *users.Service
-	Tokens     *tokens.Service
-	Firewall   *firewall.Service
-	Groups     *groups.Service
-	Providers  *provider.Service
-	MCP        *mcp.Service
-	Monitoring *monitoring.Service
-	Proxy      *proxy.Service
-	OIDC       *auth.OIDCService
-	Validator  *auth.Validator
-	Sessions   *auth.SessionStore
-	Redis      *redisstore.Store
+	Config        config.Config
+	DB            *gorm.DB
+	Users         *users.Service
+	Tokens        *tokens.Service
+	Firewall      *firewall.Service
+	Groups        *groups.Service
+	Providers     *provider.Service
+	MCP           *mcp.Service
+	Monitoring    *monitoring.Service
+	Proxy         *proxy.Service
+	Subscriptions *subscriptions.Service
+	OIDC          *auth.OIDCService
+	Validator     *auth.Validator
+	Sessions      *auth.SessionStore
+	Redis         *redisstore.Store
+	QuotaRedis    *subscriptions.RedisStore
 }
 
 // New initializes the database, services, and auth components and returns a ready App.
@@ -54,6 +57,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	userService := users.NewService(db)
 	tokenService := tokens.NewService(db, cfg.JWTSecret)
 	userService.SetTokenRevoker(tokenService)
+	subscriptionService := subscriptions.NewService(db)
 	firewallService := firewall.NewService(db)
 	groupService := groups.NewService(db)
 	secretCipher, err := secrets.NewCipher(cfg.SecretsKey)
@@ -94,6 +98,12 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	groupService.SetNotifier(redisStore)
 	providerService.SetNotifier(redisStore)
 	mcpService.SetNotifier(redisStore)
+	subscriptionService.SetNotifier(redisStore)
+	quotaRedis := subscriptions.NewRedisStore(redisStore, subscriptionService, cfg.RedisCacheTTL, slog.Default())
+	quotaRedis.SyncVersion(ctx)
+	if err := quotaRedis.WarmSnapshot(ctx); err != nil {
+		return nil, fmt.Errorf("warm subscription snapshot: %w", err)
+	}
 
 	var validator *auth.Validator
 	var sessionStore *auth.SessionStore
@@ -125,20 +135,22 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	}
 
 	return &App{
-		Config:     cfg,
-		DB:         db,
-		Users:      userService,
-		Tokens:     tokenService,
-		Firewall:   firewallService,
-		Groups:     groupService,
-		Providers:  providerService,
-		MCP:        mcpService,
-		Monitoring: monitoringService,
-		Proxy:      proxyService,
-		OIDC:       oidcService,
-		Validator:  validator,
-		Sessions:   sessionStore,
-		Redis:      redisStore,
+		Config:        cfg,
+		DB:            db,
+		Users:         userService,
+		Tokens:        tokenService,
+		Firewall:      firewallService,
+		Groups:        groupService,
+		Providers:     providerService,
+		MCP:           mcpService,
+		Monitoring:    monitoringService,
+		Proxy:         proxyService,
+		Subscriptions: subscriptionService,
+		OIDC:          oidcService,
+		Validator:     validator,
+		Sessions:      sessionStore,
+		Redis:         redisStore,
+		QuotaRedis:    quotaRedis,
 	}, nil
 }
 
@@ -152,4 +164,8 @@ func (a *App) StartBackgroundJobs(ctx context.Context) {
 	a.Monitoring.StartScheduler(ctx, monitoring.DefaultSchedulerTick)
 	slog.Info("starting raw usage cleanup goroutine", "retention", a.Config.UsageRawRetention, "interval", a.Config.UsageRawCleanupInterval)
 	a.Proxy.StartRawUsageCleanup(ctx, a.Config.UsageRawRetention, a.Config.UsageRawCleanupInterval)
+	if a.Subscriptions != nil && a.QuotaRedis != nil {
+		slog.Info("starting subscription quota sync goroutine", "interval", a.Config.SubscriptionQuotaSyncInterval)
+		a.Subscriptions.StartQuotaStateSync(ctx, a.QuotaRedis, a.Config.SubscriptionQuotaSyncInterval)
+	}
 }

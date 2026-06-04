@@ -11,20 +11,22 @@ import (
 	"promptgate/backend/internal/domain/monitoring"
 	"promptgate/backend/internal/domain/provider"
 	"promptgate/backend/internal/domain/proxy"
+	"promptgate/backend/internal/domain/subscriptions"
 	"promptgate/backend/internal/domain/tokens"
 	"promptgate/backend/internal/domain/users"
 )
 
 // Handler handles admin-only HTTP routes for user and token management.
 type Handler struct {
-	users      *users.Service
-	tokens     *tokens.Service
-	firewall   *firewall.Service
-	groups     *groups.Service
-	providers  *provider.Service
-	mcp        *mcp.Service
-	monitoring *monitoring.Service
-	proxy      *proxy.Service
+	users         *users.Service
+	tokens        *tokens.Service
+	firewall      *firewall.Service
+	groups        *groups.Service
+	providers     *provider.Service
+	mcp           *mcp.Service
+	monitoring    *monitoring.Service
+	proxy         *proxy.Service
+	subscriptions *subscriptions.Service
 }
 
 // NewHandler returns an admin Handler wired to the given services.
@@ -36,6 +38,8 @@ func NewHandler(u *users.Service, t *tokens.Service, f *firewall.Service, g *gro
 			handler.proxy = typed
 		case *monitoring.Service:
 			handler.monitoring = typed
+		case *subscriptions.Service:
+			handler.subscriptions = typed
 		}
 	}
 	return handler

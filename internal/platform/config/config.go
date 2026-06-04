@@ -17,36 +17,37 @@ import (
 )
 
 type Config struct {
-	Port                         string
-	LogLevel                     string
-	DatabaseURL                  string
-	KeycloakIssuerURL            string
-	KeycloakJWKSURL              string
-	KeycloakClientID             string
-	KeycloakClientSecret         string
-	CAFile                       string
-	FrontendBaseURL              string
-	BackendBaseURL               string
-	ProxyBaseURL                 string
-	StaticAssetsDir              string
-	SessionCookieName            string
-	SessionTTL                   time.Duration
-	CORSAllowedOrigins           []string
-	JWTSecret                    string
-	SecretsKey                   string
-	TokenCleanupInterval         time.Duration
-	UserAccessExpirationInterval time.Duration
-	ProxyTrustForwardHeaders     bool
-	RedisURL                     string
-	RedisCacheTTL                time.Duration
-	ProxyReloadDebounce          time.Duration
-	WorkerBatchSize              int64
-	WorkerBlockTimeout           time.Duration
-	WorkerPendingIdleTimeout     time.Duration
-	WorkerConsumerName           string
-	UsageRawRetention            time.Duration
-	UsageRawCleanupInterval      time.Duration
-	UsageCost                    UsageCostConfig
+	Port                          string
+	LogLevel                      string
+	DatabaseURL                   string
+	KeycloakIssuerURL             string
+	KeycloakJWKSURL               string
+	KeycloakClientID              string
+	KeycloakClientSecret          string
+	CAFile                        string
+	FrontendBaseURL               string
+	BackendBaseURL                string
+	ProxyBaseURL                  string
+	StaticAssetsDir               string
+	SessionCookieName             string
+	SessionTTL                    time.Duration
+	CORSAllowedOrigins            []string
+	JWTSecret                     string
+	SecretsKey                    string
+	TokenCleanupInterval          time.Duration
+	UserAccessExpirationInterval  time.Duration
+	ProxyTrustForwardHeaders      bool
+	RedisURL                      string
+	RedisCacheTTL                 time.Duration
+	ProxyReloadDebounce           time.Duration
+	WorkerBatchSize               int64
+	WorkerBlockTimeout            time.Duration
+	WorkerPendingIdleTimeout      time.Duration
+	WorkerConsumerName            string
+	UsageRawRetention             time.Duration
+	UsageRawCleanupInterval       time.Duration
+	SubscriptionQuotaSyncInterval time.Duration
+	UsageCost                     UsageCostConfig
 }
 
 type UsageCostConfig struct {
@@ -191,20 +192,22 @@ func LoadSchedule() (Config, error) {
 	v.SetDefault("proxy_reload_debounce", "250ms")
 	v.SetDefault("usage_raw_retention", "2160h")
 	v.SetDefault("usage_raw_cleanup_interval", "1h")
+	v.SetDefault("subscription_quota_sync_interval", "5m")
 
 	cfg := Config{
-		LogLevel:                     v.GetString("log_level"),
-		DatabaseURL:                  strings.TrimSpace(v.GetString("database_url")),
-		CAFile:                       strings.TrimSpace(v.GetString("ca_file")),
-		JWTSecret:                    strings.TrimSpace(v.GetString("jwt_secret")),
-		SecretsKey:                   strings.TrimSpace(v.GetString("secrets_key")),
-		TokenCleanupInterval:         v.GetDuration("token_cleanup_interval"),
-		UserAccessExpirationInterval: v.GetDuration("user_access_expiration_interval"),
-		RedisURL:                     strings.TrimSpace(v.GetString("redis_url")),
-		RedisCacheTTL:                v.GetDuration("redis_cache_ttl"),
-		ProxyReloadDebounce:          v.GetDuration("proxy_reload_debounce"),
-		UsageRawRetention:            v.GetDuration("usage_raw_retention"),
-		UsageRawCleanupInterval:      v.GetDuration("usage_raw_cleanup_interval"),
+		LogLevel:                      v.GetString("log_level"),
+		DatabaseURL:                   strings.TrimSpace(v.GetString("database_url")),
+		CAFile:                        strings.TrimSpace(v.GetString("ca_file")),
+		JWTSecret:                     strings.TrimSpace(v.GetString("jwt_secret")),
+		SecretsKey:                    strings.TrimSpace(v.GetString("secrets_key")),
+		TokenCleanupInterval:          v.GetDuration("token_cleanup_interval"),
+		UserAccessExpirationInterval:  v.GetDuration("user_access_expiration_interval"),
+		RedisURL:                      strings.TrimSpace(v.GetString("redis_url")),
+		RedisCacheTTL:                 v.GetDuration("redis_cache_ttl"),
+		ProxyReloadDebounce:           v.GetDuration("proxy_reload_debounce"),
+		UsageRawRetention:             v.GetDuration("usage_raw_retention"),
+		UsageRawCleanupInterval:       v.GetDuration("usage_raw_cleanup_interval"),
+		SubscriptionQuotaSyncInterval: v.GetDuration("subscription_quota_sync_interval"),
 	}
 
 	if cfg.DatabaseURL == "" {
@@ -230,6 +233,9 @@ func LoadSchedule() (Config, error) {
 	}
 	if cfg.UsageRawCleanupInterval <= 0 {
 		return Config{}, errors.New("PROMPTGATE_USAGE_RAW_CLEANUP_INTERVAL must be greater than zero")
+	}
+	if cfg.SubscriptionQuotaSyncInterval <= 0 {
+		return Config{}, errors.New("PROMPTGATE_SUBSCRIPTION_QUOTA_SYNC_INTERVAL must be greater than zero")
 	}
 
 	return cfg, nil

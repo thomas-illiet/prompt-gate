@@ -71,6 +71,12 @@ func (h *Handler) HandleAdminListUsers(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	if h.subscriptions != nil {
+		if err := h.subscriptions.DecorateAdminUsers(r.Context(), result.Items); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+	}
 
 	writeJSON(w, http.StatusOK, result)
 }
@@ -90,6 +96,14 @@ func (h *Handler) HandleAdminGetUser(w http.ResponseWriter, r *http.Request) {
 			"error": err.Error(),
 		})
 		return
+	}
+	if h.subscriptions != nil {
+		items := []users.AdminUser{user}
+		if err := h.subscriptions.DecorateAdminUsers(r.Context(), items); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		user = items[0]
 	}
 
 	writeJSON(w, http.StatusOK, user)
@@ -135,6 +149,14 @@ func (h *Handler) HandleAdminUpdateUser(w http.ResponseWriter, r *http.Request) 
 		writeJSON(w, status, payload)
 		return
 	}
+	if h.subscriptions != nil {
+		items := []users.AdminUser{user}
+		if err := h.subscriptions.DecorateAdminUsers(r.Context(), items); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		user = items[0]
+	}
 
 	writeJSON(w, http.StatusOK, user)
 }
@@ -162,6 +184,14 @@ func (h *Handler) HandleAdminUpdateUserNote(w http.ResponseWriter, r *http.Reque
 
 		writeJSON(w, status, payload)
 		return
+	}
+	if h.subscriptions != nil {
+		items := []users.AdminUser{user}
+		if err := h.subscriptions.DecorateAdminUsers(r.Context(), items); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		user = items[0]
 	}
 
 	writeJSON(w, http.StatusOK, user)

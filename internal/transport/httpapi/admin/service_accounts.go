@@ -26,6 +26,12 @@ func (h *Handler) HandleAdminListServiceAccounts(w http.ResponseWriter, r *http.
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
+	if h.subscriptions != nil {
+		if err := h.subscriptions.DecorateServiceAccounts(r.Context(), list.Items); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+	}
 
 	writeJSON(w, http.StatusOK, list)
 }
@@ -42,6 +48,14 @@ func (h *Handler) HandleAdminCreateServiceAccount(w http.ResponseWriter, r *http
 		writeServiceAccountError(w, err)
 		return
 	}
+	if h.subscriptions != nil {
+		items := []users.ServiceAccount{account}
+		if err := h.subscriptions.DecorateServiceAccounts(r.Context(), items); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		account = items[0]
+	}
 
 	writeJSON(w, http.StatusCreated, account)
 }
@@ -52,6 +66,14 @@ func (h *Handler) HandleAdminGetServiceAccount(w http.ResponseWriter, r *http.Re
 	if err != nil {
 		writeServiceAccountError(w, err)
 		return
+	}
+	if h.subscriptions != nil {
+		items := []users.ServiceAccount{account}
+		if err := h.subscriptions.DecorateServiceAccounts(r.Context(), items); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		account = items[0]
 	}
 
 	writeJSON(w, http.StatusOK, account)
@@ -69,6 +91,14 @@ func (h *Handler) HandleAdminUpdateServiceAccount(w http.ResponseWriter, r *http
 		writeServiceAccountError(w, err)
 		return
 	}
+	if h.subscriptions != nil {
+		items := []users.ServiceAccount{account}
+		if err := h.subscriptions.DecorateServiceAccounts(r.Context(), items); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		account = items[0]
+	}
 
 	writeJSON(w, http.StatusOK, account)
 }
@@ -84,6 +114,14 @@ func (h *Handler) HandleAdminUpdateServiceAccountNote(w http.ResponseWriter, r *
 	if err != nil {
 		writeServiceAccountError(w, err)
 		return
+	}
+	if h.subscriptions != nil {
+		items := []users.ServiceAccount{account}
+		if err := h.subscriptions.DecorateServiceAccounts(r.Context(), items); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		account = items[0]
 	}
 
 	writeJSON(w, http.StatusOK, account)

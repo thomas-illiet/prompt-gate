@@ -22,6 +22,7 @@ import (
 	localmcp "promptgate/backend/internal/domain/mcp"
 	localprovider "promptgate/backend/internal/domain/provider"
 	localproxy "promptgate/backend/internal/domain/proxy"
+	"promptgate/backend/internal/domain/subscriptions"
 	"promptgate/backend/internal/domain/tokens"
 	"promptgate/backend/internal/domain/users"
 	"promptgate/backend/internal/platform/clientip"
@@ -95,9 +96,16 @@ func runProxy() error {
 	tokenService := tokens.NewService(db, cfg.JWTSecret)
 	firewallService := firewall.NewService(db)
 	groupService := groups.NewService(db)
+	subscriptionService := subscriptions.NewService(db)
 	providerService := localprovider.NewService(db, secretCipher)
 	mcpService := localmcp.NewService(db, secretCipher)
-	recorder := localproxy.NewRedisRecorder(redisStore, stdLogger)
+	subscriptionStore := subscriptions.NewRedisStore(redisStore, subscriptionService, cfg.RedisCacheTTL, stdLogger)
+	subscriptionStore.SyncVersion(ctx)
+	if err := subscriptionStore.WarmSnapshot(ctx); err != nil {
+		stdLogger.Error("failed to warm subscription snapshot", "error", err)
+		return err
+	}
+	recorder := subscriptions.NewQuotaRecorder(localproxy.NewRedisRecorder(redisStore, stdLogger), subscriptionStore, stdLogger)
 	tracer := otel.GetTracerProvider().Tracer("promptgate-proxy")
 
 	authCache := tokens.NewRedisAuthCache(redisStore, cfg.RedisCacheTTL, stdLogger)
@@ -130,6 +138,7 @@ func runProxy() error {
 		}
 	}()
 	go manager.Watch(ctx)
+	go subscriptionStore.Watch(ctx)
 	go func() {
 		for {
 			select {
@@ -163,7 +172,9 @@ func runProxy() error {
 		clientip.Middleware(cfg.ProxyTrustForwardHeaders)(
 			firewall.Middleware(firewallSnapshot, cfg.ProxyTrustForwardHeaders, stdLogger)(
 				groups.Middleware(accessSnapshot, stdLogger)(
-					auth.ActorMiddleware(manager),
+					subscriptions.Middleware(subscriptionStore, stdLogger)(
+						auth.ActorMiddleware(manager),
+					),
 				),
 			),
 		),

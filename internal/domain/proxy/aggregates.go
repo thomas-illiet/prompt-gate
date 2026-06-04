@@ -344,22 +344,23 @@ func upsertDailyUsageKPI(tx *gorm.DB, delta ProxyDailyUsageKPI) error {
 	delta.Day = dayStart(delta.Day)
 	delta.CreatedAt = now
 	delta.UpdatedAt = now
+	table := ProxyDailyUsageKPI{}.TableName()
 	return tx.Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "day"}, {Name: "initiator_id"}},
 		DoUpdates: clause.Assignments(map[string]any{
-			"requests":                 gorm.Expr("requests + ?", delta.Requests),
-			"prompts":                  gorm.Expr("prompts + ?", delta.Prompts),
-			"tool_calls":               gorm.Expr("tool_calls + ?", delta.ToolCalls),
-			"total_duration_ms":        gorm.Expr("total_duration_ms + ?", delta.TotalDurationMs),
-			"input_tokens":             gorm.Expr("input_tokens + ?", delta.InputTokens),
-			"output_tokens":            gorm.Expr("output_tokens + ?", delta.OutputTokens),
-			"cache_read_input_tokens":  gorm.Expr("cache_read_input_tokens + ?", delta.CacheReadInputTokens),
-			"cache_write_input_tokens": gorm.Expr("cache_write_input_tokens + ?", delta.CacheWriteInputTokens),
-			"completion_input_tokens":  gorm.Expr("completion_input_tokens + ?", delta.CompletionInputTokens),
-			"completion_output_tokens": gorm.Expr("completion_output_tokens + ?", delta.CompletionOutputTokens),
-			"completion_tokens":        gorm.Expr("completion_tokens + ?", delta.CompletionTokens),
-			"embedding_tokens":         gorm.Expr("embedding_tokens + ?", delta.EmbeddingTokens),
-			"total_tokens":             gorm.Expr("total_tokens + ?", delta.TotalTokens),
+			"requests":                 incrementColumn(table, "requests", delta.Requests),
+			"prompts":                  incrementColumn(table, "prompts", delta.Prompts),
+			"tool_calls":               incrementColumn(table, "tool_calls", delta.ToolCalls),
+			"total_duration_ms":        incrementColumn(table, "total_duration_ms", delta.TotalDurationMs),
+			"input_tokens":             incrementColumn(table, "input_tokens", delta.InputTokens),
+			"output_tokens":            incrementColumn(table, "output_tokens", delta.OutputTokens),
+			"cache_read_input_tokens":  incrementColumn(table, "cache_read_input_tokens", delta.CacheReadInputTokens),
+			"cache_write_input_tokens": incrementColumn(table, "cache_write_input_tokens", delta.CacheWriteInputTokens),
+			"completion_input_tokens":  incrementColumn(table, "completion_input_tokens", delta.CompletionInputTokens),
+			"completion_output_tokens": incrementColumn(table, "completion_output_tokens", delta.CompletionOutputTokens),
+			"completion_tokens":        incrementColumn(table, "completion_tokens", delta.CompletionTokens),
+			"embedding_tokens":         incrementColumn(table, "embedding_tokens", delta.EmbeddingTokens),
+			"total_tokens":             incrementColumn(table, "total_tokens", delta.TotalTokens),
 			"updated_at":               now,
 		}),
 	}).Create(&delta).Error
@@ -371,22 +372,30 @@ func upsertDailyUsageBreakdown(tx *gorm.DB, delta ProxyDailyUsageBreakdown) erro
 	delta.Name = normalizeBreakdownName(delta.Name)
 	delta.CreatedAt = now
 	delta.UpdatedAt = now
+	table := ProxyDailyUsageBreakdown{}.TableName()
 	return tx.Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "day"}, {Name: "initiator_id"}, {Name: "dimension"}, {Name: "name"}},
 		DoUpdates: clause.Assignments(map[string]any{
-			"requests":                 gorm.Expr("requests + ?", delta.Requests),
-			"input_tokens":             gorm.Expr("input_tokens + ?", delta.InputTokens),
-			"output_tokens":            gorm.Expr("output_tokens + ?", delta.OutputTokens),
-			"cache_read_input_tokens":  gorm.Expr("cache_read_input_tokens + ?", delta.CacheReadInputTokens),
-			"cache_write_input_tokens": gorm.Expr("cache_write_input_tokens + ?", delta.CacheWriteInputTokens),
-			"completion_input_tokens":  gorm.Expr("completion_input_tokens + ?", delta.CompletionInputTokens),
-			"completion_output_tokens": gorm.Expr("completion_output_tokens + ?", delta.CompletionOutputTokens),
-			"completion_tokens":        gorm.Expr("completion_tokens + ?", delta.CompletionTokens),
-			"embedding_tokens":         gorm.Expr("embedding_tokens + ?", delta.EmbeddingTokens),
-			"total_tokens":             gorm.Expr("total_tokens + ?", delta.TotalTokens),
+			"requests":                 incrementColumn(table, "requests", delta.Requests),
+			"input_tokens":             incrementColumn(table, "input_tokens", delta.InputTokens),
+			"output_tokens":            incrementColumn(table, "output_tokens", delta.OutputTokens),
+			"cache_read_input_tokens":  incrementColumn(table, "cache_read_input_tokens", delta.CacheReadInputTokens),
+			"cache_write_input_tokens": incrementColumn(table, "cache_write_input_tokens", delta.CacheWriteInputTokens),
+			"completion_input_tokens":  incrementColumn(table, "completion_input_tokens", delta.CompletionInputTokens),
+			"completion_output_tokens": incrementColumn(table, "completion_output_tokens", delta.CompletionOutputTokens),
+			"completion_tokens":        incrementColumn(table, "completion_tokens", delta.CompletionTokens),
+			"embedding_tokens":         incrementColumn(table, "embedding_tokens", delta.EmbeddingTokens),
+			"total_tokens":             incrementColumn(table, "total_tokens", delta.TotalTokens),
 			"updated_at":               now,
 		}),
 	}).Create(&delta).Error
+}
+
+func incrementColumn(table, column string, delta int64) clause.Expr {
+	return clause.Expr{
+		SQL:  "? + ?",
+		Vars: []any{clause.Column{Table: table, Name: column}, delta},
+	}
 }
 
 func accumulateKPIIntoTotals(totals *UsageTotals, row ProxyDailyUsageKPI) {

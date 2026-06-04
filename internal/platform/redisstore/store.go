@@ -223,6 +223,26 @@ func AuthCacheKey(version int64, tokenHash string) string {
 	return fmt.Sprintf("promptgate:proxy:auth:v%d:%s", version, tokenHash)
 }
 
+// SubscriptionAssignmentKey returns the Redis key for one cached subscription assignment.
+func SubscriptionAssignmentKey(version int64, userID string) string {
+	return fmt.Sprintf("promptgate:subscriptions:assignment:v%d:%s", version, userID)
+}
+
+// SubscriptionUsageZSetKey returns the Redis sorted-set key for usage buckets.
+func SubscriptionUsageZSetKey(userID, window string) string {
+	return fmt.Sprintf("promptgate:subscriptions:usage:%s:%s:z", userID, window)
+}
+
+// SubscriptionUsageHashKey returns the Redis hash key for usage bucket counters.
+func SubscriptionUsageHashKey(userID, window string) string {
+	return fmt.Sprintf("promptgate:subscriptions:usage:%s:%s:h", userID, window)
+}
+
+// SubscriptionActiveUsersKey returns the Redis set key for identities with quota usage.
+func SubscriptionActiveUsersKey() string {
+	return "promptgate:subscriptions:active_users"
+}
+
 // AuthSessionKey returns the Redis key for a browser session.
 func AuthSessionKey(sessionID string) string {
 	return fmt.Sprintf("promptgate:auth:session:%s", sessionID)

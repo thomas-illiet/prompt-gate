@@ -13,6 +13,7 @@ import (
 	"promptgate/backend/internal/domain/monitoring"
 	"promptgate/backend/internal/domain/provider"
 	"promptgate/backend/internal/domain/proxy"
+	"promptgate/backend/internal/domain/subscriptions"
 	"promptgate/backend/internal/domain/tokens"
 	"promptgate/backend/internal/domain/users"
 )
@@ -22,6 +23,11 @@ func Run(ctx context.Context, db *gorm.DB) error {
 	slog.Info("running database migrations", "models", "users")
 	if err := db.WithContext(ctx).AutoMigrate(&users.User{}); err != nil {
 		return fmt.Errorf("migrate users: %w", err)
+	}
+
+	slog.Info("running database migrations", "models", "subscriptions")
+	if err := subscriptions.NewService(db).AutoMigrate(ctx); err != nil {
+		return fmt.Errorf("migrate subscriptions: %w", err)
 	}
 
 	slog.Info("running database migrations", "models", "tokens")
