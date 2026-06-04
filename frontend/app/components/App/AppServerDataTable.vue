@@ -1,4 +1,4 @@
-<script setup lang="ts" generic="TItem extends Record<string, any>">
+<script setup lang="ts" generic="TItem extends object">
 import { computed, onScopeDispose, shallowRef, useSlots, watch } from 'vue'
 import type { DataTableHeader } from 'vuetify'
 
@@ -81,7 +81,10 @@ const loadingSkeletonRows = computed(() =>
 )
 
 const loadingSkeletonCells = computed(() =>
-  Array.from({ length: Math.max(props.headers.length, 1) }, (_, index) => index),
+  Array.from(
+    { length: Math.max(props.headers.length, 1) },
+    (_, index) => index,
+  ),
 )
 
 const loadingSkeletonGridTemplate = computed(
@@ -104,11 +107,7 @@ function clearRefreshIndicatorTimer() {
 
 watch(
   () =>
-    [
-      props.loading,
-      props.loadingDelayMs,
-      props.refreshIndicatorMinMs,
-    ] as const,
+    [props.loading, props.loadingDelayMs, props.refreshIndicatorMinMs] as const,
   ([loading, loadingDelayMs, refreshIndicatorMinMs]) => {
     clearLoadingDelayTimer()
     clearRefreshIndicatorTimer()
@@ -157,7 +156,9 @@ onScopeDispose(() => {
 })
 
 // updateSort emits normalized sort changes from Vuetify's table model.
-function updateSort(value: readonly { key: string; order?: boolean | string }[]) {
+function updateSort(
+  value: readonly { key: string; order?: boolean | string }[],
+) {
   const next = value[0]
   if (!next?.key) {
     emit('update:sort', props.defaultSortBy, props.defaultSortDir)
@@ -303,13 +304,12 @@ function updateSort(value: readonly { key: string; order?: boolean | string }[])
   max-width: 220px;
   height: 14px;
   border-radius: 999px;
-  background:
-    linear-gradient(
-      90deg,
-      rgba(var(--app-shell-border), 0.34) 0%,
-      rgba(var(--v-theme-primary), 0.14) 45%,
-      rgba(var(--app-shell-border), 0.34) 90%
-    );
+  background: linear-gradient(
+    90deg,
+    rgba(var(--app-shell-border), 0.34) 0%,
+    rgba(var(--v-theme-primary), 0.14) 45%,
+    rgba(var(--app-shell-border), 0.34) 90%
+  );
   background-size: 220% 100%;
   animation: app-server-data-table-skeleton 1.4s ease-in-out infinite;
 }
