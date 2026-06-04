@@ -42,6 +42,11 @@ const headers: DataTableHeader[] = [
     key: 'isActive',
   }),
   appTableCenteredColumn({
+    title: 'Plan',
+    key: 'subscriptionPlan',
+    sortable: false,
+  }),
+  appTableCenteredColumn({
     title: 'Input tokens',
     key: 'inputTokens',
   }),
@@ -96,6 +101,24 @@ function displaySubjectSuffix(user: AdminUser) {
   }
 
   return `sub: ...${user.sub.slice(-8)}`
+}
+
+function planLabel(user: AdminUser) {
+  return user.effectiveSubscriptionPlan?.name ?? 'No subscription'
+}
+
+function planCaption(user: AdminUser) {
+  if (!user.effectiveSubscriptionPlan) {
+    return 'Required'
+  }
+  return user.subscriptionPlanId ? 'Assigned' : 'Default'
+}
+
+function planColor(user: AdminUser) {
+  if (!user.effectiveSubscriptionPlan) {
+    return 'error'
+  }
+  return user.subscriptionPlanId ? 'primary' : 'success'
 }
 
 const rowActions: AppRowAction<AdminUser>[] = [
@@ -219,6 +242,22 @@ const rowActions: AppRowAction<AdminUser>[] = [
         </div>
       </template>
 
+      <template #item.subscriptionPlan="{ item }">
+        <div class="app-table-center">
+          <v-chip
+            size="small"
+            label
+            variant="tonal"
+            :color="planColor(item)"
+          >
+            {{ planLabel(item) }}
+            <span class="admin-users-table__chip-caption">
+              {{ planCaption(item) }}
+            </span>
+          </v-chip>
+        </div>
+      </template>
+
       <template #item.inputTokens="{ item }">
         <span class="app-table-text">
           {{ formatNumber(item.inputTokens) }}
@@ -243,5 +282,10 @@ const rowActions: AppRowAction<AdminUser>[] = [
   display: grid;
   min-width: 0;
   gap: 2px;
+}
+
+.admin-users-table__chip-caption {
+  margin-left: 6px;
+  opacity: 0.68;
 }
 </style>

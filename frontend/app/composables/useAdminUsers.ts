@@ -6,11 +6,13 @@ import type {
 } from '~/types/groups'
 import type {
   AdminUser,
+  UpdateUserAccessPayload,
   UpdateUserPayload,
   UserListResponse,
   UserRoleFilter,
   UserStatusFilter,
 } from '~/types/users'
+import type { AssignSubscriptionPlanPayload } from '~/types/subscriptions'
 import { Notify } from '~/stores/notification'
 import {
   BLOCKED_ROUTE_PATH,
@@ -25,6 +27,7 @@ const ERROR_MESSAGES = {
   group_not_found: 'Group no longer exists.',
   invalid_role: 'Selected role is invalid.',
   invalid_sort: 'Selected user sort is invalid.',
+  invalid_subscription_assignment: 'Selected subscription plan is invalid.',
   token_not_found: 'Virtual key no longer exists.',
   user_not_found: 'User no longer exists.',
 }
@@ -259,6 +262,51 @@ export function useAdminUsers() {
     )
   }
 
+  async function assignUserSubscriptionPlan(
+    userId: string,
+    planId: string | null,
+  ) {
+    return await runApiMutation(
+      {
+        loading: saving,
+        successMessage: 'User subscription updated.',
+        toErrorMessage: toAdminUserErrorMessage,
+      },
+      async () => {
+        const payload: AssignSubscriptionPlanPayload = { planId }
+        const updatedUser = await apiJson<AdminUser>(
+          `/api/v1/admin/users/${userId}/subscription-plan`,
+          payload,
+          { method: 'PUT' },
+        )
+
+        if (selectedUser.value?.id === updatedUser.id) {
+          selectedUser.value = updatedUser
+        }
+        await queryList.reload()
+        return updatedUser
+      },
+    )
+  }
+
+  async function updateUserAccess(
+    userId: string,
+    payload: UpdateUserAccessPayload,
+  ) {
+    const updatedUser = await updateUser(userId, {
+      role: payload.role,
+      isActive: payload.isActive,
+      expiresAt: payload.expiresAt,
+    })
+    if (updatedUser.subscriptionPlanId !== payload.subscriptionPlanId) {
+      return await assignUserSubscriptionPlan(
+        userId,
+        payload.subscriptionPlanId,
+      )
+    }
+    return updatedUser
+  }
+
   // updateUserNote stores the dedicated admin note for one user.
   async function updateUserNote(userId: string, note: string) {
     return await runApiMutation(
@@ -350,6 +398,7 @@ export function useAdminUsers() {
 
   return {
     deleteUser,
+    assignUserSubscriptionPlan,
     listError: queryList.listError,
     groupLoading,
     groupOptions,
@@ -387,6 +436,7 @@ export function useAdminUsers() {
     tokenTotal,
     total: queryList.total,
     updateUser,
+    updateUserAccess,
     updateUserNote,
     userGroups,
     users: queryList.items,

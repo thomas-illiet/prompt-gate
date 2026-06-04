@@ -1,20 +1,23 @@
 <script setup lang="ts">
 import type { AppRole } from '~/types/auth'
-import type { AdminUser, UpdateUserPayload } from '~/types/users'
+import type { SubscriptionPlan } from '~/types/subscriptions'
+import type { AdminUser, UpdateUserAccessPayload } from '~/types/users'
 import { APP_ROLES, appRoleColor, appRoleLabel } from '~/utils/auth'
 import { formatDateTime } from '~/utils/formatters'
 
 const props = defineProps<{
   loading: boolean
+  subscriptionPlans: SubscriptionPlan[]
   user: AdminUser | null
 }>()
 
 const emit = defineEmits<{
-  save: [payload: UpdateUserPayload]
+  save: [payload: UpdateUserAccessPayload]
 }>()
 
 const isOpen = defineModel<boolean>({ default: false })
 const selectedRole = shallowRef<AppRole>('none')
+const selectedPlanId = shallowRef<string | null>(null)
 const isActive = shallowRef(true)
 const expiresAt = shallowRef('')
 const accessForm = shallowRef<HTMLFormElement | null>(null)
@@ -25,6 +28,13 @@ const roleOptions = computed(() =>
     value: role,
   })),
 )
+const subscriptionPlanOptions = computed(() => [
+  { title: 'Inherit default', value: null },
+  ...props.subscriptionPlans.map((plan) => ({
+    title: plan.isDefault ? `${plan.name} (default)` : plan.name,
+    value: plan.id,
+  })),
+])
 const displayName = computed(
   () =>
     props.user?.name ||
@@ -42,6 +52,7 @@ watch(
   () => props.user,
   (user) => {
     selectedRole.value = user?.role ?? 'none'
+    selectedPlanId.value = user?.subscriptionPlanId ?? null
     isActive.value = user?.isActive ?? true
     expiresAt.value = toDateTimeLocalValue(user?.expiresAt)
   },
@@ -61,6 +72,7 @@ function save() {
   const formExpiresAt = getFormExpiresAt()
   emit('save', {
     role: selectedRole.value,
+    subscriptionPlanId: selectedPlanId.value,
     isActive: isActive.value,
     expiresAt: toISOStringOrNull(formExpiresAt),
   })
@@ -184,6 +196,16 @@ function toISOStringOrNull(value: string) {
                 color="success"
                 inset
                 label="Active account"
+              />
+            </v-col>
+
+            <v-col cols="12">
+              <v-select
+                v-model="selectedPlanId"
+                :items="subscriptionPlanOptions"
+                label="Subscription plan"
+                variant="outlined"
+                density="comfortable"
               />
             </v-col>
 

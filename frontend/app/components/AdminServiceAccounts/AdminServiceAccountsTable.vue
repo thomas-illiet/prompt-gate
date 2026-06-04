@@ -43,6 +43,11 @@ const headers: DataTableHeader[] = [
     sortable: false,
   }),
   appTableCenteredColumn({
+    title: 'Plan',
+    key: 'subscriptionPlan',
+    sortable: false,
+  }),
+  appTableCenteredColumn({
     title: 'Input tokens',
     key: 'inputTokens',
   }),
@@ -100,6 +105,24 @@ const rowActions: AppRowAction<ServiceAccount>[] = [
     title: 'Delete account',
   },
 ]
+
+function planLabel(account: ServiceAccount) {
+  return account.effectiveSubscriptionPlan?.name ?? 'No subscription'
+}
+
+function planCaption(account: ServiceAccount) {
+  if (!account.effectiveSubscriptionPlan) {
+    return 'Required'
+  }
+  return account.subscriptionPlanId ? 'Assigned' : 'Default'
+}
+
+function planColor(account: ServiceAccount) {
+  if (!account.effectiveSubscriptionPlan) {
+    return 'error'
+  }
+  return account.subscriptionPlanId ? 'primary' : 'success'
+}
 </script>
 
 <template>
@@ -186,6 +209,22 @@ const rowActions: AppRowAction<ServiceAccount>[] = [
         </div>
       </template>
 
+      <template #item.subscriptionPlan="{ item }">
+        <div class="app-table-center">
+          <v-chip
+            size="small"
+            label
+            variant="tonal"
+            :color="planColor(item)"
+          >
+            {{ planLabel(item) }}
+            <span class="service-accounts-table__chip-caption">
+              {{ planCaption(item) }}
+            </span>
+          </v-chip>
+        </div>
+      </template>
+
       <template #item.inputTokens="{ item }">
         <span class="app-table-text">
           {{ formatNumber(item.inputTokens) }}
@@ -204,3 +243,10 @@ const rowActions: AppRowAction<ServiceAccount>[] = [
     </AppServerDataTable>
   </AppSectionCard>
 </template>
+
+<style scoped>
+.service-accounts-table__chip-caption {
+  margin-left: 6px;
+  opacity: 0.68;
+}
+</style>

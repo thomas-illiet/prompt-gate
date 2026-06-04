@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type {
   ServiceAccount,
-  ServiceAccountPayload,
+  ServiceAccountFormPayload,
   TokenPayload,
   TokenResponse,
 } from '~/types/service-accounts'
@@ -25,6 +25,7 @@ definePageMeta({
 })
 
 const adminServiceAccounts = useAdminServiceAccounts()
+const adminSubscriptions = useAdminSubscriptions()
 const accountDialogOpen = shallowRef(false)
 const firewallDialogOpen = shallowRef(false)
 const tokenDialogOpen = shallowRef(false)
@@ -54,25 +55,27 @@ const totalLabel = computed(() => {
 // openCreateDialog prepares a blank service account form.
 function openCreateDialog() {
   adminServiceAccounts.selectedAccount.value = null
+  void adminSubscriptions.loadAllPlans().catch(() => {})
   accountDialogOpen.value = true
 }
 
 // openEditDialog loads a service account before showing the edit dialog.
 async function openEditDialog(account: ServiceAccount) {
   adminServiceAccounts.selectedAccount.value = account
+  await adminSubscriptions.loadAllPlans()
   accountDialogOpen.value = true
   void adminServiceAccounts.loadAccount(account.id).catch(() => {})
 }
 
 // saveAccount creates or updates the active service account form.
-async function saveAccount(payload: ServiceAccountPayload) {
+async function saveAccount(payload: ServiceAccountFormPayload) {
   if (adminServiceAccounts.selectedAccount.value) {
-    await adminServiceAccounts.updateAccount(
+    await adminServiceAccounts.updateAccountWithSubscription(
       adminServiceAccounts.selectedAccount.value.id,
       payload,
     )
   } else {
-    await adminServiceAccounts.createAccount(payload)
+    await adminServiceAccounts.createAccountWithSubscription(payload)
   }
 
   accountDialogOpen.value = false
@@ -386,6 +389,7 @@ async function confirmToggleStatus() {
       v-model="accountDialogOpen"
       :account="adminServiceAccounts.selectedAccount.value"
       :loading="adminServiceAccounts.saving.value"
+      :subscription-plans="adminSubscriptions.plans.value"
       @save="saveAccount"
     />
 

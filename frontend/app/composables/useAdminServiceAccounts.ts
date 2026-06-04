@@ -8,12 +8,14 @@ import type {
 import type {
   CreatedTokenResponse,
   ServiceAccount,
+  ServiceAccountFormPayload,
   ServiceAccountListResponse,
   ServiceAccountPayload,
   TokenListResponse,
   TokenPayload,
   TokenResponse,
 } from '~/types/service-accounts'
+import type { AssignSubscriptionPlanPayload } from '~/types/subscriptions'
 import { Notify } from '~/stores/notification'
 import { toApiErrorMessage } from '~/utils/api-error'
 
@@ -28,6 +30,7 @@ const ERROR_MESSAGES = {
   invalid_name: 'Name is required.',
   invalid_note: 'Notes must be 2,000 characters or fewer.',
   invalid_sort: 'Selected service account sort is invalid.',
+  invalid_subscription_assignment: 'Selected subscription plan is invalid.',
   invalid_token_name:
     'Virtual key name must use lowercase letters, numbers, dashes, or underscores.',
   invalid_token_ttl: 'Virtual key lifetime must be between 1 and 365 days.',
@@ -122,6 +125,22 @@ export function useAdminServiceAccounts() {
     )
   }
 
+  async function createAccountWithSubscription(payload: ServiceAccountFormPayload) {
+    const account = await createAccount({
+      identifier: payload.identifier,
+      name: payload.name,
+      isActive: payload.isActive,
+      firewallOverrideEnabled: payload.firewallOverrideEnabled,
+    })
+    if (payload.subscriptionPlanId !== account.subscriptionPlanId) {
+      return await assignServiceAccountSubscriptionPlan(
+        account.id,
+        payload.subscriptionPlanId,
+      )
+    }
+    return account
+  }
+
   // loadAccount fetches one service account for editing.
   async function loadAccount(accountId: string) {
     selectedAccount.value = await apiFetch<ServiceAccount>(
@@ -146,6 +165,50 @@ export function useAdminServiceAccounts() {
           `/api/v1/admin/service-accounts/${accountId}`,
           payload,
           { method: 'PATCH' },
+        )
+
+        selectedAccount.value = account
+        await fetchAccounts()
+        return account
+      },
+    )
+  }
+
+  async function updateAccountWithSubscription(
+    accountId: string,
+    payload: ServiceAccountFormPayload,
+  ) {
+    const account = await updateAccount(accountId, {
+      identifier: payload.identifier,
+      name: payload.name,
+      isActive: payload.isActive,
+      firewallOverrideEnabled: payload.firewallOverrideEnabled,
+    })
+    if (account.subscriptionPlanId !== payload.subscriptionPlanId) {
+      return await assignServiceAccountSubscriptionPlan(
+        accountId,
+        payload.subscriptionPlanId,
+      )
+    }
+    return account
+  }
+
+  async function assignServiceAccountSubscriptionPlan(
+    accountId: string,
+    planId: string | null,
+  ) {
+    return await runApiMutation(
+      {
+        loading: saving,
+        successMessage: 'Service account subscription updated.',
+        toErrorMessage: toAdminServiceAccountErrorMessage,
+      },
+      async () => {
+        const payload: AssignSubscriptionPlanPayload = { planId }
+        const account = await apiJson<ServiceAccount>(
+          `/api/v1/admin/service-accounts/${accountId}/subscription-plan`,
+          payload,
+          { method: 'PUT' },
         )
 
         selectedAccount.value = account
@@ -444,7 +507,9 @@ export function useAdminServiceAccounts() {
   return {
     accounts: accountList.items,
     activeAccountsCount,
+    assignServiceAccountSubscriptionPlan,
     createAccount,
+    createAccountWithSubscription,
     createFirewallRule,
     createdToken,
     createToken,
@@ -492,6 +557,7 @@ export function useAdminServiceAccounts() {
     tokens,
     total: accountList.total,
     updateAccount,
+    updateAccountWithSubscription,
     updateAccountNote,
     updateFirewallRule,
   }

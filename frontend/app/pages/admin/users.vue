@@ -14,6 +14,7 @@ definePageMeta({
 })
 
 const adminUsers = useAdminUsers()
+const adminSubscriptions = useAdminSubscriptions()
 const editDialogOpen = shallowRef(false)
 const deleteDialogOpen = shallowRef(false)
 const tokenDialogOpen = shallowRef(false)
@@ -53,7 +54,10 @@ function displayUser(user: AdminUser) {
 
 // openEditDialog loads a user before showing the edit dialog.
 async function openEditDialog(user: AdminUser) {
-  await adminUsers.loadUser(user.id)
+  await Promise.all([
+    adminUsers.loadUser(user.id),
+    adminSubscriptions.loadAllPlans(),
+  ])
   editDialogOpen.value = true
 }
 
@@ -62,12 +66,13 @@ async function saveUserAccess(payload: {
   role: AdminUser['role']
   isActive: boolean
   expiresAt: string | null
+  subscriptionPlanId: string | null
 }) {
   if (!adminUsers.selectedUser.value) {
     return
   }
 
-  await adminUsers.updateUser(adminUsers.selectedUser.value.id, payload)
+  await adminUsers.updateUserAccess(adminUsers.selectedUser.value.id, payload)
   editDialogOpen.value = false
 }
 
@@ -249,6 +254,7 @@ async function saveUserNote(note: string) {
     <AdminUserEditDialog
       v-model="editDialogOpen"
       :loading="adminUsers.saving.value"
+      :subscription-plans="adminSubscriptions.plans.value"
       :user="adminUsers.selectedUser.value"
       @save="saveUserAccess"
     />

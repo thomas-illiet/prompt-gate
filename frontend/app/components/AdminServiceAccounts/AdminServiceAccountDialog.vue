@@ -1,22 +1,25 @@
 <script setup lang="ts">
 import type {
   ServiceAccount,
-  ServiceAccountPayload,
+  ServiceAccountFormPayload,
 } from '~/types/service-accounts'
+import type { SubscriptionPlan } from '~/types/subscriptions'
 
 const props = defineProps<{
   account: ServiceAccount | null
   loading: boolean
+  subscriptionPlans: SubscriptionPlan[]
 }>()
 
 const emit = defineEmits<{
-  save: [payload: ServiceAccountPayload]
+  save: [payload: ServiceAccountFormPayload]
 }>()
 
 const isOpen = defineModel<boolean>({ default: false })
 const identifier = shallowRef('')
 const name = shallowRef('')
 const isActive = shallowRef(true)
+const selectedPlanId = shallowRef<string | null>(null)
 
 const title = computed(() =>
   props.account ? 'Update service account' : 'Create service account',
@@ -24,6 +27,13 @@ const title = computed(() =>
 const submitLabel = computed(() =>
   props.account ? 'Save account' : 'Create account',
 )
+const subscriptionPlanOptions = computed(() => [
+  { title: 'Inherit default', value: null },
+  ...props.subscriptionPlans.map((plan) => ({
+    title: plan.isDefault ? `${plan.name} (default)` : plan.name,
+    value: plan.id,
+  })),
+])
 
 watch(
   () => props.account,
@@ -31,6 +41,7 @@ watch(
     identifier.value = account?.identifier ?? ''
     name.value = account?.name ?? ''
     isActive.value = account?.isActive ?? true
+    selectedPlanId.value = account?.subscriptionPlanId ?? null
   },
   { immediate: true },
 )
@@ -43,6 +54,7 @@ watch(isOpen, (open) => {
   identifier.value = ''
   name.value = ''
   isActive.value = true
+  selectedPlanId.value = null
 })
 
 // save validates the form and emits the service account payload.
@@ -51,6 +63,7 @@ function save() {
     identifier: identifier.value.trim(),
     name: name.value.trim(),
     isActive: isActive.value,
+    subscriptionPlanId: selectedPlanId.value,
   })
 }
 </script>
@@ -90,6 +103,15 @@ function save() {
             density="comfortable"
             :disabled="props.loading"
             required
+          />
+
+          <v-select
+            v-model="selectedPlanId"
+            :items="subscriptionPlanOptions"
+            label="Subscription plan"
+            variant="outlined"
+            density="comfortable"
+            :disabled="props.loading"
           />
         </v-card-text>
 
