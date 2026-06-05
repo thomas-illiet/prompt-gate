@@ -166,6 +166,13 @@ account-level actions.
 Admin rule ordering for IPv4 and CIDR access decisions before proxy traffic is
 accepted.
 
+### Monitoring
+
+![Prompt Gate monitoring services table with health check status](docs/assets/screenshots/monitoring.png)
+
+Operations view for reviewing HTTP/S service checks, current status, latest
+latency, and incident-banner readiness.
+
 ## Documentation
 
 Start with the documentation index, then jump into the area you are working on:
