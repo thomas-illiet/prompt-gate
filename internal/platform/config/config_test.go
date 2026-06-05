@@ -374,3 +374,40 @@ func TestLoadProxyReadsSessionAndCORSConfig(t *testing.T) {
 		t.Fatalf("expected custom upstream timeout 3m, got %s", cfg.ProxyUpstreamTimeout)
 	}
 }
+
+// TestLoadProxyReadsTrustedProxies verifies load proxy reads explicit trusted proxy CIDRs.
+func TestLoadProxyReadsTrustedProxies(t *testing.T) {
+	t.Setenv("PROMPTGATE_DATABASE_URL", "postgres://postgres:postgres@localhost:5432/promptgate?sslmode=disable")
+	t.Setenv("PROMPTGATE_JWT_SECRET", "0123456789abcdef0123456789abcdef")
+	t.Setenv("PROMPTGATE_SECRETS_KEY", "0123456789abcdef0123456789abcdef")
+	t.Setenv("PROMPTGATE_REDIS_URL", "redis://localhost:6379/0")
+	t.Setenv("PROMPTGATE_PROXY_TRUSTED_PROXIES", "10.0.0.0/8, 192.168.0.0/16")
+
+	cfg, err := LoadProxy()
+	if err != nil {
+		t.Fatalf("load proxy config: %v", err)
+	}
+	if len(cfg.ProxyTrustedProxies) != 2 {
+		t.Fatalf("expected two trusted proxies, got %#v", cfg.ProxyTrustedProxies)
+	}
+	if cfg.ProxyTrustedProxies[0].String() != "10.0.0.0/8" || cfg.ProxyTrustedProxies[1].String() != "192.168.0.0/16" {
+		t.Fatalf("unexpected trusted proxies: %#v", cfg.ProxyTrustedProxies)
+	}
+}
+
+// TestLoadProxyRejectsInvalidTrustedProxyCIDR verifies invalid CIDRs fail startup validation.
+func TestLoadProxyRejectsInvalidTrustedProxyCIDR(t *testing.T) {
+	t.Setenv("PROMPTGATE_DATABASE_URL", "postgres://postgres:postgres@localhost:5432/promptgate?sslmode=disable")
+	t.Setenv("PROMPTGATE_JWT_SECRET", "0123456789abcdef0123456789abcdef")
+	t.Setenv("PROMPTGATE_SECRETS_KEY", "0123456789abcdef0123456789abcdef")
+	t.Setenv("PROMPTGATE_REDIS_URL", "redis://localhost:6379/0")
+	t.Setenv("PROMPTGATE_PROXY_TRUSTED_PROXIES", "10.0.0.0/8,not-a-cidr")
+
+	_, err := LoadProxy()
+	if err == nil {
+		t.Fatal("expected invalid trusted proxy CIDR to fail")
+	}
+	if !strings.Contains(err.Error(), "PROMPTGATE_PROXY_TRUSTED_PROXIES") {
+		t.Fatalf("expected trusted proxies error, got %v", err)
+	}
+}

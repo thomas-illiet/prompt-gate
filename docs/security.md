@@ -84,9 +84,11 @@ Supported rule inputs:
 Global rules use first match wins and allow on no match. Scoped service-account
 rules use first match wins and deny on no match.
 
-The proxy normally uses the TCP remote address. `PROMPTGATE_PROXY_TRUST_FORWARD_HEADERS`
-should be enabled only behind trusted infrastructure that strips or rewrites
-untrusted forwarding headers.
+The proxy normally uses the TCP remote address. In production, prefer
+`PROMPTGATE_PROXY_TRUSTED_PROXIES` with explicit ingress or reverse-proxy CIDRs
+so forwarded headers are accepted only from known peers.
+`PROMPTGATE_PROXY_TRUST_FORWARD_HEADERS` should be enabled only behind trusted
+infrastructure that strips or rewrites untrusted forwarding headers.
 
 ## Secret Storage
 
@@ -121,6 +123,6 @@ local development.
 - Run migrations before serving traffic.
 - Keep Redis available for sessions, hot reload, and proxy auth cache
   invalidation.
-- Avoid enabling forwarded-header trust unless the proxy is isolated behind a
-  trusted reverse proxy.
+- Prefer explicit `PROMPTGATE_PROXY_TRUSTED_PROXIES` CIDRs over global
+  forwarded-header trust.
 - Review service-account firewall overrides before issuing long-lived tokens.

@@ -39,6 +39,7 @@ dotenv file.
 | `PROMPTGATE_TOKEN_CLEANUP_INTERVAL` | API, schedule | `1h` | Interval for expired token cleanup. |
 | `PROMPTGATE_USER_ACCESS_EXPIRATION_INTERVAL` | API, schedule | `1h` | Interval for user access expiration jobs. |
 | `PROMPTGATE_PROXY_TRUST_FORWARD_HEADERS` | proxy | `false` | Whether the proxy trusts `X-Forwarded-For` and `X-Real-IP`. Enable only behind trusted infrastructure. |
+| `PROMPTGATE_PROXY_TRUSTED_PROXIES` | proxy | empty | Comma-separated CIDRs for proxies whose `X-Forwarded-For` and `X-Real-IP` headers can be trusted. Prefer this over global forwarded-header trust in production. |
 | `PROMPTGATE_REDIS_CACHE_TTL` | API, proxy, worker, schedule | `5m` | TTL for Redis-backed cache entries and snapshots. |
 | `PROMPTGATE_PROXY_RELOAD_DEBOUNCE` | API, proxy, schedule | `250ms` | Debounce duration for proxy provider and MCP reload notifications. |
 | `PROMPTGATE_WORKER_BATCH_SIZE` | worker | `100` | Maximum Redis Stream events read per worker batch. |
@@ -125,6 +126,7 @@ PROMPTGATE_SECRETS_KEY=MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
 PROMPTGATE_TOKEN_CLEANUP_INTERVAL=1h
 PROMPTGATE_USER_ACCESS_EXPIRATION_INTERVAL=1h
 PROMPTGATE_PROXY_TRUST_FORWARD_HEADERS=false
+PROMPTGATE_PROXY_TRUSTED_PROXIES=
 PROMPTGATE_REDIS_CACHE_TTL=5m
 PROMPTGATE_PROXY_RELOAD_DEBOUNCE=250ms
 PROMPTGATE_WORKER_BATCH_SIZE=100

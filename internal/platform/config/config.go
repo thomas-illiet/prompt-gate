@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"math"
 	"net"
+	"net/netip"
 	"net/url"
 	"os"
 	"path"
@@ -39,6 +40,7 @@ type Config struct {
 	TokenCleanupInterval          time.Duration
 	UserAccessExpirationInterval  time.Duration
 	ProxyTrustForwardHeaders      bool
+	ProxyTrustedProxies           []netip.Prefix
 	RedisURL                      string
 	RedisCacheTTL                 time.Duration
 	ProxyReloadDebounce           time.Duration
@@ -257,11 +259,20 @@ func LoadProxy() (Config, error) {
 	v.SetDefault("session_cookie_name", "promptgate_session")
 	v.SetDefault("session_ttl", "8h")
 	v.SetDefault("proxy_trust_forward_headers", false)
+	v.SetDefault("proxy_trusted_proxies", "")
 	v.SetDefault("redis_cache_ttl", "5m")
 	v.SetDefault("proxy_reload_debounce", "250ms")
 	v.SetDefault("proxy_max_buffered_request_bytes", proxylimits.DefaultMaxBufferedRequestBytes)
 	v.SetDefault("proxy_max_buffered_response_bytes", proxylimits.DefaultMaxBufferedResponseBytes)
 	v.SetDefault("proxy_upstream_timeout", proxylimits.DefaultUpstreamTimeout)
+
+	trustedProxies, err := parseCIDRList(
+		v.GetString("proxy_trusted_proxies"),
+		"PROMPTGATE_PROXY_TRUSTED_PROXIES",
+	)
+	if err != nil {
+		return Config{}, err
+	}
 
 	cfg := Config{
 		Port:                     v.GetString("proxy_port"),
@@ -275,6 +286,7 @@ func LoadProxy() (Config, error) {
 		JWTSecret:                strings.TrimSpace(v.GetString("jwt_secret")),
 		SecretsKey:               strings.TrimSpace(v.GetString("secrets_key")),
 		ProxyTrustForwardHeaders: v.GetBool("proxy_trust_forward_headers"),
+		ProxyTrustedProxies:      trustedProxies,
 		RedisURL:                 strings.TrimSpace(v.GetString("redis_url")),
 		RedisCacheTTL:            v.GetDuration("redis_cache_ttl"),
 		ProxyReloadDebounce:      v.GetDuration("proxy_reload_debounce"),
@@ -420,6 +432,28 @@ func parseNonNegativeFloat(v *viper.Viper, key string, envName string) (float64,
 		return 0, fmt.Errorf("%s must be greater than or equal to zero", envName)
 	}
 	return value, nil
+}
+
+func parseCIDRList(raw string, envName string) ([]netip.Prefix, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+
+	values := strings.Split(raw, ",")
+	prefixes := make([]netip.Prefix, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		prefix, err := netip.ParsePrefix(value)
+		if err != nil {
+			return nil, fmt.Errorf("%s contains invalid CIDR %q", envName, value)
+		}
+		prefixes = append(prefixes, prefix.Masked())
+	}
+	return prefixes, nil
 }
 
 func validateOptionalFile(envName string, filePath string) error {

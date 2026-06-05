@@ -89,9 +89,14 @@ rules:
 - first matching rule wins
 - no match denies the request
 
-By default the proxy uses the TCP remote address. Set
-`PROMPTGATE_PROXY_TRUST_FORWARD_HEADERS=true` only behind a trusted reverse
-proxy that sanitizes `X-Forwarded-For` and `X-Real-IP`.
+By default the proxy uses the TCP remote address. In production, prefer setting
+`PROMPTGATE_PROXY_TRUSTED_PROXIES` to the CIDRs of trusted ingress or reverse
+proxy hops. The proxy will then trust `X-Forwarded-For` and `X-Real-IP` only
+when the direct peer is in those CIDRs.
+
+`PROMPTGATE_PROXY_TRUST_FORWARD_HEADERS=true` remains available as a legacy
+global trust switch. Enable it only behind infrastructure that strips or
+rewrites untrusted forwarded headers.
 
 ## Usage Recording
 

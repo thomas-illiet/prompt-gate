@@ -3,10 +3,21 @@ package firewall
 import (
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"testing"
 
 	"promptgate/backend/internal/domain/auth"
+	"promptgate/backend/internal/platform/clientip"
 )
+
+func mustFirewallPrefix(t *testing.T, value string) netip.Prefix {
+	t.Helper()
+	prefix, err := netip.ParsePrefix(value)
+	if err != nil {
+		t.Fatalf("parse prefix %q: %v", value, err)
+	}
+	return prefix
+}
 
 // TestMiddlewareAllowsByDefaultAndDeniesMatchingRule verifies firewall default allow and deny matches.
 func TestMiddlewareAllowsByDefaultAndDeniesMatchingRule(t *testing.T) {
@@ -31,6 +42,58 @@ func TestMiddlewareAllowsByDefaultAndDeniesMatchingRule(t *testing.T) {
 	handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusForbidden || nextCalled {
 		t.Fatalf("expected deny, code=%d next=%v", rec.Code, nextCalled)
+	}
+}
+
+// TestMiddlewareWithOptionsUsesResolvedTrustedForwardedIP verifies firewall and context share resolution.
+func TestMiddlewareWithOptionsUsesResolvedTrustedForwardedIP(t *testing.T) {
+	snapshot := NewSnapshotStore(nil)
+	snapshot.Set([]FirewallRule{{ID: "rule-1", Address: "198.51.100.7", Priority: 1, Action: ActionDeny, Enabled: true}})
+	options := clientip.Options{
+		TrustedProxies: []netip.Prefix{mustFirewallPrefix(t, "10.0.0.0/8")},
+	}
+	nextCalled := false
+	handler := clientip.MiddlewareWithOptions(options)(
+		MiddlewareWithOptions(snapshot, options, nil)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			nextCalled = true
+			w.WriteHeader(http.StatusNoContent)
+		})),
+	)
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "10.1.2.3:1234"
+	req.Header.Set("X-Forwarded-For", "198.51.100.7")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden || nextCalled {
+		t.Fatalf("expected trusted forwarded IP deny, code=%d next=%v", rec.Code, nextCalled)
+	}
+}
+
+// TestMiddlewareWithOptionsIgnoresForwardedIPFromUntrustedPeer verifies spoofed headers do not drive firewall rules.
+func TestMiddlewareWithOptionsIgnoresForwardedIPFromUntrustedPeer(t *testing.T) {
+	snapshot := NewSnapshotStore(nil)
+	snapshot.Set([]FirewallRule{{ID: "rule-1", Address: "198.51.100.7", Priority: 1, Action: ActionDeny, Enabled: true}})
+	options := clientip.Options{
+		TrustedProxies: []netip.Prefix{mustFirewallPrefix(t, "10.2.0.0/16")},
+	}
+	nextCalled := false
+	handler := clientip.MiddlewareWithOptions(options)(
+		MiddlewareWithOptions(snapshot, options, nil)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			nextCalled = true
+			w.WriteHeader(http.StatusNoContent)
+		})),
+	)
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "10.1.2.3:1234"
+	req.Header.Set("X-Forwarded-For", "198.51.100.7")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent || !nextCalled {
+		t.Fatalf("expected untrusted forwarded IP to be ignored, code=%d next=%v", rec.Code, nextCalled)
 	}
 }
 

@@ -120,6 +120,10 @@ config:
   # Enable only behind trusted infrastructure that sanitizes forwarded headers.
   proxyTrustForwardHeaders: "false"
 
+  # Comma-separated CIDRs for proxies whose forwarded IP headers can be trusted.
+  # Prefer this over proxyTrustForwardHeaders in production.
+  proxyTrustedProxies: ""
+
   redisCacheTtl: 5m
   proxyReloadDebounce: 250ms
 

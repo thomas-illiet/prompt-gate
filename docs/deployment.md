@@ -168,6 +168,8 @@ SPA shell for frontend routes.
 - Set `PROMPTGATE_FRONTEND_BASE_URL` to the browser-visible frontend origin.
 - Set `PROMPTGATE_PROXY_BASE_URL` when the proxy is exposed on a different
   origin, path, or externally mapped port.
+- Prefer `PROMPTGATE_PROXY_TRUSTED_PROXIES` with explicit ingress or
+  reverse-proxy CIDRs when the proxy needs the real client IP.
 - Enable `PROMPTGATE_PROXY_TRUST_FORWARD_HEADERS` only when the proxy is behind
   trusted infrastructure that sanitizes forwarded headers.
 
@@ -270,6 +272,16 @@ spec:
                 port:
                   number: 8081
 ```
+
+To preserve the real client IP with ingress-nginx, make sure the controller
+actually receives and forwards it before enabling Prompt Gate trust. Depending
+on your load balancer, this can require `externalTrafficPolicy: Local` on the
+ingress controller Service, `use-forwarded-headers`, `enable-real-ip`, and a
+correct `proxy-real-ip-cidr` in the ingress-nginx ConfigMap. Use the real CIDRs
+for your load balancer, ingress nodes, or upstream proxies. See the
+[ingress-nginx ConfigMap reference](https://kubernetes.github.io/ingress-nginx/user-guide/nginx-configuration/configmap/),
+[source IP notes](https://kubernetes.github.io/ingress-nginx/user-guide/miscellaneous/#source-ip-address),
+and [externalTrafficPolicy FAQ](https://kubernetes.github.io/ingress-nginx/faq/#client-ipaddress-on-single-node-cluster).
 
 ## Health Checks
 

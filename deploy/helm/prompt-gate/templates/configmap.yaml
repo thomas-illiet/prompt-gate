@@ -26,6 +26,7 @@ data:
   PROMPTGATE_TOKEN_CLEANUP_INTERVAL: {{ .Values.config.tokenCleanupInterval | quote }}
   PROMPTGATE_USER_ACCESS_EXPIRATION_INTERVAL: {{ .Values.config.userAccessExpirationInterval | quote }}
   PROMPTGATE_PROXY_TRUST_FORWARD_HEADERS: {{ .Values.config.proxyTrustForwardHeaders | quote }}
+  PROMPTGATE_PROXY_TRUSTED_PROXIES: {{ .Values.config.proxyTrustedProxies | quote }}
   PROMPTGATE_REDIS_CACHE_TTL: {{ .Values.config.redisCacheTtl | quote }}
   PROMPTGATE_PROXY_RELOAD_DEBOUNCE: {{ .Values.config.proxyReloadDebounce | quote }}
   PROMPTGATE_PROXY_MAX_BUFFERED_REQUEST_BYTES: {{ .Values.config.proxyMaxBufferedRequestBytes | quote }}

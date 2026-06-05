@@ -57,6 +57,20 @@ imagePullSecrets:
 The chart attaches the same pull secret to the Pod specs and to the generated
 ServiceAccount.
 
+## Real Client IP
+
+When Prompt Gate runs behind ingress-nginx, prefer explicit trusted proxy CIDRs
+over global forwarded-header trust:
+
+```yaml
+config:
+  proxyTrustedProxies: "10.0.0.0/8,192.168.0.0/16"
+```
+
+The ingress controller must also preserve or forward the real client IP with
+settings appropriate to your load balancer, such as `externalTrafficPolicy`,
+`use-forwarded-headers`, `enable-real-ip`, and `proxy-real-ip-cidr`.
+
 ## Argo CD Ordering
 
 The migration Job is an Argo CD `Sync` hook, not a Helm hook. The default sync

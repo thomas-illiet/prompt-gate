@@ -177,14 +177,18 @@ func runProxy() error {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
+	clientIPOptions := clientip.Options{
+		TrustForwardHeaders: cfg.ProxyTrustForwardHeaders,
+		TrustedProxies:      cfg.ProxyTrustedProxies,
+	}
 	proxyHandler := tokens.MiddlewareWithOptions(tokens.MiddlewareOptions{
 		TokenService: tokenService,
 		UserResolver: userService,
 		Cache:        authCache,
 		Logger:       stdLogger,
 	})(
-		clientip.Middleware(cfg.ProxyTrustForwardHeaders)(
-			firewall.Middleware(firewallSnapshot, cfg.ProxyTrustForwardHeaders, stdLogger)(
+		clientip.MiddlewareWithOptions(clientIPOptions)(
+			firewall.MiddlewareWithOptions(firewallSnapshot, clientIPOptions, stdLogger)(
 				groups.MiddlewareWithOptions(accessSnapshot, stdLogger, groups.MiddlewareOptions{
 					MaxBufferedRequestBytes: cfg.ProxyMaxBufferedRequestBytes,
 				})(

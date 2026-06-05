@@ -11,12 +11,20 @@ import (
 
 // Middleware enforces firewall decisions from an in-memory snapshot.
 func Middleware(snapshot *SnapshotStore, trustForwardHeaders bool, logger *slog.Logger) func(http.Handler) http.Handler {
+	return MiddlewareWithOptions(snapshot, clientip.Options{TrustForwardHeaders: trustForwardHeaders}, logger)
+}
+
+// MiddlewareWithOptions enforces firewall decisions using the configured client IP policy.
+func MiddlewareWithOptions(snapshot *SnapshotStore, options clientip.Options, logger *slog.Logger) func(http.Handler) http.Handler {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			clientIP := clientip.Resolve(r, trustForwardHeaders)
+			clientIP := clientip.FromContext(r.Context())
+			if clientIP == "" {
+				clientIP = clientip.ResolveWithOptions(r, options)
+			}
 			allowed, rule, err := allowsRequest(snapshot, clientIP, r)
 			if err != nil {
 				logger.Warn("firewall check failed", "error", err, "client_ip", clientIP)
