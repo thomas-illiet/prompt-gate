@@ -1,8 +1,8 @@
 # Default values for the Prompt Gate chart.
 #
 # This chart is intended to be used by Argo CD. It deploys only Prompt Gate
-# application processes; PostgreSQL, Redis, Keycloak/OIDC, TLS certificates,
-# and runtime Secrets must be managed outside this chart.
+# application processes; PostgreSQL, Redis, Keycloak/OIDC, and TLS certificates
+# must be managed outside this chart.
 #
 # The rendered workloads are Kyverno-friendly by default:
 # - runAsUser/runAsGroup: 1000
@@ -61,10 +61,23 @@ serviceAccount:
   annotations: {}
 
 secret:
-  # Existing Secret containing PROMPTGATE_DATABASE_URL, PROMPTGATE_REDIS_URL,
+  # Existing Secret name. When set, the chart does not render its own Secret.
+  # The Secret must contain PROMPTGATE_DATABASE_URL, PROMPTGATE_REDIS_URL,
   # PROMPTGATE_JWT_SECRET, PROMPTGATE_SECRETS_KEY, and optionally
   # PROMPTGATE_KEYCLOAK_CLIENT_SECRET.
   existingSecret: ""
+
+  # Extra annotations added to the generated Secret.
+  annotations: {}
+
+  # Secret values used when existingSecret is empty. These can be provided from
+  # values.yaml or with --set/--set-string. In GitOps, prefer encrypted values
+  # or an external secret mechanism for production credentials.
+  databaseUrl: ""
+  redisUrl: ""
+  jwtSecret: ""
+  secretsKey: ""
+  keycloakClientSecret: ""
 
 config:
   # API process listen port and Service target port.
