@@ -7,39 +7,53 @@ import ProfilePage from '../../app/pages/profile.vue'
 import { useAuthStore } from '../../app/stores/auth'
 import type { ProfileTokenUsageSummary } from '../../app/composables/useProfileTokenUsage'
 
-const { reloadProfileUsageMock, useProfileGroupsMock, useProfileTokenUsageMock } =
-  vi.hoisted(() => {
-    const reloadProfileUsageMock = vi.fn()
+const {
+  reloadProfileQuotaMock,
+  reloadProfileUsageMock,
+  useProfileGroupsMock,
+  useProfileQuotaMock,
+  useProfileTokenUsageMock,
+} = vi.hoisted(() => {
+  const reloadProfileQuotaMock = vi.fn()
+  const reloadProfileUsageMock = vi.fn()
 
-    return {
-      reloadProfileUsageMock,
-      useProfileGroupsMock: vi.fn(() => ({
-        error: { value: null },
-        groups: { value: [] },
-        loading: { value: false },
-      })),
-      useProfileTokenUsageMock: vi.fn(() => ({
-        error: { value: null },
-        loading: { value: false },
-        reload: reloadProfileUsageMock,
-        summary: {
-          value: {
-            activeDays: 1,
-            currentStreakDays: 1,
-            days: [],
-            endsAt: '2026-06-03',
-            longestStreakDays: 1,
-            maxTokens: 42,
-            peakDay: null,
-            startsAt: '2025-06-04',
-            totalTokens: 42,
-          } satisfies ProfileTokenUsageSummary,
-        },
-      })),
-    }
-  })
+  return {
+    reloadProfileQuotaMock,
+    reloadProfileUsageMock,
+    useProfileGroupsMock: vi.fn(() => ({
+      error: { value: null },
+      groups: { value: [] },
+      loading: { value: false },
+    })),
+    useProfileQuotaMock: vi.fn(() => ({
+      error: { value: null },
+      loading: { value: false },
+      quota: { value: null },
+      reload: reloadProfileQuotaMock,
+    })),
+    useProfileTokenUsageMock: vi.fn(() => ({
+      error: { value: null },
+      loading: { value: false },
+      reload: reloadProfileUsageMock,
+      summary: {
+        value: {
+          activeDays: 1,
+          currentStreakDays: 1,
+          days: [],
+          endsAt: '2026-06-03',
+          longestStreakDays: 1,
+          maxTokens: 42,
+          peakDay: null,
+          startsAt: '2025-06-04',
+          totalTokens: 42,
+        } satisfies ProfileTokenUsageSummary,
+      },
+    })),
+  }
+})
 
 mockNuxtImport('useProfileGroups', () => useProfileGroupsMock)
+mockNuxtImport('useProfileQuota', () => useProfileQuotaMock)
 mockNuxtImport('useProfileTokenUsage', () => useProfileTokenUsageMock)
 
 function mountPage() {
@@ -58,6 +72,12 @@ function mountPage() {
         ProfileQuickActions: {
           emits: ['logout'],
           template: '<div data-test="quick-actions" />',
+        },
+        ProfileQuotaSection: {
+          props: ['error', 'loading', 'quota'],
+          emits: ['retry'],
+          template:
+            '<div data-test="profile-quota-section" :data-loading="loading" @click="$emit(\'retry\')" />',
         },
         ProfileTokenUsageSection: {
           props: ['error', 'loading', 'summary'],
@@ -90,8 +110,10 @@ describe('ProfilePage', () => {
       sub: 'oidc-subject',
     }
 
+    reloadProfileQuotaMock.mockClear()
     reloadProfileUsageMock.mockClear()
     useProfileGroupsMock.mockClear()
+    useProfileQuotaMock.mockClear()
     useProfileTokenUsageMock.mockClear()
   })
 
@@ -100,6 +122,9 @@ describe('ProfilePage', () => {
 
     expect(wrapper.find('[data-test="identity-card"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="quick-actions"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="profile-quota-section"]').exists()).toBe(
+      true,
+    )
     expect(wrapper.find('[data-test="profile-token-section"]').exists()).toBe(
       true,
     )
