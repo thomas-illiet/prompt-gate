@@ -1,0 +1,319 @@
+# Default values for the Prompt Gate chart.
+#
+# This chart is intended to be used by Argo CD. It deploys only Prompt Gate
+# application processes; PostgreSQL, Redis, Keycloak/OIDC, TLS certificates,
+# and runtime Secrets must be managed outside this chart.
+#
+# The rendered workloads are Kyverno-friendly by default:
+# - runAsUser/runAsGroup: 1000
+# - readOnlyRootFilesystem: true
+# - no Linux capabilities
+# - allowPrivilegeEscalation: false
+# - resources.requests and resources.limits on every container
+
+# Override only the short chart name used in labels.
+nameOverride: ""
+
+# Override the full generated resource name. Leave empty unless your platform
+# requires stable names independent from the Helm release name.
+fullnameOverride: ""
+
+image:
+  # Runtime image containing the Prompt Gate backend binary and static frontend.
+  repository: ghcr.io/thomas-illiet/prompt-gate
+
+  # Defaults to Chart.appVersion when empty. Prefer immutable tags in prod.
+  tag: ""
+
+  # Use Always only for mutable tags. IfNotPresent is safer for versioned tags.
+  pullPolicy: IfNotPresent
+
+# Existing registry pull secrets in the destination namespace.
+# Example:
+# imagePullSecrets:
+#   - name: ghcr-pull-secret
+imagePullSecrets: []
+
+argoCd:
+  # When enabled, render Argo CD hook and sync-wave annotations.
+  # Disable only if this chart is installed directly with Helm.
+  enabled: true
+
+  # Argo CD applies lower waves first. The migration Job is a Sync hook, not a
+  # PreSync hook, so ConfigMap and ServiceAccount exist before migrations run.
+  syncWaves:
+    config: "-20"
+    serviceAccount: "-20"
+    migrate: "-10"
+    service: "-5"
+    workload: "0"
+    ingress: "10"
+
+serviceAccount:
+  # Create a dedicated ServiceAccount with automountServiceAccountToken=false.
+  # If false, workloads use serviceAccount.name or "default".
+  create: true
+
+  # Existing ServiceAccount name. Leave empty to use the chart fullname.
+  name: ""
+
+  # Extra annotations added to the generated ServiceAccount.
+  annotations: {}
+
+secret:
+  # Existing Secret containing PROMPTGATE_DATABASE_URL, PROMPTGATE_REDIS_URL,
+  # PROMPTGATE_JWT_SECRET, PROMPTGATE_SECRETS_KEY, and optionally
+  # PROMPTGATE_KEYCLOAK_CLIENT_SECRET.
+  existingSecret: ""
+
+config:
+  # API process listen port and Service target port.
+  port: 8080
+
+  # Proxy process listen port and Service target port.
+  proxyPort: 8081
+
+  logLevel: info
+
+  # OIDC/Keycloak settings used by the API process.
+  keycloakIssuerUrl: "https://keycloak.example.com/realms/promptgate"
+  keycloakJwksUrl: "https://keycloak.example.com/realms/promptgate/protocol/openid-connect/certs"
+  keycloakClientId: promptgate-backend
+
+  # Optional CA bundle path mounted via extraVolumes/extraVolumeMounts.
+  # Leave empty when public trust roots are enough.
+  caFile: ""
+
+  # Public URLs. When empty, frontend/backend default to https://ingress.host
+  # and proxy defaults to https://ingress.host + ingress.proxyPath.
+  frontendBaseUrl: ""
+  backendBaseUrl: ""
+  proxyBaseUrl: ""
+
+  # Static assets bundled in the Docker image. Keep /app/public when the API
+  # serves the generated frontend.
+  staticAssetsDir: /app/public
+
+  sessionCookieName: promptgate_session
+  sessionTtl: 8h
+
+  # Comma-separated origins. Empty defaults to the computed frontendBaseUrl.
+  corsAllowedOrigins: ""
+
+  # Background cleanup/sync intervals. Values use Go duration syntax.
+  tokenCleanupInterval: 1h
+  userAccessExpirationInterval: 1h
+
+  # Enable only behind trusted infrastructure that sanitizes forwarded headers.
+  proxyTrustForwardHeaders: "false"
+
+  redisCacheTtl: 5m
+  proxyReloadDebounce: 250ms
+
+  # Proxy buffer and upstream timeout limits. Byte values are strings to avoid
+  # accidental YAML/scientific notation changes in Argo CD overrides.
+  proxyMaxBufferedRequestBytes: "33554432"
+  proxyMaxBufferedResponseBytes: "67108864"
+  proxyUpstreamTimeout: 2m
+
+  # Worker Redis stream consumer settings.
+  workerBatchSize: "100"
+  workerBlockTimeout: 5s
+  workerPendingIdleTimeout: 30s
+
+  # Scheduler retention and quota sync settings.
+  usageRawRetention: 2160h
+  usageRawCleanupInterval: 1h
+  subscriptionQuotaSyncInterval: 5m
+
+  # Dashboard cost estimate settings. These are estimates only, not billing
+  # data from a provider invoice.
+  usageCostEnabled: "true"
+  usageCostInput: "5.00"
+  usageCostOutput: "30.00"
+  usageCostEmbedding: "0.02"
+
+# Extra pod annotations and labels applied to all application Pods.
+podAnnotations: {}
+podLabels: {}
+
+# Standard Kubernetes scheduling controls applied to all Pods.
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# Optional volumes mounted into every container. Useful for private CA bundles.
+# Example:
+# extraVolumes:
+#   - name: custom-ca
+#     secret:
+#       secretName: promptgate-custom-ca
+# extraVolumeMounts:
+#   - name: custom-ca
+#     mountPath: /run/secrets/custom-ca.pem
+#     subPath: custom-ca.pem
+#     readOnly: true
+extraVolumes: []
+extraVolumeMounts: []
+
+api:
+  # API server and static frontend process.
+  enabled: true
+  replicas: 1
+  podAnnotations: {}
+  podLabels: {}
+
+  service:
+    type: ClusterIP
+    port: 8080
+
+  # Requests and limits are mandatory for Kyverno policies.
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  # Liveness uses TCP so the container is not restarted during short DB issues.
+  livenessProbe:
+    tcpSocket:
+      port: http
+    initialDelaySeconds: 15
+    periodSeconds: 20
+    timeoutSeconds: 3
+    failureThreshold: 3
+
+  # Readiness calls /health, which checks database connectivity.
+  readinessProbe:
+    httpGet:
+      path: /health
+      port: http
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+
+proxy:
+  # LLM proxy process.
+  enabled: true
+  replicas: 1
+  podAnnotations: {}
+  podLabels: {}
+
+  service:
+    type: ClusterIP
+    port: 8081
+
+  # Requests and limits are mandatory for Kyverno policies.
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: http
+    initialDelaySeconds: 15
+    periodSeconds: 20
+    timeoutSeconds: 3
+    failureThreshold: 3
+  readinessProbe:
+    httpGet:
+      path: /health
+      port: http
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+
+worker:
+  # Background worker consuming Redis usage events.
+  enabled: true
+  replicas: 1
+  podAnnotations: {}
+  podLabels: {}
+
+  # Requests and limits are mandatory for Kyverno policies.
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+schedule:
+  # Scheduler process. Keep replicas at 1 unless distributed locking is added.
+  enabled: true
+  replicas: 1
+  podAnnotations: {}
+  podLabels: {}
+
+  # Requests and limits are mandatory for Kyverno policies.
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+migrate:
+  # Database migration Job. In Argo CD mode this is rendered as a Sync hook.
+  enabled: true
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 300
+
+  hook:
+    # If false, the Job is a normal managed resource instead of an Argo CD hook.
+    enabled: true
+
+    # Sync is used so earlier sync-wave resources can exist before the Job.
+    phase: Sync
+
+    # Delete the previous named hook before creating a new one, and clean up
+    # successful runs after Argo CD observes completion.
+    deletePolicy: BeforeHookCreation,HookSucceeded
+
+  podAnnotations: {}
+  podLabels: {}
+
+  # Requests and limits are mandatory for Kyverno policies.
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+ingress:
+  # Creates two Ingress objects on the same host: one for API/frontend at /
+  # and one for the proxy under proxyPath.
+  enabled: true
+  className: nginx
+  host: promptgate.example.com
+
+  # Public path for the proxy. The nginx rewrite strips this prefix before
+  # forwarding requests to the proxy Service.
+  proxyPath: /remote
+
+  tls:
+    enabled: true
+    secretName: promptgate-tls
+
+  api:
+    # Extra annotations for the API/frontend Ingress.
+    annotations: {}
+
+  proxy:
+    # nginx regex rewrite for proxyPath. For /remote(/|$)(.*), /$2 forwards
+    # /remote/v1/chat/completions to /v1/chat/completions.
+    annotations:
+      nginx.ingress.kubernetes.io/use-regex: "true"
+      nginx.ingress.kubernetes.io/rewrite-target: /$2

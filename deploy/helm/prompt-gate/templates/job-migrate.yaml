@@ -1,0 +1,67 @@
+{{- if .Values.migrate.enabled -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "prompt-gate.fullname" . }}-migrate
+  labels:
+    {{- include "prompt-gate.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrate
+  {{- if .Values.argoCd.enabled }}
+  annotations:
+    argocd.argoproj.io/sync-wave: {{ .Values.argoCd.syncWaves.migrate | quote }}
+    {{- if .Values.migrate.hook.enabled }}
+    argocd.argoproj.io/hook: {{ .Values.migrate.hook.phase | quote }}
+    argocd.argoproj.io/hook-delete-policy: {{ .Values.migrate.hook.deletePolicy | quote }}
+    {{- end }}
+  {{- end }}
+spec:
+  backoffLimit: {{ .Values.migrate.backoffLimit }}
+  ttlSecondsAfterFinished: {{ .Values.migrate.ttlSecondsAfterFinished }}
+  template:
+    metadata:
+      labels:
+        {{- include "prompt-gate.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: migrate
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- with .Values.migrate.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- with .Values.migrate.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      serviceAccountName: {{ include "prompt-gate.serviceAccountName" . }}
+      {{- include "prompt-gate.imagePullSecrets" . | nindent 6 }}
+      securityContext:
+        {{- include "prompt-gate.podSecurityContext" . | nindent 8 }}
+      containers:
+        - name: migrate
+          image: {{ include "prompt-gate.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - /app/promptgate
+            - migrate
+          {{- include "prompt-gate.envFrom" . | nindent 10 }}
+          securityContext:
+            {{- include "prompt-gate.containerSecurityContext" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.migrate.resources | nindent 12 }}
+          {{- with .Values.extraVolumeMounts }}
+          volumeMounts:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- with .Values.extraVolumes }}
+      volumes:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- include "prompt-gate.podPlacement" . | nindent 6 }}
+{{- end }}

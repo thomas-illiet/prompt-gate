@@ -1,0 +1,33 @@
+{{- if and .Values.ingress.enabled .Values.proxy.enabled -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "prompt-gate.fullname" . }}-proxy
+  labels:
+    {{- include "prompt-gate.labels" . | nindent 4 }}
+    app.kubernetes.io/component: proxy
+  annotations:
+    {{- if .Values.argoCd.enabled }}
+    argocd.argoproj.io/sync-wave: {{ .Values.argoCd.syncWaves.ingress | quote }}
+    {{- end }}
+    {{- toYaml .Values.ingress.proxy.annotations | nindent 4 }}
+spec:
+  ingressClassName: {{ .Values.ingress.className | quote }}
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.host | quote }}
+      secretName: {{ .Values.ingress.tls.secretName | quote }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          - path: {{ printf "%s(/|$)(.*)" .Values.ingress.proxyPath | quote }}
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: {{ include "prompt-gate.fullname" . }}-proxy
+                port:
+                  number: {{ .Values.proxy.service.port }}
+{{- end }}
