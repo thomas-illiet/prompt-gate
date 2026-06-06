@@ -39,6 +39,21 @@ func TestResolveUsesTrustedForwardedForFirstAddress(t *testing.T) {
 	}
 }
 
+// TestResolveWithOptionsGlobalTrustOverridesTrustedProxyCIDRs verifies the legacy switch keeps global trust semantics.
+func TestResolveWithOptionsGlobalTrustOverridesTrustedProxyCIDRs(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "192.0.2.10:1234"
+	req.Header.Set("X-Forwarded-For", "198.51.100.7, 203.0.113.9")
+
+	got := ResolveWithOptions(req, Options{
+		TrustForwardHeaders: true,
+		TrustedProxies:      []netip.Prefix{mustPrefix(t, "10.0.0.0/8")},
+	})
+	if got != "198.51.100.7" {
+		t.Fatalf("expected globally trusted forwarded IP, got %q", got)
+	}
+}
+
 // TestResolveUsesTrustedRealIPFallback verifies trusted X-Real-IP fallback handling.
 func TestResolveUsesTrustedRealIPFallback(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/", nil)

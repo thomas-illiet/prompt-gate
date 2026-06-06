@@ -24,18 +24,6 @@ func Resolve(r *http.Request, trustForwardHeaders bool) string {
 // ResolveWithOptions extracts the client IP using the configured proxy trust policy.
 func ResolveWithOptions(r *http.Request, options Options) string {
 	remote := remoteAddrHost(r.RemoteAddr)
-	if len(options.TrustedProxies) > 0 {
-		if isTrustedProxy(remote, options.TrustedProxies) {
-			if forwarded := trustedForwardedFor(r.Header.Get("X-Forwarded-For"), options.TrustedProxies); forwarded != "" {
-				return forwarded
-			}
-			if realIP := normalizedHeaderIP(r.Header.Get("X-Real-IP")); realIP != "" {
-				return realIP
-			}
-		}
-		return remote
-	}
-
 	if options.TrustForwardHeaders {
 		if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
 			first, _, _ := strings.Cut(forwarded, ",")
@@ -46,6 +34,19 @@ func ResolveWithOptions(r *http.Request, options Options) string {
 		if realIP := strings.TrimSpace(r.Header.Get("X-Real-IP")); realIP != "" {
 			return realIP
 		}
+		return remote
+	}
+
+	if len(options.TrustedProxies) > 0 {
+		if isTrustedProxy(remote, options.TrustedProxies) {
+			if forwarded := trustedForwardedFor(r.Header.Get("X-Forwarded-For"), options.TrustedProxies); forwarded != "" {
+				return forwarded
+			}
+			if realIP := normalizedHeaderIP(r.Header.Get("X-Real-IP")); realIP != "" {
+				return realIP
+			}
+		}
+		return remote
 	}
 	return remote
 }
