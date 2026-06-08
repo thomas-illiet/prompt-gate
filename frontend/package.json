@@ -17,21 +17,21 @@
   "devDependencies": {
     "@iconify-json/mdi": "^1.2.3",
     "@nuxt/eslint": "^1.15.2",
-    "@nuxt/icon": "^2.2.2",
+    "@nuxt/icon": "^2.2.3",
     "@nuxt/test-utils": "^4.0.3",
     "@types/d3": "^7.4.3",
-    "@vue/test-utils": "^2.4.10",
+    "@vue/test-utils": "^2.4.11",
     "eslint": "^10.4.1",
-    "happy-dom": "^20.9.0",
+    "happy-dom": "^20.10.2",
     "lightningcss": "^1.32.0",
-    "nuxt": "^4.4.6",
+    "nuxt": "^4.4.7",
     "nuxt-echarts": "^1.0.1",
     "playwright-core": "^1.60.0",
     "prettier": "^3.8.3",
     "vitest": "^4.1.8",
     "vue": "^3.5.35",
     "vue-router": "^5.1.0",
-    "vue-tsc": "^3.3.3",
+    "vue-tsc": "^3.3.4",
     "vuetify-nuxt-module": "^0.19.5"
   },
   "dependencies": {
@@ -40,7 +40,7 @@
     "d3": "^7.9.0",
     "echarts": "^6.1.0",
     "pinia": "^3.0.4",
-    "vuetify": "^4.0.8"
+    "vuetify": "^4.1.0"
   },
   "overrides": {
     "glob": "^13.0.6"
