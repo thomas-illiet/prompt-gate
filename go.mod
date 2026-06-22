@@ -7,7 +7,7 @@ require (
 	github.com/MicahParks/keyfunc/v3 v3.8.0
 	github.com/alicebob/miniredis/v2 v2.38.0
 	github.com/coder/aibridge v1.1.2
-	github.com/coreos/go-oidc/v3 v3.18.0
+	github.com/coreos/go-oidc/v3 v3.19.0
 	github.com/glebarez/sqlite v1.11.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
