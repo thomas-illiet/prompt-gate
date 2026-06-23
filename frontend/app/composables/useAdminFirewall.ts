@@ -166,7 +166,7 @@ export function useAdminFirewall() {
         { method: 'POST' },
       )
     } catch (error) {
-      throw new Error(toAdminFirewallErrorMessage(error))
+      throw new Error(toAdminFirewallErrorMessage(error), { cause: error })
     } finally {
       simulating.value = false
     }

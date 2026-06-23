@@ -464,7 +464,7 @@ export function useAdminServiceAccounts() {
         { method: 'POST' },
       )
     } catch (error) {
-      throw new Error(toAdminServiceAccountErrorMessage(error))
+      throw new Error(toAdminServiceAccountErrorMessage(error), { cause: error })
     } finally {
       simulatingFirewall.value = false
     }

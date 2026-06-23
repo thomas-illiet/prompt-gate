@@ -42,13 +42,13 @@ export const Notify = {
   warning: (text: string) =>
     useNotificationStore().addNotification(text, 'warning'),
   error: (val: unknown) => {
-    let text = ''
+    let text: string
     if (typeof val === 'string') {
       text = val
     } else if (val instanceof Error) {
       text = val.message
     } else {
-      text = JSON.stringify(val)
+      text = JSON.stringify(val) ?? String(val)
     }
     useNotificationStore().addNotification(text, 'error')
   },

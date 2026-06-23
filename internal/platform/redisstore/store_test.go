@@ -17,8 +17,11 @@ func TestStoreNotifyVersionAndSubscribe(t *testing.T) {
 	}
 	defer store.Close()
 
-	events := store.Subscribe(context.Background())
-	store.Notify(context.Background(), "firewall")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	events := store.Subscribe(ctx)
+	store.Notify(ctx, "firewall")
 
 	select {
 	case event := <-events:

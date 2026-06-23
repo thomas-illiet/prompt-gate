@@ -180,6 +180,14 @@ func (s *Store) Subscribe(ctx context.Context) <-chan Event {
 		return out
 	}
 	pubsub := s.client.Subscribe(ctx, EventsChannel)
+	if _, err := pubsub.Receive(ctx); err != nil {
+		_ = pubsub.Close()
+		if ctx.Err() == nil {
+			s.logger.Warn("redis config event subscription failed", "error", err)
+		}
+		close(out)
+		return out
+	}
 	go func() {
 		defer close(out)
 		defer pubsub.Close()
