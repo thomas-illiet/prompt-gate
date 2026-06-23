@@ -19,6 +19,14 @@ export interface ProviderListResponse {
   total: number
 }
 
+export interface ProviderModelCatalog {
+  id: string
+  name: string
+  displayName: string
+  models: string[]
+  modelsError?: string
+}
+
 export interface UpdateProviderPayload {
   displayName: string
   type: ProviderType
