@@ -153,6 +153,22 @@ func (s *Service) ListProviders(ctx context.Context) ([]ProviderResponse, error)
 	return result.Items, nil
 }
 
+// ProviderNameExists reports whether a provider route name exists.
+func (s *Service) ProviderNameExists(ctx context.Context, name string) (bool, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return false, nil
+	}
+	var count int64
+	if err := s.db.WithContext(ctx).
+		Model(&Provider{}).
+		Where("name = ?", name).
+		Count(&count).Error; err != nil {
+		return false, fmt.Errorf("check provider name: %w", err)
+	}
+	return count > 0, nil
+}
+
 // ListProvidersPaged returns providers with pagination and sorting.
 func (s *Service) ListProvidersPaged(ctx context.Context, params ListParams) (ListResult, error) {
 	normalizeListParams(&params)

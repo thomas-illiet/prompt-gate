@@ -9,6 +9,7 @@ import (
 	"promptgate/backend/internal/domain/groups"
 	"promptgate/backend/internal/domain/mcp"
 	"promptgate/backend/internal/domain/monitoring"
+	"promptgate/backend/internal/domain/pricing"
 	"promptgate/backend/internal/domain/provider"
 	"promptgate/backend/internal/domain/proxy"
 	"promptgate/backend/internal/domain/subscriptions"
@@ -25,6 +26,7 @@ type Handler struct {
 	providers     *provider.Service
 	mcp           *mcp.Service
 	monitoring    *monitoring.Service
+	pricing       *pricing.Service
 	proxy         *proxy.Service
 	subscriptions *subscriptions.Service
 }
@@ -40,6 +42,8 @@ func NewHandler(u *users.Service, t *tokens.Service, f *firewall.Service, g *gro
 			handler.monitoring = typed
 		case *subscriptions.Service:
 			handler.subscriptions = typed
+		case *pricing.Service:
+			handler.pricing = typed
 		}
 	}
 	return handler

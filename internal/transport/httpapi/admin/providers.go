@@ -3,6 +3,7 @@ package admin
 import (
 	"errors"
 	"net/http"
+	"strings"
 
 	"promptgate/backend/internal/domain/provider"
 )
@@ -25,6 +26,24 @@ func (h *Handler) HandleAdminListProviders(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	writeJSON(w, http.StatusOK, providers)
+}
+
+// HandleAdminProviderModelCatalog returns best-effort upstream model lists for providers.
+func (h *Handler) HandleAdminProviderModelCatalog(w http.ResponseWriter, r *http.Request) {
+	if h.providers == nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "provider service unavailable"})
+		return
+	}
+	catalog, err := h.providers.ModelCatalog(r.Context(), providerIDsFromQuery(r))
+	if err != nil {
+		if errors.Is(err, provider.ErrProviderNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "provider_not_found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, catalog)
 }
 
 // HandleAdminGetProvider returns one LLM provider by id.
@@ -96,4 +115,20 @@ func writeProviderError(w http.ResponseWriter, err error) {
 		code = "invalid_url"
 	}
 	writeJSON(w, status, map[string]string{"error": code})
+}
+
+func providerIDsFromQuery(r *http.Request) []string {
+	query := r.URL.Query()
+	values := append([]string{}, query["providerId"]...)
+	for _, raw := range query["providerIds"] {
+		values = append(values, strings.Split(raw, ",")...)
+	}
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			out = append(out, value)
+		}
+	}
+	return out
 }

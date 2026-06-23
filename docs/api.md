@@ -148,6 +148,7 @@ Firewall rules support `allow` and `deny` actions, priorities from `1` to
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/api/v1/admin/providers` | List LLM provider definitions. |
+| `GET` | `/api/v1/admin/providers/model-catalog` | Best-effort provider model catalog for pricing and access previews. |
 | `POST` | `/api/v1/admin/providers` | Create a provider. |
 | `GET` | `/api/v1/admin/providers/{id}` | Get one provider. |
 | `PATCH` | `/api/v1/admin/providers/{id}` | Update provider display name, type, base URL, secret, config, or enabled state. |

@@ -9,6 +9,7 @@ import (
 	"promptgate/backend/internal/domain/auth"
 	"promptgate/backend/internal/domain/groups"
 	"promptgate/backend/internal/domain/monitoring"
+	"promptgate/backend/internal/domain/pricing"
 	"promptgate/backend/internal/domain/provider"
 	"promptgate/backend/internal/domain/proxy"
 	"promptgate/backend/internal/domain/subscriptions"
@@ -28,6 +29,7 @@ type server struct {
 	proxyService  *proxy.Service
 	providers     *provider.Service
 	monitoring    *monitoring.Service
+	pricing       *pricing.Service
 	subscriptions *subscriptions.Service
 	quotaRedis    *subscriptions.RedisStore
 }

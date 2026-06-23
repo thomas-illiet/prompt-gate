@@ -13,6 +13,7 @@ import (
 	"promptgate/backend/internal/domain/groups"
 	"promptgate/backend/internal/domain/mcp"
 	"promptgate/backend/internal/domain/monitoring"
+	"promptgate/backend/internal/domain/pricing"
 	"promptgate/backend/internal/domain/provider"
 	"promptgate/backend/internal/domain/proxy"
 	"promptgate/backend/internal/domain/subscriptions"
@@ -36,6 +37,7 @@ type App struct {
 	Providers     *provider.Service
 	MCP           *mcp.Service
 	Monitoring    *monitoring.Service
+	Pricing       *pricing.Service
 	Proxy         *proxy.Service
 	Subscriptions *subscriptions.Service
 	OIDC          *auth.OIDCService
@@ -65,6 +67,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		return nil, err
 	}
 	providerService := provider.NewService(db, secretCipher)
+	pricingService := pricing.NewService(db, providerService)
 	mcpService := mcp.NewService(db, secretCipher)
 	monitoringService := monitoring.NewService(db)
 	caHTTPClient, err := platformhttp.NewWithCAFile(cfg.CAFile, 0)
@@ -85,7 +88,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 			OutputUSDPer1MTokens:    cfg.UsageCost.Output,
 			EmbeddingUSDPer1MTokens: cfg.UsageCost.Embedding,
 		},
-	}))
+	}), proxy.WithPriceResolver(pricingService))
 	slog.Info("initializing redis connection")
 	redisStore, err := redisstore.NewRequired(ctx, cfg.RedisURL, cfg.RedisCacheTTL, slog.Default())
 	if err != nil {
@@ -144,6 +147,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		Providers:     providerService,
 		MCP:           mcpService,
 		Monitoring:    monitoringService,
+		Pricing:       pricingService,
 		Proxy:         proxyService,
 		Subscriptions: subscriptionService,
 		OIDC:          oidcService,

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"promptgate/backend/internal/domain/auth"
+	"promptgate/backend/internal/domain/pricing"
 
 	"gorm.io/gorm"
 )
@@ -29,8 +30,9 @@ const (
 )
 
 type Service struct {
-	db        *gorm.DB
-	usageCost UsageCostConfig
+	db            *gorm.DB
+	usageCost     UsageCostConfig
+	priceResolver *pricing.Service
 }
 
 const usageCostTokenUnit = 1_000_000
@@ -69,6 +71,13 @@ type ServiceOption func(*Service)
 func WithUsageCost(config UsageCostConfig) ServiceOption {
 	return func(s *Service) {
 		s.usageCost = config
+	}
+}
+
+// WithPriceResolver configures database-backed per provider/model prices.
+func WithPriceResolver(resolver *pricing.Service) ServiceOption {
+	return func(s *Service) {
+		s.priceResolver = resolver
 	}
 }
 
@@ -359,7 +368,9 @@ func (s *Service) UsageSummary(ctx context.Context, userID string, days int, now
 	if err := s.loadAggregatedUsage(ctx, scope, resolved.StartsAt, resolved.EndsAt, &summary, dailyByDate); err != nil {
 		return UsageSummary{}, err
 	}
-	s.attachEstimatedCosts(&summary.Totals, summary.Daily)
+	if err := s.attachEstimatedCosts(ctx, scope, &summary.Totals, summary.Daily); err != nil {
+		return UsageSummary{}, err
+	}
 
 	models, err := s.aggregatedBreakdowns(ctx, scope, resolved.StartsAt, resolved.EndsAt, dashboardBreakdownModels)
 	if err != nil {
@@ -369,7 +380,12 @@ func (s *Service) UsageSummary(ctx context.Context, userID string, days int, now
 	if err != nil {
 		return UsageSummary{}, err
 	}
-	s.attachBreakdownEstimatedCosts(models, providers)
+	if err := s.attachBreakdownEstimatedCosts(ctx, scope, dashboardBreakdownModels, models, resolved.StartsAt, resolved.EndsAt); err != nil {
+		return UsageSummary{}, err
+	}
+	if err := s.attachBreakdownEstimatedCosts(ctx, scope, dashboardBreakdownProviderNames, providers, resolved.StartsAt, resolved.EndsAt); err != nil {
+		return UsageSummary{}, err
+	}
 
 	recent, err := s.ListPrompts(ctx, userID, PromptListParams{Page: 1, PageSize: 5})
 	if err != nil {
@@ -415,7 +431,11 @@ func (s *Service) dashboardTokens(ctx context.Context, scope dashboardUsageScope
 		CompletionTokens:       totals.CompletionTokens,
 		EmbeddingTokens:        totals.EmbeddingTokens,
 		TotalTokens:            totals.TotalTokens,
-		EstimatedCost:          s.estimateUsageCost(totals.CompletionInputTokens, totals.CompletionOutputTokens, totals.EmbeddingTokens),
+		EstimatedCost:          nil,
+	}
+	response.EstimatedCost, err = s.estimateAggregateUsageCost(ctx, scope, resolved.StartsAt, resolved.EndsAt)
+	if err != nil {
+		return DashboardTokensResponse{}, err
 	}
 
 	return response, nil
@@ -507,7 +527,9 @@ func (s *Service) dashboardActivity(ctx context.Context, scope dashboardUsageSco
 	if err := s.loadAggregatedUsage(ctx, scope, resolved.StartsAt, resolved.EndsAt, &summary, dailyByDate); err != nil {
 		return DashboardActivityResponse{}, err
 	}
-	s.attachEstimatedCosts(&summary.Totals, summary.Daily)
+	if err := s.attachEstimatedCosts(ctx, scope, &summary.Totals, summary.Daily); err != nil {
+		return DashboardActivityResponse{}, err
+	}
 
 	return DashboardActivityResponse{
 		UsageWindowMeta: resolved.UsageWindowMeta,
@@ -562,7 +584,9 @@ func (s *Service) dashboardBreakdown(ctx context.Context, scope dashboardUsageSc
 	if err != nil {
 		return DashboardBreakdownResponse{}, err
 	}
-	s.attachBreakdownEstimatedCosts(values)
+	if err := s.attachBreakdownEstimatedCosts(ctx, scope, target, values, resolved.StartsAt, resolved.EndsAt); err != nil {
+		return DashboardBreakdownResponse{}, err
+	}
 
 	return DashboardBreakdownResponse{
 		UsageWindowMeta: resolved.UsageWindowMeta,
@@ -609,7 +633,9 @@ func (s *Service) AdminDashboardTopIdentities(ctx context.Context, window UsageW
 	if err != nil {
 		return DashboardBreakdownResponse{}, err
 	}
-	s.attachBreakdownEstimatedCosts(itemsByID)
+	if err := s.attachIdentityEstimatedCosts(ctx, itemsByID, resolved.StartsAt, resolved.EndsAt); err != nil {
+		return DashboardBreakdownResponse{}, err
+	}
 
 	return DashboardBreakdownResponse{
 		UsageWindowMeta: resolved.UsageWindowMeta,
@@ -928,50 +954,177 @@ func accumulateTokenTotals(totals *UsageTotals, row tokenUsageRow) {
 }
 
 // attachEstimatedCosts adds optional dashboard-only cost estimates to token aggregates.
-func (s *Service) attachEstimatedCosts(totals *UsageTotals, daily []DailyUsage) {
-	totals.EstimatedCost = s.estimateUsageCost(
-		totals.CompletionInputTokens,
-		totals.CompletionOutputTokens,
-		totals.EmbeddingTokens,
-	)
-	for i := range daily {
-		daily[i].EstimatedCost = s.estimateUsageCost(
-			daily[i].CompletionInputTokens,
-			daily[i].CompletionOutputTokens,
-			daily[i].EmbeddingTokens,
-		)
-	}
-}
-
-// attachBreakdownEstimatedCosts adds optional cost estimates to token breakdowns.
-func (s *Service) attachBreakdownEstimatedCosts(groups ...map[string]*UsageBreakdown) {
-	for _, group := range groups {
-		for _, item := range group {
-			item.EstimatedCost = s.estimateUsageCost(
-				item.completionInputTokens,
-				item.completionOutputTokens,
-				item.embeddingTokens,
-			)
-		}
-	}
-}
-
-// estimateUsageCost converts token buckets into an optional USD cost estimate.
-func (s *Service) estimateUsageCost(completionInputTokens, completionOutputTokens, embeddingTokens int64) *EstimatedCost {
+func (s *Service) attachEstimatedCosts(ctx context.Context, scope dashboardUsageScope, totals *UsageTotals, daily []DailyUsage) error {
 	if !s.usageCost.Enabled {
 		return nil
 	}
+	if len(daily) == 0 {
+		return nil
+	}
+	startsAt, err := time.Parse("2006-01-02", daily[0].Date)
+	if err != nil {
+		return err
+	}
+	endsDay, err := time.Parse("2006-01-02", daily[len(daily)-1].Date)
+	if err != nil {
+		return err
+	}
+	endsAt := endsDay.Add(24*time.Hour - time.Nanosecond)
+	costsByDate, totalCost, err := s.estimateDailyUsageCosts(ctx, scope, startsAt, endsAt)
+	if err != nil {
+		return err
+	}
+	totals.EstimatedCost = totalCost
+	for i := range daily {
+		daily[i].EstimatedCost = costsByDate[daily[i].Date]
+	}
+	return nil
+}
 
-	inputCost := usageTokenCost(completionInputTokens, s.usageCost.Rates.InputUSDPer1MTokens)
-	outputCost := usageTokenCost(completionOutputTokens, s.usageCost.Rates.OutputUSDPer1MTokens)
-	embeddingCost := usageTokenCost(embeddingTokens, s.usageCost.Rates.EmbeddingUSDPer1MTokens)
+// attachBreakdownEstimatedCosts adds optional cost estimates to token breakdowns.
+func (s *Service) attachBreakdownEstimatedCosts(ctx context.Context, scope dashboardUsageScope, target dashboardBreakdownTarget, group map[string]*UsageBreakdown, startsAt, endsAt time.Time) error {
+	for name, item := range group {
+		cost, err := s.estimateBreakdownUsageCost(ctx, scope, target, name, startsAt, endsAt)
+		if err != nil {
+			return err
+		}
+		item.EstimatedCost = cost
+	}
+	return nil
+}
+
+func (s *Service) attachIdentityEstimatedCosts(ctx context.Context, group map[string]*UsageBreakdown, startsAt, endsAt time.Time) error {
+	for id, item := range group {
+		cost, err := s.estimateAggregateUsageCost(ctx, dashboardUsageScope{userID: id}, startsAt, endsAt)
+		if err != nil {
+			return err
+		}
+		item.EstimatedCost = cost
+	}
+	return nil
+}
+
+// estimateUsageCost converts token buckets into an optional USD cost estimate.
+func (s *Service) estimateUsageCost(ctx context.Context, providerName, model string, completionInputTokens, completionOutputTokens, embeddingTokens int64) (*EstimatedCost, error) {
+	if !s.usageCost.Enabled {
+		return nil, nil
+	}
+	rates := s.usageCost.Rates
+	priceEmbeddingAsInput := false
+	if s.priceResolver != nil {
+		resolved, err := s.priceResolver.RatesFor(ctx, providerName, model)
+		if err != nil {
+			return nil, err
+		}
+		rates.InputUSDPer1MTokens = resolved.Input
+		rates.OutputUSDPer1MTokens = resolved.Output
+		rates.EmbeddingUSDPer1MTokens = 0
+		priceEmbeddingAsInput = true
+	}
+
+	inputTokens := completionInputTokens
+	if priceEmbeddingAsInput {
+		inputTokens += embeddingTokens
+	}
+	inputCost := usageTokenCost(inputTokens, rates.InputUSDPer1MTokens)
+	outputCost := usageTokenCost(completionOutputTokens, rates.OutputUSDPer1MTokens)
+	embeddingCost := usageTokenCost(embeddingTokens, rates.EmbeddingUSDPer1MTokens)
 	return &EstimatedCost{
 		InputUSD:     inputCost,
 		OutputUSD:    outputCost,
 		EmbeddingUSD: embeddingCost,
 		TotalUSD:     inputCost + outputCost + embeddingCost,
-		Rates:        s.usageCost.Rates,
+		Rates:        rates,
+	}, nil
+}
+
+func (s *Service) estimateAggregateUsageCost(ctx context.Context, scope dashboardUsageScope, startsAt, endsAt time.Time) (*EstimatedCost, error) {
+	_, total, err := s.estimateDailyUsageCosts(ctx, scope, startsAt, endsAt)
+	return total, err
+}
+
+func (s *Service) estimateBreakdownUsageCost(ctx context.Context, scope dashboardUsageScope, target dashboardBreakdownTarget, name string, startsAt, endsAt time.Time) (*EstimatedCost, error) {
+	column := ""
+	switch target {
+	case dashboardBreakdownModels:
+		column = "interceptions.model"
+	case dashboardBreakdownProviderNames:
+		column = "interceptions.provider"
+	case dashboardBreakdownProviderTypes:
+		column = "interceptions.provider_type"
+	default:
+		return nil, ErrInvalidSort
 	}
+	_, total, err := s.estimateUsageCosts(ctx, scope, startsAt, endsAt, column, name)
+	return total, err
+}
+
+func (s *Service) estimateDailyUsageCosts(ctx context.Context, scope dashboardUsageScope, startsAt, endsAt time.Time) (map[string]*EstimatedCost, *EstimatedCost, error) {
+	return s.estimateUsageCosts(ctx, scope, startsAt, endsAt, "", "")
+}
+
+func (s *Service) estimateUsageCosts(ctx context.Context, scope dashboardUsageScope, startsAt, endsAt time.Time, filterColumn, filterValue string) (map[string]*EstimatedCost, *EstimatedCost, error) {
+	if !s.usageCost.Enabled {
+		return map[string]*EstimatedCost{}, nil, nil
+	}
+	var rows []tokenUsageRow
+	query := s.db.WithContext(ctx).
+		Table("token_usages").
+		Select(`token_usages.interception_id,
+			interceptions.provider,
+			interceptions.model,
+			token_usages.input_tokens,
+			token_usages.output_tokens,
+			token_usages.cache_read_input_tokens,
+			token_usages.cache_write_input_tokens,
+			token_usages.type,
+			token_usages.metadata,
+			token_usages.created_at`).
+		Joins("JOIN interceptions ON interceptions.id = token_usages.interception_id")
+	query = scope.applyInitiatorFilter(query, "interceptions.initiator_id").
+		Where("token_usages.created_at >= ? AND token_usages.created_at <= ?", startsAt, endsAt)
+	if filterColumn != "" {
+		query = query.Where(filterColumn+" = ?", filterValue)
+	}
+	if err := query.Scan(&rows).Error; err != nil {
+		return nil, nil, fmt.Errorf("load usage cost rows: %w", err)
+	}
+
+	byDate := map[string]*EstimatedCost{}
+	total := &EstimatedCost{Rates: s.usageCost.Rates}
+	for _, row := range rows {
+		inputTokens := completionInputTokens(row)
+		outputTokens := row.OutputTokens
+		embeddingTokens := int64(0)
+		if isEmbeddingTokenUsage(row.Type, row.Metadata) {
+			inputTokens = 0
+			outputTokens = 0
+			embeddingTokens = tokenUsageTotal(row)
+		}
+		cost, err := s.estimateUsageCost(ctx, row.Provider, row.Model, inputTokens, outputTokens, embeddingTokens)
+		if err != nil {
+			return nil, nil, err
+		}
+		if cost == nil {
+			continue
+		}
+		key := dateKey(row.CreatedAt)
+		bucket := byDate[key]
+		if bucket == nil {
+			bucket = &EstimatedCost{Rates: cost.Rates}
+			byDate[key] = bucket
+		}
+		addEstimatedCost(bucket, cost)
+		addEstimatedCost(total, cost)
+	}
+	return byDate, total, nil
+}
+
+func addEstimatedCost(dst, src *EstimatedCost) {
+	dst.InputUSD += src.InputUSD
+	dst.OutputUSD += src.OutputUSD
+	dst.EmbeddingUSD += src.EmbeddingUSD
+	dst.TotalUSD += src.TotalUSD
 }
 
 // usageTokenCost prices tokens using a USD per 1M token rate.

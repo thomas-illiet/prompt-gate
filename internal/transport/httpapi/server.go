@@ -10,6 +10,7 @@ import (
 	"promptgate/backend/internal/domain/groups"
 	"promptgate/backend/internal/domain/mcp"
 	"promptgate/backend/internal/domain/monitoring"
+	"promptgate/backend/internal/domain/pricing"
 	"promptgate/backend/internal/domain/provider"
 	"promptgate/backend/internal/domain/proxy"
 	"promptgate/backend/internal/domain/subscriptions"
@@ -32,6 +33,7 @@ type Dependencies struct {
 	Providers     *provider.Service
 	MCP           *mcp.Service
 	Monitoring    *monitoring.Service
+	Pricing       *pricing.Service
 	Proxy         *proxy.Service
 	Subscriptions *subscriptions.Service
 	QuotaRedis    *subscriptions.RedisStore
@@ -52,10 +54,11 @@ func NewHandler(a Dependencies) http.Handler {
 		proxyService:  a.Proxy,
 		providers:     a.Providers,
 		monitoring:    a.Monitoring,
+		pricing:       a.Pricing,
 		subscriptions: a.Subscriptions,
 		quotaRedis:    a.QuotaRedis,
 	}
-	adminH := admin.NewHandler(a.Users, a.Tokens, a.Firewall, a.Groups, a.Providers, a.MCP, a.Proxy, a.Monitoring, a.Subscriptions)
+	adminH := admin.NewHandler(a.Users, a.Tokens, a.Firewall, a.Groups, a.Providers, a.MCP, a.Proxy, a.Monitoring, a.Subscriptions, a.Pricing)
 
 	cfg := a.Config
 	sessionStore := a.Sessions
@@ -409,6 +412,42 @@ func NewHandler(a Dependencies) http.Handler {
 	mux.Handle(
 		"GET /api/v1/admin/providers",
 		middleware.Chain(http.HandlerFunc(adminH.HandleAdminListProviders), adminMiddlewares...),
+	)
+	mux.Handle(
+		"GET /api/v1/admin/providers/model-catalog",
+		middleware.Chain(http.HandlerFunc(adminH.HandleAdminProviderModelCatalog), adminMiddlewares...),
+	)
+	mux.Handle(
+		"GET /api/v1/admin/pricing",
+		middleware.Chain(http.HandlerFunc(adminH.HandleAdminGetPricing), adminMiddlewares...),
+	)
+	mux.Handle(
+		"PUT /api/v1/admin/pricing",
+		middleware.Chain(http.HandlerFunc(adminH.HandleAdminUpdatePricing), adminMiddlewares...),
+	)
+	mux.Handle(
+		"PATCH /api/v1/admin/pricing/fallback",
+		middleware.Chain(http.HandlerFunc(adminH.HandleAdminUpdatePricingFallback), adminMiddlewares...),
+	)
+	mux.Handle(
+		"POST /api/v1/admin/pricing/models",
+		middleware.Chain(http.HandlerFunc(adminH.HandleAdminCreateModelPrice), adminMiddlewares...),
+	)
+	mux.Handle(
+		"GET /api/v1/admin/pricing/models/{id}",
+		middleware.Chain(http.HandlerFunc(adminH.HandleAdminGetModelPrice), adminMiddlewares...),
+	)
+	mux.Handle(
+		"PATCH /api/v1/admin/pricing/models/{id}",
+		middleware.Chain(http.HandlerFunc(adminH.HandleAdminUpdateModelPrice), adminMiddlewares...),
+	)
+	mux.Handle(
+		"DELETE /api/v1/admin/pricing/models/{id}",
+		middleware.Chain(http.HandlerFunc(adminH.HandleAdminDeleteModelPrice), adminMiddlewares...),
+	)
+	mux.Handle(
+		"GET /api/v1/admin/pricing/check",
+		middleware.Chain(http.HandlerFunc(adminH.HandleAdminPricingConfigurationCheck), adminMiddlewares...),
 	)
 	mux.Handle(
 		"POST /api/v1/admin/providers",

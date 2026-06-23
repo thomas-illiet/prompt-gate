@@ -121,6 +121,7 @@ func newAPIHandler(a *app.App) http.Handler {
 		Providers:     a.Providers,
 		MCP:           a.MCP,
 		Monitoring:    a.Monitoring,
+		Pricing:       a.Pricing,
 		Proxy:         a.Proxy,
 		Subscriptions: a.Subscriptions,
 		QuotaRedis:    a.QuotaRedis,
