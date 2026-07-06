@@ -36,8 +36,13 @@ func MiddlewareWithOptions(snapshot *SnapshotStore, options clientip.Options, lo
 				if rule != nil {
 					args = append(args, "rule_id", rule.ID)
 				}
-				if user, ok := auth.UserFromContext(r.Context()); ok && user.Type == auth.UserTypeService {
-					args = append(args, "service_account_id", user.ID)
+				if user, ok := auth.UserFromContext(r.Context()); ok {
+					switch user.Type {
+					case auth.UserTypeService:
+						args = append(args, "service_account_id", user.ID)
+					case auth.UserTypeUser:
+						args = append(args, "user_id", user.ID)
+					}
 				}
 				logger.Warn("request denied by firewall", args...)
 				writeJSON(w, http.StatusForbidden, map[string]string{"error": "firewall_denied"})
@@ -48,7 +53,7 @@ func MiddlewareWithOptions(snapshot *SnapshotStore, options clientip.Options, lo
 	}
 }
 
-// allowsRequest chooses scoped service-account firewall rules when override is enabled.
+// allowsRequest chooses scoped firewall rules when override is enabled.
 func allowsRequest(snapshot *SnapshotStore, clientIP string, r *http.Request) (bool, *RuleResponse, error) {
 	if user, ok := auth.UserFromContext(r.Context()); ok {
 		return snapshot.AllowsUser(clientIP, user)

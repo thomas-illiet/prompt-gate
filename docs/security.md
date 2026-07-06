@@ -66,8 +66,9 @@ Prompt Gate API tokens and can be restricted with scoped firewall rules.
 Service account identifiers must be lowercase alphanumeric with dashes or
 underscores and have a maximum length of 64 characters.
 
-When `firewallOverrideEnabled` is true, the proxy evaluates only the service
-account's scoped firewall rules. No scoped match denies by default.
+When `firewallOverrideEnabled` is true, the proxy evaluates only the scoped
+firewall rules for that user or service account. No scoped match denies by
+default.
 
 ## Firewall
 
@@ -81,8 +82,8 @@ Supported rule inputs:
 - action `allow` or `deny`
 - enabled flag
 
-Global rules use first match wins and allow on no match. Scoped service-account
-rules use first match wins and deny on no match.
+Global rules use first match wins and allow on no match. Scoped user and
+service-account rules use first match wins and deny on no match.
 
 The proxy normally uses the TCP remote address. In production, prefer
 `PROMPTGATE_PROXY_TRUSTED_PROXIES` with explicit ingress or reverse-proxy CIDRs

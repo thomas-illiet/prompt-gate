@@ -8,6 +8,11 @@ import {
   useAdminUsers,
 } from '../../app/composables/useAdminUsers'
 import type {
+  FirewallRule,
+  FirewallRuleListResponse,
+  FirewallRulePayload,
+} from '../../app/types/firewall'
+import type {
   UserToken,
   UserTokenListResponse,
 } from '../../app/types/user-service'
@@ -43,6 +48,7 @@ const user: AdminUser = {
   role: 'user',
   note: '',
   isActive: true,
+  firewallOverrideEnabled: false,
   lastLoginAt: '2026-01-02T00:00:00Z',
   inputTokens: 123,
   outputTokens: 456,
@@ -58,6 +64,26 @@ const token: UserToken = {
   description: 'CLI access',
   expiresAt: '2099-12-31T00:00:00Z',
   createdAt: '2026-01-01T00:00:00Z',
+}
+
+const firewallRule: FirewallRule = {
+  id: 'firewall-rule-id',
+  userId: user.id,
+  address: '10.0.0.10',
+  description: 'Home office',
+  priority: 1,
+  action: 'allow',
+  enabled: true,
+  createdAt: '2026-01-01T00:00:00Z',
+  updatedAt: '2026-01-01T00:00:00Z',
+}
+
+const firewallPayload: FirewallRulePayload = {
+  address: '10.0.0.10',
+  description: 'Home office',
+  priority: 1,
+  action: 'allow',
+  enabled: true,
 }
 
 const group: AccessGroup = {
@@ -92,6 +118,18 @@ function tokenResponse(
   items: UserToken[],
   total = items.length,
 ): UserTokenListResponse {
+  return {
+    items,
+    page: 1,
+    pageSize: 10,
+    total,
+  }
+}
+
+function firewallResponse(
+  items: FirewallRule[],
+  total = items.length,
+): FirewallRuleListResponse {
   return {
     items,
     page: 1,
@@ -233,6 +271,87 @@ describe('useAdminUsers', () => {
       'group-id',
       'group-id-2',
     ])
+  })
+
+  it('manages scoped user firewall rules', async () => {
+    apiFetch
+      .mockResolvedValueOnce(userResponse([]))
+      .mockResolvedValueOnce(firewallResponse([firewallRule]))
+      .mockResolvedValueOnce(firewallRule)
+      .mockResolvedValueOnce(firewallResponse([firewallRule]))
+      .mockResolvedValueOnce(firewallRule)
+      .mockResolvedValueOnce(firewallResponse([firewallRule]))
+      .mockResolvedValueOnce(firewallRule)
+      .mockResolvedValueOnce(firewallResponse([firewallRule]))
+      .mockResolvedValueOnce({ allowed: true, matchedRule: firewallRule })
+      .mockResolvedValueOnce(undefined)
+      .mockResolvedValueOnce(firewallResponse([]))
+
+    const adminUsers = useAdminUsers()
+    await vi.waitFor(() => expect(adminUsers.loading.value).toBe(false))
+
+    await adminUsers.loadFirewallRules(user.id)
+    await adminUsers.createFirewallRule(user.id, firewallPayload)
+    await adminUsers.updateFirewallRule(
+      user.id,
+      firewallRule.id,
+      firewallPayload,
+    )
+    await adminUsers.moveFirewallRulePriority(
+      user.id,
+      firewallRule.id,
+      'increase',
+    )
+    const simulation = await adminUsers.simulateFirewallIp(user.id, '10.0.0.10')
+    await adminUsers.deleteFirewallRule(user.id, firewallRule.id)
+
+    expect(apiFetch).toHaveBeenNthCalledWith(
+      2,
+      `/api/v1/admin/users/${user.id}/firewall/rules?page=1&pageSize=10&sortBy=priority&sortDir=asc`,
+    )
+    expect(apiFetch).toHaveBeenNthCalledWith(
+      3,
+      `/api/v1/admin/users/${user.id}/firewall/rules`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(firewallPayload),
+      },
+    )
+    expect(apiFetch).toHaveBeenNthCalledWith(
+      5,
+      `/api/v1/admin/users/${user.id}/firewall/rules/${firewallRule.id}`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(firewallPayload),
+      },
+    )
+    expect(apiFetch).toHaveBeenNthCalledWith(
+      7,
+      `/api/v1/admin/users/${user.id}/firewall/rules/${firewallRule.id}/priority`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ direction: 'increase' }),
+      },
+    )
+    expect(apiFetch).toHaveBeenNthCalledWith(
+      9,
+      `/api/v1/admin/users/${user.id}/firewall/simulate`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ clientIp: '10.0.0.10' }),
+      },
+    )
+    expect(apiFetch).toHaveBeenNthCalledWith(
+      10,
+      `/api/v1/admin/users/${user.id}/firewall/rules/${firewallRule.id}`,
+      { method: 'DELETE' },
+    )
+    expect(simulation.allowed).toBe(true)
+    expect(adminUsers.firewallRules.value).toEqual([])
   })
 
   it('maps token API errors to readable messages', () => {

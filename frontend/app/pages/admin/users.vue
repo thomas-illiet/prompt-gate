@@ -1,8 +1,15 @@
 <script setup lang="ts">
 import type { UserToken } from '~/types/user-service'
 import type { AdminUser } from '~/types/users'
+import type {
+  FirewallMoveDirection,
+  FirewallRule,
+  FirewallRulePayload,
+  FirewallSimulationResponse,
+} from '~/types/firewall'
 import AdminUserDeleteDialog from '~/components/AdminUsers/AdminUserDeleteDialog.vue'
 import AdminUserEditDialog from '~/components/AdminUsers/AdminUserEditDialog.vue'
+import AdminServiceAccountFirewallDialog from '~/components/AdminServiceAccounts/AdminServiceAccountFirewallDialog.vue'
 import AdminUserGroupsDialog from '~/components/AdminUsers/AdminUserGroupsDialog.vue'
 import AdminUserTokensDialog from '~/components/AdminUsers/AdminUserTokensDialog.vue'
 import AdminAccountNoteDialog from '~/components/AdminAccounts/AdminAccountNoteDialog.vue'
@@ -17,9 +24,11 @@ const adminUsers = useAdminUsers()
 const adminSubscriptions = useAdminSubscriptions()
 const editDialogOpen = shallowRef(false)
 const deleteDialogOpen = shallowRef(false)
+const firewallDialogOpen = shallowRef(false)
 const tokenDialogOpen = shallowRef(false)
 const groupsDialogOpen = shallowRef(false)
 const userToDelete = shallowRef<AdminUser | null>(null)
+const firewallUser = shallowRef<AdminUser | null>(null)
 const tokenUser = shallowRef<AdminUser | null>(null)
 const groupsUser = shallowRef<AdminUser | null>(null)
 const noteDialog = useTargetDialog<AdminUser>()
@@ -95,6 +104,126 @@ function openTokenDialog(user: AdminUser) {
   adminUsers.tokens.value = []
   adminUsers.setTokenPage(1)
   void adminUsers.loadTokens(user.id).catch(() => {})
+}
+
+// openFirewallDialog loads scoped firewall rules for a user.
+function openFirewallDialog(user: AdminUser) {
+  firewallUser.value = user
+  adminUsers.selectedUser.value = user
+  firewallDialogOpen.value = true
+  adminUsers.firewallRules.value = []
+  adminUsers.setFirewallPage(1)
+  void adminUsers.loadFirewallRules(user.id).catch(() => {})
+}
+
+// refreshFirewallRules reloads scoped firewall rows for the selected user.
+async function refreshFirewallRules() {
+  if (!firewallUser.value) {
+    return
+  }
+
+  await adminUsers.loadFirewallRules(firewallUser.value.id)
+}
+
+// toggleFirewallOverride updates the selected user's firewall override flag.
+async function toggleFirewallOverride(enabled: boolean) {
+  if (!firewallUser.value) {
+    return
+  }
+
+  const updated = await adminUsers.updateUser(firewallUser.value.id, {
+    role: firewallUser.value.role,
+    isActive: firewallUser.value.isActive,
+    firewallOverrideEnabled: enabled,
+    expiresAt: firewallUser.value.expiresAt,
+  })
+  firewallUser.value = updated
+}
+
+// createFirewallRule creates a scoped firewall rule.
+async function createFirewallRule(payload: FirewallRulePayload) {
+  if (!firewallUser.value) {
+    return
+  }
+
+  await adminUsers.createFirewallRule(firewallUser.value.id, payload)
+}
+
+// updateFirewallRule updates a scoped firewall rule.
+async function updateFirewallRule(
+  rule: FirewallRule,
+  payload: FirewallRulePayload,
+) {
+  if (!firewallUser.value) {
+    return
+  }
+
+  await adminUsers.updateFirewallRule(firewallUser.value.id, rule.id, payload)
+}
+
+// deleteFirewallRule deletes a scoped firewall rule.
+async function deleteFirewallRule(rule: FirewallRule) {
+  if (!firewallUser.value) {
+    return
+  }
+
+  await adminUsers.deleteFirewallRule(firewallUser.value.id, rule.id)
+}
+
+// moveFirewallRule changes scoped firewall rule priority.
+async function moveFirewallRule(
+  rule: FirewallRule,
+  direction: FirewallMoveDirection,
+) {
+  if (!firewallUser.value) {
+    return
+  }
+
+  await adminUsers.moveFirewallRulePriority(
+    firewallUser.value.id,
+    rule.id,
+    direction,
+  )
+}
+
+// toggleFirewallRule flips scoped firewall rule enabled state.
+async function toggleFirewallRule(rule: FirewallRule) {
+  await updateFirewallRule(rule, {
+    address: rule.address,
+    description: rule.description,
+    priority: rule.priority,
+    action: rule.action,
+    enabled: !rule.enabled,
+  })
+}
+
+// simulateFirewallIp evaluates an IP against scoped firewall rules.
+async function simulateFirewallIp(
+  clientIp: string,
+): Promise<FirewallSimulationResponse> {
+  if (!firewallUser.value) {
+    throw new Error('User is required.')
+  }
+
+  return await adminUsers.simulateFirewallIp(firewallUser.value.id, clientIp)
+}
+
+// updateFirewallPage changes scoped firewall pagination and reloads rules.
+async function updateFirewallPage(value: number) {
+  adminUsers.setFirewallPage(value)
+  await refreshFirewallRules()
+}
+
+// updateFirewallPageSize changes scoped firewall page size and reloads rules.
+async function updateFirewallPageSize(value: number) {
+  adminUsers.setFirewallPageSize(value)
+  await refreshFirewallRules()
+}
+
+// updateFirewallSort changes scoped firewall sorting and reloads rules.
+async function updateFirewallSort(sortBy: string, sortDir: 'asc' | 'desc') {
+  adminUsers.setFirewallSort(sortBy, sortDir)
+  await refreshFirewallRules()
 }
 
 // openGroupsDialog loads group memberships before showing group management.
@@ -239,6 +368,7 @@ async function saveUserNote(note: string) {
           :total="adminUsers.total.value"
           @delete="openDeleteDialog"
           @edit="openEditDialog"
+          @manage-firewall="openFirewallDialog"
           @manage-groups="openGroupsDialog"
           @manage-tokens="openTokenDialog"
           @notes="noteDialog.open"
@@ -264,6 +394,30 @@ async function saveUserNote(note: string) {
       :user="userToDelete"
       @cancel="closeDeleteDialog"
       @confirm="confirmDelete"
+    />
+    <AdminServiceAccountFirewallDialog
+      v-model="firewallDialogOpen"
+      :account="firewallUser"
+      :create-rule="createFirewallRule"
+      :delete-rule="deleteFirewallRule"
+      :loading="adminUsers.firewallLoading.value"
+      :move-rule="moveFirewallRule"
+      :next-priority="adminUsers.nextFirewallPriority.value"
+      :page="adminUsers.firewallPage.value"
+      :page-size="adminUsers.firewallPageSize.value"
+      :refresh="refreshFirewallRules"
+      :rules="adminUsers.firewallRules.value"
+      :saving="adminUsers.saving.value"
+      :simulate="simulateFirewallIp"
+      :sort-by="adminUsers.firewallSortBy.value"
+      :sort-dir="adminUsers.firewallSortDir.value"
+      :toggle-override="toggleFirewallOverride"
+      :toggle-rule="toggleFirewallRule"
+      :total="adminUsers.firewallTotal.value"
+      :update-rule="updateFirewallRule"
+      @update:page="updateFirewallPage"
+      @update:page-size="updateFirewallPageSize"
+      @update:sort="updateFirewallSort"
     />
     <AdminUserTokensDialog
       v-model="tokenDialogOpen"

@@ -96,10 +96,17 @@ Admin dashboard token and activity responses follow the same optional
 | --- | --- | --- |
 | `GET` | `/api/v1/admin/users` | List users with pagination, filters, usage totals, and sorting. |
 | `GET` | `/api/v1/admin/users/{id}` | Get one user. |
-| `PATCH` | `/api/v1/admin/users/{id}` | Update role, active state, or access expiration. |
-| `DELETE` | `/api/v1/admin/users/{id}` | Delete one user. |
+| `PATCH` | `/api/v1/admin/users/{id}` | Update role, active state, firewall override, or access expiration. |
+| `DELETE` | `/api/v1/admin/users/{id}` | Delete one user and its scoped firewall rules. |
 | `GET` | `/api/v1/admin/users/{id}/tokens` | List a user's tokens. |
 | `DELETE` | `/api/v1/admin/users/{id}/tokens/{tokenId}` | Revoke one user token. |
+| `GET` | `/api/v1/admin/users/{id}/firewall/rules` | List scoped user rules. |
+| `POST` | `/api/v1/admin/users/{id}/firewall/rules` | Create a scoped user rule. |
+| `GET` | `/api/v1/admin/users/{id}/firewall/rules/{ruleId}` | Get a scoped user rule. |
+| `PATCH` | `/api/v1/admin/users/{id}/firewall/rules/{ruleId}` | Update a scoped user rule. |
+| `PATCH` | `/api/v1/admin/users/{id}/firewall/rules/{ruleId}/priority` | Move a scoped user rule up or down. |
+| `POST` | `/api/v1/admin/users/{id}/firewall/simulate` | Simulate a scoped user decision. |
+| `DELETE` | `/api/v1/admin/users/{id}/firewall/rules/{ruleId}` | Delete a scoped user rule. |
 | `GET` | `/api/v1/admin/prompts` | List prompt history across users. |
 
 The first synced OIDC user is assigned role `admin`. Later users are created
@@ -132,6 +139,13 @@ underscores and have a maximum length of 64 characters.
 | `PATCH` | `/api/v1/admin/firewall/rules/{id}/priority` | Move a global firewall rule up or down. |
 | `POST` | `/api/v1/admin/firewall/simulate` | Simulate a global firewall decision. |
 | `DELETE` | `/api/v1/admin/firewall/rules/{id}` | Delete a global firewall rule. |
+| `GET` | `/api/v1/admin/users/{id}/firewall/rules` | List scoped user rules. |
+| `POST` | `/api/v1/admin/users/{id}/firewall/rules` | Create a scoped user rule. |
+| `GET` | `/api/v1/admin/users/{id}/firewall/rules/{ruleId}` | Get a scoped user rule. |
+| `PATCH` | `/api/v1/admin/users/{id}/firewall/rules/{ruleId}` | Update a scoped user rule. |
+| `PATCH` | `/api/v1/admin/users/{id}/firewall/rules/{ruleId}/priority` | Move a scoped user rule up or down. |
+| `POST` | `/api/v1/admin/users/{id}/firewall/simulate` | Simulate a scoped user decision. |
+| `DELETE` | `/api/v1/admin/users/{id}/firewall/rules/{ruleId}` | Delete a scoped user rule. |
 | `GET` | `/api/v1/admin/service-accounts/{id}/firewall/rules` | List scoped service-account rules. |
 | `POST` | `/api/v1/admin/service-accounts/{id}/firewall/rules` | Create a scoped service-account rule. |
 | `GET` | `/api/v1/admin/service-accounts/{id}/firewall/rules/{ruleId}` | Get a scoped service-account rule. |

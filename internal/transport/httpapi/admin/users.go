@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"promptgate/backend/internal/domain/auth"
+	"promptgate/backend/internal/domain/firewall"
 	"promptgate/backend/internal/domain/users"
 )
 
@@ -214,4 +215,162 @@ func (h *Handler) HandleAdminDeleteUser(w http.ResponseWriter, r *http.Request) 
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// HandleAdminListUserFirewallRules lists scoped firewall rules for a human user.
+func (h *Handler) HandleAdminListUserFirewallRules(w http.ResponseWriter, r *http.Request) {
+	user, ok := h.adminFirewallUser(w, r)
+	if !ok {
+		return
+	}
+
+	query := parseListQuery(r, "priority", "asc")
+	list, err := h.firewall.ListUserRulesPaged(r.Context(), user.ID, firewall.ListParams{
+		Page:     query.Page,
+		PageSize: query.PageSize,
+		SortBy:   query.SortBy,
+		SortDir:  query.SortDir,
+	})
+	if err != nil {
+		if errors.Is(err, firewall.ErrInvalidSort) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_sort"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, list)
+}
+
+// HandleAdminCreateUserFirewallRule creates a scoped firewall rule for a human user.
+func (h *Handler) HandleAdminCreateUserFirewallRule(w http.ResponseWriter, r *http.Request) {
+	user, ok := h.adminFirewallUser(w, r)
+	if !ok {
+		return
+	}
+
+	var input firewall.CreateRuleInput
+	if !decodeRequestBody(w, r, &input) {
+		return
+	}
+
+	rule, err := h.firewall.CreateUserRule(r.Context(), user.ID, input)
+	if err != nil {
+		writeFirewallError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, rule)
+}
+
+// HandleAdminGetUserFirewallRule returns one scoped firewall rule for a human user.
+func (h *Handler) HandleAdminGetUserFirewallRule(w http.ResponseWriter, r *http.Request) {
+	user, ok := h.adminFirewallUser(w, r)
+	if !ok {
+		return
+	}
+
+	rule, err := h.firewall.GetUserRule(r.Context(), user.ID, r.PathValue("ruleId"))
+	if err != nil {
+		writeFirewallError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, rule)
+}
+
+// HandleAdminUpdateUserFirewallRule updates one scoped firewall rule for a human user.
+func (h *Handler) HandleAdminUpdateUserFirewallRule(w http.ResponseWriter, r *http.Request) {
+	user, ok := h.adminFirewallUser(w, r)
+	if !ok {
+		return
+	}
+
+	var input firewall.UpdateRuleInput
+	if !decodeRequestBody(w, r, &input) {
+		return
+	}
+
+	rule, err := h.firewall.UpdateUserRule(r.Context(), user.ID, r.PathValue("ruleId"), input)
+	if err != nil {
+		writeFirewallError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, rule)
+}
+
+// HandleAdminMoveUserFirewallRulePriority moves one scoped user firewall rule priority.
+func (h *Handler) HandleAdminMoveUserFirewallRulePriority(w http.ResponseWriter, r *http.Request) {
+	user, ok := h.adminFirewallUser(w, r)
+	if !ok {
+		return
+	}
+
+	var input firewall.MovePriorityInput
+	if !decodeRequestBody(w, r, &input) {
+		return
+	}
+
+	rule, err := h.firewall.MoveUserPriority(r.Context(), user.ID, r.PathValue("ruleId"), input.Direction)
+	if err != nil {
+		writeFirewallError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, rule)
+}
+
+// HandleAdminSimulateUserFirewallRule evaluates one client IP against scoped user rules.
+func (h *Handler) HandleAdminSimulateUserFirewallRule(w http.ResponseWriter, r *http.Request) {
+	user, ok := h.adminFirewallUser(w, r)
+	if !ok {
+		return
+	}
+
+	var input simulateFirewallInput
+	if !decodeRequestBody(w, r, &input) {
+		return
+	}
+
+	allowed, matchedRule, err := h.firewall.UserAllows(r.Context(), user.ID, input.ClientIP)
+	if err != nil {
+		writeFirewallError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, simulateFirewallResponse{
+		Allowed:     allowed,
+		MatchedRule: matchedRule,
+	})
+}
+
+// HandleAdminDeleteUserFirewallRule deletes one scoped firewall rule for a human user.
+func (h *Handler) HandleAdminDeleteUserFirewallRule(w http.ResponseWriter, r *http.Request) {
+	user, ok := h.adminFirewallUser(w, r)
+	if !ok {
+		return
+	}
+
+	if err := h.firewall.DeleteUserRule(r.Context(), user.ID, r.PathValue("ruleId")); err != nil {
+		writeFirewallError(w, err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// adminFirewallUser loads the human user targeted by a scoped firewall route.
+func (h *Handler) adminFirewallUser(w http.ResponseWriter, r *http.Request) (users.AdminUser, bool) {
+	user, err := h.users.GetUser(r.Context(), r.PathValue("id"))
+	if err != nil {
+		if errors.Is(err, users.ErrUserNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "user_not_found"})
+			return users.AdminUser{}, false
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return users.AdminUser{}, false
+	}
+	return user, true
 }

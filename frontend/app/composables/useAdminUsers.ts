@@ -1,5 +1,12 @@
 import type { UserToken, UserTokenListResponse } from '~/types/user-service'
 import type {
+  FirewallMoveDirection,
+  FirewallRule,
+  FirewallRuleListResponse,
+  FirewallRulePayload,
+  FirewallSimulationResponse,
+} from '~/types/firewall'
+import type {
   AccessGroup,
   GroupListResponse,
   ReplaceUserGroupsPayload,
@@ -28,12 +35,18 @@ import {
 import { toApiErrorMessage } from '~/utils/api-error'
 
 const ERROR_MESSAGES = {
+  firewall_rule_not_found: 'Firewall rule no longer exists.',
+  invalid_action: 'Selected firewall action is invalid.',
+  invalid_direction: 'Priority direction is invalid.',
   invalid_expiration: 'Expiration date must be in the future.',
+  invalid_ipv4_address: 'Address must be an IPv4 address.',
   invalid_note: 'Notes must be 2,000 characters or fewer.',
   group_not_found: 'Group no longer exists.',
   invalid_role: 'Selected role is invalid.',
   invalid_sort: 'Selected user sort is invalid.',
   invalid_subscription_assignment: 'Selected subscription plan is invalid.',
+  priority_conflict: 'Another firewall rule already uses this priority.',
+  priority_out_of_range: 'Priority must be between 1 and 9999.',
   token_not_found: 'Virtual key no longer exists.',
   user_not_found: 'User no longer exists.',
 }
@@ -65,6 +78,14 @@ export function useAdminUsers() {
   const tokenSortBy = shallowRef('createdAt')
   const tokenSortDir = shallowRef<'asc' | 'desc'>('desc')
   const tokenTotal = shallowRef(0)
+  const firewallRules = shallowRef<FirewallRule[]>([])
+  const firewallLoading = shallowRef(false)
+  const firewallPage = shallowRef(1)
+  const firewallPageSize = shallowRef(10)
+  const firewallSortBy = shallowRef('priority')
+  const firewallSortDir = shallowRef<'asc' | 'desc'>('asc')
+  const firewallTotal = shallowRef(0)
+  const simulatingFirewall = shallowRef(false)
   const groupOptionsLoading = shallowRef(false)
   const userGroupsLoading = shallowRef(false)
   const groupLoading = computed(
@@ -84,6 +105,14 @@ export function useAdminUsers() {
       status: status.value !== 'all' ? status.value : undefined,
     }),
     toErrorMessage: toAdminUserErrorMessage,
+  })
+
+  const nextFirewallPriority = computed(() => {
+    const maxPriority = firewallRules.value.reduce(
+      (max, rule) => Math.max(max, rule.priority),
+      0,
+    )
+    return Math.min(maxPriority + 1, 9999)
   })
 
   // setSearch updates the user search filter.
@@ -243,6 +272,154 @@ export function useAdminUsers() {
     tokenPage.value = 1
   }
 
+  // loadFirewallRules fetches scoped firewall rules for one user.
+  async function loadFirewallRules(userId: string) {
+    firewallLoading.value = true
+
+    try {
+      const params = new URLSearchParams({
+        page: firewallPage.value.toString(),
+        pageSize: firewallPageSize.value.toString(),
+        sortBy: firewallSortBy.value,
+        sortDir: firewallSortDir.value,
+      })
+      const response = await apiFetch<FirewallRuleListResponse>(
+        withApiQuery(adminUserPath(userId, 'firewall', 'rules'), params),
+      )
+      firewallRules.value = response.items
+      firewallTotal.value = response.total
+      return firewallRules.value
+    } catch (error) {
+      Notify.error(toAdminUserErrorMessage(error))
+      throw error
+    } finally {
+      firewallLoading.value = false
+    }
+  }
+
+  // setFirewallPage updates scoped firewall pagination.
+  function setFirewallPage(value: number) {
+    firewallPage.value = value
+  }
+
+  // setFirewallPageSize updates scoped firewall page size and resets pagination.
+  function setFirewallPageSize(value: number) {
+    firewallPageSize.value = value
+    firewallPage.value = 1
+  }
+
+  // setFirewallSort updates scoped firewall sorting and returns to the first page.
+  function setFirewallSort(sortBy: string, sortDir: 'asc' | 'desc') {
+    firewallSortBy.value = sortBy
+    firewallSortDir.value = sortDir
+    firewallPage.value = 1
+  }
+
+  // createFirewallRule creates a scoped firewall rule and reloads rows.
+  async function createFirewallRule(
+    userId: string,
+    payload: FirewallRulePayload,
+  ) {
+    return await runApiMutation(
+      {
+        loading: saving,
+        successMessage: 'Firewall rule created.',
+        toErrorMessage: toAdminUserErrorMessage,
+      },
+      async () => {
+        const response = await apiJson<FirewallRule>(
+          adminUserPath(userId, 'firewall', 'rules'),
+          payload,
+          { method: 'POST' },
+        )
+
+        await loadFirewallRules(userId)
+        return response
+      },
+    )
+  }
+
+  // updateFirewallRule patches a scoped firewall rule and reloads rows.
+  async function updateFirewallRule(
+    userId: string,
+    ruleId: string,
+    payload: FirewallRulePayload,
+  ) {
+    return await runApiMutation(
+      {
+        loading: saving,
+        successMessage: 'Firewall rule updated.',
+        toErrorMessage: toAdminUserErrorMessage,
+      },
+      async () => {
+        const response = await apiJson<FirewallRule>(
+          adminUserPath(userId, 'firewall', 'rules', ruleId),
+          payload,
+          { method: 'PATCH' },
+        )
+
+        await loadFirewallRules(userId)
+        return response
+      },
+    )
+  }
+
+  // moveFirewallRulePriority swaps a scoped firewall rule with its neighbor.
+  async function moveFirewallRulePriority(
+    userId: string,
+    ruleId: string,
+    direction: FirewallMoveDirection,
+  ) {
+    return await runApiMutation(
+      { loading: saving, toErrorMessage: toAdminUserErrorMessage },
+      async () => {
+        const response = await apiJson<FirewallRule>(
+          adminUserPath(userId, 'firewall', 'rules', ruleId, 'priority'),
+          { direction },
+          { method: 'PATCH' },
+        )
+
+        await loadFirewallRules(userId)
+        return response
+      },
+    )
+  }
+
+  // deleteFirewallRule removes a scoped firewall rule and refreshes rows.
+  async function deleteFirewallRule(userId: string, ruleId: string) {
+    await runApiMutation(
+      {
+        loading: saving,
+        successMessage: 'Firewall rule deleted.',
+        toErrorMessage: toAdminUserErrorMessage,
+      },
+      async () => {
+        await apiFetch<unknown>(
+          adminUserPath(userId, 'firewall', 'rules', ruleId),
+          { method: 'DELETE' },
+        )
+        await loadFirewallRules(userId)
+      },
+    )
+  }
+
+  // simulateFirewallIp runs a scoped firewall match simulation for one client IP.
+  async function simulateFirewallIp(userId: string, clientIp: string) {
+    simulatingFirewall.value = true
+
+    try {
+      return await apiJson<FirewallSimulationResponse>(
+        adminUserPath(userId, 'firewall', 'simulate'),
+        { clientIp },
+        { method: 'POST' },
+      )
+    } catch (error) {
+      throw new Error(toAdminUserErrorMessage(error), { cause: error })
+    } finally {
+      simulatingFirewall.value = false
+    }
+  }
+
   // updateUser patches a user and reconciles current-user access changes.
   async function updateUser(userId: string, payload: UpdateUserPayload) {
     return await runApiMutation(
@@ -300,6 +477,7 @@ export function useAdminUsers() {
     const updatedUser = await updateUser(userId, {
       role: payload.role,
       isActive: payload.isActive,
+      firewallOverrideEnabled: payload.firewallOverrideEnabled,
       expiresAt: payload.expiresAt,
     })
     if (updatedUser.subscriptionPlanId !== payload.subscriptionPlanId) {
@@ -402,9 +580,19 @@ export function useAdminUsers() {
   return {
     deleteUser,
     assignUserSubscriptionPlan,
+    createFirewallRule,
+    deleteFirewallRule,
+    firewallLoading,
+    firewallPage,
+    firewallPageSize,
+    firewallRules,
+    firewallSortBy,
+    firewallSortDir,
+    firewallTotal,
     listError: queryList.listError,
     groupLoading,
     groupOptions,
+    loadFirewallRules,
     loadTokens,
     loadGroups,
     loadUserGroups,
@@ -412,6 +600,8 @@ export function useAdminUsers() {
     loading: queryList.loading,
     page: queryList.page,
     pageSize: queryList.pageSize,
+    moveFirewallRulePriority,
+    nextFirewallPriority,
     reload,
     replaceUserGroups,
     role,
@@ -424,12 +614,17 @@ export function useAdminUsers() {
     setSearch,
     setSort,
     setStatus,
+    setFirewallPage,
+    setFirewallPageSize,
+    setFirewallSort,
     setTokenPage,
     setTokenPageSize,
     setTokenSort,
     sortBy: queryList.sortBy,
     sortDir: queryList.sortDir,
     status,
+    simulatingFirewall,
+    simulateFirewallIp,
     tokenLoading,
     tokenPage,
     tokenPageSize,
@@ -440,6 +635,7 @@ export function useAdminUsers() {
     total: queryList.total,
     updateUser,
     updateUserAccess,
+    updateFirewallRule,
     updateUserNote,
     userGroups,
     users: queryList.items,

@@ -4,6 +4,7 @@ export type FirewallMoveDirection = 'increase' | 'decrease'
 export interface FirewallRule {
   id: string
   serviceAccountId?: string
+  userId?: string
   address: string
   description: string
   priority: number

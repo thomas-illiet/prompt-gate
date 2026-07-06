@@ -14,6 +14,7 @@ const user: AdminUser = {
   role: 'user',
   note: '',
   isActive: true,
+  firewallOverrideEnabled: false,
   lastLoginAt: '2026-01-02T00:00:00Z',
   inputTokens: 123,
   outputTokens: 456,

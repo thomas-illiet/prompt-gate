@@ -51,6 +51,16 @@ func (s *Service) Allows(ctx context.Context, clientIP string) (bool, *RuleRespo
 
 // ServiceAccountAllows evaluates scoped rules for one service account. No match denies.
 func (s *Service) ServiceAccountAllows(ctx context.Context, serviceAccountID string, clientIP string) (bool, *RuleResponse, error) {
+	return s.scopedAllows(ctx, RuleTypeServiceAccount, serviceAccountID, clientIP)
+}
+
+// UserAllows evaluates scoped rules for one user. No match denies.
+func (s *Service) UserAllows(ctx context.Context, userID string, clientIP string) (bool, *RuleResponse, error) {
+	return s.scopedAllows(ctx, RuleTypeUser, userID, clientIP)
+}
+
+// scopedAllows evaluates scoped rules for one referential id. No match denies.
+func (s *Service) scopedAllows(ctx context.Context, ruleType RuleType, referentielID string, clientIP string) (bool, *RuleResponse, error) {
 	addr, err := parseClientAddr(clientIP)
 	if err != nil {
 		return false, nil, err
@@ -58,10 +68,10 @@ func (s *Service) ServiceAccountAllows(ctx context.Context, serviceAccountID str
 
 	var records []FirewallRule
 	if err := s.db.WithContext(ctx).
-		Where("type = ? AND referentiel_id = ? AND enabled = ?", RuleTypeServiceAccount, serviceAccountID, true).
+		Where("type = ? AND referentiel_id = ? AND enabled = ?", ruleType, referentielID, true).
 		Order("priority ASC").
 		Find(&records).Error; err != nil {
-		return false, nil, fmt.Errorf("list enabled service account firewall rules: %w", err)
+		return false, nil, fmt.Errorf("list enabled scoped firewall rules: %w", err)
 	}
 	for _, record := range records {
 		matches, err := ruleMatches(record.Address, addr)

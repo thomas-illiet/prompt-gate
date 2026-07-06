@@ -5,13 +5,20 @@ import type {
   FirewallRulePayload,
   FirewallSimulationResponse,
 } from '~/types/firewall'
-import type { ServiceAccount } from '~/types/service-accounts'
 import AdminFirewallRuleDialog from '~/components/AdminFirewall/AdminFirewallRuleDialog.vue'
 import AdminFirewallSimulator from '~/components/AdminFirewall/AdminFirewallSimulator.vue'
 import AdminServiceAccountFirewallRulesTable from '~/components/AdminServiceAccounts/AdminServiceAccountFirewallRulesTable.vue'
 
+interface FirewallAccount {
+  email?: string
+  firewallOverrideEnabled: boolean
+  identifier?: string
+  name?: string
+  preferredUsername?: string
+}
+
 const props = defineProps<{
-  account: ServiceAccount | null
+  account: FirewallAccount | null
   createRule: (payload: FirewallRulePayload) => Promise<unknown>
   deleteRule: (rule: FirewallRule) => Promise<unknown>
   loading: boolean
@@ -50,12 +57,32 @@ const editingRule = shallowRef<FirewallRule | null>(null)
 const deleteDialog = useTargetDialog<FirewallRule>()
 
 const title = computed(() =>
-  props.account ? `${props.account.name} firewall` : 'Service account firewall',
+  props.account
+    ? `${displayAccount(props.account)} firewall`
+    : 'Account firewall',
 )
 const overrideEnabled = computed(
   () => props.account?.firewallOverrideEnabled ?? false,
 )
-const accountLabel = computed(() => props.account?.identifier ?? 'service')
+const accountLabel = computed(() =>
+  props.account
+    ? props.account.identifier ||
+      props.account.preferredUsername ||
+      props.account.email ||
+      'account'
+    : 'account',
+)
+
+// displayAccount returns the most readable account name for dialog titles.
+function displayAccount(account: FirewallAccount) {
+  return (
+    account.name ||
+    account.identifier ||
+    account.preferredUsername ||
+    account.email ||
+    'Account'
+  )
+}
 
 // openCreateRuleDialog prepares a blank scoped firewall rule form.
 function openCreateRuleDialog() {

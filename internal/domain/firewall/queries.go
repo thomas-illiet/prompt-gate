@@ -77,16 +77,21 @@ func (s *Service) getRule(ctx context.Context, db *gorm.DB, id string) (Firewall
 	return record, nil
 }
 
-// getServiceAccountRule fetches a scoped firewall rule or returns ErrNotFound.
+// getServiceAccountRule fetches a scoped service-account firewall rule or returns ErrNotFound.
 func (s *Service) getServiceAccountRule(ctx context.Context, db *gorm.DB, serviceAccountID string, id string) (FirewallRule, error) {
+	return s.getScopedRule(ctx, db, RuleTypeServiceAccount, serviceAccountID, id)
+}
+
+// getScopedRule fetches a scoped firewall rule or returns ErrNotFound.
+func (s *Service) getScopedRule(ctx context.Context, db *gorm.DB, ruleType RuleType, referentielID string, id string) (FirewallRule, error) {
 	var record FirewallRule
 	if err := db.WithContext(ctx).
-		Where("type = ? AND referentiel_id = ?", RuleTypeServiceAccount, serviceAccountID).
+		Where("type = ? AND referentiel_id = ?", ruleType, referentielID).
 		First(&record, "id = ?", id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return FirewallRule{}, ErrRuleNotFound
 		}
-		return FirewallRule{}, fmt.Errorf("get service account firewall rule: %w", err)
+		return FirewallRule{}, fmt.Errorf("get scoped firewall rule: %w", err)
 	}
 	return record, nil
 }
@@ -101,10 +106,15 @@ func serviceAccountRuleQuery(query *gorm.DB, serviceAccountID string) *gorm.DB {
 	return query.Where("type = ? AND referentiel_id = ?", RuleTypeServiceAccount, serviceAccountID)
 }
 
+// scopedRuleQuery scopes a query to one firewall rule namespace.
+func scopedRuleQuery(query *gorm.DB, ruleType RuleType, referentielID string) *gorm.DB {
+	return query.Where("type = ? AND referentiel_id = ?", ruleType, referentielID)
+}
+
 // scopedPriorityQuery scopes priority lookups to the same firewall rule namespace.
 func scopedPriorityQuery(query *gorm.DB, ruleType RuleType, referentielID *string) *gorm.DB {
-	if ruleType == RuleTypeServiceAccount && referentielID != nil {
-		return query.Where("type = ? AND referentiel_id = ?", RuleTypeServiceAccount, *referentielID)
+	if (ruleType == RuleTypeServiceAccount || ruleType == RuleTypeUser) && referentielID != nil {
+		return query.Where("type = ? AND referentiel_id = ?", ruleType, *referentielID)
 	}
 	return globalRuleQuery(query)
 }

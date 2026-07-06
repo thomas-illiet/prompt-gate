@@ -60,6 +60,7 @@ const user: AdminUser = {
   role: 'user',
   note: '',
   isActive: true,
+  firewallOverrideEnabled: false,
   inputTokens: 10,
   outputTokens: 20,
   expiresAt: null,

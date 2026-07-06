@@ -218,6 +218,34 @@ func NewHandler(a Dependencies) http.Handler {
 		middleware.Chain(http.HandlerFunc(adminH.HandleAdminAssignUserSubscriptionPlan), adminMiddlewares...),
 	)
 	mux.Handle(
+		"GET /api/v1/admin/users/{id}/firewall/rules",
+		middleware.Chain(http.HandlerFunc(adminH.HandleAdminListUserFirewallRules), adminMiddlewares...),
+	)
+	mux.Handle(
+		"POST /api/v1/admin/users/{id}/firewall/rules",
+		middleware.Chain(http.HandlerFunc(adminH.HandleAdminCreateUserFirewallRule), adminMiddlewares...),
+	)
+	mux.Handle(
+		"GET /api/v1/admin/users/{id}/firewall/rules/{ruleId}",
+		middleware.Chain(http.HandlerFunc(adminH.HandleAdminGetUserFirewallRule), adminMiddlewares...),
+	)
+	mux.Handle(
+		"PATCH /api/v1/admin/users/{id}/firewall/rules/{ruleId}",
+		middleware.Chain(http.HandlerFunc(adminH.HandleAdminUpdateUserFirewallRule), adminMiddlewares...),
+	)
+	mux.Handle(
+		"PATCH /api/v1/admin/users/{id}/firewall/rules/{ruleId}/priority",
+		middleware.Chain(http.HandlerFunc(adminH.HandleAdminMoveUserFirewallRulePriority), adminMiddlewares...),
+	)
+	mux.Handle(
+		"POST /api/v1/admin/users/{id}/firewall/simulate",
+		middleware.Chain(http.HandlerFunc(adminH.HandleAdminSimulateUserFirewallRule), adminMiddlewares...),
+	)
+	mux.Handle(
+		"DELETE /api/v1/admin/users/{id}/firewall/rules/{ruleId}",
+		middleware.Chain(http.HandlerFunc(adminH.HandleAdminDeleteUserFirewallRule), adminMiddlewares...),
+	)
+	mux.Handle(
 		"GET /api/v1/admin/prompts",
 		middleware.Chain(http.HandlerFunc(adminH.HandleAdminListPrompts), adminMiddlewares...),
 	)

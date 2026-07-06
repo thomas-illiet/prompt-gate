@@ -62,6 +62,7 @@ type AdminUser struct {
 	QuotaState                *AccountQuotaState       `json:"quotaState,omitempty"`
 	Note                      string                   `json:"note"`
 	IsActive                  bool                     `json:"isActive"`
+	FirewallOverrideEnabled   bool                     `json:"firewallOverrideEnabled"`
 	InputTokens               int64                    `json:"inputTokens"`
 	OutputTokens              int64                    `json:"outputTokens"`
 	ExpiresAt                 *time.Time               `json:"expiresAt"`
@@ -150,9 +151,10 @@ type ServiceAccountInput struct {
 }
 
 type UpdateUserInput struct {
-	Role      auth.AppRole `json:"role"`
-	IsActive  bool         `json:"isActive"`
-	ExpiresAt *time.Time   `json:"expiresAt"`
+	Role                    auth.AppRole `json:"role"`
+	IsActive                bool         `json:"isActive"`
+	FirewallOverrideEnabled *bool        `json:"firewallOverrideEnabled,omitempty"`
+	ExpiresAt               *time.Time   `json:"expiresAt"`
 }
 
 type UpdateAccountNoteInput struct {
@@ -273,7 +275,9 @@ func (s *Service) UserByID(ctx context.Context, id string) (auth.UserProfile, er
 // GetUser returns the admin view of a user by ID, or ErrUserNotFound if absent.
 func (s *Service) GetUser(ctx context.Context, id string) (AdminUser, error) {
 	var record User
-	if err := s.db.WithContext(ctx).First(&record, "id = ?", id).Error; err != nil {
+	if err := s.db.WithContext(ctx).
+		Where("id = ? AND type = ?", id, auth.UserTypeUser).
+		First(&record).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return AdminUser{}, ErrUserNotFound
 		}
@@ -568,7 +572,9 @@ func (s *Service) UpdateUser(ctx context.Context, id string, input UpdateUserInp
 
 	var record User
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.First(&record, "id = ?", id).Error; err != nil {
+		if err := tx.
+			Where("id = ? AND type = ?", id, auth.UserTypeUser).
+			First(&record).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return ErrUserNotFound
 			}
@@ -579,6 +585,9 @@ func (s *Service) UpdateUser(ctx context.Context, id string, input UpdateUserInp
 		revokesTokens := record.Role != auth.RoleNone && input.Role == auth.RoleNone
 		record.Role = input.Role
 		record.IsActive = input.IsActive
+		if input.FirewallOverrideEnabled != nil {
+			record.FirewallOverrideEnabled = *input.FirewallOverrideEnabled
+		}
 		record.ExpiresAt = input.ExpiresAt
 
 		if err := tx.Save(&record).Error; err != nil {
@@ -742,17 +751,47 @@ func (s *Service) expireAccessLog(ctx context.Context) {
 
 // DeleteUser permanently removes a user by ID, returning ErrUserNotFound if absent.
 func (s *Service) DeleteUser(ctx context.Context, id string) error {
-	result := s.db.WithContext(ctx).Delete(&User{}, "id = ?", id)
-	if result.Error != nil {
-		return fmt.Errorf("delete user: %w", result.Error)
-	}
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := deleteUserFirewallRulesTx(tx, id); err != nil {
+			return err
+		}
 
-	if result.RowsAffected == 0 {
-		return ErrUserNotFound
+		result := tx.Where("type = ?", auth.UserTypeUser).Delete(&User{}, "id = ?", id)
+		if result.Error != nil {
+			return fmt.Errorf("delete user: %w", result.Error)
+		}
+		if result.RowsAffected == 0 {
+			return ErrUserNotFound
+		}
+		return nil
+	})
+	if err != nil {
+		return err
 	}
 
 	s.notifier.Notify(ctx, configevents.DomainAuth)
+	s.notifier.Notify(ctx, configevents.DomainFirewall)
 	return nil
+}
+
+// deleteUserFirewallRulesTx removes user-scoped firewall rules when the firewall table is present.
+func deleteUserFirewallRulesTx(tx *gorm.DB, id string) error {
+	err := tx.Exec(
+		"DELETE FROM firewall_rules WHERE type = ? AND referentiel_id = ?",
+		"user",
+		id,
+	).Error
+	if err == nil || isMissingFirewallRulesTable(err) {
+		return nil
+	}
+	return fmt.Errorf("delete user firewall rules: %w", err)
+}
+
+// isMissingFirewallRulesTable reports whether a database lacks the optional firewall table.
+func isMissingFirewallRulesTable(err error) bool {
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "no such table: firewall_rules") ||
+		strings.Contains(message, `relation "firewall_rules" does not exist`)
 }
 
 // normalizeServiceAccountInput validates and normalizes service account form input.
@@ -1029,20 +1068,21 @@ func (u *User) profile() auth.UserProfile {
 // adminUser maps the database User record to an AdminUser response with audit timestamps.
 func (u *User) adminUser() AdminUser {
 	return AdminUser{
-		ID:                 u.ID,
-		Sub:                u.ExternalSub,
-		PreferredUsername:  u.PreferredUsername,
-		Email:              u.Email,
-		Name:               u.Name,
-		Type:               u.Type,
-		Role:               u.Role,
-		SubscriptionPlanID: u.SubscriptionPlanID,
-		Note:               u.Note,
-		IsActive:           u.IsActive,
-		ExpiresAt:          u.ExpiresAt,
-		LastLoginAt:        u.LastLoginAt,
-		CreatedAt:          u.CreatedAt,
-		UpdatedAt:          u.UpdatedAt,
+		ID:                      u.ID,
+		Sub:                     u.ExternalSub,
+		PreferredUsername:       u.PreferredUsername,
+		Email:                   u.Email,
+		Name:                    u.Name,
+		Type:                    u.Type,
+		Role:                    u.Role,
+		SubscriptionPlanID:      u.SubscriptionPlanID,
+		Note:                    u.Note,
+		IsActive:                u.IsActive,
+		FirewallOverrideEnabled: u.FirewallOverrideEnabled,
+		ExpiresAt:               u.ExpiresAt,
+		LastLoginAt:             u.LastLoginAt,
+		CreatedAt:               u.CreatedAt,
+		UpdatedAt:               u.UpdatedAt,
 	}
 }
 

@@ -20,6 +20,7 @@ type RuleType string
 const (
 	RuleTypeGlobal         RuleType = "global"
 	RuleTypeServiceAccount RuleType = "service_account"
+	RuleTypeUser           RuleType = "user"
 )
 
 const (
@@ -67,6 +68,9 @@ func (r *FirewallRule) toResponse() RuleResponse {
 	if r.Type == RuleTypeServiceAccount && r.ReferentielID != nil {
 		response.ServiceAccountID = *r.ReferentielID
 	}
+	if r.Type == RuleTypeUser && r.ReferentielID != nil {
+		response.UserID = *r.ReferentielID
+	}
 	return response
 }
 
@@ -74,6 +78,7 @@ func (r *FirewallRule) toResponse() RuleResponse {
 type RuleResponse struct {
 	ID               string    `json:"id"`
 	ServiceAccountID string    `json:"serviceAccountId,omitempty"`
+	UserID           string    `json:"userId,omitempty"`
 	Address          string    `json:"address"`
 	Description      string    `json:"description"`
 	Priority         int       `json:"priority"`

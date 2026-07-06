@@ -75,15 +75,15 @@ returns a warning, the proxy logs it and continues with the available tools.
 The proxy evaluates firewall rules after token authentication and before
 forwarding to providers.
 
-Global firewall rules apply to human users and service accounts that do not
-enable firewall override:
+Global firewall rules apply to users and service accounts that do not enable
+firewall override:
 
 - enabled rules are evaluated by ascending priority
 - first matching rule wins
 - no match allows the request
 
-Service accounts with `firewallOverrideEnabled=true` use only their scoped
-rules:
+Users and service accounts with `firewallOverrideEnabled=true` use only their
+scoped rules:
 
 - enabled scoped rules are evaluated by ascending priority
 - first matching rule wins

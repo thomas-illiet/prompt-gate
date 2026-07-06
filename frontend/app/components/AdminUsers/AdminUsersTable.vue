@@ -20,6 +20,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   delete: [user: AdminUser]
   edit: [user: AdminUser]
+  manageFirewall: [user: AdminUser]
   manageGroups: [user: AdminUser]
   manageTokens: [user: AdminUser]
   notes: [user: AdminUser]
@@ -40,6 +41,11 @@ const headers: DataTableHeader[] = [
   appTableCenteredColumn({
     title: 'Status',
     key: 'isActive',
+  }),
+  appTableCenteredColumn({
+    title: 'Firewall',
+    key: 'firewallOverrideEnabled',
+    sortable: false,
   }),
   appTableCenteredColumn({
     title: 'Plan',
@@ -122,6 +128,12 @@ function planColor(user: AdminUser) {
 }
 
 const rowActions: AppRowAction<AdminUser>[] = [
+  {
+    icon: 'mdi-shield-account-outline',
+    key: 'manageFirewall',
+    onSelect: (user) => emit('manageFirewall', user),
+    title: 'Firewall',
+  },
   {
     icon: 'mdi-pencil-outline',
     key: 'edit',
@@ -242,14 +254,22 @@ const rowActions: AppRowAction<AdminUser>[] = [
         </div>
       </template>
 
-      <template #item.subscriptionPlan="{ item }">
+      <template #item.firewallOverrideEnabled="{ item }">
         <div class="app-table-center">
           <v-chip
             size="small"
             label
             variant="tonal"
-            :color="planColor(item)"
+            :color="item.firewallOverrideEnabled ? 'success' : 'default'"
           >
+            {{ item.firewallOverrideEnabled ? 'Override' : 'Global' }}
+          </v-chip>
+        </div>
+      </template>
+
+      <template #item.subscriptionPlan="{ item }">
+        <div class="app-table-center">
+          <v-chip size="small" label variant="tonal" :color="planColor(item)">
             {{ planLabel(item) }}
             <span class="admin-users-table__chip-caption">
               {{ planCaption(item) }}

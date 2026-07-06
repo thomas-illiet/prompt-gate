@@ -189,3 +189,69 @@ func TestMiddlewareServiceAccountOverrideDefaultsToDeny(t *testing.T) {
 		t.Fatalf("expected scoped default deny, code=%d next=%v", rec.Code, nextCalled)
 	}
 }
+
+// TestMiddlewareUsesUserOverride verifies middleware uses human user override.
+func TestMiddlewareUsesUserOverride(t *testing.T) {
+	userID := "user-id"
+	snapshot := NewSnapshotStore(nil)
+	snapshot.SetSnapshot(Snapshot{
+		Global: []FirewallRule{{ID: "global-deny", Address: "10.0.0.10", Priority: 1, Action: ActionDeny, Enabled: true}},
+		Users: map[string][]FirewallRule{
+			userID: {
+				{ID: "user-scoped-allow", Type: RuleTypeUser, ReferentielID: &userID, Address: "10.0.0.10", Priority: 1, Action: ActionAllow, Enabled: true},
+			},
+		},
+	})
+	nextCalled := false
+	handler := Middleware(snapshot, false, nil)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		nextCalled = true
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "10.0.0.10:1234"
+	req = req.WithContext(auth.ContextWithUser(req.Context(), auth.UserProfile{
+		ID:                      userID,
+		Type:                    auth.UserTypeUser,
+		FirewallOverrideEnabled: true,
+	}))
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent || !nextCalled {
+		t.Fatalf("expected scoped allow to pass, code=%d next=%v", rec.Code, nextCalled)
+	}
+}
+
+// TestMiddlewareUserOverrideDefaultsToDeny verifies middleware human user override defaults to deny.
+func TestMiddlewareUserOverrideDefaultsToDeny(t *testing.T) {
+	userID := "user-id"
+	snapshot := NewSnapshotStore(nil)
+	snapshot.SetSnapshot(Snapshot{
+		Global: []FirewallRule{{ID: "global-allow", Address: "10.0.0.10", Priority: 1, Action: ActionAllow, Enabled: true}},
+		Users: map[string][]FirewallRule{
+			userID: {},
+		},
+	})
+	nextCalled := false
+	handler := Middleware(snapshot, false, nil)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		nextCalled = true
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "10.0.0.10:1234"
+	req = req.WithContext(auth.ContextWithUser(req.Context(), auth.UserProfile{
+		ID:                      userID,
+		Type:                    auth.UserTypeUser,
+		FirewallOverrideEnabled: true,
+	}))
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden || nextCalled {
+		t.Fatalf("expected scoped default deny, code=%d next=%v", rec.Code, nextCalled)
+	}
+}

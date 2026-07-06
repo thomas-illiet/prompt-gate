@@ -10,6 +10,7 @@ export interface AdminUser extends AuthUser {
   effectiveSubscriptionPlan?: AccountSubscriptionPlan
   quotaState?: AccountQuotaState
   note: string
+  firewallOverrideEnabled: boolean
   inputTokens: number
   outputTokens: number
   expiresAt: string | null
@@ -27,6 +28,7 @@ export interface UserListResponse {
 export interface UpdateUserPayload {
   role: AppRole
   isActive: boolean
+  firewallOverrideEnabled?: boolean
   expiresAt: string | null
 }
 

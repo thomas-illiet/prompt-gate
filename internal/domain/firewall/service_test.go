@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"promptgate/backend/internal/domain/auth"
 	"promptgate/backend/internal/domain/users"
 
 	"github.com/glebarez/sqlite"
@@ -125,6 +126,81 @@ func TestServiceAccountAllowsDefaultsToDeny(t *testing.T) {
 	}
 }
 
+// TestUserFirewallRulesAreScopedByUser verifies user firewall rules are scoped by user.
+func TestUserFirewallRulesAreScopedByUser(t *testing.T) {
+	firewallService, userService, _ := newFirewallServiceTestServices(t)
+	ctx := context.Background()
+
+	userA, err := userService.SyncUser(ctx, authIdentity("sub-a", "user_a"))
+	if err != nil {
+		t.Fatalf("sync user A: %v", err)
+	}
+	userB, err := userService.SyncUser(ctx, authIdentity("sub-b", "user_b"))
+	if err != nil {
+		t.Fatalf("sync user B: %v", err)
+	}
+
+	if _, err := firewallService.CreateUserRule(ctx, userA.ID, CreateRuleInput{
+		Address:  "10.0.0.10",
+		Priority: 1,
+		Action:   ActionAllow,
+		Enabled:  true,
+	}); err != nil {
+		t.Fatalf("create user A rule: %v", err)
+	}
+	if _, err := firewallService.CreateUserRule(ctx, userB.ID, CreateRuleInput{
+		Address:  "10.0.0.11",
+		Priority: 1,
+		Action:   ActionAllow,
+		Enabled:  true,
+	}); err != nil {
+		t.Fatalf("expected same priority to be allowed across users: %v", err)
+	}
+	if _, err := firewallService.CreateUserRule(ctx, userA.ID, CreateRuleInput{
+		Address:  "10.0.0.12",
+		Priority: 1,
+		Action:   ActionAllow,
+		Enabled:  true,
+	}); err != ErrPriorityConflict {
+		t.Fatalf("expected priority conflict in same user, got %v", err)
+	}
+}
+
+// TestUserAllowsDefaultsToDeny verifies user scoped firewall allows defaults to deny.
+func TestUserAllowsDefaultsToDeny(t *testing.T) {
+	firewallService, userService, _ := newFirewallServiceTestServices(t)
+	ctx := context.Background()
+
+	user, err := userService.SyncUser(ctx, authIdentity("sub-user", "firewall_user"))
+	if err != nil {
+		t.Fatalf("sync user: %v", err)
+	}
+	if _, err := firewallService.CreateUserRule(ctx, user.ID, CreateRuleInput{
+		Address:  "10.0.0.10",
+		Priority: 1,
+		Action:   ActionAllow,
+		Enabled:  true,
+	}); err != nil {
+		t.Fatalf("create allow rule: %v", err)
+	}
+
+	allowed, matched, err := firewallService.UserAllows(ctx, user.ID, "10.0.0.10")
+	if err != nil {
+		t.Fatalf("evaluate allow rule: %v", err)
+	}
+	if !allowed || matched == nil || matched.Action != ActionAllow || matched.UserID != user.ID {
+		t.Fatalf("expected explicit user allow, allowed=%v matched=%#v", allowed, matched)
+	}
+
+	allowed, matched, err = firewallService.UserAllows(ctx, user.ID, "10.0.0.11")
+	if err != nil {
+		t.Fatalf("evaluate no match: %v", err)
+	}
+	if allowed || matched != nil {
+		t.Fatalf("expected default deny without match, allowed=%v matched=%#v", allowed, matched)
+	}
+}
+
 // TestServiceAccountFirewallRulesAreDeletedWithAccount verifies service account firewall rules are deleted with account.
 func TestServiceAccountFirewallRulesAreDeletedWithAccount(t *testing.T) {
 	firewallService, userService, db := newFirewallServiceTestServices(t)
@@ -158,6 +234,38 @@ func TestServiceAccountFirewallRulesAreDeletedWithAccount(t *testing.T) {
 	}
 	if count != 0 {
 		t.Fatalf("expected scoped rules to be deleted with account, found %d", count)
+	}
+}
+
+// TestUserFirewallRulesAreDeletedWithUser verifies user firewall rules are deleted with user.
+func TestUserFirewallRulesAreDeletedWithUser(t *testing.T) {
+	firewallService, userService, db := newFirewallServiceTestServices(t)
+	ctx := context.Background()
+
+	user, err := userService.SyncUser(ctx, authIdentity("sub-delete", "delete_user"))
+	if err != nil {
+		t.Fatalf("sync user: %v", err)
+	}
+	if _, err := firewallService.CreateUserRule(ctx, user.ID, CreateRuleInput{
+		Address:  "10.0.0.10",
+		Priority: 1,
+		Action:   ActionAllow,
+		Enabled:  true,
+	}); err != nil {
+		t.Fatalf("create scoped rule: %v", err)
+	}
+	if err := userService.DeleteUser(ctx, user.ID); err != nil {
+		t.Fatalf("delete user: %v", err)
+	}
+
+	var count int64
+	if err := db.Model(&FirewallRule{}).
+		Where("type = ? AND referentiel_id = ?", RuleTypeUser, user.ID).
+		Count(&count).Error; err != nil {
+		t.Fatalf("count scoped rules: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("expected scoped rules to be deleted with user, found %d", count)
 	}
 }
 
@@ -228,5 +336,77 @@ func TestSnapshotUsesServiceAccountOverrideBeforeGlobalRules(t *testing.T) {
 	}
 	if allowed || matched == nil || matched.Action != ActionDeny {
 		t.Fatalf("expected fallback account to use global deny, allowed=%v matched=%#v", allowed, matched)
+	}
+}
+
+// TestSnapshotUsesUserOverrideBeforeGlobalRules verifies snapshot uses user override before global rules.
+func TestSnapshotUsesUserOverrideBeforeGlobalRules(t *testing.T) {
+	firewallService, userService, db := newFirewallServiceTestServices(t)
+	ctx := context.Background()
+
+	overrideProfile, err := userService.SyncUser(ctx, authIdentity("sub-override", "override_user"))
+	if err != nil {
+		t.Fatalf("sync override user: %v", err)
+	}
+	if err := db.WithContext(ctx).
+		Model(&users.User{}).
+		Where("id = ?", overrideProfile.ID).
+		Update("firewall_override_enabled", true).Error; err != nil {
+		t.Fatalf("enable override: %v", err)
+	}
+	fallbackProfile, err := userService.SyncUser(ctx, authIdentity("sub-fallback", "fallback_user"))
+	if err != nil {
+		t.Fatalf("sync fallback user: %v", err)
+	}
+	if _, err := firewallService.CreateRule(ctx, CreateRuleInput{
+		Address:  "203.0.113.10",
+		Priority: 1,
+		Action:   ActionDeny,
+		Enabled:  true,
+	}); err != nil {
+		t.Fatalf("create global deny: %v", err)
+	}
+	if _, err := firewallService.CreateUserRule(ctx, overrideProfile.ID, CreateRuleInput{
+		Address:  "203.0.113.10",
+		Priority: 1,
+		Action:   ActionAllow,
+		Enabled:  true,
+	}); err != nil {
+		t.Fatalf("create scoped allow: %v", err)
+	}
+
+	store := NewSnapshotStore(firewallService)
+	if err := store.Refresh(ctx); err != nil {
+		t.Fatalf("refresh snapshot: %v", err)
+	}
+	overrideProfile, err = userService.UserByID(ctx, overrideProfile.ID)
+	if err != nil {
+		t.Fatalf("reload override profile: %v", err)
+	}
+
+	allowed, matched, err := store.AllowsUser("203.0.113.10", overrideProfile)
+	if err != nil {
+		t.Fatalf("evaluate override profile: %v", err)
+	}
+	if !allowed || matched == nil || matched.UserID != overrideProfile.ID {
+		t.Fatalf("expected scoped allow to override global deny, allowed=%v matched=%#v", allowed, matched)
+	}
+
+	allowed, matched, err = store.AllowsUser("203.0.113.10", fallbackProfile)
+	if err != nil {
+		t.Fatalf("evaluate fallback profile: %v", err)
+	}
+	if allowed || matched == nil || matched.Action != ActionDeny {
+		t.Fatalf("expected fallback user to use global deny, allowed=%v matched=%#v", allowed, matched)
+	}
+}
+
+// authIdentity builds a minimal human auth identity for firewall tests.
+func authIdentity(sub string, username string) auth.Identity {
+	return auth.Identity{
+		Sub:               sub,
+		PreferredUsername: username,
+		Email:             username + "@example.com",
+		Name:              username,
 	}
 }

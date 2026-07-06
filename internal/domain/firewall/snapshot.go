@@ -11,6 +11,7 @@ import (
 type Snapshot struct {
 	Global          []FirewallRule            `json:"global"`
 	ServiceAccounts map[string][]FirewallRule `json:"serviceAccounts"`
+	Users           map[string][]FirewallRule `json:"users"`
 }
 
 type SnapshotStore struct {
@@ -28,19 +29,27 @@ func (s *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 	snapshot := Snapshot{
 		Global:          global,
 		ServiceAccounts: map[string][]FirewallRule{},
+		Users:           map[string][]FirewallRule{},
 	}
 
 	var rules []FirewallRule
 	if err := s.db.WithContext(ctx).
-		Where("type = ? AND enabled = ? AND referentiel_id IS NOT NULL", RuleTypeServiceAccount, true).
+		Where("type IN ? AND enabled = ? AND referentiel_id IS NOT NULL", []RuleType{RuleTypeServiceAccount, RuleTypeUser}, true).
+		Order("type ASC").
 		Order("referentiel_id ASC").
 		Order("priority ASC").
 		Find(&rules).Error; err != nil {
-		return Snapshot{}, fmt.Errorf("list enabled service account firewall rules: %w", err)
+		return Snapshot{}, fmt.Errorf("list enabled scoped firewall rules: %w", err)
 	}
 	for _, rule := range rules {
-		if rule.ReferentielID != nil {
+		if rule.ReferentielID == nil {
+			continue
+		}
+		switch rule.Type {
+		case RuleTypeServiceAccount:
 			snapshot.ServiceAccounts[*rule.ReferentielID] = append(snapshot.ServiceAccounts[*rule.ReferentielID], rule)
+		case RuleTypeUser:
+			snapshot.Users[*rule.ReferentielID] = append(snapshot.Users[*rule.ReferentielID], rule)
 		}
 	}
 
@@ -53,6 +62,7 @@ func NewSnapshotStore(service *Service) *SnapshotStore {
 	store.value.Store(Snapshot{
 		Global:          []FirewallRule{},
 		ServiceAccounts: map[string][]FirewallRule{},
+		Users:           map[string][]FirewallRule{},
 	})
 	return store
 }
@@ -86,7 +96,7 @@ func (s *SnapshotStore) Rules() []FirewallRule {
 func (s *SnapshotStore) Snapshot() Snapshot {
 	snapshot, ok := s.value.Load().(Snapshot)
 	if !ok {
-		return Snapshot{Global: []FirewallRule{}, ServiceAccounts: map[string][]FirewallRule{}}
+		return Snapshot{Global: []FirewallRule{}, ServiceAccounts: map[string][]FirewallRule{}, Users: map[string][]FirewallRule{}}
 	}
 	return cloneSnapshot(snapshot)
 }
@@ -112,19 +122,23 @@ func (s *SnapshotStore) Allows(clientIP string) (bool, *RuleResponse, error) {
 
 // AllowsUser evaluates a client IP against global or scoped rules for a user.
 func (s *SnapshotStore) AllowsUser(clientIP string, user auth.UserProfile) (bool, *RuleResponse, error) {
-	if user.Type == auth.UserTypeService && user.FirewallOverrideEnabled {
-		return s.allowsServiceAccount(clientIP, user.ID)
+	if user.FirewallOverrideEnabled {
+		switch user.Type {
+		case auth.UserTypeService:
+			return s.allowsScoped(clientIP, s.Snapshot().ServiceAccounts[user.ID])
+		case auth.UserTypeUser:
+			return s.allowsScoped(clientIP, s.Snapshot().Users[user.ID])
+		}
 	}
 	return s.Allows(clientIP)
 }
 
-// allowsServiceAccount evaluates scoped rules for one account. No match denies.
-func (s *SnapshotStore) allowsServiceAccount(clientIP string, serviceAccountID string) (bool, *RuleResponse, error) {
+// allowsScoped evaluates scoped rules. No match denies.
+func (s *SnapshotStore) allowsScoped(clientIP string, rules []FirewallRule) (bool, *RuleResponse, error) {
 	addr, err := parseClientAddr(clientIP)
 	if err != nil {
 		return false, nil, err
 	}
-	rules := s.Snapshot().ServiceAccounts[serviceAccountID]
 	for _, record := range rules {
 		matches, err := ruleMatches(record.Address, addr)
 		if err != nil {
@@ -149,9 +163,16 @@ func cloneSnapshot(snapshot Snapshot) Snapshot {
 		copy(cp, rules)
 		serviceAccounts[id] = cp
 	}
+	users := make(map[string][]FirewallRule, len(snapshot.Users))
+	for id, rules := range snapshot.Users {
+		cp := make([]FirewallRule, len(rules))
+		copy(cp, rules)
+		users[id] = cp
+	}
 
 	return Snapshot{
 		Global:          global,
 		ServiceAccounts: serviceAccounts,
+		Users:           users,
 	}
 }

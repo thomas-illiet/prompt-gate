@@ -22,9 +22,9 @@ flowchart TD
     H --> I["firewall.Middleware"]
     I --> J["Extract client IP"]
 
-    J --> K{"Service account user + override enabled?"}
+    J --> K{"User or service account + override enabled?"}
 
-    K -->|Yes| L["Evaluate service-account rules only"]
+    K -->|Yes| L["Evaluate scoped rules only"]
     L --> M{"First matching rule?"}
     M -->|Allow| N["Continue"]
     M -->|Deny| O["403 firewall_denied"]
@@ -47,28 +47,29 @@ flowchart TD
   into the request context.
 - `firewall.Middleware` reads that profile when present and evaluates the client
   IP against the current in-memory snapshot.
-- Service accounts with `firewallOverrideEnabled=true` use only their scoped
-  firewall rules. Rules are evaluated by ascending priority, first match wins,
-  and no match denies the request.
-- Service accounts without override and human users use global firewall rules.
-  Rules are evaluated by ascending priority, first match wins, and no match
-  allows the request.
+- Users and service accounts with `firewallOverrideEnabled=true` use only their
+  scoped firewall rules. Rules are evaluated by ascending priority, first match
+  wins, and no match denies the request.
+- Users and service accounts without override use global firewall rules. Rules
+  are evaluated by ascending priority, first match wins, and no match allows the
+  request.
 - Firewall denials return `403` with `{"error":"firewall_denied"}`.
 
 ## Data Model
 
 - All firewall rules live in the `firewall_rules` table.
 - Global rules use `type=global` and `referentiel_id=NULL`.
+- User rules use `type=user` and `referentiel_id=<user id>`.
 - Service-account rules use `type=service_account` and
   `referentiel_id=<service account user id>`.
-- The API exposes scoped rules with `serviceAccountId`, mapped from
+- The API exposes scoped rules with `userId` or `serviceAccountId`, mapped from
   `referentiel_id`.
 
 ## Package Layout
 
 - `service.go`: service construction, notifier, migrations, shared errors.
 - `global_rules.go`: global firewall rule CRUD and priority moves.
-- `service_account_rules.go`: service-account scoped rule CRUD and priority
+- `service_account_rules.go`: account scoped rule CRUD and priority
   moves.
 - `evaluation.go`: allow/deny evaluation and IP matching.
 - `snapshot.go`: snapshot loading and in-memory snapshot store.
