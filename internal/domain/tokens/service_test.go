@@ -166,11 +166,11 @@ func TestValidateTokenAcceptsActiveUserToken(t *testing.T) {
 	}
 }
 
-// TestCreateTokenAcceptsRequestedTTLWithin365Days verifies create token accepts requested TTL within 365 days.
-func TestCreateTokenAcceptsRequestedTTLWithin365Days(t *testing.T) {
+// TestCreateUserTokenAcceptsRequestedTTLWithin30Days verifies user tokens accept requested TTL within 30 days.
+func TestCreateUserTokenAcceptsRequestedTTLWithin30Days(t *testing.T) {
 	tokenService, _, _, user := newTokenTestServices(t)
 	ctx := context.Background()
-	expiresInDays := 365
+	expiresInDays := 30
 	before := time.Now().UTC().Add(time.Duration(expiresInDays) * 24 * time.Hour)
 
 	created, err := tokenService.CreateToken(ctx, user, "cli", "", &expiresInDays)
@@ -180,19 +180,50 @@ func TestCreateTokenAcceptsRequestedTTLWithin365Days(t *testing.T) {
 
 	after := time.Now().UTC().Add(time.Duration(expiresInDays) * 24 * time.Hour)
 	if created.TokenInfo.ExpiresAt.Before(before) || created.TokenInfo.ExpiresAt.After(after) {
-		t.Fatalf("expected expiration around 365 days from now, got %v", created.TokenInfo.ExpiresAt)
+		t.Fatalf("expected expiration around 30 days from now, got %v", created.TokenInfo.ExpiresAt)
 	}
 }
 
-// TestCreateTokenRejectsRequestedTTLOutsideRange verifies create token rejects requested TTL outside range.
-func TestCreateTokenRejectsRequestedTTLOutsideRange(t *testing.T) {
+// TestCreateUserTokenRejectsRequestedTTLOutsideRange verifies user tokens reject requested TTL outside range.
+func TestCreateUserTokenRejectsRequestedTTLOutsideRange(t *testing.T) {
 	tokenService, _, _, user := newTokenTestServices(t)
 	ctx := context.Background()
 
-	for _, days := range []int{0, -1, 366} {
+	for _, days := range []int{0, -1, 31, 366} {
 		if _, err := tokenService.CreateToken(ctx, user, "cli", "", &days); !errors.Is(err, ErrInvalidTTL) {
 			t.Fatalf("expected ErrInvalidTTL for %d days, got %v", days, err)
 		}
+	}
+}
+
+// TestCreateServiceAccountTokenAcceptsRequestedTTLWithin365Days verifies service accounts keep the 365 day limit.
+func TestCreateServiceAccountTokenAcceptsRequestedTTLWithin365Days(t *testing.T) {
+	tokenService, userService, _, _ := newTokenTestServices(t)
+	ctx := context.Background()
+
+	account, err := userService.CreateServiceAccount(ctx, users.ServiceAccountInput{
+		Identifier: "worker",
+		Name:       "Worker",
+		IsActive:   true,
+	})
+	if err != nil {
+		t.Fatalf("create service account: %v", err)
+	}
+	profile, err := userService.ServiceAccountProfile(ctx, account.ID)
+	if err != nil {
+		t.Fatalf("load service account profile: %v", err)
+	}
+	expiresInDays := 365
+	before := time.Now().UTC().Add(time.Duration(expiresInDays) * 24 * time.Hour)
+
+	created, err := tokenService.CreateToken(ctx, profile, "worker_token", "", &expiresInDays)
+	if err != nil {
+		t.Fatalf("create service account token: %v", err)
+	}
+
+	after := time.Now().UTC().Add(time.Duration(expiresInDays) * 24 * time.Hour)
+	if created.TokenInfo.ExpiresAt.Before(before) || created.TokenInfo.ExpiresAt.After(after) {
+		t.Fatalf("expected expiration around 365 days from now, got %v", created.TokenInfo.ExpiresAt)
 	}
 }
 

@@ -86,7 +86,10 @@ function mountPage() {
   return mount(TokensPage, {
     global: {
       stubs: {
-        AppTokenCreateDialog: true,
+        AppTokenCreateDialog: {
+          props: ['maxLifetime'],
+          template: '<div data-test="create-dialog" :data-max-lifetime="String(maxLifetime)" />',
+        },
         AppConfirmDialog: true,
         UserTokenCreatedDialog: true,
         UserTokenTable: true,
@@ -149,5 +152,13 @@ describe('TokensPage', () => {
 
     await wrapper.get('[data-test="set-all"]').trigger('click')
     expect(wrapper.get('[data-test="hero-stat"]').text()).toBe('6 all')
+  })
+
+  it('limits user-created virtual keys to 30 days', () => {
+    const wrapper = mountPage()
+
+    expect(wrapper.get('[data-test="create-dialog"]').attributes()).toMatchObject({
+      'data-max-lifetime': '30',
+    })
   })
 })

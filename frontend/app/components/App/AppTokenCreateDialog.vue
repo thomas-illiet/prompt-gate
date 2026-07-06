@@ -5,6 +5,7 @@ const props = withDefaults(
   defineProps<{
     defaultLifetime?: number
     loading: boolean
+    maxLifetime?: number
     maxWidth?: number | string
     namePlaceholder?: string
     submitIcon?: string
@@ -14,6 +15,7 @@ const props = withDefaults(
   }>(),
   {
     defaultLifetime: 30,
+    maxLifetime: 365,
     maxWidth: 760,
     namePlaceholder: 'personal_cli',
     submitIcon: 'mdi-plus',
@@ -52,6 +54,7 @@ watch(isOpen, (open) => {
       :default-lifetime="props.defaultLifetime"
       :inline="false"
       :loading="props.loading"
+      :max-lifetime="props.maxLifetime"
       :name-placeholder="props.namePlaceholder"
       :submit-icon="props.submitIcon"
       :submit-label="props.submitLabel"

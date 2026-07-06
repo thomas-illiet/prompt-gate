@@ -26,13 +26,16 @@ var (
 	ErrAccountInactive  = errors.New("account inactive")
 	ErrInsufficientRole = errors.New("insufficient role")
 	ErrInvalidName      = errors.New("name must be lowercase alphanumeric with dashes or underscores, max 64 chars")
-	ErrInvalidTTL       = errors.New("expires_in_days must be between 1 and 365")
+	ErrInvalidTTL       = errors.New("expires_in_days is outside the allowed range")
 	ErrInvalidSort      = errors.New("invalid_sort")
 )
 
 var nameRegexp = regexp.MustCompile(`^[a-z0-9_-]{1,64}$`)
 
-const maxTokenTTLInDays = 365
+const (
+	maxUserTokenTTLInDays           = 30
+	maxServiceAccountTokenTTLInDays = 365
+)
 const tokenSearchCondition = "LOWER(name) LIKE ? OR LOWER(description) LIKE ? OR LOWER(CAST(id AS TEXT)) LIKE ?"
 
 type Service struct {
@@ -94,12 +97,20 @@ func ttlForRole(role auth.AppRole) time.Duration {
 	return 7 * 24 * time.Hour
 }
 
-// ttlFromRequest returns the requested token lifetime or the role default.
-func ttlFromRequest(role auth.AppRole, expiresInDays *int) (time.Duration, error) {
-	if expiresInDays == nil {
-		return ttlForRole(role), nil
+// maxTTLInDaysForUser returns the maximum requested token lifetime for an account type.
+func maxTTLInDaysForUser(user auth.UserProfile) int {
+	if user.Type == auth.UserTypeService {
+		return maxServiceAccountTokenTTLInDays
 	}
-	if *expiresInDays < 1 || *expiresInDays > maxTokenTTLInDays {
+	return maxUserTokenTTLInDays
+}
+
+// ttlFromRequest returns the requested token lifetime or the role default.
+func ttlFromRequest(user auth.UserProfile, expiresInDays *int) (time.Duration, error) {
+	if expiresInDays == nil {
+		return ttlForRole(user.Role), nil
+	}
+	if *expiresInDays < 1 || *expiresInDays > maxTTLInDaysForUser(user) {
 		return 0, ErrInvalidTTL
 	}
 
@@ -117,7 +128,7 @@ func (s *Service) CreateToken(ctx context.Context, user auth.UserProfile, name, 
 	if !nameRegexp.MatchString(name) {
 		return CreateTokenResponse{}, ErrInvalidName
 	}
-	ttl, err := ttlFromRequest(user.Role, expiresInDays)
+	ttl, err := ttlFromRequest(user, expiresInDays)
 	if err != nil {
 		return CreateTokenResponse{}, err
 	}

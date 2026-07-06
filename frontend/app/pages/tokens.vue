@@ -3,6 +3,7 @@ import UserTokenCreatedDialog from '~/components/UserTokens/UserTokenCreatedDial
 import UserTokenFilters from '~/components/UserTokens/UserTokenFilters.vue'
 import UserTokenTable from '~/components/UserTokens/UserTokenTable.vue'
 import type { UserToken, UserTokenPayload } from '~/types/user-service'
+import { USER_TOKEN_MAX_LIFETIME_DAYS } from '~/utils/user-tokens'
 
 definePageMeta({
   icon: 'mdi-key-outline',
@@ -100,6 +101,7 @@ async function confirmRevoke() {
     <AppTokenCreateDialog
       v-model="createDialogOpen"
       :loading="userTokens.saving.value"
+      :max-lifetime="USER_TOKEN_MAX_LIFETIME_DAYS"
       @create="createToken"
     />
 

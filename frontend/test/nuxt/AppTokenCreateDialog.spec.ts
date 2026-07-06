@@ -8,6 +8,7 @@ function mountDialog() {
     props: {
       defaultLifetime: 365,
       loading: false,
+      maxLifetime: 365,
       maxWidth: 700,
       modelValue: true,
       namePlaceholder: 'ci_token',
@@ -54,12 +55,13 @@ function mountDialog() {
           props: [
             'disabled',
             'label',
+            'max',
             'modelValue',
             'placeholder',
             'type',
           ],
           template:
-            '<input :data-test="label" :disabled="disabled" :placeholder="placeholder" :type="type || \'text\'" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />',
+            '<input :data-test="label" :disabled="disabled" :max="max" :placeholder="placeholder" :type="type || \'text\'" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />',
         },
       },
     },
@@ -84,6 +86,7 @@ describe('AppTokenCreateDialog', () => {
       'value',
       '365',
     )
+    expect(wrapper.get('[data-test="Lifetime"]').attributes('max')).toBe('365')
     expect(wrapper.get('[data-test="submit"]').attributes()).toMatchObject({
       'data-icon': 'mdi-key-plus',
     })

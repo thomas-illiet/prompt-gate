@@ -7,13 +7,16 @@ import type {
   UserTokenStatusFilter,
 } from '~/types/user-service'
 import { toApiErrorMessage } from '~/utils/api-error'
-import { userTokenStatus } from '~/utils/user-tokens'
+import {
+  USER_TOKEN_MAX_LIFETIME_DAYS,
+  userTokenStatus,
+} from '~/utils/user-tokens'
 
 const ERROR_MESSAGES = {
   invalid_sort: 'Selected virtual key sort is invalid.',
   invalid_token_name:
     'Virtual key name must use lowercase letters, numbers, dashes, or underscores.',
-  invalid_token_ttl: 'Virtual key lifetime must be between 1 and 365 days.',
+  invalid_token_ttl: `Virtual key lifetime must be between 1 and ${USER_TOKEN_MAX_LIFETIME_DAYS} days.`,
   token_not_found: 'Virtual key no longer exists.',
 }
 

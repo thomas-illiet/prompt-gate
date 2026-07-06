@@ -5,12 +5,15 @@ export interface AppTokenCreatePayload {
   name: string
 }
 
+const DEFAULT_MAX_LIFETIME_DAYS = 365
+
 const props = withDefaults(
   defineProps<{
     autofocus?: boolean
     defaultLifetime?: number
     inline?: boolean
     loading: boolean
+    maxLifetime?: number
     namePlaceholder?: string
     submitIcon?: string
     submitLabel?: string
@@ -19,6 +22,7 @@ const props = withDefaults(
     autofocus: false,
     defaultLifetime: 30,
     inline: true,
+    maxLifetime: DEFAULT_MAX_LIFETIME_DAYS,
     namePlaceholder: 'personal_cli',
     submitIcon: 'mdi-plus',
     submitLabel: 'Generate key',
@@ -36,7 +40,7 @@ const isInvalid = computed(
   () =>
     tokenName.value.trim().length === 0 ||
     Number(expiresInDays.value) < 1 ||
-    Number(expiresInDays.value) > 365,
+    Number(expiresInDays.value) > props.maxLifetime,
 )
 
 watch(
@@ -102,7 +106,7 @@ defineExpose({ reset })
       suffix="days"
       type="number"
       min="1"
-      max="365"
+      :max="props.maxLifetime"
       prepend-inner-icon="mdi-calendar-clock"
       variant="outlined"
       density="comfortable"

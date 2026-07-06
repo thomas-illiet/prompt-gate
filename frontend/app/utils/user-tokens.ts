@@ -1,5 +1,7 @@
 import type { UserToken, UserTokenStatus } from '~/types/user-service'
 
+export const USER_TOKEN_MAX_LIFETIME_DAYS = 30
+
 // userTokenStatus derives the current status for a user token.
 export function userTokenStatus(
   token: UserToken,

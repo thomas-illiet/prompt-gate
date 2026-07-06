@@ -165,7 +165,7 @@ describe('useUserTokens', () => {
       'Virtual key name must use lowercase letters, numbers, dashes, or underscores.',
     )
     expect(toUserTokenErrorMessage(apiError('invalid_token_ttl'))).toBe(
-      'Virtual key lifetime must be between 1 and 365 days.',
+      'Virtual key lifetime must be between 1 and 30 days.',
     )
   })
 })
