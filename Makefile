@@ -30,7 +30,7 @@ export PROMPTGATE_USAGE_RAW_RETENTION="$${PROMPTGATE_USAGE_RAW_RETENTION:-2160h}
 export PROMPTGATE_USAGE_RAW_CLEANUP_INTERVAL="$${PROMPTGATE_USAGE_RAW_CLEANUP_INTERVAL:-1h}"
 endef
 
-.PHONY: help all deps fmt fmt-check vet test build clean migrate run-api run-proxy run-worker run-schedule run-all
+.PHONY: help all deps fmt fmt-check vet staticcheck test build clean migrate run-api run-proxy run-worker run-schedule run-all
 
 help: ## Show available targets.
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z0-9_-]+:.*##/ {printf "  %-12s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -52,6 +52,9 @@ fmt-check: ## Check Go file formatting.
 
 vet: ## Run go vet.
 	$(GO) vet $(GO_PACKAGES)
+
+staticcheck: ## Run Staticcheck.
+	$(GO) tool staticcheck $(GO_PACKAGES)
 
 test: ## Run tests.
 	$(GO) test $(GO_PACKAGES)

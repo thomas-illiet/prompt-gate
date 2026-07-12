@@ -57,6 +57,7 @@ Install dependencies and run checks:
 make deps
 make fmt-check
 make vet
+make staticcheck
 make test
 make build
 ```
@@ -103,6 +104,7 @@ for ports, base URLs, CORS, session name, and interval values.
 | `make fmt` | Format Go files. |
 | `make fmt-check` | Check Go formatting without rewriting files. |
 | `make vet` | Run `go vet`. |
+| `make staticcheck` | Run the pinned Staticcheck version. |
 | `make test` | Run backend tests. |
 | `make build` | Build `bin/promptgate`. |
 | `make migrate` | Run database migrations. |
@@ -143,6 +145,7 @@ Before opening a pull request:
 ```sh
 make fmt-check
 make vet
+make staticcheck
 make test
 docker compose config --quiet
 docker build -t prompt-gate-backend:test .
