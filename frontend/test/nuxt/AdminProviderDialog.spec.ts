@@ -25,6 +25,9 @@ function mountDialog(providerOverride: Provider | null = provider) {
     },
     global: {
       stubs: {
+        AppDialogCard: {
+          template: '<section><slot /><footer><slot name="actions" /></footer></section>',
+        },
         AppDialogActionButton: {
           props: ['label', 'loading', 'type'],
           template:

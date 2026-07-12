@@ -3,6 +3,7 @@ const props = withDefaults(
   defineProps<{
     color?: string
     disabled?: boolean
+    form?: string
     label: string
     loading?: boolean
     prependIcon?: string
@@ -13,6 +14,7 @@ const props = withDefaults(
   {
     color: 'primary',
     disabled: false,
+    form: '',
     loading: false,
     prependIcon: '',
     ariaLabel: '',
@@ -30,6 +32,7 @@ const emit = defineEmits<{
   <v-btn
     :color="props.color"
     :disabled="props.disabled"
+    :form="props.form || undefined"
     :loading="props.loading"
     :prepend-icon="props.prependIcon || undefined"
     :aria-label="props.ariaLabel || props.label"

@@ -15,6 +15,11 @@ function mountDialog(props = {}) {
     },
     global: {
       stubs: {
+        AppDialogCard: {
+          props: ['loading', 'persistent'],
+          template:
+            '<section data-test="dialog" :data-persistent="loading || persistent"><slot /><footer><slot name="actions" /></footer></section>',
+        },
         AppDialogActionButton: {
           emits: ['click'],
           props: ['label', 'loading'],
@@ -27,17 +32,6 @@ function mountDialog(props = {}) {
           template:
             '<button data-test="cancel" :disabled="disabled" @click="$emit(\'click\')">{{ label }}</button>',
         },
-        VCard: { template: '<section><slot /></section>' },
-        VCardActions: { template: '<footer><slot /></footer>' },
-        VCardText: { template: '<main><slot /></main>' },
-        VCardTitle: { template: '<header><slot /></header>' },
-        VDialog: {
-          props: ['maxWidth', 'modelValue', 'persistent'],
-          template:
-            '<div data-test="dialog" :data-persistent="persistent"><slot /></div>',
-        },
-        VIcon: { template: '<i />' },
-        VSpacer: { template: '<span />' },
       },
     },
   })

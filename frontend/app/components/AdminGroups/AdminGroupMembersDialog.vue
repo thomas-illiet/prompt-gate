@@ -92,21 +92,7 @@ function addMember() {
 </script>
 
 <template>
-  <v-dialog v-model="isOpen" max-width="760" :persistent="props.loading">
-    <v-card rounded="xl" class="admin-group-members-dialog">
-      <v-card-item class="px-6 pt-6 pb-2">
-        <template #prepend>
-          <v-avatar color="primary" variant="tonal" size="44">
-            <v-icon icon="mdi-account-multiple-plus-outline" />
-          </v-avatar>
-        </template>
-        <v-card-title class="text-h6">{{ title }}</v-card-title>
-        <v-card-subtitle>
-          Add users or service accounts to this access group.
-        </v-card-subtitle>
-      </v-card-item>
-
-      <v-card-text class="px-6 pb-2">
+  <AppDialogCard v-model="isOpen" icon="mdi-account-multiple-plus-outline" :loading="props.loading" max-width="760" subtitle="Add users or service accounts to this access group." :title="title">
         <div class="admin-group-members-dialog__add">
           <v-autocomplete
             v-model="selectedMemberId"
@@ -140,10 +126,7 @@ function addMember() {
           :members="members"
           @remove="emit('remove', $event)"
         />
-      </v-card-text>
-
-      <v-card-actions class="px-6 pb-6">
-        <v-spacer />
+      <template #actions>
         <v-btn
           color="primary"
           variant="tonal"
@@ -154,17 +137,12 @@ function addMember() {
         >
           Refresh
         </v-btn>
-        <AppDialogCloseButton label="Close" @click="isOpen = false" />
-      </v-card-actions>
-    </v-card>
-  </v-dialog>
+        <AppDialogCloseButton :disabled="props.loading" label="Close" @click="isOpen = false" />
+      </template>
+  </AppDialogCard>
 </template>
 
 <style scoped>
-.admin-group-members-dialog {
-  border: 1px solid rgba(var(--app-shell-border), 0.45);
-}
-
 .admin-group-members-dialog__add {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

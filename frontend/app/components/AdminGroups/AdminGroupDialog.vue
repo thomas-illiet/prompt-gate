@@ -122,6 +122,7 @@ const canSave = computed(
     !providerError.value &&
     !regexError.value,
 )
+const formId = useId()
 const canValidateModels = computed(
   () =>
     (uniqueNormalizedPatterns.value.length > 0 ||
@@ -245,14 +246,8 @@ function validateModels() {
 </script>
 
 <template>
-  <v-dialog v-model="isOpen" max-width="720" :persistent="props.loading">
-    <v-card rounded="xl" class="admin-group-dialog">
-      <v-card-title class="pt-6 px-6 text-h6">
-        {{ title }}
-      </v-card-title>
-
-      <form class="admin-group-dialog__form" @submit.prevent="save">
-        <v-card-text class="px-6 pb-2">
+  <AppDialogCard v-model="isOpen" icon="mdi-account-group-outline" :loading="props.loading" max-width="720" subtitle="Configure provider access and the model patterns available to this group." :title="title">
+      <form :id="formId" @submit.prevent="save">
           <v-row>
             <v-col cols="12" md="6">
               <v-text-field
@@ -371,21 +366,18 @@ function validateModels() {
               </v-alert>
             </v-col>
           </v-row>
-        </v-card-text>
-
-        <v-card-actions class="px-6 pb-6">
-          <v-spacer />
-          <AppDialogCloseButton label="Cancel" @click="isOpen = false" />
+      </form>
+      <template #actions>
+          <AppDialogCloseButton :disabled="props.loading" label="Cancel" @click="isOpen = false" />
           <AppDialogActionButton
             color="primary"
+            :form="formId"
             :label="submitLabel"
             type="submit"
             :loading="props.loading"
           />
-        </v-card-actions>
-      </form>
-    </v-card>
-  </v-dialog>
+      </template>
+  </AppDialogCard>
 </template>
 
 <style scoped>

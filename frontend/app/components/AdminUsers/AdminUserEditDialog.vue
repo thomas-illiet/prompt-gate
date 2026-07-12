@@ -21,6 +21,7 @@ const selectedPlanId = shallowRef<string | null>(null)
 const isActive = shallowRef(true)
 const expiresAt = shallowRef('')
 const accessForm = shallowRef<HTMLFormElement | null>(null)
+const formId = useId()
 
 const roleOptions = computed(() =>
   APP_ROLES.map((role) => ({
@@ -119,29 +120,15 @@ function toISOStringOrNull(value: string) {
 </script>
 
 <template>
-  <v-dialog v-model="isOpen" max-width="620" :persistent="props.loading">
-    <v-card rounded="xl" class="admin-users-dialog">
-      <v-card-item class="px-6 pt-6 pb-2">
-        <template #prepend>
-          <v-avatar color="primary" variant="tonal" size="44">
-            <v-icon icon="mdi-account-cog-outline" />
-          </v-avatar>
-        </template>
-
-        <v-card-title class="text-h6">Update user access</v-card-title>
-        <v-card-subtitle>
-          Review identity and adjust application authorization.
-        </v-card-subtitle>
-      </v-card-item>
-
+  <AppDialogCard v-model="isOpen" icon="mdi-account-cog-outline" :loading="props.loading" max-width="620" subtitle="Review this identity and adjust its application access." title="Update user access">
       <form
+        :id="formId"
         ref="accessForm"
-        class="admin-users-dialog__form"
         @submit.prevent="save"
       >
-        <v-card-text
+        <div
           v-if="props.user"
-          class="admin-users-dialog__body px-6 pb-2"
+          class="admin-users-dialog__body"
         >
           <v-sheet rounded="lg" border class="admin-users-dialog__identity">
             <v-list bg-color="transparent" density="comfortable" lines="two">
@@ -229,37 +216,23 @@ function toISOStringOrNull(value: string) {
             >
             <span>Created: {{ formatDateTime(props.user.createdAt) }}</span>
           </div>
-        </v-card-text>
+        </div>
+      </form>
 
-        <v-card-actions class="px-6 pb-6">
-          <v-spacer />
-          <AppDialogCloseButton label="Cancel" @click="isOpen = false" />
+      <template #actions>
+          <AppDialogCloseButton :disabled="props.loading" label="Cancel" @click="isOpen = false" />
           <AppDialogActionButton
             color="primary"
+            :form="formId"
             label="Save access"
             type="submit"
             :loading="props.loading"
           />
-        </v-card-actions>
-      </form>
-    </v-card>
-  </v-dialog>
+      </template>
+  </AppDialogCard>
 </template>
 
 <style scoped>
-.admin-users-dialog {
-  border: 1px solid rgba(var(--app-shell-border), 0.45);
-  background: linear-gradient(
-    180deg,
-    rgb(var(--app-shell-surface)) 0%,
-    rgb(var(--app-shell-surface-muted)) 100%
-  );
-}
-
-.admin-users-dialog__form {
-  display: contents;
-}
-
 .admin-users-dialog__body {
   display: grid;
   gap: 20px;

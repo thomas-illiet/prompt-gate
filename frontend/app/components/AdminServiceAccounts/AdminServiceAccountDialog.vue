@@ -27,6 +27,7 @@ const title = computed(() =>
 const submitLabel = computed(() =>
   props.account ? 'Save account' : 'Create account',
 )
+const formId = useId()
 const subscriptionPlanOptions = computed(() => [
   { title: 'Inherit default', value: null },
   ...props.subscriptionPlans.map((plan) => ({
@@ -69,20 +70,9 @@ function save() {
 </script>
 
 <template>
-  <v-dialog v-model="isOpen" max-width="620" :persistent="props.loading">
-    <v-card rounded="xl" class="service-account-dialog">
-      <v-card-item class="px-6 pt-6 pb-2">
-        <template #prepend>
-          <v-avatar color="primary" variant="tonal" size="44">
-            <v-icon icon="mdi-robot-outline" />
-          </v-avatar>
-        </template>
-
-        <v-card-title class="text-h6">{{ title }}</v-card-title>
-      </v-card-item>
-
-      <form class="service-account-dialog__form" @submit.prevent="save">
-        <v-card-text class="service-account-dialog__body px-6 pb-2">
+  <AppDialogCard v-model="isOpen" icon="mdi-robot-outline" :loading="props.loading" max-width="620" subtitle="Configure a non-human identity and its subscription plan." :title="title">
+      <form :id="formId" @submit.prevent="save">
+        <div class="service-account-dialog__body">
           <v-text-field
             v-model="identifier"
             label="Identifier"
@@ -113,37 +103,23 @@ function save() {
             density="comfortable"
             :disabled="props.loading"
           />
-        </v-card-text>
+        </div>
+      </form>
 
-        <v-card-actions class="px-6 pb-6">
-          <v-spacer />
-          <AppDialogCloseButton label="Cancel" @click="isOpen = false" />
+      <template #actions>
+          <AppDialogCloseButton :disabled="props.loading" label="Cancel" @click="isOpen = false" />
           <AppDialogActionButton
             color="primary"
+            :form="formId"
             :label="submitLabel"
             type="submit"
             :loading="props.loading"
           />
-        </v-card-actions>
-      </form>
-    </v-card>
-  </v-dialog>
+      </template>
+  </AppDialogCard>
 </template>
 
 <style scoped>
-.service-account-dialog {
-  border: 1px solid rgba(var(--app-shell-border), 0.45);
-  background: linear-gradient(
-    180deg,
-    rgb(var(--app-shell-surface)) 0%,
-    rgb(var(--app-shell-surface-muted)) 100%
-  );
-}
-
-.service-account-dialog__form {
-  display: contents;
-}
-
 .service-account-dialog__body {
   display: grid;
   gap: 16px;

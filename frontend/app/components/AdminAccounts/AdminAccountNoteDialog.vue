@@ -36,6 +36,7 @@ const displayIdentifier = computed(() => {
 })
 const noteLength = computed(() => Array.from(draftNote.value).length)
 const isNoteTooLong = computed(() => noteLength.value > maxNoteLength)
+const formId = useId()
 const noteErrors = computed(() =>
   isNoteTooLong.value ? ['Notes must be 2,000 characters or fewer.'] : [],
 )
@@ -59,23 +60,11 @@ function save() {
 </script>
 
 <template>
-  <v-dialog v-model="isOpen" max-width="640" :persistent="props.loading">
-    <v-card rounded="xl" class="admin-account-note-dialog">
-      <v-card-item class="px-6 pt-6 pb-2">
-        <template #prepend>
-          <v-avatar color="primary" variant="tonal" size="44">
-            <v-icon icon="mdi-note-edit-outline" />
-          </v-avatar>
-        </template>
-
-        <v-card-title class="text-h6">Account notes</v-card-title>
-        <v-card-subtitle>{{ displayName }}</v-card-subtitle>
-      </v-card-item>
-
-      <form class="admin-account-note-dialog__form" @submit.prevent="save">
-        <v-card-text
+  <AppDialogCard v-model="isOpen" icon="mdi-note-edit-outline" :loading="props.loading" max-width="640" :subtitle="`Keep internal context about ${displayName}.`" title="Account notes">
+      <form :id="formId" @submit.prevent="save">
+        <div
           v-if="props.account"
-          class="admin-account-note-dialog__body px-6 pb-2"
+          class="admin-account-note-dialog__body"
         >
           <v-sheet
             rounded="lg"
@@ -105,38 +94,24 @@ function save() {
             variant="outlined"
             :error-messages="noteErrors"
           />
-        </v-card-text>
+        </div>
+      </form>
 
-        <v-card-actions class="px-6 pb-6">
-          <v-spacer />
-          <AppDialogCloseButton label="Cancel" @click="isOpen = false" />
+      <template #actions>
+          <AppDialogCloseButton :disabled="props.loading" label="Cancel" @click="isOpen = false" />
           <AppDialogActionButton
             color="primary"
+            :form="formId"
             label="Save note"
             type="submit"
             :disabled="!props.account || isNoteTooLong"
             :loading="props.loading"
           />
-        </v-card-actions>
-      </form>
-    </v-card>
-  </v-dialog>
+      </template>
+  </AppDialogCard>
 </template>
 
 <style scoped>
-.admin-account-note-dialog {
-  border: 1px solid rgba(var(--app-shell-border), 0.45);
-  background: linear-gradient(
-    180deg,
-    rgb(var(--app-shell-surface)) 0%,
-    rgb(var(--app-shell-surface-muted)) 100%
-  );
-}
-
-.admin-account-note-dialog__form {
-  display: contents;
-}
-
 .admin-account-note-dialog__body {
   display: grid;
   gap: 20px;

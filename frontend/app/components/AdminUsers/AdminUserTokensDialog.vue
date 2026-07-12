@@ -99,20 +99,7 @@ function tokenStatusDisplayColor(token: UserToken) {
 </script>
 
 <template>
-  <v-dialog v-model="isOpen" max-width="980" :persistent="props.saving">
-    <v-card rounded="xl" class="admin-user-tokens-dialog app-surface-gradient">
-      <v-card-item class="px-6 pt-6 pb-2">
-        <template #prepend>
-          <v-avatar color="primary" variant="tonal" size="44">
-            <v-icon icon="mdi-key-chain" />
-          </v-avatar>
-        </template>
-
-        <v-card-title class="text-h6">{{ title }}</v-card-title>
-        <v-card-subtitle>{{ subtitle }}</v-card-subtitle>
-      </v-card-item>
-
-      <v-card-text class="admin-user-tokens-dialog__body px-6 pt-4 pb-2">
+  <AppDialogCard v-model="isOpen" content-class="admin-user-tokens-dialog__body" icon="mdi-key-chain" :loading="props.saving" max-width="980" :subtitle="subtitle" :title="title">
         <div class="admin-user-tokens-dialog__toolbar">
           <div class="admin-user-tokens-dialog__heading">
             <v-avatar color="primary" variant="tonal" size="36">
@@ -216,24 +203,18 @@ function tokenStatusDisplayColor(token: UserToken) {
             </div>
           </template>
         </AppServerDataTable>
-      </v-card-text>
+      
 
-      <v-card-actions class="px-6 pb-6">
-        <v-spacer />
+      <template #actions>
         <AppDialogCloseButton
           :disabled="props.saving"
           @click="isOpen = false"
         />
-      </v-card-actions>
-    </v-card>
-  </v-dialog>
+      </template>
+  </AppDialogCard>
 </template>
 
 <style scoped>
-.admin-user-tokens-dialog {
-  border: 1px solid rgba(var(--app-shell-border), 0.45);
-}
-
 .admin-user-tokens-dialog__body {
   display: grid;
   gap: 16px;

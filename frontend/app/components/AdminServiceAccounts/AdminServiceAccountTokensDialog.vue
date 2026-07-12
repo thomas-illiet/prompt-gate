@@ -83,25 +83,7 @@ function canRevoke(token: TokenResponse) {
 </script>
 
 <template>
-  <v-dialog v-model="isOpen" max-width="980" :persistent="props.saving">
-    <v-card rounded="xl" class="admin-service-account-tokens-dialog">
-      <v-card-item class="px-6 pt-6 pb-2">
-        <template #prepend>
-          <v-avatar color="primary" variant="tonal" size="44">
-            <v-icon icon="mdi-key-chain" />
-          </v-avatar>
-        </template>
-
-        <v-card-title class="text-h6">{{ title }}</v-card-title>
-        <v-card-subtitle>
-          Virtual keys are shown here after creation; raw key value appears
-          once.
-        </v-card-subtitle>
-      </v-card-item>
-
-      <v-card-text
-        class="admin-service-account-tokens-dialog__body px-6 pt-4 pb-2"
-      >
+  <AppDialogCard v-model="isOpen" content-class="admin-service-account-tokens-dialog__body" icon="mdi-key-chain" :loading="props.saving" max-width="980" subtitle="Manage virtual keys for this service account. Raw key values are shown only once." :title="title">
         <div class="admin-service-account-tokens-dialog__table">
           <div class="admin-service-account-tokens-dialog__table-header">
             <div class="admin-service-account-tokens-dialog__table-heading">
@@ -228,29 +210,18 @@ function canRevoke(token: TokenResponse) {
             </AppServerDataTable>
           </div>
         </div>
-      </v-card-text>
+      
 
-      <v-card-actions class="px-6 pb-6">
-        <v-spacer />
+      <template #actions>
         <AppDialogCloseButton
           :disabled="props.saving"
           @click="isOpen = false"
         />
-      </v-card-actions>
-    </v-card>
-  </v-dialog>
+      </template>
+  </AppDialogCard>
 </template>
 
 <style scoped>
-.admin-service-account-tokens-dialog {
-  border: 1px solid rgba(var(--app-shell-border), 0.45);
-  background: linear-gradient(
-    180deg,
-    rgb(var(--app-shell-surface)) 0%,
-    rgb(var(--app-shell-surface-muted)) 100%
-  );
-}
-
 .admin-service-account-tokens-dialog__body {
   display: grid;
   gap: 16px;

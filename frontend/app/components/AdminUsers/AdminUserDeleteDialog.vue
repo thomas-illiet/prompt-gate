@@ -72,24 +72,10 @@ function confirm() {
 </script>
 
 <template>
-  <v-dialog v-model="isOpen" max-width="560" :persistent="props.loading">
-    <v-card rounded="xl" class="admin-users-delete-dialog">
-      <v-card-item class="px-6 pt-6 pb-2">
-        <template #prepend>
-          <v-avatar color="error" variant="tonal" size="44">
-            <v-icon icon="mdi-delete-alert-outline" />
-          </v-avatar>
-        </template>
-
-        <v-card-title class="text-h6">Delete user</v-card-title>
-        <v-card-subtitle>
-          Confirm the local account removal for {{ displayName }}.
-        </v-card-subtitle>
-      </v-card-item>
-
-      <v-card-text
+  <AppDialogCard v-model="isOpen" icon="mdi-delete-alert-outline" icon-color="error" :loading="props.loading" max-width="560" :subtitle="`Permanently remove the local account for ${displayName}. This cannot be undone.`" title="Delete user">
+      <div
         v-if="props.user"
-        class="admin-users-delete-dialog__body px-6"
+        class="admin-users-delete-dialog__body"
       >
         <v-sheet rounded="lg" border class="admin-users-delete-dialog__identity">
           <v-list bg-color="transparent" density="comfortable" lines="two">
@@ -133,10 +119,9 @@ function confirm() {
           @update:model-value="hasInteracted = true"
           @keydown.enter.prevent="confirm"
         />
-      </v-card-text>
+      </div>
 
-      <v-card-actions class="px-6 pb-6 pt-2">
-        <v-spacer />
+      <template #actions>
         <AppDialogCloseButton
           :disabled="props.loading"
           label="Cancel"
@@ -149,21 +134,11 @@ function confirm() {
           :loading="props.loading"
           @click="confirm"
         />
-      </v-card-actions>
-    </v-card>
-  </v-dialog>
+      </template>
+  </AppDialogCard>
 </template>
 
 <style scoped>
-.admin-users-delete-dialog {
-  border: 1px solid rgba(var(--app-shell-border), 0.45);
-  background: linear-gradient(
-    180deg,
-    rgb(var(--app-shell-surface)) 0%,
-    rgb(var(--app-shell-surface-muted)) 100%
-  );
-}
-
 .admin-users-delete-dialog__body {
   display: grid;
   gap: 20px;

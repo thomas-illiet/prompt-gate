@@ -48,6 +48,9 @@ function mountDialog(price: ModelPriceRecord | null = null) {
     },
     global: {
       stubs: {
+        AppDialogCard: {
+          template: '<section><slot /><footer><slot name="actions" /></footer></section>',
+        },
         AppDialogActionButton: {
           props: ['label', 'loading', 'type'],
           template:

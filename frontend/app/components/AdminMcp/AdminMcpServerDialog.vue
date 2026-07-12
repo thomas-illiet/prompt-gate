@@ -77,6 +77,7 @@ const canSave = computed(
     !regexError(denyPattern.value) &&
     headers.value.every((header) => !headerError(header)),
 )
+const formId = useId()
 
 watch(
   [isOpen, () => props.server],
@@ -169,14 +170,8 @@ function save() {
 </script>
 
 <template>
-  <v-dialog v-model="isOpen" max-width="920" :persistent="props.loading">
-    <v-card rounded="xl" class="admin-mcp-dialog">
-      <v-card-title class="pt-6 px-6 text-h6">
-        {{ title }}
-      </v-card-title>
-
-      <form class="admin-mcp-dialog__form" @submit.prevent="save">
-        <v-card-text class="px-6 pb-2">
+  <AppDialogCard v-model="isOpen" icon="mdi-server-network-outline" :loading="props.loading" max-width="920" subtitle="Configure the endpoint, tool filters, and request headers for this MCP server." :title="title">
+      <form :id="formId" @submit.prevent="save">
           <v-row>
             <v-col cols="12" md="6">
               <v-text-field
@@ -246,21 +241,18 @@ function save() {
               <AdminMcpHeaderRows v-model="headers" :errors="headerErrors" />
             </v-col>
           </v-row>
-        </v-card-text>
-
-        <v-card-actions class="px-6 pb-6">
-          <v-spacer />
-          <AppDialogCloseButton label="Cancel" @click="isOpen = false" />
+      </form>
+      <template #actions>
+          <AppDialogCloseButton :disabled="props.loading" label="Cancel" @click="isOpen = false" />
           <AppDialogActionButton
             color="primary"
+            :form="formId"
             :label="submitLabel"
             type="submit"
             :loading="props.loading"
           />
-        </v-card-actions>
-      </form>
-    </v-card>
-  </v-dialog>
+      </template>
+  </AppDialogCard>
 </template>
 
 <style scoped>

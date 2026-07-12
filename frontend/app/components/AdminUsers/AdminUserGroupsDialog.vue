@@ -53,22 +53,7 @@ function save() {
 </script>
 
 <template>
-  <v-dialog v-model="isOpen" max-width="640" :persistent="props.saving">
-    <v-card rounded="xl" class="admin-user-groups-dialog">
-      <v-card-item class="px-6 pt-6 pb-2">
-        <template #prepend>
-          <v-avatar color="primary" variant="tonal" size="44">
-            <v-icon icon="mdi-account-multiple-check-outline" />
-          </v-avatar>
-        </template>
-
-        <v-card-title class="text-h6">{{ title }}</v-card-title>
-        <v-card-subtitle>
-          Group membership controls proxy provider and model access.
-        </v-card-subtitle>
-      </v-card-item>
-
-      <v-card-text class="px-6 pb-2">
+  <AppDialogCard v-model="isOpen" icon="mdi-account-multiple-check-outline" :loading="props.saving" max-width="640" subtitle="Group membership controls provider and model access." :title="title">
         <v-select
           v-model="selectedGroupIds"
           :items="groupItems"
@@ -80,24 +65,14 @@ function save() {
           closable-chips
           :loading="props.loading"
         />
-      </v-card-text>
-
-      <v-card-actions class="px-6 pb-6">
-        <v-spacer />
-        <AppDialogCloseButton label="Cancel" @click="isOpen = false" />
+      <template #actions>
+        <AppDialogCloseButton :disabled="props.saving" label="Cancel" @click="isOpen = false" />
         <AppDialogActionButton
           color="primary"
           label="Save groups"
           :loading="props.saving"
           @click="save"
         />
-      </v-card-actions>
-    </v-card>
-  </v-dialog>
+      </template>
+  </AppDialogCard>
 </template>
-
-<style scoped>
-.admin-user-groups-dialog {
-  border: 1px solid rgba(var(--app-shell-border), 0.45);
-}
-</style>
