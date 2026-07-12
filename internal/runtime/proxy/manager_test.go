@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -21,6 +23,68 @@ import (
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
+
+type fakeManagedBridge struct {
+	served   bool
+	shutdown chan struct{}
+}
+
+func (b *fakeManagedBridge) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
+	b.served = true
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (b *fakeManagedBridge) Shutdown(context.Context) error {
+	if b.shutdown != nil {
+		close(b.shutdown)
+	}
+	return nil
+}
+
+func TestManagerDelegatesAndShutsDownManagedBridge(t *testing.T) {
+	bridge := &fakeManagedBridge{}
+	manager := &Manager{opts: Options{Logger: slog.Default()}}
+	manager.installBridge(bridge)
+
+	response := httptest.NewRecorder()
+	manager.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/", nil))
+	if response.Code != http.StatusNoContent || !bridge.served {
+		t.Fatalf("expected active bridge to serve request, status=%d served=%v", response.Code, bridge.served)
+	}
+	if err := manager.Shutdown(context.Background()); err != nil {
+		t.Fatalf("shutdown manager: %v", err)
+	}
+}
+
+func TestManagerShutsDownPreviousBridgeAfterSwap(t *testing.T) {
+	previous := &fakeManagedBridge{shutdown: make(chan struct{})}
+	manager := &Manager{opts: Options{Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}}
+	manager.installBridge(previous)
+	manager.installBridge(&fakeManagedBridge{})
+
+	select {
+	case <-previous.shutdown:
+	case <-time.After(time.Second):
+		t.Fatal("previous bridge was not shut down after swap")
+	}
+}
+
+func TestReloadDebouncerCoalescesSchedules(t *testing.T) {
+	debouncer := newReloadDebouncer(time.Millisecond)
+	defer debouncer.Stop()
+	if debouncer.Schedule() {
+		t.Fatal("first schedule must not be reported as a reschedule")
+	}
+	if !debouncer.Schedule() {
+		t.Fatal("second schedule must reset the active timer")
+	}
+	select {
+	case <-debouncer.C():
+		debouncer.Clear()
+	case <-time.After(time.Second):
+		t.Fatal("debounced reload did not fire")
+	}
+}
 
 // TestWatchReloadsAccessGroupsFromRedisEvent verifies watch reloads access groups from Redis event.
 func TestWatchReloadsAccessGroupsFromRedisEvent(t *testing.T) {

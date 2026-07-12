@@ -17,6 +17,30 @@ import (
 	aibrecorder "github.com/coder/aibridge/recorder"
 )
 
+func TestProcessUsageEventRejectsMissingPayloads(t *testing.T) {
+	tests := []struct {
+		name  string
+		event UsageEvent
+		want  string
+	}{
+		{name: "interception started", event: UsageEvent{Type: UsageEventInterceptionStarted}, want: "missing interception_started payload"},
+		{name: "interception ended", event: UsageEvent{Type: UsageEventInterceptionEnded}, want: "missing interception_ended payload"},
+		{name: "token usage", event: UsageEvent{Type: UsageEventTokenUsage}, want: "missing token_usage payload"},
+		{name: "prompt usage", event: UsageEvent{Type: UsageEventPromptUsage}, want: "missing prompt_usage payload"},
+		{name: "tool usage", event: UsageEvent{Type: UsageEventToolUsage}, want: "missing tool_usage payload"},
+		{name: "unknown", event: UsageEvent{Type: UsageEventType("unknown")}, want: "unknown usage event type"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := processUsageEvent(nil, test.event)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("expected error containing %q, got %v", test.want, err)
+			}
+		})
+	}
+}
+
 func TestRedisRecorderEnqueuesUsageEventWithClientIP(t *testing.T) {
 	srv := miniredis.RunT(t)
 	store, err := redisstore.NewRequired(context.Background(), "redis://"+srv.Addr(), time.Minute, nil)

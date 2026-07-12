@@ -5,14 +5,10 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"regexp"
-	"strings"
 	"sync/atomic"
 	"time"
 
 	cdrslog "cdr.dev/slog/v3"
-	coderbridge "github.com/coder/aibridge"
-	codermcp "github.com/coder/aibridge/mcp"
 	aibrecorder "github.com/coder/aibridge/recorder"
 	"go.opentelemetry.io/otel/trace"
 
@@ -43,12 +39,13 @@ type Options struct {
 }
 
 type Manager struct {
-	opts    Options
-	current atomic.Value
+	opts        Options
+	buildBridge bridgeBuilder
+	current     atomic.Value
 }
 
 type bridgeEntry struct {
-	bridge *coderbridge.RequestBridge
+	bridge managedBridge
 }
 
 // NewManager creates a swappable proxy runtime and builds the initial bridge.
@@ -65,6 +62,7 @@ func NewManager(ctx context.Context, opts Options) (*Manager, error) {
 		maxBufferedResponseBytes: opts.MaxBufferedResponseBytes,
 	}).httpClient
 	manager := &Manager{opts: opts}
+	manager.buildBridge = manager.newBridge
 	if opts.FirewallSnapshot != nil {
 		if err := opts.FirewallSnapshot.Refresh(ctx); err != nil {
 			return nil, fmt.Errorf("load firewall snapshot: %w", err)
@@ -105,16 +103,23 @@ func (m *Manager) Rebuild(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	bridge, err := coderbridge.NewRequestBridge(ctx, providers, m.opts.Recorder, mcpProxy, m.opts.BridgeLogger, nil, m.opts.Tracer)
+	builder := m.buildBridge
+	if builder == nil {
+		builder = m.newBridge
+	}
+	bridge, err := builder(ctx, providers, mcpProxy)
 	if err != nil {
 		return fmt.Errorf("create request bridge: %w", err)
 	}
-	next := &bridgeEntry{bridge: bridge}
-	previous, _ := m.current.Swap(next).(*bridgeEntry)
+	m.installBridge(bridge)
+	return nil
+}
+
+func (m *Manager) installBridge(bridge managedBridge) {
+	previous, _ := m.current.Swap(&bridgeEntry{bridge: bridge}).(*bridgeEntry)
 	if previous != nil && previous.bridge != nil {
 		go shutdownBridge(previous.bridge, m.opts.Logger)
 	}
-	return nil
 }
 
 // RefreshFirewall reloads the firewall snapshot without rebuilding the bridge.
@@ -165,80 +170,6 @@ func (m *Manager) Reload(ctx context.Context) error {
 	return nil
 }
 
-// Watch subscribes to config events and hot-reloads affected proxy domains.
-func (m *Manager) Watch(ctx context.Context) {
-	if m.opts.Redis == nil || !m.opts.Redis.Enabled() {
-		return
-	}
-	events := m.opts.Redis.Subscribe(ctx)
-	m.opts.Logger.Info("proxy config reload watcher started")
-	var timer *time.Timer
-	var timerC <-chan time.Time
-	scheduleBridgeReload := func() {
-		if timer == nil {
-			timer = time.NewTimer(m.opts.ReloadDebounce)
-			timerC = timer.C
-			m.opts.Logger.Info("proxy bridge reload scheduled", "debounce", m.opts.ReloadDebounce)
-			return
-		}
-		if !timer.Stop() {
-			select {
-			case <-timer.C:
-			default:
-			}
-		}
-		timer.Reset(m.opts.ReloadDebounce)
-		timerC = timer.C
-		m.opts.Logger.Info("proxy bridge reload rescheduled", "debounce", m.opts.ReloadDebounce)
-	}
-
-	for {
-		select {
-		case <-ctx.Done():
-			if timer != nil {
-				timer.Stop()
-			}
-			return
-		case <-timerC:
-			timerC = nil
-			if err := m.Rebuild(ctx); err != nil {
-				m.opts.Logger.Error("proxy bridge reload failed; keeping previous bridge", "error", err)
-			} else {
-				m.opts.Logger.Info("proxy bridge reloaded")
-			}
-		case event, ok := <-events:
-			if !ok {
-				m.opts.Logger.Info("proxy config reload watcher stopped")
-				return
-			}
-			m.opts.Logger.Info("config reload event received", "domain", event.Domain, "version", event.Version)
-			switch event.Domain {
-			case configevents.DomainFirewall:
-				if err := m.RefreshFirewall(ctx); err != nil {
-					m.opts.Logger.Error("firewall snapshot reload failed", "error", err)
-				} else {
-					m.opts.Logger.Info("firewall snapshot reloaded", "version", event.Version)
-				}
-			case configevents.DomainGroups:
-				if err := m.RefreshAccessGroups(ctx); err != nil {
-					m.opts.Logger.Error("group access snapshot reload failed", "error", err)
-				} else {
-					m.opts.Logger.Info("group access snapshot reloaded", "version", event.Version)
-				}
-			case configevents.DomainProviders, configevents.DomainMCP:
-				scheduleBridgeReload()
-			case configevents.DomainAuth:
-				if m.opts.AuthCache != nil {
-					m.opts.AuthCache.SetVersion(event.Version)
-					m.opts.Logger.Info("auth cache version reloaded", "version", event.Version)
-				}
-			default:
-				m.opts.Logger.Warn("unknown config reload domain ignored", "domain", event.Domain, "version", event.Version)
-			}
-		}
-	}
-}
-
 // Shutdown closes the active bridge if it supports graceful shutdown.
 func (m *Manager) Shutdown(ctx context.Context) error {
 	entry, _ := m.current.Load().(*bridgeEntry)
@@ -248,152 +179,8 @@ func (m *Manager) Shutdown(ctx context.Context) error {
 	return entry.bridge.Shutdown(ctx)
 }
 
-// buildProviders converts enabled provider records into promptgate providers.
-func (m *Manager) buildProviders(ctx context.Context) ([]coderbridge.Provider, error) {
-	records, err := m.providerRecords(ctx)
-	if err != nil {
-		return nil, err
-	}
-	runtimeOpts := m.providerRuntimeOptions()
-	providers := make([]coderbridge.Provider, 0, len(records))
-	for _, record := range records {
-		apiKey, err := m.opts.Providers.DecryptAPIKey(record)
-		if err != nil {
-			return nil, fmt.Errorf("decrypt provider %q api key: %w", record.Name, err)
-		}
-		switch record.Type {
-		case localprovider.ProviderTypeOpenAI:
-			providers = append(providers, newOpenAIProvider(record.Name, record.BaseURL, apiKey, runtimeOpts))
-		case localprovider.ProviderTypeAnthropic:
-			providers = append(providers, coderbridge.NewAnthropicProvider(coderbridge.AnthropicConfig{
-				Name:    record.Name,
-				BaseURL: record.BaseURL,
-				Key:     apiKey,
-			}, nil))
-		case localprovider.ProviderTypeOllama:
-			providers = append(providers, newOllamaProvider(record.Name, record.BaseURL, apiKey, runtimeOpts))
-		default:
-			m.opts.Logger.Warn("unsupported provider ignored", "name", record.Name, "type", record.Type)
-		}
-	}
-	return providers, nil
-}
-
-func (m *Manager) providerRuntimeOptions() providerRuntimeOptions {
-	return normalizeProviderRuntimeOptions(providerRuntimeOptions{
-		httpClient:               m.opts.HTTPClient,
-		maxBufferedRequestBytes:  m.opts.MaxBufferedRequestBytes,
-		maxBufferedResponseBytes: m.opts.MaxBufferedResponseBytes,
-	})
-}
-
-// buildMCPProxy converts enabled MCP records into an MCP server proxier.
-func (m *Manager) buildMCPProxy(ctx context.Context) (codermcp.ServerProxier, error) {
-	records, err := m.mcpRecords(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if len(records) == 0 {
-		return nil, nil
-	}
-	proxies := make(map[string]codermcp.ServerProxier, len(records))
-	for _, record := range records {
-		headers, err := m.opts.MCP.HeadersForProxy(record)
-		if err != nil {
-			return nil, err
-		}
-		allow, err := compileOptionalRegex(record.AllowPattern)
-		if err != nil {
-			return nil, err
-		}
-		deny, err := compileOptionalRegex(record.DenyPattern)
-		if err != nil {
-			return nil, err
-		}
-		proxy, err := codermcp.NewStreamableHTTPServerProxy(
-			record.Name,
-			record.URL,
-			headers,
-			allow,
-			deny,
-			m.opts.BridgeLogger.Named("mcp."+record.Name),
-			m.opts.Tracer,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("create mcp proxy %q: %w", record.Name, err)
-		}
-		proxies[record.Name] = proxy
-	}
-	manager := codermcp.NewServerProxyManager(proxies, m.opts.Tracer)
-	if err := manager.Init(ctx); err != nil {
-		m.opts.Logger.Warn("mcp init warning; proxy will continue with available tools", "error", err)
-	}
-	return manager, nil
-}
-
-// providerRecords loads providers from Redis snapshots or the database.
-func (m *Manager) providerRecords(ctx context.Context) ([]localprovider.Provider, error) {
-	var records []localprovider.Provider
-	if m.opts.Redis != nil {
-		if ok, err := m.opts.Redis.GetJSON(ctx, redisstore.SnapshotKey(configevents.DomainProviders), &records); err == nil && ok {
-			return records, nil
-		}
-	}
-	records, err := m.opts.Providers.ListEnabled(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if m.opts.Redis != nil {
-		_ = m.opts.Redis.SetJSON(ctx, redisstore.SnapshotKey(configevents.DomainProviders), records, m.opts.Redis.TTL())
-	}
-	return records, nil
-}
-
-// mcpRecords loads MCP servers from Redis snapshots or the database.
-func (m *Manager) mcpRecords(ctx context.Context) ([]localmcp.MCPServer, error) {
-	var records []localmcp.MCPServer
-	if m.opts.Redis != nil {
-		if ok, err := m.opts.Redis.GetJSON(ctx, redisstore.SnapshotKey(configevents.DomainMCP), &records); err == nil && ok {
-			return records, nil
-		}
-	}
-	records, err := m.opts.MCP.ListEnabled(ctx)
-	if err != nil {
-		return nil, err
-	}
-	if m.opts.Redis != nil {
-		_ = m.opts.Redis.SetJSON(ctx, redisstore.SnapshotKey(configevents.DomainMCP), records, m.opts.Redis.TTL())
-	}
-	return records, nil
-}
-
-// cacheFirewallSnapshot refreshes and caches the firewall snapshot.
-func (m *Manager) cacheFirewallSnapshot(ctx context.Context) error {
-	if m.opts.Redis == nil || m.opts.FirewallSnapshot == nil {
-		return nil
-	}
-	return m.opts.Redis.SetJSON(ctx, redisstore.SnapshotKey(configevents.DomainFirewall), m.opts.FirewallSnapshot.Snapshot(), m.opts.Redis.TTL())
-}
-
-// cacheAccessSnapshot refreshes and caches the group access snapshot.
-func (m *Manager) cacheAccessSnapshot(ctx context.Context) error {
-	if m.opts.Redis == nil || m.opts.AccessSnapshot == nil {
-		return nil
-	}
-	return m.opts.Redis.SetJSON(ctx, redisstore.SnapshotKey(configevents.DomainGroups), m.opts.AccessSnapshot.Snapshot(), m.opts.Redis.TTL())
-}
-
-// compileOptionalRegex compiles a regex only when a pattern is configured.
-func compileOptionalRegex(pattern string) (*regexp.Regexp, error) {
-	pattern = strings.TrimSpace(pattern)
-	if pattern == "" {
-		return nil, nil
-	}
-	return regexp.Compile(pattern)
-}
-
-// shutdownBridge closes a bridge when the upstream implementation exposes Close.
-func shutdownBridge(bridge *coderbridge.RequestBridge, logger *slog.Logger) {
+// shutdownBridge closes a replaced bridge outside the atomic swap path.
+func shutdownBridge(bridge managedBridge, logger *slog.Logger) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := bridge.Shutdown(ctx); err != nil {
