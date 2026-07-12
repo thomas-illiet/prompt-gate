@@ -270,6 +270,9 @@ func defaultGuides() []SetupGuide {
 	}
 	for i := range items {
 		items[i].ID = uuid.New()
+		if items[i].FilePaths == nil {
+			items[i].FilePaths = StringList{}
+		}
 		items[i].Enabled = true
 		items[i].Position = i
 		items[i].CreatedAt = time.Now().UTC()

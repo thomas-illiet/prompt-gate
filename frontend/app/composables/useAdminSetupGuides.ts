@@ -22,12 +22,23 @@ export function useAdminSetupGuides() {
     }
   }
   async function load(id: string) {
-    selectedGuide.value = await apiFetch<SetupGuide>(
-      `/api/v1/admin/setup-guides/${id}`,
-    )
+    error.value = null
+    try {
+      selectedGuide.value = await apiFetch<SetupGuide>(
+        `/api/v1/admin/setup-guides/${id}`,
+      )
+    } catch (cause) {
+      error.value = toApiErrorMessage(
+        cause,
+        {},
+        'Unable to load this setup guide.',
+      )
+      throw cause
+    }
   }
   async function save(payload: SetupGuidePayload) {
     saving.value = true
+    error.value = null
     try {
       if (selectedGuide.value)
         await apiFetch(`/api/v1/admin/setup-guides/${selectedGuide.value.id}`, {
@@ -40,6 +51,13 @@ export function useAdminSetupGuides() {
           body: payload,
         })
       await reload()
+    } catch (cause) {
+      error.value = toApiErrorMessage(
+        cause,
+        {},
+        'Unable to save this setup guide.',
+      )
+      throw cause
     } finally {
       saving.value = false
     }

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AdminSetupGuideDialog from './AdminSetupGuideDialog.vue'
 import type { SetupGuide, SetupGuidePayload } from '~/types/setup-guides'
 const admin = useAdminSetupGuides()
 const dialogOpen = shallowRef(false)
@@ -31,12 +32,7 @@ async function remove() {
         copy="Configure the client guides displayed to PromptGate users."
         stat-label="Guides"
         :stat-value="String(admin.guides.value.length)"
-        ><template #actions
-          ><v-btn color="primary" prepend-icon="mdi-plus" @click="create"
-            >Create guide</v-btn
-          ></template
-        ></AppPageHero
-      ></v-col
+      /></v-col
     >
     <v-col v-if="admin.error.value" cols="12"
       ><v-alert type="error">{{ admin.error.value }}</v-alert></v-col
@@ -46,6 +42,10 @@ async function remove() {
         icon="mdi-format-list-numbered"
         title="Client guides"
         subtitle="Global display order and content"
+        ><template #actions
+          ><v-btn color="primary" prepend-icon="mdi-plus" @click="create"
+            >Create guide</v-btn
+          ></template
         ><AdminSetupGuidesTable
           :guides="admin.guides.value"
           :loading="admin.loading.value"

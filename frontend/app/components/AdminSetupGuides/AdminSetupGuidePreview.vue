@@ -29,19 +29,36 @@ const preview = computed(() =>
   <v-alert v-if="validationError" type="error" variant="tonal">{{
     validationError
   }}</v-alert>
-  <div v-else class="admin-setup-preview">
-    <div class="text-overline mb-2">Live preview</div>
-    <pre>{{ preview }}</pre>
+  <div v-else class="admin-setup-preview app-markdown">
+    <div class="admin-setup-preview__header">
+      <v-icon icon="mdi-code-tags" size="18" />
+      <span>Rendered output</span>
+    </div>
+    <pre><code>{{ preview }}</code></pre>
   </div>
 </template>
 
 <style scoped>
+.admin-setup-preview__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: rgb(var(--app-shell-text-secondary));
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
 .admin-setup-preview pre {
-  max-height: 360px;
-  overflow: auto;
-  padding: 16px;
-  border-radius: 10px;
-  background: rgb(var(--v-theme-surface-variant));
+  max-height: 420px;
+  margin-block: 12px 0;
+  overflow-x: hidden;
+}
+
+.admin-setup-preview pre code {
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 </style>
