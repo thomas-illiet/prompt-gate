@@ -23,25 +23,30 @@ const (
 )
 
 var incrementUsageScript = redis.NewScript(`
-local expired = redis.call("ZRANGEBYSCORE", KEYS[1], "-inf", ARGV[4])
-if #expired > 0 then
-	redis.call("ZREM", KEYS[1], unpack(expired))
-	redis.call("HDEL", KEYS[2], unpack(expired))
+local function increment(zset, hash, bucket, tokens, ttl, cutoff)
+ local expired = redis.call("ZRANGEBYSCORE", zset, "-inf", cutoff)
+ if #expired > 0 then
+  redis.call("ZREM", zset, unpack(expired))
+  redis.call("HDEL", hash, unpack(expired))
+ end
+ redis.call("ZADD", zset, bucket, bucket)
+ redis.call("HINCRBY", hash, bucket, tokens)
+ redis.call("EXPIRE", zset, ttl)
+ redis.call("EXPIRE", hash, ttl)
 end
-redis.call("ZADD", KEYS[1], ARGV[1], ARGV[1])
-redis.call("HINCRBY", KEYS[2], ARGV[1], ARGV[2])
-redis.call("EXPIRE", KEYS[1], ARGV[3])
-redis.call("EXPIRE", KEYS[2], ARGV[3])
-redis.call("SADD", KEYS[3], ARGV[5])
+increment(KEYS[1], KEYS[2], ARGV[1], ARGV[2], ARGV[3], ARGV[4])
+increment(KEYS[4], KEYS[5], ARGV[5], ARGV[6], ARGV[7], ARGV[8])
+redis.call("ZADD", KEYS[3], ARGV[10], ARGV[9])
 return 1
 `)
 
 type RedisStore struct {
-	store   *redisstore.Store
-	service *Service
-	ttl     time.Duration
-	logger  *slog.Logger
-	version atomic.Int64
+	store    *redisstore.Store
+	service  *Service
+	ttl      time.Duration
+	logger   *slog.Logger
+	version  atomic.Int64
+	snapshot atomic.Value
 }
 
 type quotaWindow struct {
@@ -116,6 +121,10 @@ func (s *RedisStore) WarmSnapshot(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if snapshot.Plans == nil {
+		snapshot.Plans = map[string]PlanSnapshot{}
+	}
+	s.snapshot.Store(snapshot)
 	return s.store.SetJSON(ctx, redisstore.SnapshotKey(configevents.DomainSubscriptions), snapshot, s.ttl)
 }
 
@@ -184,23 +193,29 @@ func (s *RedisStore) IncrementUsage(ctx context.Context, userID string, tokens i
 	}
 	now = now.UTC()
 	client := s.store.Client()
-	for _, window := range []quotaWindow{quota5H(), quota7D()} {
-		if err := s.incrementWindow(ctx, client, userID, tokens, now, window); err != nil {
-			return err
-		}
-	}
-	return nil
+	return s.incrementWindow(ctx, client, userID, tokens, now, quota5H())
 }
 
 func (s *RedisStore) ActiveUserIDs(ctx context.Context) ([]string, error) {
 	if !s.Enabled() {
 		return nil, nil
 	}
-	ids, err := s.store.Client().SMembers(ctx, redisstore.SubscriptionActiveUsersKey()).Result()
+	cutoff := time.Now().UTC().Add(-7 * 24 * time.Hour).Unix()
+	ids, err := s.store.Client().ZRangeByScore(ctx, redisstore.SubscriptionActiveUsersZSetKey(), &redis.ZRangeBy{
+		Min: strconv.FormatInt(cutoff, 10), Max: "+inf",
+	}).Result()
 	if errors.Is(err, redis.Nil) {
 		return nil, nil
 	}
-	return ids, err
+	if err != nil || len(ids) > 0 {
+		return ids, err
+	}
+	// Read the legacy set during the rolling migration so existing usage is not skipped.
+	legacy, legacyErr := s.store.Client().SMembers(ctx, redisstore.SubscriptionActiveUsersKey()).Result()
+	if legacyErr != nil && !errors.Is(legacyErr, redis.Nil) {
+		return nil, legacyErr
+	}
+	return legacy, nil
 }
 
 func (s *RedisStore) SyncQuotaStates(ctx context.Context, service *Service) (int64, error) {
@@ -228,6 +243,9 @@ func (s *RedisStore) SyncQuotaStates(ctx context.Context, service *Service) (int
 
 func (s *RedisStore) loadSnapshot(ctx context.Context) (Snapshot, error) {
 	var snapshot Snapshot
+	if cached := s.snapshot.Load(); cached != nil {
+		return cached.(Snapshot), nil
+	}
 	if s.Enabled() {
 		if ok, err := s.store.GetJSON(ctx, redisstore.SnapshotKey(configevents.DomainSubscriptions), &snapshot); err != nil {
 			s.logger.Warn("subscription snapshot load failed", "error", err)
@@ -235,6 +253,7 @@ func (s *RedisStore) loadSnapshot(ctx context.Context) (Snapshot, error) {
 			if snapshot.Plans == nil {
 				snapshot.Plans = map[string]PlanSnapshot{}
 			}
+			s.snapshot.Store(snapshot)
 			return snapshot, nil
 		}
 	}
@@ -248,6 +267,10 @@ func (s *RedisStore) loadSnapshot(ctx context.Context) (Snapshot, error) {
 	if s.Enabled() {
 		_ = s.store.SetJSON(ctx, redisstore.SnapshotKey(configevents.DomainSubscriptions), loaded, s.ttl)
 	}
+	if loaded.Plans == nil {
+		loaded.Plans = map[string]PlanSnapshot{}
+	}
+	s.snapshot.Store(loaded)
 	return loaded, nil
 }
 
@@ -282,9 +305,16 @@ func (s *RedisStore) incrementWindow(ctx context.Context, client *redis.Client, 
 	keys := []string{
 		redisstore.SubscriptionUsageZSetKey(userID, window.name),
 		redisstore.SubscriptionUsageHashKey(userID, window.name),
-		redisstore.SubscriptionActiveUsersKey(),
+		redisstore.SubscriptionActiveUsersZSetKey(),
 	}
-	return incrementUsageScript.Run(ctx, client, keys, bucket, tokens, ttl, cutoff, userID).Err()
+	other := quota7D()
+	keys = append(keys,
+		redisstore.SubscriptionUsageZSetKey(userID, other.name),
+		redisstore.SubscriptionUsageHashKey(userID, other.name),
+	)
+	otherBucket := bucketStart(now, other.bucketSeconds)
+	otherCutoff := bucketStart(now.Add(-time.Duration(other.windowSeconds+other.bucketSeconds)*time.Second), other.bucketSeconds)
+	return incrementUsageScript.Run(ctx, client, keys, bucket, tokens, ttl, cutoff, otherBucket, tokens, other.windowSeconds+(2*other.bucketSeconds), otherCutoff, userID, now.Unix()).Err()
 }
 
 func (s *RedisStore) windowUsage(ctx context.Context, userID string, window quotaWindow, now time.Time) (int64, *time.Time, error) {

@@ -3,6 +3,8 @@ package database
 import (
 	"context"
 	"fmt"
+	"os"
+	"strconv"
 	"time"
 
 	"gorm.io/driver/postgres"
@@ -21,13 +23,29 @@ func OpenPostgres(ctx context.Context, databaseURL string) (*gorm.DB, error) {
 		return nil, fmt.Errorf("expose sql db: %w", err)
 	}
 
-	sqlDB.SetConnMaxLifetime(30 * time.Minute)
-	sqlDB.SetMaxIdleConns(5)
-	sqlDB.SetMaxOpenConns(10)
+	sqlDB.SetConnMaxLifetime(envDuration("PROMPTGATE_DB_CONN_MAX_LIFETIME", 30*time.Minute))
+	sqlDB.SetMaxIdleConns(envInt("PROMPTGATE_DB_MAX_IDLE_CONNS", 5))
+	sqlDB.SetMaxOpenConns(envInt("PROMPTGATE_DB_MAX_OPEN_CONNS", 10))
 
 	if err := sqlDB.PingContext(ctx); err != nil {
 		return nil, fmt.Errorf("ping postgres: %w", err)
 	}
 
 	return db, nil
+}
+
+func envInt(name string, fallback int) int {
+	value, err := strconv.Atoi(os.Getenv(name))
+	if err != nil || value <= 0 {
+		return fallback
+	}
+	return value
+}
+
+func envDuration(name string, fallback time.Duration) time.Duration {
+	value, err := time.ParseDuration(os.Getenv(name))
+	if err != nil || value <= 0 {
+		return fallback
+	}
+	return value
 }

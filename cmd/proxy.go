@@ -202,6 +202,7 @@ func runProxy() error {
 	if len(cfg.CORSAllowedOrigins) > 0 {
 		proxyHandler = httpmiddleware.CORS(cfg.CORSAllowedOrigins)(proxyHandler)
 	}
+	proxyHandler = requestTimeout(cfg.ProxyUpstreamTimeout)(proxyHandler)
 	mux.Handle("/", proxyHandler)
 
 	server := &http.Server{
@@ -227,6 +228,19 @@ func runProxy() error {
 	}
 
 	return nil
+}
+
+// requestTimeout bounds the complete proxy request, including provider calls.
+// It preserves streaming because it only cancels the request context instead
+// of using http.TimeoutHandler, which buffers responses.
+func requestTimeout(timeout time.Duration) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx, cancel := context.WithTimeout(r.Context(), timeout)
+			defer cancel()
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
 }
 
 // cdrLevel maps configured log level text to the cdr/slog level type.

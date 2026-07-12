@@ -24,7 +24,7 @@ type Interception struct {
 	ProviderType string      `gorm:"not null;default:''" json:"providerType"`
 	Model        string      `gorm:"not null" json:"model"`
 	ClientIP     string      `gorm:"not null;default:''" json:"clientIp"`
-	StartedAt    time.Time   `gorm:"not null" json:"startedAt"`
+	StartedAt    time.Time   `gorm:"not null;index" json:"startedAt"`
 	EndedAt      *time.Time  `json:"endedAt"`
 	Metadata     string      `json:"metadata"`
 }
@@ -114,7 +114,7 @@ type ProcessedUsageEvent struct {
 	RedisMessageID string    `gorm:"not null;default:''" json:"redisMessageId"`
 	Type           string    `gorm:"not null;index" json:"type"`
 	CreatedAt      time.Time `gorm:"not null" json:"createdAt"`
-	ProcessedAt    time.Time `gorm:"not null" json:"processedAt"`
+	ProcessedAt    time.Time `gorm:"not null;index" json:"processedAt"`
 }
 
 // TableName returns the stable dashboard KPI table name.

@@ -20,6 +20,14 @@ import (
 
 var errUsageEventAlreadyProcessed = errors.New("usage event already processed")
 
+var ackDeleteUsageScript = redis.NewScript(`
+for _, id in ipairs(ARGV) do
+ redis.call("XACK", KEYS[1], KEYS[2], id)
+ redis.call("XDEL", KEYS[1], id)
+end
+return #ARGV
+`)
+
 type WorkerOptions struct {
 	ConsumerName       string
 	BatchSize          int64
@@ -28,10 +36,23 @@ type WorkerOptions struct {
 }
 
 type Worker struct {
-	db     *gorm.DB
-	store  *redisstore.Store
-	logger *slog.Logger
-	opts   WorkerOptions
+	db            *gorm.DB
+	store         *redisstore.Store
+	logger        *slog.Logger
+	opts          WorkerOptions
+	pendingCursor string
+}
+
+// UsageEventMessage couples a decoded usage event to its Redis stream ID.
+type UsageEventMessage struct {
+	Event          UsageEvent
+	RedisMessageID string
+}
+
+// UsageEventResult reports whether a message can be acknowledged after batching.
+type UsageEventResult struct {
+	RedisMessageID string
+	Err            error
 }
 
 // NewWorker creates a Redis Stream consumer for promptgate background work.
@@ -108,81 +129,127 @@ func (w *Worker) Run(ctx context.Context) error {
 }
 
 func (w *Worker) claimPending(ctx context.Context, client *redis.Client) ([]redis.XMessage, error) {
-	messages, _, err := client.XAutoClaim(ctx, &redis.XAutoClaimArgs{
+	start := w.pendingCursor
+	if start == "" {
+		start = "0-0"
+	}
+	messages, next, err := client.XAutoClaim(ctx, &redis.XAutoClaimArgs{
 		Stream:   UsageEventsStream,
 		Group:    UsageEventsConsumerGroup,
 		Consumer: w.opts.ConsumerName,
 		MinIdle:  w.opts.PendingIdleTimeout,
-		Start:    "0-0",
+		Start:    start,
 		Count:    w.opts.BatchSize,
 	}).Result()
 	if errors.Is(err, redis.Nil) {
+		w.pendingCursor = "0-0"
 		return nil, nil
+	}
+	if err == nil {
+		w.pendingCursor = next
+		if next == "0-0" {
+			// A complete pass is finished; the next scan starts at the beginning.
+			w.pendingCursor = "0-0"
+		}
 	}
 	return messages, err
 }
 
 func (w *Worker) handleMessages(ctx context.Context, client *redis.Client, messages []redis.XMessage) {
+	ackIDs := make([]string, 0, len(messages))
+	decoded := make([]UsageEventMessage, 0, len(messages))
 	for _, message := range messages {
 		event, err := usageEventFromMessage(message)
 		if err != nil {
 			w.logger.Error("dropping invalid usage event", "redisMessageId", message.ID, "error", err)
-			w.ackAndDelete(ctx, client, message.ID)
+			ackIDs = append(ackIDs, message.ID)
 			continue
 		}
-
-		err = w.ProcessUsageEvent(ctx, event, message.ID)
-		switch {
-		case err == nil:
-			w.ackAndDelete(ctx, client, message.ID)
-		case errors.Is(err, errUsageEventAlreadyProcessed):
-			w.ackAndDelete(ctx, client, message.ID)
-		case errors.Is(err, ErrUsageEventDependencyMissing):
-			w.logger.Warn(
-				"usage event dependency missing; leaving message pending",
-				"eventType", event.Type,
-				"eventId", event.EventID,
-				"interceptionId", eventInterceptionID(event),
-				"redisMessageId", message.ID,
-			)
-		default:
-			w.logger.Error(
-				"failed to process usage event",
-				"eventType", event.Type,
-				"eventId", event.EventID,
-				"interceptionId", eventInterceptionID(event),
-				"redisMessageId", message.ID,
-				"error", err,
-			)
+		decoded = append(decoded, UsageEventMessage{Event: event, RedisMessageID: message.ID})
+	}
+	for _, result := range w.ProcessUsageBatch(ctx, decoded) {
+		if result.Err == nil || errors.Is(result.Err, errUsageEventAlreadyProcessed) {
+			ackIDs = append(ackIDs, result.RedisMessageID)
+			continue
 		}
+		if errors.Is(result.Err, ErrUsageEventDependencyMissing) {
+			w.logger.Warn("usage event dependency missing; leaving message pending", "redisMessageId", result.RedisMessageID)
+			continue
+		}
+		w.logger.Error("failed to process usage event", "redisMessageId", result.RedisMessageID, "error", result.Err)
+	}
+	if len(ackIDs) > 0 {
+		w.ackAndDeleteBatch(ctx, client, ackIDs)
 	}
 }
 
 // ProcessUsageEvent persists one decoded usage event and updates aggregate KPI tables.
 func (w *Worker) ProcessUsageEvent(ctx context.Context, event UsageEvent, redisMessageID string) error {
+	results := w.ProcessUsageBatch(ctx, []UsageEventMessage{{Event: event, RedisMessageID: redisMessageID}})
+	if len(results) == 0 {
+		return nil
+	}
+	return results[0].Err
+}
+
+// ProcessUsageBatch persists a batch in one transaction. Savepoints isolate
+// dependency failures so unrelated events can still commit and be acknowledged.
+func (w *Worker) ProcessUsageBatch(ctx context.Context, messages []UsageEventMessage) []UsageEventResult {
+	results := make([]UsageEventResult, len(messages))
+	for i, message := range messages {
+		results[i].RedisMessageID = message.RedisMessageID
+	}
+	if len(messages) == 0 {
+		return results
+	}
+	err := w.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		for i, message := range messages {
+			name := fmt.Sprintf("usage_event_%d", i)
+			if err := tx.SavePoint(name).Error; err != nil {
+				return err
+			}
+			err := processUsageEventTx(tx, message.Event, message.RedisMessageID)
+			results[i].Err = err
+			if err != nil {
+				if rollbackErr := tx.RollbackTo(name).Error; rollbackErr != nil {
+					return rollbackErr
+				}
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		for i := range results {
+			if results[i].Err == nil {
+				results[i].Err = err
+			}
+		}
+	}
+	return results
+}
+
+func processUsageEventTx(tx *gorm.DB, event UsageEvent, redisMessageID string) error {
 	if strings.TrimSpace(event.EventID) == "" {
 		event.EventID = redisMessageID
 	}
-	return w.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		processed := ProcessedUsageEvent{
-			EventID:        event.EventID,
-			RedisMessageID: redisMessageID,
-			Type:           string(event.Type),
-			CreatedAt:      event.CreatedAt,
-			ProcessedAt:    time.Now().UTC(),
-		}
-		if processed.CreatedAt.IsZero() {
-			processed.CreatedAt = processed.ProcessedAt
-		}
-		result := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&processed)
-		if result.Error != nil {
-			return fmt.Errorf("mark usage event processed: %w", result.Error)
-		}
-		if result.RowsAffected == 0 {
-			return errUsageEventAlreadyProcessed
-		}
-		return processUsageEvent(tx, event)
-	})
+	processed := ProcessedUsageEvent{
+		EventID:        event.EventID,
+		RedisMessageID: redisMessageID,
+		Type:           string(event.Type),
+		CreatedAt:      event.CreatedAt,
+		ProcessedAt:    time.Now().UTC(),
+	}
+	if processed.CreatedAt.IsZero() {
+		processed.CreatedAt = processed.ProcessedAt
+	}
+	result := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&processed)
+	if result.Error != nil {
+		return fmt.Errorf("mark usage event processed: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return errUsageEventAlreadyProcessed
+	}
+	return processUsageEvent(tx, event)
 }
 
 func processUsageEvent(tx *gorm.DB, event UsageEvent) error {
@@ -308,12 +375,20 @@ func processUsageEvent(tx *gorm.DB, event UsageEvent) error {
 }
 
 func (w *Worker) ackAndDelete(ctx context.Context, client *redis.Client, messageID string) {
-	if err := client.XAck(ctx, UsageEventsStream, UsageEventsConsumerGroup, messageID).Err(); err != nil {
-		w.logger.Error("failed to ack usage event", "redisMessageId", messageID, "error", err)
+	w.ackAndDeleteBatch(ctx, client, []string{messageID})
+}
+
+func (w *Worker) ackAndDeleteBatch(ctx context.Context, client *redis.Client, messageIDs []string) {
+	if len(messageIDs) == 0 {
 		return
 	}
-	if err := client.XDel(ctx, UsageEventsStream, messageID).Err(); err != nil {
-		w.logger.Error("failed to delete usage event", "redisMessageId", messageID, "error", err)
+	args := make([]any, len(messageIDs))
+	for i, id := range messageIDs {
+		args[i] = id
+	}
+	if err := ackDeleteUsageScript.Run(ctx, client,
+		[]string{UsageEventsStream, UsageEventsConsumerGroup}, args...).Err(); err != nil {
+		w.logger.Error("failed to ack and delete usage events", "count", len(messageIDs), "error", err)
 	}
 }
 

@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -41,12 +43,33 @@ func NewRequired(ctx context.Context, rawURL string, ttl time.Duration, logger *
 	if err != nil {
 		return nil, fmt.Errorf("parse redis url: %w", err)
 	}
+	opt.PoolSize = envInt("PROMPTGATE_REDIS_POOL_SIZE", opt.PoolSize)
+	opt.MinIdleConns = envInt("PROMPTGATE_REDIS_MIN_IDLE_CONNS", opt.MinIdleConns)
+	opt.PoolTimeout = envDuration("PROMPTGATE_REDIS_POOL_TIMEOUT", opt.PoolTimeout)
+	opt.ReadTimeout = envDuration("PROMPTGATE_REDIS_READ_TIMEOUT", opt.ReadTimeout)
+	opt.WriteTimeout = envDuration("PROMPTGATE_REDIS_WRITE_TIMEOUT", opt.WriteTimeout)
 	client := redis.NewClient(opt)
 	if err := client.Ping(ctx).Err(); err != nil {
 		_ = client.Close()
 		return nil, fmt.Errorf("ping redis: %w", err)
 	}
 	return &Store{client: client, ttl: ttl, logger: logger}, nil
+}
+
+func envInt(name string, fallback int) int {
+	value, err := strconv.Atoi(os.Getenv(name))
+	if err != nil || value <= 0 {
+		return fallback
+	}
+	return value
+}
+
+func envDuration(name string, fallback time.Duration) time.Duration {
+	value, err := time.ParseDuration(os.Getenv(name))
+	if err != nil || value <= 0 {
+		return fallback
+	}
+	return value
 }
 
 // Enabled reports whether Redis is available for this store.
@@ -249,6 +272,11 @@ func SubscriptionUsageHashKey(userID, window string) string {
 // SubscriptionActiveUsersKey returns the Redis set key for identities with quota usage.
 func SubscriptionActiveUsersKey() string {
 	return "promptgate:subscriptions:active_users"
+}
+
+// SubscriptionActiveUsersZSetKey tracks the last token-usage timestamp per user.
+func SubscriptionActiveUsersZSetKey() string {
+	return "promptgate:subscriptions:active_users:last_seen"
 }
 
 // AuthSessionKey returns the Redis key for a browser session.

@@ -73,6 +73,16 @@ func (s *Service) DeleteRawUsageBefore(ctx context.Context, cutoff time.Time) (i
 	return result.RowsAffected, nil
 }
 
+// DeleteProcessedUsageBefore removes idempotency markers older than cutoff.
+// The retention window should exceed the maximum Redis retry/DLQ lifetime.
+func (s *Service) DeleteProcessedUsageBefore(ctx context.Context, cutoff time.Time) (int64, error) {
+	result := s.db.WithContext(ctx).Where("processed_at < ?", cutoff.UTC()).Delete(&ProcessedUsageEvent{})
+	if result.Error != nil {
+		return 0, fmt.Errorf("delete processed usage markers: %w", result.Error)
+	}
+	return result.RowsAffected, nil
+}
+
 func (s *Service) cleanupRawUsageLog(ctx context.Context, retention time.Duration) {
 	cutoff := time.Now().UTC().Add(-retention)
 	count, err := s.DeleteRawUsageBefore(ctx, cutoff)
@@ -82,6 +92,13 @@ func (s *Service) cleanupRawUsageLog(ctx context.Context, retention time.Duratio
 	}
 	if count > 0 {
 		slog.Info("cleaned up raw proxy usage", "interceptions", count, "cutoff", cutoff)
+	}
+	markerCutoff := cutoff.Add(-24 * time.Hour)
+	markers, err := s.DeleteProcessedUsageBefore(ctx, markerCutoff)
+	if err != nil {
+		slog.Error("failed to cleanup processed usage markers", "error", err)
+	} else if markers > 0 {
+		slog.Info("cleaned up processed usage markers", "events", markers, "cutoff", markerCutoff)
 	}
 }
 
