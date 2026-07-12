@@ -71,7 +71,29 @@ managers or admins.
 
 ## Admin Routes
 
-All `/api/v1/admin/**` routes require a browser session with role `admin`.
+All `/api/v1/admin/**` routes accept either a browser session with role `admin`
+or, when `PROMPTGATE_ADMIN_API_KEY` is configured, exactly one
+`X-Admin-API-Key` header containing the configured value. If the header is
+absent, normal session, app-access, and role checks apply. If it is present but
+empty, duplicated, disabled, or invalid, the API returns
+`401 {"error":"invalid_admin_api_key"}` and does not fall back to a session
+cookie.
+
+The administration key is intended only for trusted CLI and server-to-server
+clients. It is accepted only on `/api/v1/admin/**`: it does not authenticate
+`/api/v1/me`, user token routes, proxy routes, or `/auth/**`, and it does not
+change browser CORS behavior. A valid key grants the complete admin surface,
+including create, update, revoke, and delete operations, without an individual
+user identity. Always transmit it over HTTPS.
+
+Load the value from a secret manager into the environment rather than putting
+the secret itself in a command or script:
+
+```sh
+curl --fail-with-body \
+  --header "X-Admin-API-Key: ${PROMPTGATE_ADMIN_API_KEY:?not set}" \
+  https://promptgate.example.com/api/v1/admin/providers
+```
 
 ### Dashboard
 
@@ -221,5 +243,5 @@ Middleware failures use a simple JSON error shape:
 ```
 
 Examples include `missing_auth_credentials`, `invalid_token`,
-`account_inactive`, `account_role_none`, `insufficient_role`, and
-`firewall_denied`.
+`invalid_admin_api_key`, `account_inactive`, `account_role_none`,
+`insufficient_role`, and `firewall_denied`.

@@ -34,6 +34,7 @@ type Config struct {
 	StaticAssetsDir               string
 	SessionCookieName             string
 	SessionTTL                    time.Duration
+	AdminAPIKey                   string
 	CORSAllowedOrigins            []string
 	JWTSecret                     string
 	SecretsKey                    string
@@ -104,6 +105,7 @@ func LoadApi() (Config, error) {
 		StaticAssetsDir:              strings.TrimSpace(v.GetString("static_assets_dir")),
 		SessionCookieName:            v.GetString("session_cookie_name"),
 		SessionTTL:                   v.GetDuration("session_ttl"),
+		AdminAPIKey:                  strings.TrimSpace(v.GetString("admin_api_key")),
 		CORSAllowedOrigins:           v.GetStringSlice("cors_allowed_origins"),
 		JWTSecret:                    strings.TrimSpace(v.GetString("jwt_secret")),
 		SecretsKey:                   strings.TrimSpace(v.GetString("secrets_key")),

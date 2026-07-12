@@ -74,6 +74,78 @@ Existing runtime secret name.
 {{- end -}}
 
 {{/*
+Trim the configured inline administration API key. The application applies the
+same normalization when loading PROMPTGATE_ADMIN_API_KEY.
+*/}}
+{{- define "prompt-gate.adminApiKeyValue" -}}
+{{- default "" .Values.adminApiKey.value | toString | trim -}}
+{{- end -}}
+
+{{/*
+Normalized existing administration API key Secret name and key.
+*/}}
+{{- define "prompt-gate.adminApiKeyExistingSecretName" -}}
+{{- default "" .Values.adminApiKey.existingSecret.name | toString | trim -}}
+{{- end -}}
+
+{{- define "prompt-gate.adminApiKeyExistingSecretKey" -}}
+{{- default "" .Values.adminApiKey.existingSecret.key | toString | trim -}}
+{{- end -}}
+
+{{/*
+Validate that the administration API key has at most one source and that an
+existing Secret reference is complete.
+*/}}
+{{- define "prompt-gate.validateAdminApiKey" -}}
+{{- $value := include "prompt-gate.adminApiKeyValue" . -}}
+{{- $existingSecretName := include "prompt-gate.adminApiKeyExistingSecretName" . -}}
+{{- $existingSecretKey := include "prompt-gate.adminApiKeyExistingSecretKey" . -}}
+{{- $runtimeSecretName := include "prompt-gate.secretName" . | trim -}}
+{{- $adminSecretName := include "prompt-gate.adminApiKeySecretName" . | trim -}}
+{{- if and (ne $value "") (ne $existingSecretName "") -}}
+{{- fail "adminApiKey.value and adminApiKey.existingSecret.name are mutually exclusive" -}}
+{{- end -}}
+{{- if and (ne $existingSecretName "") (eq $existingSecretKey "") -}}
+{{- fail "adminApiKey.existingSecret.key is required when adminApiKey.existingSecret.name is set" -}}
+{{- end -}}
+{{- if and (or (ne $value "") (ne $existingSecretName "")) (eq $adminSecretName $runtimeSecretName) -}}
+{{- fail "the administration API key Secret name must differ from the shared runtime Secret name" -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Administration API key Secret name. Use the external name when configured,
+otherwise use the name of the chart-managed dedicated Secret.
+*/}}
+{{- define "prompt-gate.adminApiKeySecretName" -}}
+{{- $existingSecretName := include "prompt-gate.adminApiKeyExistingSecretName" . -}}
+{{- if ne $existingSecretName "" -}}
+{{- $existingSecretName -}}
+{{- else -}}
+{{- $fullname := include "prompt-gate.fullname" . -}}
+{{- if le (len $fullname) 49 -}}
+{{- printf "%s-admin-api-key" $fullname -}}
+{{- else -}}
+{{- $prefix := $fullname | trunc 36 | trimSuffix "-" -}}
+{{- $hash := $fullname | sha256sum | trunc 12 -}}
+{{- printf "%s-%s-admin-api-key" $prefix $hash -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Administration API key Secret data key.
+*/}}
+{{- define "prompt-gate.adminApiKeySecretKey" -}}
+{{- $existingSecretName := include "prompt-gate.adminApiKeyExistingSecretName" . -}}
+{{- if ne $existingSecretName "" -}}
+{{- include "prompt-gate.adminApiKeyExistingSecretKey" . -}}
+{{- else -}}
+PROMPTGATE_ADMIN_API_KEY
+{{- end -}}
+{{- end -}}
+
+{{/*
 Public URL scheme derived from Ingress TLS.
 */}}
 {{- define "prompt-gate.publicScheme" -}}

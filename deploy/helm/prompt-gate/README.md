@@ -44,6 +44,56 @@ its name. It must contain:
 - `PROMPTGATE_SECRETS_KEY`
 - `PROMPTGATE_KEYCLOAK_CLIENT_SECRET` when the OIDC client requires it
 
+## Administration API Key
+
+The optional administration API key provides direct access to every
+`/api/v1/admin/**` endpoint through the `X-Admin-API-Key` header. These routes
+include destructive operations, so use the key only over HTTPS and treat it as
+a privileged production credential. It is global: requests made with it do not
+carry an individual administrator identity for attribution.
+
+The feature is disabled by default. For production, create a dedicated Secret
+and reference it from the chart:
+
+```yaml
+adminApiKey:
+  existingSecret:
+    name: prompt-gate-admin-api-key
+    key: PROMPTGATE_ADMIN_API_KEY
+  rolloutToken: "2026-07-rotation-1"
+```
+
+Only the API Deployment receives this Secret, through an explicit
+`secretKeyRef`; it is not added to the shared runtime Secret or exposed to the
+proxy, worker, scheduler, or migration Job. After rotating an externally
+managed Secret, change `rolloutToken` or restart the API Deployment so its Pods
+load the new value. Do not put `PROMPTGATE_ADMIN_API_KEY` in
+`secret.existingSecret`, because that shared Secret is imported by every
+Prompt Gate workload. The chart rejects an administration Secret with the same
+name as the shared runtime Secret.
+
+For local development only, `value` creates a dedicated chart-managed Secret:
+
+```yaml
+adminApiKey:
+  value: "local-development-key"
+  annotations: {}
+```
+
+`value` and `existingSecret.name` are mutually exclusive. An empty or
+whitespace-only `value` leaves the feature disabled; any non-empty value is
+accepted without a minimum length. A generated Secret automatically rolls the
+API Pods when the value changes. Do not commit a real administration key to a
+values file.
+
+Example request:
+
+```bash
+curl --fail-with-body \
+  -H "X-Admin-API-Key: ${PROMPTGATE_ADMIN_API_KEY:?not set}" \
+  https://promptgate.example.com/api/v1/admin/users
+```
+
 ## Image Pull Secrets
 
 When the image registry is private, create the pull secret in the destination

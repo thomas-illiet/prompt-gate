@@ -173,9 +173,7 @@ func NewHandler(a Dependencies) http.Handler {
 	)
 
 	adminMiddlewares := []middleware.Middleware{
-		middleware.RequireSession(sessionStore, cfg.SessionCookieName),
-		middleware.RequireAppAccess(),
-		middleware.RequireRoles(auth.RoleAdmin),
+		middleware.RequireAdminAccess(sessionStore, cfg.SessionCookieName, cfg.AdminAPIKey),
 	}
 	mux.Handle(
 		"GET /api/v1/admin/users",

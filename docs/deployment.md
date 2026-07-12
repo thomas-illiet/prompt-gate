@@ -61,7 +61,8 @@ reference.
    `https://api.example.com/auth/callback`.
 3. Create runtime secrets:
    `PROMPTGATE_JWT_SECRET`, `PROMPTGATE_SECRETS_KEY`, database credentials,
-   Redis credentials, and OIDC client secret when needed.
+   Redis credentials, OIDC client secret when needed, and
+   `PROMPTGATE_ADMIN_API_KEY` when enabling non-browser administration.
 4. Run migrations with `/app/promptgate migrate`.
 5. Start the API with `/app/promptgate api`.
 6. Start the proxy with `/app/promptgate proxy`.
@@ -83,6 +84,12 @@ docker run --rm \
 
 Run the API:
 
+If administration-key access is enabled, populate
+`PROMPTGATE_ADMIN_API_KEY` from a secret manager before running this command.
+Passing `-e PROMPTGATE_ADMIN_API_KEY` forwards the environment value without
+embedding the secret in the command; omit that line to keep the feature
+disabled.
+
 ```sh
 docker run --rm \
   -p 8080:8080 \
@@ -94,6 +101,7 @@ docker run --rm \
   -e PROMPTGATE_KEYCLOAK_JWKS_URL=https://keycloak.example.com/realms/promptgate/protocol/openid-connect/certs \
   -e PROMPTGATE_KEYCLOAK_CLIENT_ID=promptgate-backend \
   -e PROMPTGATE_KEYCLOAK_CLIENT_SECRET=change-me \
+  -e PROMPTGATE_ADMIN_API_KEY \
   -e PROMPTGATE_CA_FILE=/run/secrets/custom-ca.pem \
   -e PROMPTGATE_FRONTEND_BASE_URL=https://app.example.com \
   -e PROMPTGATE_BACKEND_BASE_URL=https://api.example.com \
@@ -105,6 +113,24 @@ docker run --rm \
 
 Omit the CA certificate volume and `PROMPTGATE_CA_FILE` when Keycloak and
 monitored HTTPS services use publicly trusted certificates.
+
+## Administration API Key
+
+Inject `PROMPTGATE_ADMIN_API_KEY` only into API containers. The proxy, worker,
+scheduler, and migration processes do not use it. The Docker Compose example
+does this under `services.api.environment` and leaves the feature disabled when
+the interpolated host variable is unset or empty. OIDC configuration remains
+required even when administration-key access is enabled.
+
+The credential is global and grants the full `/api/v1/admin/**` surface,
+including destructive operations, without per-operator attribution. Store it
+in a secret manager, expose the API over HTTPS, and use the header only from
+trusted CLI or server workloads. Do not inject it into frontend builds.
+
+The API reads the value at startup. To rotate it, update the backing secret and
+restart every API replica or trigger a Deployment rollout. There is no period
+where one API process accepts both the old and new keys, so coordinate the
+client cutover with the restart.
 
 Run the proxy:
 

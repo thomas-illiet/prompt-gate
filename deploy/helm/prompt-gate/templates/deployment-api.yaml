@@ -1,4 +1,6 @@
 {{- if .Values.api.enabled -}}
+{{- $adminApiKeyValue := include "prompt-gate.adminApiKeyValue" . -}}
+{{- $adminApiKeyExistingSecretName := include "prompt-gate.adminApiKeyExistingSecretName" . -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -29,6 +31,11 @@ spec:
         {{- end }}
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- if and (ne $adminApiKeyValue "") (eq $adminApiKeyExistingSecretName "") }}
+        checksum/admin-api-key: {{ include (print $.Template.BasePath "/secret-admin-api-key.yaml") . | sha256sum }}
+        {{- else if ne $adminApiKeyExistingSecretName "" }}
+        rollout/admin-api-key: {{ default "" .Values.adminApiKey.rolloutToken | toString | quote }}
+        {{- end }}
         {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -53,6 +60,15 @@ spec:
               containerPort: {{ .Values.config.port }}
               protocol: TCP
           {{- include "prompt-gate.envFrom" . | nindent 10 }}
+          {{- if or (ne $adminApiKeyValue "") (ne $adminApiKeyExistingSecretName "") }}
+          env:
+            - name: PROMPTGATE_ADMIN_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "prompt-gate.adminApiKeySecretName" . | quote }}
+                  key: {{ include "prompt-gate.adminApiKeySecretKey" . | quote }}
+                  optional: false
+          {{- end }}
           securityContext:
             {{- include "prompt-gate.containerSecurityContext" . | nindent 12 }}
           resources:

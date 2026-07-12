@@ -30,6 +30,7 @@ dotenv file.
 | `PROMPTGATE_PROXY_PORT` | API, proxy | `8081` | Proxy server listen port. The API also uses it to derive `PROMPTGATE_PROXY_BASE_URL` when no explicit proxy base URL is set. |
 | `PROMPTGATE_LOG_LEVEL` | API, proxy, worker, schedule, migrate | `info` | Log level. Supported values are `debug`, `info`, `warn`, `warning`, and `error`; unknown values fall back to `info`. |
 | `PROMPTGATE_KEYCLOAK_CLIENT_SECRET` | API | empty | Optional OIDC client secret. Set it when the OIDC client is confidential. |
+| `PROMPTGATE_ADMIN_API_KEY` | API | empty (disabled) | Optional global credential accepted in `X-Admin-API-Key` for `/api/v1/admin/**` routes. Intended only for trusted CLI and server-to-server administration. Empty or whitespace-only values disable it; any other trimmed value is accepted. |
 | `PROMPTGATE_CA_FILE` | API, schedule | empty | Optional path to a PEM-encoded CA certificate file. API uses it for Keycloak HTTPS endpoints and monitoring checks; schedule uses it for monitoring checks. |
 | `PROMPTGATE_PROXY_BASE_URL` | API | derived from `PROMPTGATE_BACKEND_BASE_URL` and `PROMPTGATE_PROXY_PORT` | Public proxy origin shown to clients. Set it explicitly when the proxy is served from a different host, path, or externally mapped port. |
 | `PROMPTGATE_STATIC_ASSETS_DIR` | API | empty | Optional directory containing frontend static assets. When set, the API serves files from this directory and falls back to the SPA shell for frontend routes. |
@@ -113,6 +114,7 @@ PROMPTGATE_KEYCLOAK_ISSUER_URL=http://localhost:8082/realms/promptgate
 PROMPTGATE_KEYCLOAK_JWKS_URL=http://localhost:8082/realms/promptgate/protocol/openid-connect/certs
 PROMPTGATE_KEYCLOAK_CLIENT_ID=promptgate-backend
 PROMPTGATE_KEYCLOAK_CLIENT_SECRET=
+PROMPTGATE_ADMIN_API_KEY=
 PROMPTGATE_CA_FILE=
 PROMPTGATE_FRONTEND_BASE_URL=http://localhost:3000
 PROMPTGATE_BACKEND_BASE_URL=http://localhost:8080
@@ -153,6 +155,10 @@ PROMPTGATE_USAGE_COST_EMBEDDING=0.02
 - `PROMPTGATE_CA_FILE` must point to a readable PEM file. Mount the file into
   API and schedule containers when Keycloak or monitored HTTPS services use a
   private or internal CA.
+- `PROMPTGATE_ADMIN_API_KEY` is read only by the API process. When enabled, it
+  grants full access to every admin endpoint, including destructive actions.
+  Keep it out of frontend code, browser storage, URLs, logs, and version
+  control, and send it only over HTTPS.
 - `PROMPTGATE_SECRETS_KEY` protects stored downstream provider credentials and
   sensitive MCP headers. Rotating it requires a deliberate secret migration
   plan.

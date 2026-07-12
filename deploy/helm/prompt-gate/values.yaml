@@ -79,6 +79,25 @@ secret:
   secretsKey: ""
   keycloakClientSecret: ""
 
+adminApiKey:
+  # Development-only inline value. When non-empty, the chart creates a
+  # dedicated Secret that is referenced only by the API Deployment.
+  # In production, prefer existingSecret instead of storing the key in values.
+  value: ""
+
+  existingSecret:
+    # Existing Secret containing the administration API key. This source is
+    # mutually exclusive with adminApiKey.value.
+    name: ""
+    key: PROMPTGATE_ADMIN_API_KEY
+
+  # Extra annotations added only to the generated administration key Secret.
+  annotations: {}
+
+  # Change this value when rotating an existing Secret to force an API rollout.
+  # Generated Secrets use an automatic checksum annotation instead.
+  rolloutToken: ""
+
 config:
   # API process listen port and Service target port.
   port: 8080

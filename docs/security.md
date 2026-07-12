@@ -35,7 +35,31 @@ Prompt Gate uses these application roles:
 | `admin` | Can access all admin routes. |
 
 Protected routes reject inactive users and users with role `none`. Admin routes
-require role `admin`.
+require role `admin` unless a valid administration API key is used.
+
+## Administration API Key
+
+`PROMPTGATE_ADMIN_API_KEY` optionally enables a second authentication method
+for `/api/v1/admin/**`. A trusted CLI or server sends the configured value in
+exactly one `X-Admin-API-Key` header. Empty or whitespace-only configuration
+keeps the feature disabled. OIDC remains required for the API and continues to
+authenticate browser users.
+
+The key is deliberately limited to admin routes. It is not accepted by user
+profile or token routes, the LLM proxy, or `/auth/**`, and it is not integrated
+into the frontend or browser CORS flow. Within the admin route group it grants
+unrestricted read and mutation access, including destructive actions. The key
+is global rather than user-specific, so key-authenticated requests cannot be
+attributed to an individual operator by the authentication mechanism.
+
+Treat the key as a high-impact production secret: store it in a secret manager,
+never place it in a URL or frontend bundle, avoid logging it, and transmit it
+only over HTTPS. Although the application enforces no minimum length, use a
+random high-entropy value in production. The API compares SHA-256 fingerprints
+in constant time and does not expose the configured value. Only one value is
+accepted at a time; rotation requires replacing the secret and restarting every
+API process or triggering an API deployment rollout, with no dual-key grace
+period.
 
 ## API Tokens
 
@@ -118,7 +142,8 @@ local development.
 ## Operational Checklist
 
 - Store `PROMPTGATE_JWT_SECRET`, `PROMPTGATE_SECRETS_KEY`, database
-  credentials, Redis credentials, and OIDC client secrets in a secret manager.
+  credentials, Redis credentials, OIDC client secrets, and any configured
+  `PROMPTGATE_ADMIN_API_KEY` in a secret manager.
 - Use HTTPS origins for production `PROMPTGATE_BACKEND_BASE_URL` and
   `PROMPTGATE_FRONTEND_BASE_URL`.
 - Run migrations before serving traffic.
@@ -127,3 +152,5 @@ local development.
 - Prefer explicit `PROMPTGATE_PROXY_TRUSTED_PROXIES` CIDRs over global
   forwarded-header trust.
 - Review service-account firewall overrides before issuing long-lived tokens.
+- Restrict the administration API key to trusted CLI and server workloads, and
+  restart or roll out every API replica after rotating it.

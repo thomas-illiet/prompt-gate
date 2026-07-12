@@ -68,6 +68,57 @@ func TestLoadApiCustomSessionTTL(t *testing.T) {
 	}
 }
 
+// TestLoadApiAdminAPIKey verifies the optional administration API key is trimmed and accepts any non-empty length.
+func TestLoadApiAdminAPIKey(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		value *string
+		want  string
+	}{
+		{name: "absent", want: ""},
+		{name: "whitespace only", value: stringPointer(" \t\n "), want: ""},
+		{name: "trimmed", value: stringPointer("  admin-secret\t"), want: "admin-secret"},
+		{name: "single character", value: stringPointer("x"), want: "x"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			setRequiredAPIEnv(t)
+			if test.value == nil {
+				unsetEnv(t, "PROMPTGATE_ADMIN_API_KEY")
+			} else {
+				t.Setenv("PROMPTGATE_ADMIN_API_KEY", *test.value)
+			}
+
+			cfg, err := LoadApi()
+			if err != nil {
+				t.Fatalf("load api config: %v", err)
+			}
+			if cfg.AdminAPIKey != test.want {
+				t.Fatalf("expected admin API key %q, got %q", test.want, cfg.AdminAPIKey)
+			}
+		})
+	}
+}
+
+func stringPointer(value string) *string {
+	return &value
+}
+
+func unsetEnv(t *testing.T, key string) {
+	t.Helper()
+
+	previous, existed := os.LookupEnv(key)
+	if err := os.Unsetenv(key); err != nil {
+		t.Fatalf("unset %s: %v", key, err)
+	}
+	t.Cleanup(func() {
+		if existed {
+			_ = os.Setenv(key, previous)
+			return
+		}
+		_ = os.Unsetenv(key)
+	})
+}
+
 // TestLoadApiProxyBaseURLOverride verifies load API proxy base URL override.
 func TestLoadApiProxyBaseURLOverride(t *testing.T) {
 	setRequiredAPIEnv(t)
