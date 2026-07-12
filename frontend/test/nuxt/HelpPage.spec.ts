@@ -75,6 +75,7 @@ describe('HelpPage', () => {
       setup: shallowRef({
         proxyBaseUrl: 'https://proxy.example.com',
         providers: [],
+        guides: [],
       }),
     })
 
@@ -96,6 +97,23 @@ describe('HelpPage', () => {
       setup: shallowRef({
         proxyBaseUrl: 'https://proxy.example.com',
         providers: [anthropicProvider],
+        guides: [
+          {
+            id: 'claude',
+            identifier: 'claude-code',
+            title: 'Claude Code',
+            subtitle: 'Claude setup',
+            icon: 'mdi-code-tags',
+            compatibility: 'anthropic',
+            modelMode: 'none',
+            filePaths: [],
+            template: '{{anthropicBaseUrl}}',
+            enabled: true,
+            position: 0,
+            createdAt: '',
+            updatedAt: '',
+          },
+        ],
       }),
     })
     useHelpSnippetSelectionMock.mockReturnValueOnce({

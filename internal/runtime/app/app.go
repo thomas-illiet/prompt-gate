@@ -10,12 +10,14 @@ import (
 
 	"promptgate/backend/internal/domain/auth"
 	"promptgate/backend/internal/domain/firewall"
+	"promptgate/backend/internal/domain/faq"
 	"promptgate/backend/internal/domain/groups"
 	"promptgate/backend/internal/domain/mcp"
 	"promptgate/backend/internal/domain/monitoring"
 	"promptgate/backend/internal/domain/pricing"
 	"promptgate/backend/internal/domain/provider"
 	"promptgate/backend/internal/domain/proxy"
+	"promptgate/backend/internal/domain/setupguide"
 	"promptgate/backend/internal/domain/subscriptions"
 	"promptgate/backend/internal/domain/tokens"
 	"promptgate/backend/internal/domain/users"
@@ -33,6 +35,7 @@ type App struct {
 	Users         *users.Service
 	Tokens        *tokens.Service
 	Firewall      *firewall.Service
+	FAQ           *faq.Service
 	Groups        *groups.Service
 	Providers     *provider.Service
 	MCP           *mcp.Service
@@ -40,6 +43,7 @@ type App struct {
 	Pricing       *pricing.Service
 	Proxy         *proxy.Service
 	Subscriptions *subscriptions.Service
+	SetupGuides   *setupguide.Service
 	OIDC          *auth.OIDCService
 	Validator     *auth.Validator
 	Sessions      *auth.SessionStore
@@ -61,6 +65,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	userService.SetTokenRevoker(tokenService)
 	subscriptionService := subscriptions.NewService(db)
 	firewallService := firewall.NewService(db)
+	faqService := faq.NewService(db)
 	groupService := groups.NewService(db)
 	secretCipher, err := secrets.NewCipher(cfg.SecretsKey)
 	if err != nil {
@@ -70,6 +75,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 	pricingService := pricing.NewService(db, providerService)
 	mcpService := mcp.NewService(db, secretCipher)
 	monitoringService := monitoring.NewService(db)
+	setupGuideService := setupguide.NewService(db)
 	caHTTPClient, err := platformhttp.NewWithCAFile(cfg.CAFile, 0)
 	if err != nil {
 		return nil, fmt.Errorf("initialize CA HTTP client: %w", err)
@@ -143,6 +149,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		Users:         userService,
 		Tokens:        tokenService,
 		Firewall:      firewallService,
+		FAQ:           faqService,
 		Groups:        groupService,
 		Providers:     providerService,
 		MCP:           mcpService,
@@ -150,6 +157,7 @@ func New(ctx context.Context, cfg config.Config) (*App, error) {
 		Pricing:       pricingService,
 		Proxy:         proxyService,
 		Subscriptions: subscriptionService,
+		SetupGuides:   setupGuideService,
 		OIDC:          oidcService,
 		Validator:     validator,
 		Sessions:      sessionStore,

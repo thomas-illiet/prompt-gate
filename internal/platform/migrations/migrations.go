@@ -8,12 +8,14 @@ import (
 	"gorm.io/gorm"
 
 	"promptgate/backend/internal/domain/firewall"
+	"promptgate/backend/internal/domain/faq"
 	"promptgate/backend/internal/domain/groups"
 	"promptgate/backend/internal/domain/mcp"
 	"promptgate/backend/internal/domain/monitoring"
 	"promptgate/backend/internal/domain/pricing"
 	"promptgate/backend/internal/domain/provider"
 	"promptgate/backend/internal/domain/proxy"
+	"promptgate/backend/internal/domain/setupguide"
 	"promptgate/backend/internal/domain/subscriptions"
 	"promptgate/backend/internal/domain/tokens"
 	"promptgate/backend/internal/domain/users"
@@ -41,9 +43,19 @@ func Run(ctx context.Context, db *gorm.DB) error {
 		return fmt.Errorf("migrate firewall: %w", err)
 	}
 
+	slog.Info("running database migrations", "models", "faq")
+	if err := faq.NewService(db).AutoMigrate(ctx); err != nil {
+		return fmt.Errorf("migrate faq: %w", err)
+	}
+
 	slog.Info("running database migrations", "models", "providers")
 	if err := db.WithContext(ctx).AutoMigrate(&provider.Provider{}); err != nil {
 		return fmt.Errorf("migrate providers: %w", err)
+	}
+
+	slog.Info("running database migrations", "models", "setup guides")
+	if err := setupguide.NewService(db).AutoMigrate(ctx); err != nil {
+		return fmt.Errorf("migrate setup guides: %w", err)
 	}
 
 	slog.Info("running database migrations", "models", "pricing")

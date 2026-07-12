@@ -7,11 +7,13 @@ import (
 	"gorm.io/gorm"
 
 	"promptgate/backend/internal/domain/auth"
+	"promptgate/backend/internal/domain/faq"
 	"promptgate/backend/internal/domain/groups"
 	"promptgate/backend/internal/domain/monitoring"
 	"promptgate/backend/internal/domain/pricing"
 	"promptgate/backend/internal/domain/provider"
 	"promptgate/backend/internal/domain/proxy"
+	"promptgate/backend/internal/domain/setupguide"
 	"promptgate/backend/internal/domain/subscriptions"
 	"promptgate/backend/internal/domain/tokens"
 	"promptgate/backend/internal/domain/users"
@@ -26,11 +28,13 @@ type server struct {
 	userService   *users.Service
 	tokenService  *tokens.Service
 	groups        *groups.Service
+	faq           *faq.Service
 	proxyService  *proxy.Service
 	providers     *provider.Service
 	monitoring    *monitoring.Service
 	pricing       *pricing.Service
 	subscriptions *subscriptions.Service
+	setupGuides   *setupguide.Service
 	quotaRedis    *subscriptions.RedisStore
 }
 

@@ -197,4 +197,5 @@ export interface HelpSetupProvider {
 export interface HelpSetupResponse {
   proxyBaseUrl: string
   providers: HelpSetupProvider[]
+  guides: import('./setup-guides').SetupGuide[]
 }

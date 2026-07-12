@@ -28,6 +28,7 @@ function apiError(code: string) {
 
 const setupResponse: HelpSetupResponse = {
   proxyBaseUrl: 'https://proxy.example.com',
+  guides: [],
   providers: [
     {
       name: 'openai-main',

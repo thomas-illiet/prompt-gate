@@ -8,7 +8,9 @@ import (
 	"time"
 
 	"promptgate/backend/internal/domain/auth"
+	"promptgate/backend/internal/domain/provider"
 	"promptgate/backend/internal/domain/proxy"
+	"promptgate/backend/internal/domain/setupguide"
 )
 
 // handleCurrentUserUsage returns the authenticated user's usage summary.
@@ -226,8 +228,18 @@ func (s server) handleHelpSetup(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
-
-	writeJSON(w, http.StatusOK, setup)
+	guides := []setupguide.SetupGuide{}
+	if s.setupGuides != nil {
+		guides, err = s.setupGuides.List(r.Context(), true)
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "load_setup_guides_failed"})
+			return
+		}
+	}
+	writeJSON(w, http.StatusOK, struct {
+		provider.HelpSetupResponse
+		Guides []setupguide.SetupGuide `json:"guides"`
+	}{HelpSetupResponse: setup, Guides: guides})
 }
 
 // currentUserDashboardRequest validates the authenticated dashboard request and returns its user and window.

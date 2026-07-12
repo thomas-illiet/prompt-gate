@@ -6,12 +6,14 @@ import (
 	"strconv"
 
 	"promptgate/backend/internal/domain/firewall"
+	"promptgate/backend/internal/domain/faq"
 	"promptgate/backend/internal/domain/groups"
 	"promptgate/backend/internal/domain/mcp"
 	"promptgate/backend/internal/domain/monitoring"
 	"promptgate/backend/internal/domain/pricing"
 	"promptgate/backend/internal/domain/provider"
 	"promptgate/backend/internal/domain/proxy"
+	"promptgate/backend/internal/domain/setupguide"
 	"promptgate/backend/internal/domain/subscriptions"
 	"promptgate/backend/internal/domain/tokens"
 	"promptgate/backend/internal/domain/users"
@@ -22,6 +24,7 @@ type Handler struct {
 	users         *users.Service
 	tokens        *tokens.Service
 	firewall      *firewall.Service
+	faq           *faq.Service
 	groups        *groups.Service
 	providers     *provider.Service
 	mcp           *mcp.Service
@@ -29,6 +32,7 @@ type Handler struct {
 	pricing       *pricing.Service
 	proxy         *proxy.Service
 	subscriptions *subscriptions.Service
+	setupGuides   *setupguide.Service
 }
 
 // NewHandler returns an admin Handler wired to the given services.
@@ -44,6 +48,10 @@ func NewHandler(u *users.Service, t *tokens.Service, f *firewall.Service, g *gro
 			handler.subscriptions = typed
 		case *pricing.Service:
 			handler.pricing = typed
+		case *setupguide.Service:
+			handler.setupGuides = typed
+		case *faq.Service:
+			handler.faq = typed
 		}
 	}
 	return handler

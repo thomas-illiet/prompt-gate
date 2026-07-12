@@ -4,6 +4,7 @@ import HelpSetupDocumentationPanel from '~/components/HelpSetup/HelpSetupDocumen
 import HelpSetupOperationalNotes from '~/components/HelpSetup/HelpSetupOperationalNotes.vue'
 import HelpSetupProviderLoadingCard from '~/components/HelpSetup/HelpSetupProviderLoadingCard.vue'
 import { availableSetupProviders } from '~/utils/help-setup'
+import { guideSupportsProvider } from '~/utils/setup-guide-template'
 
 definePageMeta({
   icon: 'mdi-help-circle-outline',
@@ -17,38 +18,24 @@ const providers = computed(() =>
   availableSetupProviders(helpSetup.setup.value?.providers ?? []),
 )
 const snippetSelection = useHelpSnippetSelection(providers)
-type HelpSetupDocumentKey =
-  | 'aspnet'
-  | 'cline'
-  | 'claude-code'
-  | 'continue'
-  | 'curl'
-  | 'go'
-  | 'java'
-  | 'lua'
-  | 'openclaw'
-  | 'opencode'
-  | 'powershell'
-  | 'python'
 type ModelSelectMode = 'all' | 'none' | 'single'
 
-const selectedHelpDocumentKey = shallowRef<HelpSetupDocumentKey>('curl')
-const multiModelDocumentKeys = new Set<HelpSetupDocumentKey>([
-  'continue',
-  'openclaw',
-  'opencode',
-])
-const modelSelectMode = computed<ModelSelectMode>(() => {
+const selectedGuideId = shallowRef('')
+const compatibleGuides = computed(() => {
   const provider = snippetSelection.selectedProvider.value
-  if (provider?.type === 'anthropic') {
-    return 'none'
-  }
-
-  if (multiModelDocumentKeys.has(selectedHelpDocumentKey.value)) {
-    return 'all'
-  }
-
-  return 'single'
+  if (!provider) return []
+  return (helpSetup.setup.value?.guides ?? []).filter((guide) =>
+    guideSupportsProvider(guide, provider),
+  )
+})
+const activeGuide = computed(
+  () =>
+    compatibleGuides.value.find(
+      (guide) => guide.id === selectedGuideId.value,
+    ) ?? compatibleGuides.value[0],
+)
+const modelSelectMode = computed<ModelSelectMode>(() => {
+  return activeGuide.value?.modelMode ?? 'single'
 })
 </script>
 
@@ -108,10 +95,16 @@ const modelSelectMode = computed<ModelSelectMode>(() => {
         <HelpSetupOperationalNotes />
       </v-col>
 
-      <v-col v-if="snippetSelection.selectedProvider.value" cols="12">
+      <v-col
+        v-if="
+          snippetSelection.selectedProvider.value && compatibleGuides.length
+        "
+        cols="12"
+      >
         <HelpSetupDocumentationPanel
-          v-model:document-key="selectedHelpDocumentKey"
+          v-model:guide-id="selectedGuideId"
           v-model:model="snippetSelection.selectedModel.value"
+          :guides="compatibleGuides"
           :provider="snippetSelection.selectedProvider.value"
         />
       </v-col>

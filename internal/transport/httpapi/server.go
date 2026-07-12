@@ -7,12 +7,14 @@ import (
 
 	"promptgate/backend/internal/domain/auth"
 	"promptgate/backend/internal/domain/firewall"
+	"promptgate/backend/internal/domain/faq"
 	"promptgate/backend/internal/domain/groups"
 	"promptgate/backend/internal/domain/mcp"
 	"promptgate/backend/internal/domain/monitoring"
 	"promptgate/backend/internal/domain/pricing"
 	"promptgate/backend/internal/domain/provider"
 	"promptgate/backend/internal/domain/proxy"
+	"promptgate/backend/internal/domain/setupguide"
 	"promptgate/backend/internal/domain/subscriptions"
 	"promptgate/backend/internal/domain/tokens"
 	"promptgate/backend/internal/domain/users"
@@ -29,6 +31,7 @@ type Dependencies struct {
 	Users         *users.Service
 	Tokens        *tokens.Service
 	Firewall      *firewall.Service
+	FAQ           *faq.Service
 	Groups        *groups.Service
 	Providers     *provider.Service
 	MCP           *mcp.Service
@@ -36,6 +39,7 @@ type Dependencies struct {
 	Pricing       *pricing.Service
 	Proxy         *proxy.Service
 	Subscriptions *subscriptions.Service
+	SetupGuides   *setupguide.Service
 	QuotaRedis    *subscriptions.RedisStore
 	OIDC          *auth.OIDCService
 	Sessions      *auth.SessionStore
@@ -51,14 +55,16 @@ func NewHandler(a Dependencies) http.Handler {
 		userService:   a.Users,
 		tokenService:  a.Tokens,
 		groups:        a.Groups,
+		faq:           a.FAQ,
 		proxyService:  a.Proxy,
 		providers:     a.Providers,
 		monitoring:    a.Monitoring,
 		pricing:       a.Pricing,
 		subscriptions: a.Subscriptions,
+		setupGuides:   a.SetupGuides,
 		quotaRedis:    a.QuotaRedis,
 	}
-	adminH := admin.NewHandler(a.Users, a.Tokens, a.Firewall, a.Groups, a.Providers, a.MCP, a.Proxy, a.Monitoring, a.Subscriptions, a.Pricing)
+	adminH := admin.NewHandler(a.Users, a.Tokens, a.Firewall, a.Groups, a.Providers, a.MCP, a.Proxy, a.Monitoring, a.Subscriptions, a.Pricing, a.SetupGuides, a.FAQ)
 
 	cfg := a.Config
 	sessionStore := a.Sessions
@@ -535,6 +541,13 @@ func NewHandler(a Dependencies) http.Handler {
 		"POST /api/v1/admin/monitoring/services/{id}/check",
 		middleware.Chain(http.HandlerFunc(adminH.HandleAdminCheckMonitoringService), adminMiddlewares...),
 	)
+	mux.Handle("GET /api/v1/admin/setup-guides", middleware.Chain(http.HandlerFunc(adminH.HandleAdminListSetupGuides), adminMiddlewares...))
+	mux.Handle("POST /api/v1/admin/setup-guides", middleware.Chain(http.HandlerFunc(adminH.HandleAdminCreateSetupGuide), adminMiddlewares...))
+	mux.Handle("POST /api/v1/admin/setup-guides/validate", middleware.Chain(http.HandlerFunc(adminH.HandleAdminValidateSetupGuide), adminMiddlewares...))
+	mux.Handle("PUT /api/v1/admin/setup-guides/reorder", middleware.Chain(http.HandlerFunc(adminH.HandleAdminReorderSetupGuides), adminMiddlewares...))
+	mux.Handle("GET /api/v1/admin/setup-guides/{id}", middleware.Chain(http.HandlerFunc(adminH.HandleAdminGetSetupGuide), adminMiddlewares...))
+	mux.Handle("PATCH /api/v1/admin/setup-guides/{id}", middleware.Chain(http.HandlerFunc(adminH.HandleAdminUpdateSetupGuide), adminMiddlewares...))
+	mux.Handle("DELETE /api/v1/admin/setup-guides/{id}", middleware.Chain(http.HandlerFunc(adminH.HandleAdminDeleteSetupGuide), adminMiddlewares...))
 	if cfg.StaticAssetsDir != "" {
 		mux.Handle("/", newStaticAssetsHandler(cfg.StaticAssetsDir))
 	}
