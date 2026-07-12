@@ -34,6 +34,8 @@ dashboard, prompt, usage, setup, and token routes require role `user`,
 | `GET` | `/api/v1/me` | Current authenticated user profile. |
 | `GET` | `/api/v1/me/usage` | Usage summary for the current user. |
 | `GET` | `/api/v1/me/prompts` | Prompt history for the current user. |
+| `GET` | `/api/v1/me/quota` | Current subscription quota state and reset windows. |
+| `GET` | `/api/v1/me/groups` | Access groups assigned to the current user. |
 | `GET` | `/api/v1/me/help/setup` | Provider setup helper with proxy base URLs and available models. |
 | `GET` | `/api/v1/me/dashboard/tokens` | Token totals for a dashboard window. |
 | `GET` | `/api/v1/me/dashboard/messages` | Message count for a dashboard window. |
@@ -43,6 +45,7 @@ dashboard, prompt, usage, setup, and token routes require role `user`,
 | `GET` | `/api/v1/me/dashboard/top-provider-names` | Provider-name usage breakdown. |
 | `GET` | `/api/v1/me/dashboard/top-provider-types` | Provider-type usage breakdown. |
 | `GET` | `/api/v1/monitoring/status` | Current user-visible monitoring status and degraded service names. |
+| `GET` | `/api/v1/faq` | Published frequently asked questions. |
 
 Common list-style routes use query parameters such as `page`, `pageSize`,
 `search`, `sortBy`, and `sortDir` where supported. Dashboard routes use the
@@ -119,9 +122,13 @@ Admin dashboard token and activity responses follow the same optional
 | `GET` | `/api/v1/admin/users` | List users with pagination, filters, usage totals, and sorting. |
 | `GET` | `/api/v1/admin/users/{id}` | Get one user. |
 | `PATCH` | `/api/v1/admin/users/{id}` | Update role, active state, firewall override, or access expiration. |
+| `PATCH` | `/api/v1/admin/users/{id}/note` | Update the private administration note. |
 | `DELETE` | `/api/v1/admin/users/{id}` | Delete one user and its scoped firewall rules. |
 | `GET` | `/api/v1/admin/users/{id}/tokens` | List a user's tokens. |
 | `DELETE` | `/api/v1/admin/users/{id}/tokens/{tokenId}` | Revoke one user token. |
+| `GET` | `/api/v1/admin/users/{id}/groups` | List the user's access groups. |
+| `PUT` | `/api/v1/admin/users/{id}/groups` | Replace the user's access groups. |
+| `PUT` | `/api/v1/admin/users/{id}/subscription-plan` | Assign or clear the user's subscription plan. |
 | `GET` | `/api/v1/admin/users/{id}/firewall/rules` | List scoped user rules. |
 | `POST` | `/api/v1/admin/users/{id}/firewall/rules` | Create a scoped user rule. |
 | `GET` | `/api/v1/admin/users/{id}/firewall/rules/{ruleId}` | Get a scoped user rule. |
@@ -142,10 +149,12 @@ with role `none` until an admin grants access.
 | `POST` | `/api/v1/admin/service-accounts` | Create a service account. |
 | `GET` | `/api/v1/admin/service-accounts/{id}` | Get one service account. |
 | `PATCH` | `/api/v1/admin/service-accounts/{id}` | Update identifier, name, active state, or firewall override. |
+| `PATCH` | `/api/v1/admin/service-accounts/{id}/note` | Update the private administration note. |
 | `DELETE` | `/api/v1/admin/service-accounts/{id}` | Delete one service account and its scoped firewall rules. |
 | `GET` | `/api/v1/admin/service-accounts/{id}/tokens` | List service-account tokens. |
 | `POST` | `/api/v1/admin/service-accounts/{id}/tokens` | Create a service-account token. |
 | `DELETE` | `/api/v1/admin/service-accounts/{id}/tokens/{tokenId}` | Revoke a service-account token. |
+| `PUT` | `/api/v1/admin/service-accounts/{id}/subscription-plan` | Assign or clear the service account's subscription plan. |
 
 Service account identifiers must be lowercase alphanumeric with dashes or
 underscores and have a maximum length of 64 characters.
@@ -179,6 +188,30 @@ underscores and have a maximum length of 64 characters.
 Firewall rules support `allow` and `deny` actions, priorities from `1` to
 `9999`, individual IPv4 addresses, and IPv4 CIDR ranges.
 
+### Subscriptions
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/v1/admin/subscriptions` | List subscription plans and assignment counts. |
+| `POST` | `/api/v1/admin/subscriptions` | Create a subscription plan. |
+| `GET` | `/api/v1/admin/subscriptions/{id}` | Get one subscription plan. |
+| `PATCH` | `/api/v1/admin/subscriptions/{id}` | Update limits, display metadata, or enabled state. |
+| `PUT` | `/api/v1/admin/subscriptions/{id}/default` | Make a plan the default inherited plan. |
+| `DELETE` | `/api/v1/admin/subscriptions/{id}` | Delete an unreferenced subscription plan. |
+
+### Access Groups
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/v1/admin/groups` | List access groups. |
+| `POST` | `/api/v1/admin/groups` | Create an access group. |
+| `POST` | `/api/v1/admin/groups/model-patterns/validate` | Validate model allow and deny patterns. |
+| `GET` | `/api/v1/admin/groups/{id}` | Get one access group. |
+| `PATCH` | `/api/v1/admin/groups/{id}` | Update group metadata, providers, and model patterns. |
+| `DELETE` | `/api/v1/admin/groups/{id}` | Delete an access group. |
+| `PUT` | `/api/v1/admin/groups/{id}/members/{userId}` | Add a group member. |
+| `DELETE` | `/api/v1/admin/groups/{id}/members/{userId}` | Remove a group member. |
+
 ### Providers
 
 | Method | Path | Purpose |
@@ -194,6 +227,19 @@ Supported provider types are `openai`, `anthropic`, and `ollama`. API keys are
 stored encrypted and are never returned by the admin API. Provider names are
 immutable after creation; update `displayName` to change the label shown in
 admin and setup views.
+
+### Pricing
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/v1/admin/pricing` | Get fallback and model-specific prices. |
+| `PUT` | `/api/v1/admin/pricing` | Replace the complete pricing configuration. |
+| `PATCH` | `/api/v1/admin/pricing/fallback` | Update fallback input and output prices. |
+| `POST` | `/api/v1/admin/pricing/models` | Create a model-specific price. |
+| `GET` | `/api/v1/admin/pricing/models/{id}` | Get one model-specific price. |
+| `PATCH` | `/api/v1/admin/pricing/models/{id}` | Update one model-specific price. |
+| `DELETE` | `/api/v1/admin/pricing/models/{id}` | Delete one model-specific price. |
+| `GET` | `/api/v1/admin/pricing/check` | Report missing model prices for enabled providers. |
 
 ### MCP Servers
 
@@ -233,6 +279,30 @@ The app-level `/api/v1/monitoring/status` route returns:
 When any enabled service is degraded, `status` is `degraded` and `services`
 contains only enabled degraded services. This response intentionally omits
 service URLs.
+
+### FAQs
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/v1/admin/faqs` | List all FAQ entries. |
+| `POST` | `/api/v1/admin/faqs` | Create an FAQ entry. |
+| `POST` | `/api/v1/admin/faqs/preview` | Render and sanitize FAQ Markdown without saving it. |
+| `GET` | `/api/v1/admin/faqs/{id}` | Get one FAQ entry. |
+| `PATCH` | `/api/v1/admin/faqs/{id}` | Update an FAQ entry. |
+| `PATCH` | `/api/v1/admin/faqs/{id}/position` | Move an FAQ entry. |
+| `DELETE` | `/api/v1/admin/faqs/{id}` | Delete an FAQ entry. |
+
+### Setup Guides
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/v1/admin/setup-guides` | List setup guide definitions. |
+| `POST` | `/api/v1/admin/setup-guides` | Create a setup guide. |
+| `POST` | `/api/v1/admin/setup-guides/validate` | Validate a setup guide template. |
+| `PUT` | `/api/v1/admin/setup-guides/reorder` | Replace setup guide ordering. |
+| `GET` | `/api/v1/admin/setup-guides/{id}` | Get one setup guide. |
+| `PATCH` | `/api/v1/admin/setup-guides/{id}` | Update one setup guide. |
+| `DELETE` | `/api/v1/admin/setup-guides/{id}` | Delete one setup guide. |
 
 ## Error Shape
 

@@ -31,7 +31,7 @@ dotenv file.
 | `PROMPTGATE_LOG_LEVEL` | API, proxy, worker, schedule, migrate | `info` | Log level. Supported values are `debug`, `info`, `warn`, `warning`, and `error`; unknown values fall back to `info`. |
 | `PROMPTGATE_KEYCLOAK_CLIENT_SECRET` | API | empty | Optional OIDC client secret. Set it when the OIDC client is confidential. |
 | `PROMPTGATE_ADMIN_API_KEY` | API | empty (disabled) | Optional global credential accepted in `X-Admin-API-Key` for `/api/v1/admin/**` routes. Intended only for trusted CLI and server-to-server administration. Empty or whitespace-only values disable it; any other trimmed value is accepted. |
-| `PROMPTGATE_CA_FILE` | API, schedule | empty | Optional path to a PEM-encoded CA certificate file. API uses it for Keycloak HTTPS endpoints and monitoring checks; schedule uses it for monitoring checks. |
+| `PROMPTGATE_CA_FILE` | API, proxy, schedule | empty | Optional path to a PEM-encoded CA certificate file. API uses it for Keycloak and monitoring, proxy for upstream providers, and schedule for monitoring checks. |
 | `PROMPTGATE_PROXY_BASE_URL` | API | derived from `PROMPTGATE_BACKEND_BASE_URL` and `PROMPTGATE_PROXY_PORT` | Public proxy origin shown to clients. Set it explicitly when the proxy is served from a different host, path, or externally mapped port. |
 | `PROMPTGATE_STATIC_ASSETS_DIR` | API | empty | Optional directory containing frontend static assets. When set, the API serves files from this directory and falls back to the SPA shell for frontend routes. |
 | `PROMPTGATE_SESSION_COOKIE_NAME` | API, proxy | `promptgate_session` | Browser session cookie name. |
@@ -41,6 +41,9 @@ dotenv file.
 | `PROMPTGATE_USER_ACCESS_EXPIRATION_INTERVAL` | API, schedule | `1h` | Interval for user access expiration jobs. |
 | `PROMPTGATE_PROXY_TRUST_FORWARD_HEADERS` | proxy | `false` | Whether the proxy trusts `X-Forwarded-For` and `X-Real-IP`. Enable only behind trusted infrastructure. |
 | `PROMPTGATE_PROXY_TRUSTED_PROXIES` | proxy | empty | Comma-separated CIDRs for proxies whose `X-Forwarded-For` and `X-Real-IP` headers can be trusted. Prefer this over global forwarded-header trust in production. |
+| `PROMPTGATE_PROXY_MAX_BUFFERED_REQUEST_BYTES` | proxy | `8388608` | Maximum buffered request body size for routes that require inspection, in bytes. Must be greater than zero. |
+| `PROMPTGATE_PROXY_MAX_BUFFERED_RESPONSE_BYTES` | proxy | `16777216` | Maximum buffered upstream response size for inspected responses, in bytes. Must be greater than zero. |
+| `PROMPTGATE_PROXY_UPSTREAM_TIMEOUT` | proxy | `2m` | Complete upstream request timeout, including provider calls. Must be greater than zero. |
 | `PROMPTGATE_REDIS_CACHE_TTL` | API, proxy, worker, schedule | `5m` | TTL for Redis-backed cache entries and snapshots. |
 | `PROMPTGATE_PROXY_RELOAD_DEBOUNCE` | API, proxy, schedule | `250ms` | Debounce duration for proxy provider and MCP reload notifications. |
 | `PROMPTGATE_WORKER_BATCH_SIZE` | worker | `100` | Maximum Redis Stream events read per worker batch. |
@@ -129,6 +132,9 @@ PROMPTGATE_TOKEN_CLEANUP_INTERVAL=1h
 PROMPTGATE_USER_ACCESS_EXPIRATION_INTERVAL=1h
 PROMPTGATE_PROXY_TRUST_FORWARD_HEADERS=false
 PROMPTGATE_PROXY_TRUSTED_PROXIES=
+PROMPTGATE_PROXY_MAX_BUFFERED_REQUEST_BYTES=8388608
+PROMPTGATE_PROXY_MAX_BUFFERED_RESPONSE_BYTES=16777216
+PROMPTGATE_PROXY_UPSTREAM_TIMEOUT=2m
 PROMPTGATE_REDIS_CACHE_TTL=5m
 PROMPTGATE_PROXY_RELOAD_DEBOUNCE=250ms
 PROMPTGATE_WORKER_BATCH_SIZE=100

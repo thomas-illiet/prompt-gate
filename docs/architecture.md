@@ -47,7 +47,7 @@ flowchart LR
 | `internal/domain/auth` | OIDC, sessions, roles, user profile context, proxy actor injection. |
 | `internal/domain/tokens` | Prompt Gate API token creation, validation, revocation, cleanup, Redis auth cache. |
 | `internal/domain/users` | Human users, service accounts, role management, access expiration. |
-| `internal/domain/firewall` | Global and service-account firewall rules, snapshots, middleware. |
+| `internal/domain/firewall` | Global, user, and service-account firewall rules, snapshots, middleware. |
 | `internal/domain/provider` | LLM provider configuration, encrypted API keys, setup helper metadata. |
 | `internal/domain/mcp` | MCP server configuration, encrypted sensitive headers, regex filters. |
 | `internal/domain/proxy` | Usage, prompt, tool, and interception recording plus dashboards. |
