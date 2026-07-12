@@ -72,7 +72,7 @@ func newDashboardTestHandler(t *testing.T) (*Handler, *gorm.DB) {
 		}
 	}
 
-	return NewHandler(userService, nil, nil, nil, nil, nil, proxy.NewService(db)), db
+	return NewHandler(Dependencies{Users: userService, Proxy: proxy.NewService(db)}), db
 }
 
 // seedDashboardUsage seeds dashboard usage.

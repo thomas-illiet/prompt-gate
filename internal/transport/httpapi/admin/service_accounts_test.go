@@ -47,7 +47,7 @@ func newServiceAccountsTestHandler(t *testing.T) (*Handler, *users.Service, *tok
 		t.Fatalf("auto-migrate firewall tables: %v", err)
 	}
 
-	return NewHandler(userService, tokenService, firewallService, nil, nil, nil), userService, tokenService
+	return NewHandler(Dependencies{Users: userService, Tokens: tokenService, Firewall: firewallService}), userService, tokenService
 }
 
 // TestHandleAdminCreateServiceAccountRejectsInvalidIdentifier verifies handle admin create service account rejects invalid identifier.

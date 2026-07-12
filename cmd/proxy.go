@@ -14,25 +14,9 @@ import (
 	cdrslog "cdr.dev/slog/v3"
 	"cdr.dev/slog/v3/sloggers/sloghuman"
 	"github.com/spf13/cobra"
-	"go.opentelemetry.io/otel"
 
-	"promptgate/backend/internal/domain/auth"
-	"promptgate/backend/internal/domain/firewall"
-	"promptgate/backend/internal/domain/groups"
-	localmcp "promptgate/backend/internal/domain/mcp"
-	localprovider "promptgate/backend/internal/domain/provider"
-	localproxy "promptgate/backend/internal/domain/proxy"
-	"promptgate/backend/internal/domain/subscriptions"
-	"promptgate/backend/internal/domain/tokens"
-	"promptgate/backend/internal/domain/users"
-	"promptgate/backend/internal/platform/clientip"
 	"promptgate/backend/internal/platform/config"
-	"promptgate/backend/internal/platform/database"
-	platformhttp "promptgate/backend/internal/platform/httpclient"
-	"promptgate/backend/internal/platform/redisstore"
-	"promptgate/backend/internal/platform/secrets"
-	proxyruntime "promptgate/backend/internal/runtime/proxy"
-	httpmiddleware "promptgate/backend/internal/transport/httpmiddleware"
+	"promptgate/backend/internal/runtime/app"
 )
 
 // newProxyCommand builds the CLI command that starts the LLM proxy server.
@@ -67,79 +51,7 @@ func runProxy() error {
 	signal.Notify(reloadSignals, syscall.SIGHUP)
 	defer signal.Stop(reloadSignals)
 
-	db, err := database.OpenPostgres(ctx, cfg.DatabaseURL)
-	if err != nil {
-		stdLogger.Error("failed to initialize postgres connection", "error", err)
-		return err
-	}
-
-	secretCipher, err := secrets.NewCipher(cfg.SecretsKey)
-	if err != nil {
-		stdLogger.Error("failed to initialize secret cipher", "error", err)
-		return err
-	}
-
-	stdLogger.Info("initializing redis connection")
-	redisStore, err := redisstore.NewRequired(ctx, cfg.RedisURL, cfg.RedisCacheTTL, stdLogger)
-	if err != nil {
-		stdLogger.Error("failed to initialize redis connection", "error", err)
-		return err
-	}
-	stdLogger.Info("redis connection ready")
-	defer func(redisStore *redisstore.Store) {
-		err := redisStore.Close()
-		if err != nil {
-			stdLogger.Error("failed to close redis store", "error", err)
-		}
-	}(redisStore)
-
-	userService := users.NewService(db)
-	tokenService := tokens.NewService(db, cfg.JWTSecret)
-	firewallService := firewall.NewService(db)
-	groupService := groups.NewService(db)
-	subscriptionService := subscriptions.NewService(db)
-	providerService := localprovider.NewService(db, secretCipher)
-	mcpService := localmcp.NewService(db, secretCipher)
-	subscriptionStore := subscriptions.NewRedisStore(redisStore, subscriptionService, cfg.RedisCacheTTL, stdLogger)
-	subscriptionStore.SyncVersion(ctx)
-	if err := subscriptionStore.WarmSnapshot(ctx); err != nil {
-		stdLogger.Error("failed to warm subscription snapshot", "error", err)
-		return err
-	}
-	recorder := subscriptions.NewQuotaRecorder(localproxy.NewRedisRecorder(redisStore, stdLogger), subscriptionStore, stdLogger)
-	tracer := otel.GetTracerProvider().Tracer("promptgate-proxy")
-	proxyHTTPClient := &http.Client{Timeout: cfg.ProxyUpstreamTimeout}
-	caHTTPClient, err := platformhttp.NewWithCAFile(cfg.CAFile, cfg.ProxyUpstreamTimeout)
-	if err != nil {
-		stdLogger.Error("failed to initialize proxy CA HTTP client", "error", err)
-		return err
-	}
-	if caHTTPClient != nil {
-		stdLogger.Info("loaded proxy CA file", "path", cfg.CAFile)
-		proxyHTTPClient = caHTTPClient
-	}
-
-	authCache := tokens.NewRedisAuthCache(redisStore, cfg.RedisCacheTTL, stdLogger)
-	authCache.SyncVersion(ctx)
-	firewallSnapshot := firewall.NewSnapshotStore(firewallService)
-	accessSnapshot := groups.NewSnapshotStore(groupService)
-
-	manager, err := proxyruntime.NewManager(ctx, proxyruntime.Options{
-		Providers:                providerService,
-		MCP:                      mcpService,
-		Recorder:                 recorder,
-		FirewallSnapshot:         firewallSnapshot,
-		AccessSnapshot:           accessSnapshot,
-		AuthCache:                authCache,
-		Redis:                    redisStore,
-		HTTPClient:               proxyHTTPClient,
-		Logger:                   stdLogger,
-		BridgeLogger:             bridgeLogger,
-		Tracer:                   tracer,
-		ReloadDebounce:           cfg.ProxyReloadDebounce,
-		MaxBufferedRequestBytes:  cfg.ProxyMaxBufferedRequestBytes,
-		MaxBufferedResponseBytes: cfg.ProxyMaxBufferedResponseBytes,
-	})
+	proxyRuntime, err := app.NewProxy(ctx, cfg, stdLogger, bridgeLogger)
 	if err != nil {
 		stdLogger.Error("failed to initialize proxy runtime", "error", err)
 		return err
@@ -147,12 +59,11 @@ func runProxy() error {
 	defer func() {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		if err := manager.Shutdown(shutdownCtx); err != nil {
+		if err := proxyRuntime.Close(shutdownCtx); err != nil {
 			stdLogger.Error("failed to shut down proxy runtime", "error", err)
 		}
 	}()
-	go manager.Watch(ctx)
-	go subscriptionStore.Watch(ctx)
+	proxyRuntime.Start(ctx)
 	go func() {
 		for {
 			select {
@@ -161,7 +72,7 @@ func runProxy() error {
 			case <-reloadSignals:
 				stdLogger.Info("reload signal received, reloading proxy runtime")
 				reloadCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-				if err := manager.Reload(reloadCtx); err != nil {
+				if err := proxyRuntime.Reload(reloadCtx); err != nil {
 					stdLogger.Error("proxy runtime reload failed; keeping previous runtime", "error", err)
 				} else {
 					stdLogger.Info("proxy runtime reloaded")
@@ -171,43 +82,9 @@ func runProxy() error {
 		}
 	}()
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status":"ok"}`))
-	})
-	clientIPOptions := clientip.Options{
-		TrustForwardHeaders: cfg.ProxyTrustForwardHeaders,
-		TrustedProxies:      cfg.ProxyTrustedProxies,
-	}
-	proxyHandler := tokens.MiddlewareWithOptions(tokens.MiddlewareOptions{
-		TokenService: tokenService,
-		UserResolver: userService,
-		Cache:        authCache,
-		Logger:       stdLogger,
-	})(
-		clientip.MiddlewareWithOptions(clientIPOptions)(
-			firewall.MiddlewareWithOptions(firewallSnapshot, clientIPOptions, stdLogger)(
-				groups.MiddlewareWithOptions(accessSnapshot, stdLogger, groups.MiddlewareOptions{
-					MaxBufferedRequestBytes: cfg.ProxyMaxBufferedRequestBytes,
-				})(
-					subscriptions.Middleware(subscriptionStore, stdLogger)(
-						auth.ActorMiddleware(manager),
-					),
-				),
-			),
-		),
-	)
-	if len(cfg.CORSAllowedOrigins) > 0 {
-		proxyHandler = httpmiddleware.CORS(cfg.CORSAllowedOrigins)(proxyHandler)
-	}
-	proxyHandler = requestTimeout(cfg.ProxyUpstreamTimeout)(proxyHandler)
-	mux.Handle("/", proxyHandler)
-
 	server := &http.Server{
 		Addr:              cfg.ListenAddress(),
-		Handler:           httpmiddleware.SecurityHeaders()(mux),
+		Handler:           proxyRuntime.Handler,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
@@ -228,19 +105,6 @@ func runProxy() error {
 	}
 
 	return nil
-}
-
-// requestTimeout bounds the complete proxy request, including provider calls.
-// It preserves streaming because it only cancels the request context instead
-// of using http.TimeoutHandler, which buffers responses.
-func requestTimeout(timeout time.Duration) func(http.Handler) http.Handler {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ctx, cancel := context.WithTimeout(r.Context(), timeout)
-			defer cancel()
-			next.ServeHTTP(w, r.WithContext(ctx))
-		})
-	}
 }
 
 // cdrLevel maps configured log level text to the cdr/slog level type.

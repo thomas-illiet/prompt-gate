@@ -33,12 +33,12 @@ func newMonitoringTestHandler(t *testing.T) (*Handler, *monitoring.Service) {
 		t.Fatalf("auto-migrate monitoring table: %v", err)
 	}
 
-	return NewHandler(nil, nil, nil, nil, nil, nil, service), service
+	return NewHandler(Dependencies{Monitoring: service}), service
 }
 
 // TestHandleAdminListMonitoringServicesReturnsUnavailableWhenDependencyMissing verifies handle admin list monitoring services returns unavailable when dependency missing.
 func TestHandleAdminListMonitoringServicesReturnsUnavailableWhenDependencyMissing(t *testing.T) {
-	handler := NewHandler(nil, nil, nil, nil, nil, nil)
+	handler := NewHandler(Dependencies{})
 	req := httptest.NewRequest(
 		http.MethodGet,
 		"/api/v1/admin/monitoring/services?page=1&pageSize=10&sortBy=name&sortDir=asc",

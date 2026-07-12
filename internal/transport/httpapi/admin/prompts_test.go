@@ -54,7 +54,7 @@ func newPromptsTestHandler(t *testing.T) (*Handler, *gorm.DB) {
 		t.Fatalf("seed user: %v", err)
 	}
 
-	return NewHandler(userService, nil, nil, nil, nil, nil, proxy.NewService(db)), db
+	return NewHandler(Dependencies{Users: userService, Proxy: proxy.NewService(db)}), db
 }
 
 // seedAdminPrompt seeds admin prompt.
@@ -132,7 +132,7 @@ func TestHandleAdminListPromptsRejectsInvalidSort(t *testing.T) {
 
 // TestHandleAdminListPromptsRequiresProxyService verifies handle admin list prompts requires proxy service.
 func TestHandleAdminListPromptsRequiresProxyService(t *testing.T) {
-	handler := NewHandler(nil, nil, nil, nil, nil, nil)
+	handler := NewHandler(Dependencies{})
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/prompts", nil)
 	recorder := httptest.NewRecorder()
 

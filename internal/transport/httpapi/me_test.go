@@ -242,8 +242,8 @@ func TestHandleHelpSetupReturnsUserScopedRedactedProviderMetadata(t *testing.T) 
 	recorder := httptest.NewRecorder()
 
 	server{
-		config: config.Config{
-			ProxyBaseURL: "https://proxy.example.com",
+		config: config.APIConfig{
+			PublicURLConfig: config.PublicURLConfig{ProxyBaseURL: "https://proxy.example.com"},
 		},
 		providers: providerService,
 		groups:    groupService,
@@ -323,8 +323,8 @@ func TestHandleHelpSetupReturnsAnthropicWithoutModelFetch(t *testing.T) {
 	recorder := httptest.NewRecorder()
 
 	server{
-		config: config.Config{
-			ProxyBaseURL: "https://proxy.example.com",
+		config: config.APIConfig{
+			PublicURLConfig: config.PublicURLConfig{ProxyBaseURL: "https://proxy.example.com"},
 		},
 		providers: providerService,
 		groups:    groupService,
@@ -390,8 +390,8 @@ func TestHandleHelpSetupReturnsEmptyProvidersWithoutGroupAccess(t *testing.T) {
 	recorder := httptest.NewRecorder()
 
 	server{
-		config: config.Config{
-			ProxyBaseURL: "https://proxy.example.com",
+		config: config.APIConfig{
+			PublicURLConfig: config.PublicURLConfig{ProxyBaseURL: "https://proxy.example.com"},
 		},
 		providers: providerService,
 		groups:    groupService,

@@ -20,7 +20,9 @@ func TestAdminDashboardRoutesRequireAdminRole(t *testing.T) {
 	}
 
 	handler := NewHandler(Dependencies{
-		Config:   config.Config{SessionCookieName: "promptgate_session"},
+		Config: config.APIConfig{
+			SessionConfig: config.SessionConfig{SessionCookieName: "promptgate_session"},
+		},
 		Sessions: sessionStore,
 	})
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/dashboard/tokens", nil)

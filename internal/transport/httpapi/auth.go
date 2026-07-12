@@ -21,7 +21,7 @@ import (
 )
 
 type server struct {
-	config        config.Config
+	config        config.APIConfig
 	db            *gorm.DB
 	oidcService   *auth.OIDCService
 	sessionStore  *auth.SessionStore
@@ -218,7 +218,7 @@ func (s *server) handleSession(w http.ResponseWriter, r *http.Request) {
 }
 
 // setSessionCookie writes the session ID as an HTTP-only cookie.
-func setSessionCookie(w http.ResponseWriter, cfg config.Config, session auth.Session) {
+func setSessionCookie(w http.ResponseWriter, cfg config.APIConfig, session auth.Session) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     cfg.SessionCookieName,
 		Value:    session.ID,
@@ -231,7 +231,7 @@ func setSessionCookie(w http.ResponseWriter, cfg config.Config, session auth.Ses
 }
 
 // clearSessionCookie expires the session cookie.
-func clearSessionCookie(w http.ResponseWriter, cfg config.Config) {
+func clearSessionCookie(w http.ResponseWriter, cfg config.APIConfig) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     cfg.SessionCookieName,
 		Value:    "",

@@ -62,7 +62,7 @@ func runSchedule() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	a, err := app.New(ctx, cfg)
+	a, err := app.NewSchedule(ctx, cfg)
 	if err != nil {
 		logger.Error("failed to initialize schedule application", "error", err)
 		return err

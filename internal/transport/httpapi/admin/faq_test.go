@@ -25,7 +25,7 @@ func newFAQTestHandler(t *testing.T) (*Handler, *faq.Service) {
 	if err := service.AutoMigrate(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	return NewHandler(nil, nil, nil, nil, nil, nil, service), service
+	return NewHandler(Dependencies{FAQ: service}), service
 }
 
 func TestHandleAdminFAQCRUDAndValidation(t *testing.T) {

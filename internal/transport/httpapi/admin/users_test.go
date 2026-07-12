@@ -38,7 +38,7 @@ func newUsersTestHandler(t *testing.T) (*Handler, *users.Service) {
 	}
 	createAdminUsersUsageTables(t, db)
 
-	return NewHandler(service, nil, nil, nil, nil, nil), service
+	return NewHandler(Dependencies{Users: service}), service
 }
 
 // newUsersFirewallTestHandler creates an admin handler with users and firewall services.
@@ -64,7 +64,7 @@ func newUsersFirewallTestHandler(t *testing.T) (*Handler, *users.Service, *firew
 	}
 	createAdminUsersUsageTables(t, db)
 
-	return NewHandler(userService, nil, firewallService, nil, nil, nil), userService, firewallService, db
+	return NewHandler(Dependencies{Users: userService, Firewall: firewallService}), userService, firewallService, db
 }
 
 // createAdminUsersUsageTables creates admin users usage tables.

@@ -79,7 +79,7 @@ func newGroupsTestHandler(t *testing.T) (*Handler, *groups.Service, users.User, 
 	}
 
 	providerService := provider.NewService(db, nil)
-	return NewHandler(nil, nil, nil, groupService, providerService, nil), groupService, user, openai, anthropic
+	return NewHandler(Dependencies{Groups: groupService, Providers: providerService}), groupService, user, openai, anthropic
 }
 
 // TestHandleAdminGroupsCreateAddMemberAndReplaceUserGroups verifies handle admin groups create add member and replace user groups.

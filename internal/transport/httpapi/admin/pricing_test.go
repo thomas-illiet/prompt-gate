@@ -32,7 +32,7 @@ func newPricingTestHandler(t *testing.T) (*Handler, *pricing.Service) {
 		t.Fatalf("auto-migrate pricing table: %v", err)
 	}
 
-	return NewHandler(nil, nil, nil, nil, nil, nil, service), service
+	return NewHandler(Dependencies{Pricing: service}), service
 }
 
 func TestHandleAdminModelPriceCRUD(t *testing.T) {

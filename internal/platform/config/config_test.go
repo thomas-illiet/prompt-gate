@@ -41,6 +41,15 @@ func setRequiredWorkerEnv(t *testing.T) {
 	t.Setenv("PROMPTGATE_REDIS_URL", "redis://localhost:6379/0")
 }
 
+// setRequiredProxyEnv sets required proxy env.
+func setRequiredProxyEnv(t *testing.T) {
+	t.Helper()
+
+	setRequiredWorkerEnv(t)
+	t.Setenv("PROMPTGATE_JWT_SECRET", "0123456789abcdef0123456789abcdef")
+	t.Setenv("PROMPTGATE_SECRETS_KEY", "0123456789abcdef0123456789abcdef")
+}
+
 // TestLoadApiDefaultSessionTTL verifies load API default session TTL.
 func TestLoadApiDefaultSessionTTL(t *testing.T) {
 	setRequiredAPIEnv(t)
@@ -460,5 +469,85 @@ func TestLoadProxyRejectsInvalidTrustedProxyCIDR(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "PROMPTGATE_PROXY_TRUSTED_PROXIES") {
 		t.Fatalf("expected trusted proxies error, got %v", err)
+	}
+}
+
+// TestRuntimeConfigsRejectNonPositiveDurations verifies every duration passed
+// to a ticker, cache, or timeout is validated during configuration loading.
+func TestRuntimeConfigsRejectNonPositiveDurations(t *testing.T) {
+	tests := []struct {
+		name    string
+		prepare func(*testing.T)
+		envName string
+		load    func() error
+	}{
+		{
+			name:    "api redis cache ttl",
+			prepare: setRequiredAPIEnv,
+			envName: "PROMPTGATE_REDIS_CACHE_TTL",
+			load: func() error {
+				_, err := LoadApi()
+				return err
+			},
+		},
+		{
+			name:    "api reload debounce",
+			prepare: setRequiredAPIEnv,
+			envName: "PROMPTGATE_PROXY_RELOAD_DEBOUNCE",
+			load: func() error {
+				_, err := LoadApi()
+				return err
+			},
+		},
+		{
+			name:    "schedule token cleanup interval",
+			prepare: setRequiredScheduleEnv,
+			envName: "PROMPTGATE_TOKEN_CLEANUP_INTERVAL",
+			load: func() error {
+				_, err := LoadSchedule()
+				return err
+			},
+		},
+		{
+			name:    "proxy redis cache ttl",
+			prepare: setRequiredProxyEnv,
+			envName: "PROMPTGATE_REDIS_CACHE_TTL",
+			load: func() error {
+				_, err := LoadProxy()
+				return err
+			},
+		},
+		{
+			name:    "proxy reload debounce",
+			prepare: setRequiredProxyEnv,
+			envName: "PROMPTGATE_PROXY_RELOAD_DEBOUNCE",
+			load: func() error {
+				_, err := LoadProxy()
+				return err
+			},
+		},
+		{
+			name:    "worker redis cache ttl",
+			prepare: setRequiredWorkerEnv,
+			envName: "PROMPTGATE_REDIS_CACHE_TTL",
+			load: func() error {
+				_, err := LoadWorker()
+				return err
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			test.prepare(t)
+			t.Setenv(test.envName, "0")
+			err := test.load()
+			if err == nil {
+				t.Fatalf("expected %s to reject a non-positive duration", test.envName)
+			}
+			if !strings.Contains(err.Error(), test.envName+" must be greater than zero") {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
 	}
 }

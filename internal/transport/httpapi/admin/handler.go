@@ -35,26 +35,38 @@ type Handler struct {
 	setupGuides   *setupguide.Service
 }
 
-// NewHandler returns an admin Handler wired to the given services.
-func NewHandler(u *users.Service, t *tokens.Service, f *firewall.Service, g *groups.Service, p *provider.Service, m *mcp.Service, optionalServices ...any) *Handler {
-	handler := &Handler{users: u, tokens: t, firewall: f, groups: g, providers: p, mcp: m}
-	for _, service := range optionalServices {
-		switch typed := service.(type) {
-		case *proxy.Service:
-			handler.proxy = typed
-		case *monitoring.Service:
-			handler.monitoring = typed
-		case *subscriptions.Service:
-			handler.subscriptions = typed
-		case *pricing.Service:
-			handler.pricing = typed
-		case *setupguide.Service:
-			handler.setupGuides = typed
-		case *faq.Service:
-			handler.faq = typed
-		}
+// Dependencies lists the services consumed by administration handlers.
+type Dependencies struct {
+	Users         *users.Service
+	Tokens        *tokens.Service
+	Firewall      *firewall.Service
+	FAQ           *faq.Service
+	Groups        *groups.Service
+	Providers     *provider.Service
+	MCP           *mcp.Service
+	Monitoring    *monitoring.Service
+	Pricing       *pricing.Service
+	Proxy         *proxy.Service
+	Subscriptions *subscriptions.Service
+	SetupGuides   *setupguide.Service
+}
+
+// NewHandler returns an admin Handler wired to explicitly typed dependencies.
+func NewHandler(deps Dependencies) *Handler {
+	return &Handler{
+		users:         deps.Users,
+		tokens:        deps.Tokens,
+		firewall:      deps.Firewall,
+		faq:           deps.FAQ,
+		groups:        deps.Groups,
+		providers:     deps.Providers,
+		mcp:           deps.MCP,
+		monitoring:    deps.Monitoring,
+		pricing:       deps.Pricing,
+		proxy:         deps.Proxy,
+		subscriptions: deps.Subscriptions,
+		setupGuides:   deps.SetupGuides,
 	}
-	return handler
 }
 
 // writeJSON sets Content-Type to application/json, writes statusCode, and encodes payload.

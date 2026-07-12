@@ -33,7 +33,7 @@ func newProvidersTestHandler(t *testing.T) (*Handler, *provider.Service) {
 		t.Fatalf("auto-migrate provider table: %v", err)
 	}
 
-	return NewHandler(nil, nil, nil, nil, service, nil), service
+	return NewHandler(Dependencies{Providers: service}), service
 }
 
 // TestHandleAdminUpdateProviderRejectsName verifies provider route names are immutable through PATCH.

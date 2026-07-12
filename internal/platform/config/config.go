@@ -1,7 +1,6 @@
 package config
 
 import (
-	"errors"
 	"fmt"
 	"log/slog"
 	"math"
@@ -15,47 +14,93 @@ import (
 	"time"
 
 	"github.com/spf13/viper"
-
-	"promptgate/backend/internal/platform/proxylimits"
 )
 
-type Config struct {
-	Port                          string
-	LogLevel                      string
-	DatabaseURL                   string
-	KeycloakIssuerURL             string
-	KeycloakJWKSURL               string
-	KeycloakClientID              string
-	KeycloakClientSecret          string
-	CAFile                        string
-	FrontendBaseURL               string
-	BackendBaseURL                string
-	ProxyBaseURL                  string
-	StaticAssetsDir               string
-	SessionCookieName             string
-	SessionTTL                    time.Duration
-	AdminAPIKey                   string
-	CORSAllowedOrigins            []string
-	JWTSecret                     string
-	SecretsKey                    string
+// LogConfig contains process-wide logging settings shared by every runtime.
+type LogConfig struct {
+	LogLevel string
+}
+
+// DatabaseURLConfig contains the database connection string shared by database-backed runtimes.
+type DatabaseURLConfig struct {
+	DatabaseURL string
+}
+
+// TLSConfig contains the optional global CA file used by outbound HTTP clients.
+type TLSConfig struct {
+	CAFile string
+}
+
+// RedisConfig contains Redis connectivity and cache settings.
+type RedisConfig struct {
+	RedisURL      string
+	RedisCacheTTL time.Duration
+}
+
+// ServerConfig contains settings shared by HTTP servers.
+type ServerConfig struct {
+	Port               string
+	CORSAllowedOrigins []string
+}
+
+// SessionConfig contains browser session settings.
+type SessionConfig struct {
+	SessionCookieName string
+	SessionTTL        time.Duration
+}
+
+// SecretsConfig contains secrets used by application services.
+type SecretsConfig struct {
+	JWTSecret  string
+	SecretsKey string
+}
+
+// KeycloakConfig contains OIDC client settings.
+type KeycloakConfig struct {
+	KeycloakIssuerURL    string
+	KeycloakJWKSURL      string
+	KeycloakClientID     string
+	KeycloakClientSecret string
+}
+
+// PublicURLConfig contains externally visible application URLs.
+type PublicURLConfig struct {
+	FrontendBaseURL string
+	BackendBaseURL  string
+	ProxyBaseURL    string
+}
+
+// APIHTTPConfig contains settings specific to the management API transport.
+type APIHTTPConfig struct {
+	StaticAssetsDir string
+	AdminAPIKey     string
+}
+
+// ScheduleIntervals contains intervals used by scheduled background jobs.
+type ScheduleIntervals struct {
 	TokenCleanupInterval          time.Duration
 	UserAccessExpirationInterval  time.Duration
+	UsageRawRetention             time.Duration
+	UsageRawCleanupInterval       time.Duration
+	SubscriptionQuotaSyncInterval time.Duration
+}
+
+// ProxyRuntimeConfig contains proxy reload, trust, and buffering settings.
+type ProxyRuntimeConfig struct {
 	ProxyTrustForwardHeaders      bool
 	ProxyTrustedProxies           []netip.Prefix
-	RedisURL                      string
-	RedisCacheTTL                 time.Duration
 	ProxyReloadDebounce           time.Duration
 	ProxyMaxBufferedRequestBytes  int64
 	ProxyMaxBufferedResponseBytes int64
 	ProxyUpstreamTimeout          time.Duration
-	WorkerBatchSize               int64
-	WorkerBlockTimeout            time.Duration
-	WorkerPendingIdleTimeout      time.Duration
-	WorkerConsumerName            string
-	UsageRawRetention             time.Duration
-	UsageRawCleanupInterval       time.Duration
-	SubscriptionQuotaSyncInterval time.Duration
-	UsageCost                     UsageCostConfig
+}
+
+// WorkerRuntimeConfig contains Redis stream worker settings.
+type WorkerRuntimeConfig struct {
+	WorkerBatchSize          int64
+	WorkerBlockTimeout       time.Duration
+	WorkerPendingIdleTimeout time.Duration
+	WorkerConsumerName       string
 }
 
 type UsageCostConfig struct {
@@ -65,340 +110,119 @@ type UsageCostConfig struct {
 	Embedding float64
 }
 
-// LoadApi reads configuration from environment variables prefixed with PROMPTGATE_ and validates required fields.
-func LoadApi() (Config, error) {
-	v := viper.New()
-	v.SetEnvPrefix("PROMPTGATE")
-	v.AutomaticEnv()
+// APIConfig contains the settings loaded by the management API runtime.
+type APIConfig struct {
+	LogConfig
+	DatabaseURLConfig
+	TLSConfig
+	RedisConfig
+	ServerConfig
+	SessionConfig
+	SecretsConfig
+	KeycloakConfig
+	PublicURLConfig
+	APIHTTPConfig
+	ScheduleIntervals
+	ProxyRuntimeConfig
+	UsageCost UsageCostConfig
+}
 
-	v.SetDefault("port", "8080")
-	v.SetDefault("log_level", "info")
-	v.SetDefault("session_cookie_name", "promptgate_session")
-	v.SetDefault("session_ttl", "8h")
-	v.SetDefault("token_cleanup_interval", "1h")
-	v.SetDefault("user_access_expiration_interval", "1h")
-	v.SetDefault("proxy_port", "8081")
-	v.SetDefault("redis_cache_ttl", "5m")
-	v.SetDefault("proxy_reload_debounce", "250ms")
-	v.SetDefault("usage_cost_enabled", true)
-	v.SetDefault("usage_cost_input", "5.00")
-	v.SetDefault("usage_cost_output", "30.00")
-	v.SetDefault("usage_cost_embedding", "0.02")
+// Config is retained as an APIConfig alias for domain APIs that consume OIDC
+// settings. New runtime entry points should use the explicit runtime type.
+type Config = APIConfig
 
-	usageCost, err := loadUsageCostConfig(v)
-	if err != nil {
-		return Config{}, err
-	}
+// ScheduleConfig contains the settings loaded by scheduled jobs.
+type ScheduleConfig struct {
+	LogConfig
+	DatabaseURLConfig
+	TLSConfig
+	RedisConfig
+	SecretsConfig
+	ScheduleIntervals
+	ProxyRuntimeConfig
+}
 
-	cfg := Config{
-		Port:                         v.GetString("port"),
-		LogLevel:                     v.GetString("log_level"),
-		DatabaseURL:                  strings.TrimSpace(v.GetString("database_url")),
-		KeycloakIssuerURL:            strings.TrimSpace(v.GetString("keycloak_issuer_url")),
-		KeycloakJWKSURL:              strings.TrimSpace(v.GetString("keycloak_jwks_url")),
-		KeycloakClientID:             strings.TrimSpace(v.GetString("keycloak_client_id")),
-		KeycloakClientSecret:         strings.TrimSpace(v.GetString("keycloak_client_secret")),
-		CAFile:                       strings.TrimSpace(v.GetString("ca_file")),
-		FrontendBaseURL:              strings.TrimRight(strings.TrimSpace(v.GetString("frontend_base_url")), "/"),
-		BackendBaseURL:               strings.TrimRight(strings.TrimSpace(v.GetString("backend_base_url")), "/"),
-		ProxyBaseURL:                 strings.TrimRight(strings.TrimSpace(v.GetString("proxy_base_url")), "/"),
-		StaticAssetsDir:              strings.TrimSpace(v.GetString("static_assets_dir")),
-		SessionCookieName:            v.GetString("session_cookie_name"),
-		SessionTTL:                   v.GetDuration("session_ttl"),
-		AdminAPIKey:                  strings.TrimSpace(v.GetString("admin_api_key")),
-		CORSAllowedOrigins:           v.GetStringSlice("cors_allowed_origins"),
-		JWTSecret:                    strings.TrimSpace(v.GetString("jwt_secret")),
-		SecretsKey:                   strings.TrimSpace(v.GetString("secrets_key")),
-		TokenCleanupInterval:         v.GetDuration("token_cleanup_interval"),
-		UserAccessExpirationInterval: v.GetDuration("user_access_expiration_interval"),
-		RedisURL:                     strings.TrimSpace(v.GetString("redis_url")),
-		RedisCacheTTL:                v.GetDuration("redis_cache_ttl"),
-		ProxyReloadDebounce:          v.GetDuration("proxy_reload_debounce"),
-		UsageCost:                    usageCost,
-	}
+// ProxyConfig contains the settings loaded by the proxy server.
+type ProxyConfig struct {
+	LogConfig
+	DatabaseURLConfig
+	TLSConfig
+	RedisConfig
+	ServerConfig
+	SessionConfig
+	SecretsConfig
+	PublicURLConfig
+	ProxyRuntimeConfig
+}
 
-	if cfg.DatabaseURL == "" {
-		return Config{}, errors.New("PROMPTGATE_DATABASE_URL is required")
-	}
+// WorkerConfig contains the settings loaded by the Redis worker.
+type WorkerConfig struct {
+	LogConfig
+	DatabaseURLConfig
+	RedisConfig
+	WorkerRuntimeConfig
+}
 
-	if cfg.KeycloakIssuerURL == "" {
-		return Config{}, errors.New("PROMPTGATE_KEYCLOAK_ISSUER_URL is required")
-	}
+// MigrationConfig contains the settings loaded by database migrations.
+type MigrationConfig struct {
+	LogConfig
+	DatabaseURLConfig
+}
 
-	if cfg.KeycloakJWKSURL == "" {
-		return Config{}, errors.New("PROMPTGATE_KEYCLOAK_JWKS_URL is required")
-	}
+type positiveDuration struct {
+	envName string
+	value   time.Duration
+}
 
-	if cfg.KeycloakClientID == "" {
-		return Config{}, errors.New("PROMPTGATE_KEYCLOAK_CLIENT_ID is required")
-	}
-
-	if err := validateOptionalFile("PROMPTGATE_CA_FILE", cfg.CAFile); err != nil {
-		return Config{}, err
-	}
-
-	if cfg.FrontendBaseURL == "" {
-		return Config{}, errors.New("PROMPTGATE_FRONTEND_BASE_URL is required")
-	}
-
-	if cfg.BackendBaseURL == "" {
-		return Config{}, errors.New("PROMPTGATE_BACKEND_BASE_URL is required")
-	}
-
-	if cfg.ProxyBaseURL == "" {
-		cfg.ProxyBaseURL = deriveProxyBaseURL(cfg.BackendBaseURL, v.GetString("proxy_port"))
-	}
-
-	if cfg.SessionTTL <= 0 {
-		return Config{}, errors.New("PROMPTGATE_SESSION_TTL must be greater than zero")
-	}
-
-	if cfg.JWTSecret == "" {
-		return Config{}, errors.New("PROMPTGATE_JWT_SECRET is required")
-	}
-
-	if len(cfg.JWTSecret) < 32 {
-		return Config{}, errors.New("PROMPTGATE_JWT_SECRET must be at least 32 characters")
-	}
-
-	if cfg.SecretsKey == "" {
-		return Config{}, errors.New("PROMPTGATE_SECRETS_KEY is required")
-	}
-
-	if cfg.RedisURL == "" {
-		return Config{}, errors.New("PROMPTGATE_REDIS_URL is required")
-	}
-
-	if cfg.StaticAssetsDir != "" {
-		info, err := os.Stat(cfg.StaticAssetsDir)
-		if err != nil {
-			return Config{}, fmt.Errorf("PROMPTGATE_STATIC_ASSETS_DIR is not accessible: %w", err)
-		}
-		if !info.IsDir() {
-			return Config{}, errors.New("PROMPTGATE_STATIC_ASSETS_DIR must be a directory")
+// validatePositiveDurations validates durations before they reach tickers,
+// HTTP clients, or cache stores that require strictly positive values.
+func validatePositiveDurations(values ...positiveDuration) error {
+	for _, item := range values {
+		if item.value <= 0 {
+			return fmt.Errorf("%s must be greater than zero", item.envName)
 		}
 	}
-
-	if len(cfg.CORSAllowedOrigins) == 0 {
-		cfg.CORSAllowedOrigins = []string{cfg.FrontendBaseURL}
-	}
-
-	cfg.CORSAllowedOrigins = expandLoopbackOrigins(cfg.CORSAllowedOrigins)
-
-	return cfg, nil
+	return nil
 }
 
-// LoadSchedule reads configuration required to run scheduled background jobs.
-func LoadSchedule() (Config, error) {
-	v := viper.New()
-	v.SetEnvPrefix("PROMPTGATE")
-	v.AutomaticEnv()
-
-	v.SetDefault("log_level", "info")
-	v.SetDefault("token_cleanup_interval", "1h")
-	v.SetDefault("user_access_expiration_interval", "1h")
-	v.SetDefault("redis_cache_ttl", "5m")
-	v.SetDefault("proxy_reload_debounce", "250ms")
-	v.SetDefault("usage_raw_retention", "2160h")
-	v.SetDefault("usage_raw_cleanup_interval", "1h")
-	v.SetDefault("subscription_quota_sync_interval", "5m")
-
-	cfg := Config{
-		LogLevel:                      v.GetString("log_level"),
-		DatabaseURL:                   strings.TrimSpace(v.GetString("database_url")),
-		CAFile:                        strings.TrimSpace(v.GetString("ca_file")),
-		JWTSecret:                     strings.TrimSpace(v.GetString("jwt_secret")),
-		SecretsKey:                    strings.TrimSpace(v.GetString("secrets_key")),
-		TokenCleanupInterval:          v.GetDuration("token_cleanup_interval"),
-		UserAccessExpirationInterval:  v.GetDuration("user_access_expiration_interval"),
-		RedisURL:                      strings.TrimSpace(v.GetString("redis_url")),
-		RedisCacheTTL:                 v.GetDuration("redis_cache_ttl"),
-		ProxyReloadDebounce:           v.GetDuration("proxy_reload_debounce"),
-		UsageRawRetention:             v.GetDuration("usage_raw_retention"),
-		UsageRawCleanupInterval:       v.GetDuration("usage_raw_cleanup_interval"),
-		SubscriptionQuotaSyncInterval: v.GetDuration("subscription_quota_sync_interval"),
-	}
-
-	if cfg.DatabaseURL == "" {
-		return Config{}, errors.New("PROMPTGATE_DATABASE_URL is required")
-	}
-	if cfg.JWTSecret == "" {
-		return Config{}, errors.New("PROMPTGATE_JWT_SECRET is required")
-	}
-	if len(cfg.JWTSecret) < 32 {
-		return Config{}, errors.New("PROMPTGATE_JWT_SECRET must be at least 32 characters")
-	}
-	if cfg.SecretsKey == "" {
-		return Config{}, errors.New("PROMPTGATE_SECRETS_KEY is required")
-	}
-	if cfg.RedisURL == "" {
-		return Config{}, errors.New("PROMPTGATE_REDIS_URL is required")
-	}
-	if err := validateOptionalFile("PROMPTGATE_CA_FILE", cfg.CAFile); err != nil {
-		return Config{}, err
-	}
-	if cfg.UsageRawRetention <= 0 {
-		return Config{}, errors.New("PROMPTGATE_USAGE_RAW_RETENTION must be greater than zero")
-	}
-	if cfg.UsageRawCleanupInterval <= 0 {
-		return Config{}, errors.New("PROMPTGATE_USAGE_RAW_CLEANUP_INTERVAL must be greater than zero")
-	}
-	if cfg.SubscriptionQuotaSyncInterval <= 0 {
-		return Config{}, errors.New("PROMPTGATE_SUBSCRIPTION_QUOTA_SYNC_INTERVAL must be greater than zero")
-	}
-
-	return cfg, nil
+func loadLogConfig(v *viper.Viper) LogConfig {
+	return LogConfig{LogLevel: v.GetString("log_level")}
 }
 
-// LoadProxy reads the configuration required to run the LLM proxy server.
-func LoadProxy() (Config, error) {
-	v := viper.New()
-	v.SetEnvPrefix("PROMPTGATE")
-	v.AutomaticEnv()
-
-	v.SetDefault("proxy_port", "8081")
-	v.SetDefault("log_level", "info")
-	v.SetDefault("session_cookie_name", "promptgate_session")
-	v.SetDefault("session_ttl", "8h")
-	v.SetDefault("proxy_trust_forward_headers", false)
-	v.SetDefault("proxy_trusted_proxies", "")
-	v.SetDefault("redis_cache_ttl", "5m")
-	v.SetDefault("proxy_reload_debounce", "250ms")
-	v.SetDefault("proxy_max_buffered_request_bytes", proxylimits.DefaultMaxBufferedRequestBytes)
-	v.SetDefault("proxy_max_buffered_response_bytes", proxylimits.DefaultMaxBufferedResponseBytes)
-	v.SetDefault("proxy_upstream_timeout", proxylimits.DefaultUpstreamTimeout)
-
-	trustedProxies, err := parseCIDRList(
-		v.GetString("proxy_trusted_proxies"),
-		"PROMPTGATE_PROXY_TRUSTED_PROXIES",
-	)
-	if err != nil {
-		return Config{}, err
-	}
-
-	cfg := Config{
-		Port:                     v.GetString("proxy_port"),
-		LogLevel:                 v.GetString("log_level"),
-		DatabaseURL:              strings.TrimSpace(v.GetString("database_url")),
-		CAFile:                   strings.TrimSpace(v.GetString("ca_file")),
-		FrontendBaseURL:          strings.TrimRight(strings.TrimSpace(v.GetString("frontend_base_url")), "/"),
-		SessionCookieName:        v.GetString("session_cookie_name"),
-		SessionTTL:               v.GetDuration("session_ttl"),
-		CORSAllowedOrigins:       v.GetStringSlice("cors_allowed_origins"),
-		JWTSecret:                strings.TrimSpace(v.GetString("jwt_secret")),
-		SecretsKey:               strings.TrimSpace(v.GetString("secrets_key")),
-		ProxyTrustForwardHeaders: v.GetBool("proxy_trust_forward_headers"),
-		ProxyTrustedProxies:      trustedProxies,
-		RedisURL:                 strings.TrimSpace(v.GetString("redis_url")),
-		RedisCacheTTL:            v.GetDuration("redis_cache_ttl"),
-		ProxyReloadDebounce:      v.GetDuration("proxy_reload_debounce"),
-		ProxyMaxBufferedRequestBytes: v.GetInt64(
-			"proxy_max_buffered_request_bytes",
-		),
-		ProxyMaxBufferedResponseBytes: v.GetInt64(
-			"proxy_max_buffered_response_bytes",
-		),
-		ProxyUpstreamTimeout: v.GetDuration("proxy_upstream_timeout"),
-	}
-
-	if cfg.DatabaseURL == "" {
-		return Config{}, errors.New("PROMPTGATE_DATABASE_URL is required")
-	}
-	if cfg.JWTSecret == "" {
-		return Config{}, errors.New("PROMPTGATE_JWT_SECRET is required")
-	}
-	if len(cfg.JWTSecret) < 32 {
-		return Config{}, errors.New("PROMPTGATE_JWT_SECRET must be at least 32 characters")
-	}
-	if cfg.SecretsKey == "" {
-		return Config{}, errors.New("PROMPTGATE_SECRETS_KEY is required")
-	}
-	if cfg.SessionTTL <= 0 {
-		return Config{}, errors.New("PROMPTGATE_SESSION_TTL must be greater than zero")
-	}
-	if cfg.RedisURL == "" {
-		return Config{}, errors.New("PROMPTGATE_REDIS_URL is required")
-	}
-	if err := validateOptionalFile("PROMPTGATE_CA_FILE", cfg.CAFile); err != nil {
-		return Config{}, err
-	}
-	if cfg.ProxyMaxBufferedRequestBytes <= 0 {
-		return Config{}, errors.New("PROMPTGATE_PROXY_MAX_BUFFERED_REQUEST_BYTES must be greater than zero")
-	}
-	if cfg.ProxyMaxBufferedResponseBytes <= 0 {
-		return Config{}, errors.New("PROMPTGATE_PROXY_MAX_BUFFERED_RESPONSE_BYTES must be greater than zero")
-	}
-	if cfg.ProxyUpstreamTimeout <= 0 {
-		return Config{}, errors.New("PROMPTGATE_PROXY_UPSTREAM_TIMEOUT must be greater than zero")
-	}
-	if len(cfg.CORSAllowedOrigins) == 0 && cfg.FrontendBaseURL != "" {
-		cfg.CORSAllowedOrigins = []string{cfg.FrontendBaseURL}
-	}
-	cfg.CORSAllowedOrigins = expandLoopbackOrigins(cfg.CORSAllowedOrigins)
-
-	return cfg, nil
+func loadDatabaseURLConfig(v *viper.Viper) DatabaseURLConfig {
+	return DatabaseURLConfig{DatabaseURL: strings.TrimSpace(v.GetString("database_url"))}
 }
 
-// LoadMigration reads the configuration required to run database migrations.
-func LoadMigration() (Config, error) {
-	v := viper.New()
-	v.SetEnvPrefix("PROMPTGATE")
-	v.AutomaticEnv()
-
-	v.SetDefault("log_level", "info")
-
-	cfg := Config{
-		LogLevel:    v.GetString("log_level"),
-		DatabaseURL: strings.TrimSpace(v.GetString("database_url")),
-	}
-
-	if cfg.DatabaseURL == "" {
-		return Config{}, errors.New("PROMPTGATE_DATABASE_URL is required")
-	}
-
-	return cfg, nil
+func loadTLSConfig(v *viper.Viper) TLSConfig {
+	return TLSConfig{CAFile: strings.TrimSpace(v.GetString("ca_file"))}
 }
 
-// LoadWorker reads configuration required to run the generic background worker.
-func LoadWorker() (Config, error) {
-	v := viper.New()
-	v.SetEnvPrefix("PROMPTGATE")
-	v.AutomaticEnv()
+func loadRedisConfig(v *viper.Viper) RedisConfig {
+	return RedisConfig{
+		RedisURL:      strings.TrimSpace(v.GetString("redis_url")),
+		RedisCacheTTL: v.GetDuration("redis_cache_ttl"),
+	}
+}
 
-	v.SetDefault("log_level", "info")
-	v.SetDefault("redis_cache_ttl", "5m")
-	v.SetDefault("worker_batch_size", 100)
-	v.SetDefault("worker_block_timeout", "5s")
-	v.SetDefault("worker_pending_idle_timeout", "30s")
+func loadServerConfig(v *viper.Viper, portKey string) ServerConfig {
+	return ServerConfig{
+		Port:               v.GetString(portKey),
+		CORSAllowedOrigins: v.GetStringSlice("cors_allowed_origins"),
+	}
+}
 
-	cfg := Config{
-		LogLevel:                 v.GetString("log_level"),
-		DatabaseURL:              strings.TrimSpace(v.GetString("database_url")),
-		RedisURL:                 strings.TrimSpace(v.GetString("redis_url")),
-		RedisCacheTTL:            v.GetDuration("redis_cache_ttl"),
-		WorkerBatchSize:          v.GetInt64("worker_batch_size"),
-		WorkerBlockTimeout:       v.GetDuration("worker_block_timeout"),
-		WorkerPendingIdleTimeout: v.GetDuration("worker_pending_idle_timeout"),
-		WorkerConsumerName:       strings.TrimSpace(v.GetString("worker_consumer_name")),
+func loadSessionConfig(v *viper.Viper) SessionConfig {
+	return SessionConfig{
+		SessionCookieName: v.GetString("session_cookie_name"),
+		SessionTTL:        v.GetDuration("session_ttl"),
 	}
+}
 
-	if cfg.DatabaseURL == "" {
-		return Config{}, errors.New("PROMPTGATE_DATABASE_URL is required")
+func loadSecretsConfig(v *viper.Viper) SecretsConfig {
+	return SecretsConfig{
+		JWTSecret:  strings.TrimSpace(v.GetString("jwt_secret")),
+		SecretsKey: strings.TrimSpace(v.GetString("secrets_key")),
 	}
-	if cfg.RedisURL == "" {
-		return Config{}, errors.New("PROMPTGATE_REDIS_URL is required")
-	}
-	if cfg.WorkerBatchSize <= 0 {
-		return Config{}, errors.New("PROMPTGATE_WORKER_BATCH_SIZE must be greater than zero")
-	}
-	if cfg.WorkerBlockTimeout <= 0 {
-		return Config{}, errors.New("PROMPTGATE_WORKER_BLOCK_TIMEOUT must be greater than zero")
-	}
-	if cfg.WorkerPendingIdleTimeout <= 0 {
-		return Config{}, errors.New("PROMPTGATE_WORKER_PENDING_IDLE_TIMEOUT must be greater than zero")
-	}
-
-	return cfg, nil
 }
 
 // loadUsageCostConfig reads dashboard-only usage cost settings.
@@ -474,7 +298,7 @@ func validateOptionalFile(envName string, filePath string) error {
 }
 
 // ListenAddress returns the address the server should bind to, ensuring it starts with ":".
-func (c Config) ListenAddress() string {
+func (c ServerConfig) ListenAddress() string {
 	if strings.HasPrefix(c.Port, ":") {
 		return c.Port
 	}
@@ -483,7 +307,7 @@ func (c Config) ListenAddress() string {
 }
 
 // OIDCCallbackURL returns the full OIDC redirect callback URL.
-func (c Config) OIDCCallbackURL() string {
+func (c PublicURLConfig) OIDCCallbackURL() string {
 	return c.BackendBaseURL + "/auth/callback"
 }
 
@@ -505,12 +329,12 @@ func deriveProxyBaseURL(backendBaseURL string, proxyPort string) string {
 }
 
 // SessionCookieSecure returns true when the backend base URL uses HTTPS.
-func (c Config) SessionCookieSecure() bool {
+func (c PublicURLConfig) SessionCookieSecure() bool {
 	return strings.HasPrefix(c.BackendBaseURL, "https://")
 }
 
 // SlogLevel converts the configured log level string to a slog.Level.
-func (c Config) SlogLevel() slog.Level {
+func (c LogConfig) SlogLevel() slog.Level {
 	switch strings.ToLower(strings.TrimSpace(c.LogLevel)) {
 	case "debug":
 		return slog.LevelDebug
@@ -524,7 +348,7 @@ func (c Config) SlogLevel() slog.Level {
 }
 
 // DatabaseLogValue returns a redacted database connection string safe for logging.
-func (c Config) DatabaseLogValue() string {
+func (c DatabaseURLConfig) DatabaseLogValue() string {
 	parsed, err := url.Parse(c.DatabaseURL)
 	if err != nil {
 		return "unparseable_database_url"

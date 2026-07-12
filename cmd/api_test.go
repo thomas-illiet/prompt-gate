@@ -21,8 +21,8 @@ import (
 
 // TestNewAPIHandlerWiresMonitoringService verifies new API handler wires monitoring service.
 func TestNewAPIHandlerWiresMonitoringService(t *testing.T) {
-	_, sessionStore, handler := newMonitoringAPIHandler(t, config.Config{
-		SessionCookieName: "promptgate_session",
+	_, sessionStore, handler := newMonitoringAPIHandler(t, config.APIConfig{
+		SessionConfig: config.SessionConfig{SessionCookieName: "promptgate_session"},
 	})
 	session, err := sessionStore.CreateSession(auth.UserProfile{
 		ID:                "11111111-1111-1111-1111-111111111111",
@@ -64,9 +64,9 @@ func TestNewAPIHandlerWiresMonitoringService(t *testing.T) {
 func TestAdminAPIKeyAuthenticatesAdminRoutes(t *testing.T) {
 	const adminAPIKey = "command-line-admin-key"
 
-	monitoringService, sessionStore, handler := newMonitoringAPIHandler(t, config.Config{
-		SessionCookieName: "promptgate_session",
-		AdminAPIKey:       adminAPIKey,
+	monitoringService, sessionStore, handler := newMonitoringAPIHandler(t, config.APIConfig{
+		SessionConfig: config.SessionConfig{SessionCookieName: "promptgate_session"},
+		APIHTTPConfig: config.APIHTTPConfig{AdminAPIKey: adminAPIKey},
 	})
 	adminSession, err := sessionStore.CreateSession(auth.UserProfile{
 		ID:                "22222222-2222-2222-2222-222222222222",
@@ -172,7 +172,7 @@ func TestAdminAPIKeyAuthenticatesAdminRoutes(t *testing.T) {
 }
 
 // newMonitoringAPIHandler builds an API handler backed by an isolated monitoring database.
-func newMonitoringAPIHandler(t *testing.T, cfg config.Config) (*monitoring.Service, *auth.SessionStore, http.Handler) {
+func newMonitoringAPIHandler(t *testing.T, cfg config.APIConfig) (*monitoring.Service, *auth.SessionStore, http.Handler) {
 	t.Helper()
 
 	dsn := fmt.Sprintf(
