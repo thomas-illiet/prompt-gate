@@ -171,12 +171,9 @@ drawerState.value = lgAndUp.value && width.value !== 1280
     }
   }
   .v-navigation-drawer__content {
-    overflow-y: hidden;
+    overflow-y: auto;
     @supports (scrollbar-gutter: stable) {
       scrollbar-gutter: stable;
-    }
-    &:hover {
-      overflow-y: auto;
     }
   }
   .drawer-header-icon {

@@ -214,7 +214,34 @@ html.dark {
 }
 
 .app-page {
-  padding-block: 24px 32px;
+  padding-block: 20px 28px;
+}
+
+.app-page > .v-row {
+  margin-block: -8px;
+}
+
+.app-page > .v-row > .v-col-12 {
+  padding-block: 8px;
+}
+
+@media (max-width: 720px) {
+  .app-page {
+    padding: 12px;
+  }
+
+  .app-page > .v-row {
+    margin: -6px;
+  }
+
+  .app-page > .v-row > .v-col-12 {
+    padding: 6px;
+  }
+
+  .v-data-table-footer {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
 }
 
 .app-table-text {

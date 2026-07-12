@@ -10,7 +10,8 @@ definePageMeta({
   requiredRoles: ['admin'],
   title: 'Providers',
   icon: 'mdi-cloud-cog-outline',
-  drawerIndex: 3,
+  drawerIndex: 7,
+  drawerSection: 'Infrastructure',
 })
 
 const adminProviders = useAdminProviders()

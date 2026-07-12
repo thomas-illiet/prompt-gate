@@ -5,7 +5,8 @@ definePageMeta({
   requiredRoles: ['admin'],
   title: 'MCP servers',
   icon: 'mdi-server-network-outline',
-  drawerIndex: 3,
+  drawerIndex: 8,
+  drawerSection: 'Infrastructure',
 })
 
 const adminMCP = useAdminMCP()

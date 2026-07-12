@@ -86,4 +86,16 @@ describe('AppRowActionMenu', () => {
     expect(onSelect).not.toHaveBeenCalled()
     expect(wrapper.emitted('select')).toBeUndefined()
   })
+
+  it('uses a plural, row-specific accessible activator label', () => {
+    const wrapper = mountMenu([], {
+      id: 'row-1',
+      locked: false,
+      name: 'Alpha',
+    })
+
+    const activator = wrapper.get('[data-test="activator"]')
+    expect(activator.text()).toContain('Actions')
+    expect(activator.attributes('aria-label')).toBe('Open actions for Alpha')
+  })
 })

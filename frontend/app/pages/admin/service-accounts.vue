@@ -21,7 +21,8 @@ definePageMeta({
   requiredRoles: ['admin'],
   title: 'Service accounts',
   icon: 'mdi-robot-outline',
-  drawerIndex: 1,
+  drawerIndex: 2,
+  drawerSection: 'Identities',
 })
 
 const adminServiceAccounts = useAdminServiceAccounts()

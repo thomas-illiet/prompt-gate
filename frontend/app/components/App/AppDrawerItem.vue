@@ -55,6 +55,21 @@ function normalizeDrawerRoutes(
 const drawerChildren = computed(() =>
   normalizeDrawerRoutes(item.children ?? []),
 )
+const drawerSections = computed(() => {
+  const sections: { items: RouteRecordRaw[]; title: string }[] = []
+
+  for (const child of drawerChildren.value) {
+    const title = child.meta?.drawerSection ?? ''
+    const section = sections.find((candidate) => candidate.title === title)
+    if (section) {
+      section.items.push(child)
+    } else {
+      sections.push({ items: [child], title })
+    }
+  }
+
+  return sections
+})
 const forceDrawerGroup = computed(
   () => item.meta?.drawerGroup && drawerChildren.value.length > 0,
 )
@@ -103,10 +118,27 @@ const isActive = computed(
     <template #activator="{ props: vProps }">
       <v-list-item :title="title" v-bind="vProps" :active="isActive" />
     </template>
-    <AppDrawerItem
-      v-for="child in drawerChildren"
-      :key="child.name ?? child.path"
-      :item="child"
-    />
+    <template v-for="section in drawerSections" :key="section.title">
+      <v-list-subheader v-if="section.title" class="app-drawer-section">
+        {{ section.title }}
+      </v-list-subheader>
+      <AppDrawerItem
+        v-for="child in section.items"
+        :key="child.name ?? child.path"
+        :item="child"
+      />
+    </template>
   </v-list-group>
 </template>
+
+<style scoped>
+.app-drawer-section {
+  min-height: 32px;
+  padding-inline-start: 28px;
+  color: rgb(var(--app-shell-text-muted));
+  font-size: 0.68rem;
+  font-weight: 750;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+</style>

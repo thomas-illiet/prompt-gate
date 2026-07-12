@@ -5,7 +5,8 @@ definePageMeta({
   requiredRoles: ['admin'],
   title: 'Firewall',
   icon: 'mdi-shield-lock-outline',
-  drawerIndex: 2,
+  drawerIndex: 5,
+  drawerSection: 'Access',
 })
 
 const firewall = useAdminFirewall()

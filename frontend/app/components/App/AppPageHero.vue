@@ -130,4 +130,37 @@ const props = defineProps<{
     flex-direction: column;
   }
 }
+
+@media (max-width: 720px) {
+  .app-page-hero :deep(.v-card-text) {
+    padding: 18px !important;
+  }
+
+  .app-page-hero__kicker {
+    margin-bottom: 8px;
+  }
+
+  .app-page-hero__title {
+    gap: 12px;
+  }
+
+  .app-page-hero__icon {
+    width: 40px !important;
+    height: 40px !important;
+  }
+
+  .app-page-hero__headline {
+    font-size: 1.45rem !important;
+  }
+
+  .app-page-hero__copy {
+    margin-top: 6px;
+    line-height: 1.5;
+  }
+
+  .app-page-hero__stat {
+    min-width: 0;
+    padding: 12px 14px;
+  }
+}
 </style>

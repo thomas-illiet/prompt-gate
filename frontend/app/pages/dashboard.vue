@@ -62,7 +62,7 @@ watch(
       </div>
     </div>
 
-    <v-row>
+    <v-row class="user-dashboard-page__section">
       <v-col cols="6" lg="3">
         <DashboardUsageCostKpi
           :window="selectedWindow"
@@ -88,10 +88,11 @@ watch(
 
     <DashboardAdoptionKpis
       v-if="dashboardScope === 'global'"
+      class="user-dashboard-page__section"
       :window="selectedWindow"
     />
 
-    <v-row>
+    <v-row class="user-dashboard-page__section">
       <v-col cols="12">
         <DashboardActivityChart
           :window="selectedWindow"
@@ -100,13 +101,16 @@ watch(
       </v-col>
     </v-row>
 
-    <v-row v-if="dashboardScope === 'global'">
+    <v-row
+      v-if="dashboardScope === 'global'"
+      class="user-dashboard-page__section"
+    >
       <v-col cols="12">
         <DashboardTopIdentitiesChart :window="selectedWindow" />
       </v-col>
     </v-row>
 
-    <v-row>
+    <v-row class="user-dashboard-page__section">
       <v-col cols="12" lg="4">
         <DashboardTopModelsChart
           :window="selectedWindow"
@@ -136,6 +140,10 @@ watch(
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 24px;
+}
+
+.user-dashboard-page__section {
+  margin-block: 0 16px !important;
 }
 
 .user-dashboard-page__title {
@@ -173,6 +181,10 @@ watch(
 }
 
 @media (max-width: 720px) {
+  .user-dashboard-page__section {
+    margin-bottom: 12px !important;
+  }
+
   .user-dashboard-page__header {
     align-items: stretch;
     flex-direction: column;

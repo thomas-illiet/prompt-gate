@@ -5,6 +5,7 @@ import {
   DEFAULT_AUTH_REDIRECT_PATH,
   FRONTEND_ORIGIN_QUERY_PARAM,
   currentFrontendOrigin,
+  isAuthUser,
   normalizeRedirectPath,
   resolveRuntimeApiBaseUrl,
   sanitizeRedirectPath,
@@ -83,6 +84,12 @@ export const useAuthStore = defineStore('auth', () => {
         baseURL,
         credentials: 'include',
       })
+
+      if (!isAuthUser(session)) {
+        throw new Error(
+          'The authentication service returned an invalid session response.',
+        )
+      }
 
       user.value = session
       isAuthenticated.value = true

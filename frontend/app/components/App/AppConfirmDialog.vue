@@ -52,29 +52,23 @@ function confirm() {
 </script>
 
 <template>
-  <v-dialog
+  <AppDialogCard
     v-model="isOpen"
+    :closable="false"
+    :icon="props.icon"
+    :icon-color="props.confirmColor"
+    :loading="props.loading"
     :max-width="props.maxWidth"
     :persistent="props.persistent || props.loading"
+    :title="props.title"
   >
-    <v-card rounded="lg" class="app-confirm-dialog app-surface-gradient">
-      <v-card-title class="app-confirm-dialog__header">
-        <v-icon
-          :icon="props.icon"
-          :color="props.confirmColor"
-          class="app-confirm-dialog__icon"
-        />
-        <span>{{ props.title }}</span>
-      </v-card-title>
-
-      <v-card-text class="app-confirm-dialog__body">
+    <div class="app-confirm-dialog__body">
         <slot>
           {{ props.message }}
         </slot>
-      </v-card-text>
+    </div>
 
-      <v-card-actions class="app-confirm-dialog__actions">
-        <v-spacer />
+    <template #actions>
         <AppDialogCloseButton
           :disabled="props.loading"
           :label="props.cancelLabel"
@@ -86,31 +80,13 @@ function confirm() {
           :loading="props.loading"
           @click="confirm"
         />
-      </v-card-actions>
-    </v-card>
-  </v-dialog>
+    </template>
+  </AppDialogCard>
 </template>
 
 <style scoped>
-.app-confirm-dialog__header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 24px 24px 8px;
-  white-space: normal;
-}
-
-.app-confirm-dialog__icon {
-  flex: 0 0 auto;
-}
-
 .app-confirm-dialog__body {
-  padding: 0 24px 8px;
   color: rgb(var(--app-shell-text-secondary));
   line-height: 1.6;
-}
-
-.app-confirm-dialog__actions {
-  padding: 8px 24px 24px;
 }
 </style>

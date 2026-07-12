@@ -53,7 +53,7 @@ describe('prompt history graph layout', () => {
     ])
     expect(layout.edges.map((edge) => edge.label)).toEqual([
       'request',
-      '1\u202f200 input',
+      '1,200 input',
       'route',
       '340 output',
     ])

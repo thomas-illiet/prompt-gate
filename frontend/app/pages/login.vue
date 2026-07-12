@@ -22,6 +22,9 @@ const redirectPath = computed(() =>
 const canLogin = computed(
   () => isConfigured.value && isReady.value && !loginPending.value,
 )
+const canRetry = computed(
+  () => isConfigured.value && isReady.value && !loginPending.value,
+)
 const authError = computed(() => {
   if (typeof route.query.authErrorDescription === 'string') {
     return route.query.authErrorDescription
@@ -53,6 +56,20 @@ async function signIn() {
     await authStore.login(redirectPath.value)
   } catch (error) {
     Notify.error(error)
+    loginPending.value = false
+  }
+}
+
+// retrySession rechecks backend availability without leaving the page.
+async function retrySession() {
+  loginPending.value = true
+
+  try {
+    const authenticated = await authStore.refresh()
+    if (authenticated) {
+      await navigateTo(redirectPath.value)
+    }
+  } finally {
     loginPending.value = false
   }
 }
@@ -90,6 +107,16 @@ async function signIn() {
               class="mt-6"
             >
               {{ displayedError }}
+              <template #append>
+                <v-btn
+                  variant="text"
+                  size="small"
+                  :disabled="!canRetry"
+                  @click="retrySession"
+                >
+                  Retry
+                </v-btn>
+              </template>
             </v-alert>
 
             <div

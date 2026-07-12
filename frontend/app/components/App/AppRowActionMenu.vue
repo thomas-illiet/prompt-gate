@@ -9,13 +9,15 @@ const props = withDefaults(
     actions: AppRowAction<TItem>[]
     ariaLabel?: string
     item?: TItem
+    itemLabel?: ((item: TItem) => string) | string
     label?: string
     minWidth?: number | string
   }>(),
   {
     ariaLabel: 'Open actions',
     item: undefined,
-    label: 'Action',
+    itemLabel: undefined,
+    label: 'Actions',
     minWidth: 180,
   },
 )
@@ -23,6 +25,36 @@ const props = withDefaults(
 const emit = defineEmits<{
   select: [key: string, context: AppRowActionSelectContext<TItem>]
 }>()
+
+const accessibleLabel = computed(() => {
+  if (props.ariaLabel !== 'Open actions') {
+    return props.ariaLabel
+  }
+
+  if (props.item === undefined) {
+    return 'Open actions'
+  }
+
+  if (typeof props.itemLabel === 'function') {
+    return `Open actions for ${props.itemLabel(props.item)}`
+  }
+
+  if (typeof props.itemLabel === 'string' && props.itemLabel.trim()) {
+    return `Open actions for ${props.itemLabel}`
+  }
+
+  if (typeof props.item === 'object' && props.item !== null) {
+    const record = props.item as Record<string, unknown>
+    for (const key of ['name', 'title', 'address', 'model', 'id']) {
+      const value = record[key]
+      if (typeof value === 'string' && value.trim()) {
+        return `Open actions for ${value}`
+      }
+    }
+  }
+
+  return 'Open actions for this row'
+})
 
 // resolveActionTitle evaluates a static or item-derived action title.
 function resolveActionTitle(action: AppRowAction<TItem>) {
@@ -71,7 +103,7 @@ function selectAction(action: AppRowAction<TItem>) {
           variant="outlined"
           rounded="lg"
           class="app-row-action-menu__button text-none"
-          :aria-label="props.ariaLabel"
+          :aria-label="accessibleLabel"
         >
           {{ props.label }}
           <template #append>

@@ -5,6 +5,26 @@ export const BLOCKED_ROUTE_PATH = '/access-denied'
 export const APP_ROLES: AppRole[] = ['none', 'user', 'manager', 'admin']
 export const FRONTEND_ORIGIN_QUERY_PARAM = 'frontend_origin'
 
+// isAuthUser validates the minimum session shape before it reaches route guards.
+export function isAuthUser(value: unknown): value is AuthUser {
+  if (typeof value !== 'object' || value === null) {
+    return false
+  }
+
+  const candidate = value as Partial<AuthUser>
+  return (
+    typeof candidate.id === 'string' &&
+    typeof candidate.sub === 'string' &&
+    typeof candidate.preferredUsername === 'string' &&
+    typeof candidate.email === 'string' &&
+    typeof candidate.name === 'string' &&
+    typeof candidate.isActive === 'boolean' &&
+    typeof candidate.lastLoginAt === 'string' &&
+    typeof candidate.role === 'string' &&
+    APP_ROLES.includes(candidate.role as AppRole)
+  )
+}
+
 const OIDC_CALLBACK_PARAMS = new Set([
   'code',
   'error',

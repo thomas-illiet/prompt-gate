@@ -8,7 +8,8 @@ definePageMeta({
   requiredRoles: ['admin'],
   title: 'Monitoring',
   icon: 'mdi-heart-pulse',
-  drawerIndex: 5,
+  drawerIndex: 10,
+  drawerSection: 'Observability',
 })
 
 const adminMonitoring = useAdminMonitoring()

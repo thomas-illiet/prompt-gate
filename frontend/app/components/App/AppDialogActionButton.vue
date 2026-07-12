@@ -6,6 +6,7 @@ const props = withDefaults(
     label: string
     loading?: boolean
     prependIcon?: string
+    ariaLabel?: string
     type?: 'button' | 'reset' | 'submit'
     variant?: 'flat' | 'elevated' | 'tonal'
   }>(),
@@ -14,6 +15,7 @@ const props = withDefaults(
     disabled: false,
     loading: false,
     prependIcon: '',
+    ariaLabel: '',
     type: 'button',
     variant: 'flat',
   },
@@ -30,6 +32,7 @@ const emit = defineEmits<{
     :disabled="props.disabled"
     :loading="props.loading"
     :prepend-icon="props.prependIcon || undefined"
+    :aria-label="props.ariaLabel || props.label"
     :type="props.type"
     :variant="props.variant"
     rounded="lg"

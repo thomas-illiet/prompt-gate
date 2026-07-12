@@ -55,7 +55,7 @@ async function logout() {
                   <span />
                 </div>
                 <div class="access-denied-scan__status">
-                  <v-icon icon="mdi-lock-clock-outline" size="18" />
+                  <v-icon icon="mdi-lock-outline" size="18" />
                   <span>Access check paused</span>
                 </div>
               </div>

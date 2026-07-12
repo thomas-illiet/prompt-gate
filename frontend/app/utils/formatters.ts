@@ -1,4 +1,6 @@
-// formatDateTime renders optional timestamps for the French locale.
+const APP_LOCALE = 'en-US'
+
+// formatDateTime renders optional timestamps for the application locale.
 export function formatDateTime(value: string | null | undefined) {
   if (!value) {
     return 'Never'
@@ -9,13 +11,13 @@ export function formatDateTime(value: string | null | undefined) {
     return 'Unknown'
   }
 
-  return new Intl.DateTimeFormat('fr-FR', {
+  return new Intl.DateTimeFormat(APP_LOCALE, {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(date)
 }
 
-// formatDate renders optional date values for the French locale.
+// formatDate renders optional date values for the application locale.
 export function formatDate(value: string | null | undefined) {
   if (!value) {
     return 'Unknown'
@@ -28,19 +30,19 @@ export function formatDate(value: string | null | undefined) {
     return 'Unknown'
   }
 
-  return new Intl.DateTimeFormat('fr-FR', {
+  return new Intl.DateTimeFormat(APP_LOCALE, {
     dateStyle: 'medium',
     timeZone: 'UTC',
   }).format(date)
 }
 
-// formatNumber renders optional numbers for the French locale.
+// formatNumber renders optional numbers for the application locale.
 export function formatNumber(value: number | null | undefined) {
   if (value == null || Number.isNaN(value)) {
     return '0'
   }
 
-  return new Intl.NumberFormat('fr-FR').format(value)
+  return new Intl.NumberFormat(APP_LOCALE).format(value)
 }
 
 // formatCompactNumber renders large values in a compact, scannable format.
@@ -49,7 +51,7 @@ export function formatCompactNumber(value: number | null | undefined) {
     return '0'
   }
 
-  return new Intl.NumberFormat('fr-FR', {
+  return new Intl.NumberFormat(APP_LOCALE, {
     maximumFractionDigits: value >= 1000 ? 1 : 0,
     notation: 'compact',
   }).format(value)
@@ -83,7 +85,7 @@ export function formatDurationMs(value: number | null | undefined) {
   }
   if (value < 60000) {
     const seconds = value / 1000
-    return `${new Intl.NumberFormat('fr-FR', {
+    return `${new Intl.NumberFormat(APP_LOCALE, {
       maximumFractionDigits: 1,
     }).format(seconds)} s`
   }

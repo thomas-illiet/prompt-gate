@@ -10,7 +10,8 @@ definePageMeta({
   requiredRoles: ['admin'],
   title: 'Subscription plans',
   icon: 'mdi-card-account-details-star-outline',
-  drawerIndex: 1,
+  drawerIndex: 4,
+  drawerSection: 'Access',
 })
 
 const adminSubscriptions = useAdminSubscriptions()

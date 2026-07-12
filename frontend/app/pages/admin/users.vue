@@ -18,6 +18,8 @@ definePageMeta({
   requiredRoles: ['admin'],
   title: 'User management',
   icon: 'mdi-account-cog-outline',
+  drawerIndex: 1,
+  drawerSection: 'Identities',
 })
 
 const adminUsers = useAdminUsers()

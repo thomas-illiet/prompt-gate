@@ -3,7 +3,8 @@ definePageMeta({
   requiredRoles: ['admin'],
   title: 'Prompt history',
   icon: 'mdi-history',
-  drawerIndex: 4,
+  drawerIndex: 9,
+  drawerSection: 'Observability',
 })
 
 const adminPromptHistory = useAdminPromptHistory()

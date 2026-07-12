@@ -9,7 +9,8 @@ definePageMeta({
   requiredRoles: ['admin'],
   title: 'Model pricing',
   icon: 'mdi-currency-usd',
-  drawerIndex: 4,
+  drawerIndex: 6,
+  drawerSection: 'Access',
 })
 
 const adminPricing = useAdminPricing()

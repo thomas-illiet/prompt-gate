@@ -8,6 +8,7 @@ declare module '#app' {
     subtitle?: string
     drawerIndex?: number
     drawerGroup?: boolean
+    drawerSection?: string
     allowBlocked?: boolean
     requiredRoles?: AppRole[]
   }
@@ -21,6 +22,7 @@ declare module 'vue-router' {
     subtitle?: string
     drawerIndex?: number
     drawerGroup?: boolean
+    drawerSection?: string
     allowBlocked?: boolean
     requiredRoles?: AppRole[]
   }

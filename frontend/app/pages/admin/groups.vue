@@ -14,7 +14,8 @@ definePageMeta({
   requiredRoles: ['admin'],
   title: 'Groups',
   icon: 'mdi-account-multiple-check-outline',
-  drawerIndex: 2,
+  drawerIndex: 3,
+  drawerSection: 'Identities',
 })
 
 const adminGroups = useAdminGroups()

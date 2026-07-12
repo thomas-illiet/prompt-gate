@@ -69,4 +69,14 @@ const props = withDefaults(
   margin: 0;
   color: rgb(var(--app-shell-text-secondary));
 }
+
+@media (max-width: 720px) {
+  .app-filter-card :deep(.v-card-text) {
+    padding: 16px !important;
+  }
+
+  .app-filter-card__header {
+    margin-bottom: 12px;
+  }
+}
 </style>

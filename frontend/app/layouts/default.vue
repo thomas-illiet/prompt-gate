@@ -16,9 +16,7 @@
   padding-bottom: 0;
   margin-top: 64px;
   margin-bottom: 32px;
-  height: calc(100vh - 64px - 32px);
-  overflow-y: scroll;
-  scrollbar-gutter: stable;
+  min-height: calc(100dvh - 64px - 32px);
   transition-property: padding;
 }
 </style>
