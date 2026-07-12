@@ -39,7 +39,6 @@ func RequestLogger(logger *slog.Logger) Middleware {
 			attributes := []any{
 				"method", r.Method,
 				"path", r.URL.Path,
-				"query", r.URL.RawQuery,
 				"status", writer.statusCode,
 				"duration_ms", time.Since(startedAt).Milliseconds(),
 				"remote_addr", requestRemoteAddr(r),
