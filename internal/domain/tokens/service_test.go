@@ -148,6 +148,21 @@ func TestDeleteServiceAccountCascadesTokens(t *testing.T) {
 	}
 }
 
+func TestTokenCleanupRejectsInvalidIntervalAndPropagatesCancellation(t *testing.T) {
+	tokenService, _, _, _ := newTokenTestServices(t)
+
+	// A disabled/invalid schedule must be a safe no-op rather than panic in the
+	// background goroutine when constructing a ticker.
+	tokenService.StartCleanup(context.Background(), 0)
+	tokenService.StartCleanup(context.Background(), -time.Second)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := tokenService.markExpired(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected cleanup SQL to preserve context cancellation, got %v", err)
+	}
+}
+
 // TestValidateTokenAcceptsActiveUserToken verifies valid active-user tokens are accepted.
 func TestValidateTokenAcceptsActiveUserToken(t *testing.T) {
 	tokenService, userService, _, user := newTokenTestServices(t)

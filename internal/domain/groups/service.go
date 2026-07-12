@@ -10,6 +10,7 @@ import (
 	"promptgate/backend/internal/domain/provider"
 	"promptgate/backend/internal/domain/users"
 	"promptgate/backend/internal/platform/configevents"
+	"promptgate/backend/internal/platform/database"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -155,7 +156,7 @@ func (s *Service) CreateGroup(ctx context.Context, input CreateGroupInput) (Grou
 			Description: strings.TrimSpace(input.Description),
 		}
 		if err := tx.WithContext(ctx).Create(&record).Error; err != nil {
-			if isUniqueConstraintError(err) {
+			if database.IsUniqueViolation(err) {
 				return ErrNameConflict
 			}
 			return fmt.Errorf("create group: %w", err)
@@ -225,7 +226,7 @@ func (s *Service) UpdateGroup(ctx context.Context, id string, input UpdateGroupI
 			record.Description = strings.TrimSpace(*input.Description)
 		}
 		if err := tx.WithContext(ctx).Save(&record).Error; err != nil {
-			if isUniqueConstraintError(err) {
+			if database.IsUniqueViolation(err) {
 				return ErrNameConflict
 			}
 			return fmt.Errorf("update group: %w", err)
@@ -288,138 +289,6 @@ func (s *Service) DeleteGroup(ctx context.Context, id string) error {
 	}
 	s.notifier.Notify(ctx, configevents.DomainGroups)
 	return nil
-}
-
-// AddMember assigns a user to an access group.
-func (s *Service) AddMember(ctx context.Context, groupIDRaw, userID string) error {
-	groupID, err := parseGroupID(groupIDRaw)
-	if err != nil {
-		return ErrGroupNotFound
-	}
-	userID = strings.TrimSpace(userID)
-	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := s.ensureGroupExists(ctx, tx, groupID); err != nil {
-			return err
-		}
-		if err := s.ensureUserExists(ctx, tx, userID); err != nil {
-			return err
-		}
-		member := GroupMember{GroupID: groupID, UserID: userID}
-		if err := tx.WithContext(ctx).FirstOrCreate(&member, "group_id = ? AND user_id = ?", groupID, userID).Error; err != nil {
-			return fmt.Errorf("add group member: %w", err)
-		}
-		return nil
-	})
-	if err != nil {
-		return err
-	}
-	s.notifier.Notify(ctx, configevents.DomainGroups)
-	return nil
-}
-
-// RemoveMember removes a user from an access group.
-func (s *Service) RemoveMember(ctx context.Context, groupIDRaw, userID string) error {
-	groupID, err := parseGroupID(groupIDRaw)
-	if err != nil {
-		return ErrGroupNotFound
-	}
-	userID = strings.TrimSpace(userID)
-	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := s.ensureGroupExists(ctx, tx, groupID); err != nil {
-			return err
-		}
-		if err := s.ensureUserExists(ctx, tx, userID); err != nil {
-			return err
-		}
-		if err := tx.WithContext(ctx).Where("group_id = ? AND user_id = ?", groupID, userID).Delete(&GroupMember{}).Error; err != nil {
-			return fmt.Errorf("remove group member: %w", err)
-		}
-		return nil
-	})
-	if err != nil {
-		return err
-	}
-	s.notifier.Notify(ctx, configevents.DomainGroups)
-	return nil
-}
-
-// ListUserGroups returns full access group details assigned to a user.
-func (s *Service) ListUserGroups(ctx context.Context, userID string) ([]GroupResponse, error) {
-	userID = strings.TrimSpace(userID)
-	if err := s.ensureUserExists(ctx, s.db, userID); err != nil {
-		return nil, err
-	}
-
-	var records []Group
-	if err := s.db.WithContext(ctx).
-		Joins("JOIN access_group_members ON access_group_members.group_id = access_groups.id").
-		Where("access_group_members.user_id = ?", userID).
-		Preload("Providers").
-		Preload("ModelPatterns").
-		Preload("Members").
-		Order("access_groups.name ASC").
-		Find(&records).Error; err != nil {
-		return nil, fmt.Errorf("list user groups: %w", err)
-	}
-	out := make([]GroupResponse, len(records))
-	for i := range records {
-		out[i] = records[i].toResponse()
-	}
-	return out, nil
-}
-
-// ListUserGroupSummaries returns profile-safe access group summaries for a user.
-func (s *Service) ListUserGroupSummaries(ctx context.Context, userID string) ([]ProfileGroupResponse, error) {
-	userID = strings.TrimSpace(userID)
-	if err := s.ensureUserExists(ctx, s.db, userID); err != nil {
-		return nil, err
-	}
-
-	var records []Group
-	if err := s.db.WithContext(ctx).
-		Select("access_groups.id", "access_groups.name", "access_groups.display_name", "access_groups.description").
-		Joins("JOIN access_group_members ON access_group_members.group_id = access_groups.id").
-		Where("access_group_members.user_id = ?", userID).
-		Order("access_groups.name ASC").
-		Find(&records).Error; err != nil {
-		return nil, fmt.Errorf("list user group summaries: %w", err)
-	}
-	out := make([]ProfileGroupResponse, len(records))
-	for i := range records {
-		out[i] = records[i].toProfileResponse()
-	}
-	return out, nil
-}
-
-// ReplaceUserGroups replaces all access group assignments for a user.
-func (s *Service) ReplaceUserGroups(ctx context.Context, userID string, groupIDsRaw []string) ([]GroupResponse, error) {
-	userID = strings.TrimSpace(userID)
-	groupIDs, err := parseGroupIDs(groupIDsRaw)
-	if err != nil {
-		return nil, ErrGroupNotFound
-	}
-	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := s.ensureUserExists(ctx, tx, userID); err != nil {
-			return err
-		}
-		if err := s.ensureGroupsExist(ctx, tx, groupIDs); err != nil {
-			return err
-		}
-		if err := tx.WithContext(ctx).Where("user_id = ?", userID).Delete(&GroupMember{}).Error; err != nil {
-			return fmt.Errorf("delete user group memberships: %w", err)
-		}
-		for _, groupID := range groupIDs {
-			if err := tx.WithContext(ctx).Create(&GroupMember{GroupID: groupID, UserID: userID}).Error; err != nil {
-				return fmt.Errorf("create user group membership: %w", err)
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	s.notifier.Notify(ctx, configevents.DomainGroups)
-	return s.ListUserGroups(ctx, userID)
 }
 
 // getGroup loads one access group with all admin response relations.
@@ -684,14 +553,6 @@ func normalizeSortDir(sortDir string) (string, error) {
 	default:
 		return "", ErrInvalidSort
 	}
-}
-
-// isUniqueConstraintError detects database uniqueness violations.
-func isUniqueConstraintError(err error) bool {
-	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "unique") ||
-		strings.Contains(msg, "duplicate key") ||
-		strings.Contains(msg, "23505")
 }
 
 // toResponse converts an access group model into its admin API shape.

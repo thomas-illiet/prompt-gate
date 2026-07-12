@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"strings"
 	"time"
 
@@ -247,14 +246,11 @@ func (s *Service) AssignUserPlan(ctx context.Context, userID string, planID *str
 	if err := s.assignPlan(ctx, userID, auth.UserTypeUser, planID); err != nil {
 		return users.AdminUser{}, err
 	}
-	var record users.User
-	if err := s.db.WithContext(ctx).First(&record, "id = ? AND type = ?", userID, auth.UserTypeUser).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return users.AdminUser{}, users.ErrUserNotFound
-		}
+	item, err := users.NewService(s.db).GetUser(ctx, userID)
+	if err != nil {
 		return users.AdminUser{}, fmt.Errorf("load assigned user: %w", err)
 	}
-	items := []users.AdminUser{recordToAdminUser(record)}
+	items := []users.AdminUser{item}
 	if err := s.DecorateAdminUsers(ctx, items); err != nil {
 		return users.AdminUser{}, err
 	}
@@ -266,14 +262,11 @@ func (s *Service) AssignServiceAccountPlan(ctx context.Context, userID string, p
 	if err := s.assignPlan(ctx, userID, auth.UserTypeService, planID); err != nil {
 		return users.ServiceAccount{}, err
 	}
-	var record users.User
-	if err := s.db.WithContext(ctx).First(&record, "id = ? AND type = ?", userID, auth.UserTypeService).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return users.ServiceAccount{}, users.ErrUserNotFound
-		}
+	item, err := users.NewService(s.db).GetServiceAccount(ctx, userID)
+	if err != nil {
 		return users.ServiceAccount{}, fmt.Errorf("load assigned service account: %w", err)
 	}
-	items := []users.ServiceAccount{recordToServiceAccount(record)}
+	items := []users.ServiceAccount{item}
 	if err := s.DecorateServiceAccounts(ctx, items); err != nil {
 		return users.ServiceAccount{}, err
 	}
@@ -349,60 +342,6 @@ func (s *Service) UpsertQuotaState(ctx context.Context, userID string, status Qu
 			"updated_at":       syncedAt,
 		}),
 	}).Create(&state).Error
-}
-
-func (s *Service) DecorateAdminUsers(ctx context.Context, items []users.AdminUser) error {
-	if len(items) == 0 {
-		return nil
-	}
-	plans, defaultPlan, err := s.planLookup(ctx)
-	if err != nil {
-		return err
-	}
-	states, err := s.quotaStateLookup(ctx, adminUserIDs(items))
-	if err != nil {
-		return err
-	}
-	for i := range items {
-		decorateAccount(
-			items[i].ID,
-			items[i].SubscriptionPlanID,
-			plans,
-			defaultPlan,
-			states,
-			&items[i].SubscriptionPlan,
-			&items[i].EffectiveSubscriptionPlan,
-			&items[i].QuotaState,
-		)
-	}
-	return nil
-}
-
-func (s *Service) DecorateServiceAccounts(ctx context.Context, items []users.ServiceAccount) error {
-	if len(items) == 0 {
-		return nil
-	}
-	plans, defaultPlan, err := s.planLookup(ctx)
-	if err != nil {
-		return err
-	}
-	states, err := s.quotaStateLookup(ctx, serviceAccountIDs(items))
-	if err != nil {
-		return err
-	}
-	for i := range items {
-		decorateAccount(
-			items[i].ID,
-			items[i].SubscriptionPlanID,
-			plans,
-			defaultPlan,
-			states,
-			&items[i].SubscriptionPlan,
-			&items[i].EffectiveSubscriptionPlan,
-			&items[i].QuotaState,
-		)
-	}
-	return nil
 }
 
 func (s *Service) findPlan(ctx context.Context, tx *gorm.DB, id string) (SubscriptionPlan, error) {
@@ -615,93 +554,6 @@ func (s *Service) planAssignmentCountLookup(ctx context.Context, plans []Subscri
 	return countsByPlanID, nil
 }
 
-func (s *Service) planLookup(ctx context.Context) (map[string]users.AccountSubscriptionPlan, *users.AccountSubscriptionPlan, error) {
-	var plans []SubscriptionPlan
-	if err := s.db.WithContext(ctx).Find(&plans).Error; err != nil {
-		return nil, nil, fmt.Errorf("load subscription plan lookup: %w", err)
-	}
-	lookup := make(map[string]users.AccountSubscriptionPlan, len(plans))
-	var defaultPlan *users.AccountSubscriptionPlan
-	for _, plan := range plans {
-		accountPlan := accountPlanFromResponse(planResponse(plan))
-		lookup[plan.ID] = accountPlan
-		if plan.IsDefault {
-			clone := accountPlan
-			defaultPlan = &clone
-		}
-	}
-	return lookup, defaultPlan, nil
-}
-
-func (s *Service) quotaStateLookup(ctx context.Context, ids []string) (map[string]SubscriptionQuotaState, error) {
-	var states []SubscriptionQuotaState
-	if err := s.db.WithContext(ctx).Where("user_id IN ?", ids).Find(&states).Error; err != nil {
-		return nil, fmt.Errorf("load subscription quota states: %w", err)
-	}
-	lookup := make(map[string]SubscriptionQuotaState, len(states))
-	for _, state := range states {
-		lookup[state.UserID] = state
-	}
-	return lookup, nil
-}
-
-func decorateAccount(
-	userID string,
-	explicitPlanID *string,
-	plans map[string]users.AccountSubscriptionPlan,
-	defaultPlan *users.AccountSubscriptionPlan,
-	states map[string]SubscriptionQuotaState,
-	explicitTarget **users.AccountSubscriptionPlan,
-	effectiveTarget **users.AccountSubscriptionPlan,
-	quotaTarget **users.AccountQuotaState,
-) {
-	if explicitPlanID != nil {
-		if plan, ok := plans[*explicitPlanID]; ok {
-			clone := plan
-			*explicitTarget = &clone
-			*effectiveTarget = &clone
-		}
-	} else if defaultPlan != nil {
-		clone := *defaultPlan
-		*effectiveTarget = &clone
-	}
-	if state, ok := states[userID]; ok {
-		*quotaTarget = quotaStateToAccount(state)
-	}
-}
-
-func quotaStateToAccount(state SubscriptionQuotaState) *users.AccountQuotaState {
-	syncedAt := state.SyncedAt
-	return &users.AccountQuotaState{
-		HasSubscription: state.HasSubscription,
-		PlanID:          cloneStringPtr(state.PlanID),
-		PlanName:        state.PlanName,
-		Used5HTokens:    state.Used5HTokens,
-		Quota5HTokens:   cloneInt64Ptr(state.Quota5HTokens),
-		Reset5HAt:       cloneTimePtr(state.Reset5HAt),
-		Used7DTokens:    state.Used7DTokens,
-		Quota7DTokens:   cloneInt64Ptr(state.Quota7DTokens),
-		Reset7DAt:       cloneTimePtr(state.Reset7DAt),
-		SyncedAt:        &syncedAt,
-	}
-}
-
-func adminUserIDs(items []users.AdminUser) []string {
-	ids := make([]string, 0, len(items))
-	for _, item := range items {
-		ids = append(ids, item.ID)
-	}
-	return ids
-}
-
-func serviceAccountIDs(items []users.ServiceAccount) []string {
-	ids := make([]string, 0, len(items))
-	for _, item := range items {
-		ids = append(ids, item.ID)
-	}
-	return ids
-}
-
 func cloneStringPtr(value *string) *string {
 	if value == nil {
 		return nil
@@ -743,67 +595,4 @@ func quotaStatusFromPlan(plan PlanSnapshot, used5h int64, reset5h *time.Time, us
 		Remaining7DTokens: remainingTokens(plan.Quota7DTokens, used7d),
 		Reset7DAt:         cloneTimePtr(reset7d),
 	}
-}
-
-func recordToAdminUser(record users.User) users.AdminUser {
-	return users.AdminUser{
-		ID:                 record.ID,
-		Sub:                record.ExternalSub,
-		PreferredUsername:  record.PreferredUsername,
-		Email:              record.Email,
-		Name:               record.Name,
-		Type:               record.Type,
-		Role:               record.Role,
-		SubscriptionPlanID: record.SubscriptionPlanID,
-		Note:               record.Note,
-		IsActive:           record.IsActive,
-		ExpiresAt:          record.ExpiresAt,
-		LastLoginAt:        record.LastLoginAt,
-		CreatedAt:          record.CreatedAt,
-		UpdatedAt:          record.UpdatedAt,
-	}
-}
-
-func recordToServiceAccount(record users.User) users.ServiceAccount {
-	return users.ServiceAccount{
-		ID:                      record.ID,
-		Identifier:              record.PreferredUsername,
-		Name:                    record.Name,
-		Role:                    auth.RoleUser,
-		SubscriptionPlanID:      record.SubscriptionPlanID,
-		Note:                    record.Note,
-		IsActive:                record.IsActive,
-		FirewallOverrideEnabled: record.FirewallOverrideEnabled,
-		CreatedAt:               record.CreatedAt,
-		UpdatedAt:               record.UpdatedAt,
-	}
-}
-
-func (s *Service) logQuotaSync(ctx context.Context, store *RedisStore) {
-	count, err := store.SyncQuotaStates(ctx, s)
-	if err != nil {
-		slog.Error("failed to sync subscription quota states", "error", err)
-		return
-	}
-	if count > 0 {
-		slog.Info("synced subscription quota states", "users", count)
-	}
-}
-
-func (s *Service) StartQuotaStateSync(ctx context.Context, store *RedisStore, interval time.Duration) {
-	if store == nil || interval <= 0 {
-		return
-	}
-	go func() {
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				s.logQuotaSync(context.Background(), store)
-			}
-		}
-	}()
 }

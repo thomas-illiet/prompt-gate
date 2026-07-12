@@ -293,6 +293,27 @@ func TestCreateServiceAccountForcesServiceTypeAndUserRole(t *testing.T) {
 	}
 }
 
+func TestDeleteServiceAccountAllowsMissingOptionalFirewallTable(t *testing.T) {
+	service := newTestService(t)
+	ctx := context.Background()
+
+	account, err := service.CreateServiceAccount(ctx, ServiceAccountInput{
+		Identifier: "ephemeral-worker",
+		Name:       "Ephemeral Worker",
+		IsActive:   true,
+	})
+	if err != nil {
+		t.Fatalf("create service account: %v", err)
+	}
+
+	if err := service.DeleteServiceAccount(ctx, account.ID); err != nil {
+		t.Fatalf("delete service account without firewall table: %v", err)
+	}
+	if _, err := service.GetServiceAccount(ctx, account.ID); !errors.Is(err, ErrUserNotFound) {
+		t.Fatalf("expected deleted service account to be absent, got %v", err)
+	}
+}
+
 // TestListUsersIncludesHistoricalTokenConsumption verifies list users includes historical token consumption.
 func TestListUsersIncludesHistoricalTokenConsumption(t *testing.T) {
 	service := newTestService(t)

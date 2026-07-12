@@ -161,17 +161,6 @@ func responseFromSnapshot(plan PlanSnapshot) PlanResponse {
 	}
 }
 
-func accountPlanFromSnapshot(plan PlanSnapshot) users.AccountSubscriptionPlan {
-	return users.AccountSubscriptionPlan{
-		ID:            plan.ID,
-		Name:          plan.Name,
-		Description:   plan.Description,
-		Quota5HTokens: cloneInt64Ptr(plan.Quota5HTokens),
-		Quota7DTokens: cloneInt64Ptr(plan.Quota7DTokens),
-		IsDefault:     plan.IsDefault,
-	}
-}
-
 func accountPlanFromResponse(plan PlanResponse) users.AccountSubscriptionPlan {
 	return users.AccountSubscriptionPlan{
 		ID:            plan.ID,

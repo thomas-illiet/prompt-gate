@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"regexp"
 	"strings"
 	"time"
@@ -360,204 +359,6 @@ func (s *Service) ListUsers(ctx context.Context, params ListParams) (ListResult,
 	}, nil
 }
 
-// ListServiceAccounts returns all service accounts.
-func (s *Service) ListServiceAccounts(ctx context.Context) ([]ServiceAccount, error) {
-	result, err := s.ListServiceAccountsPaged(ctx, ServiceAccountListParams{
-		Page:     1,
-		PageSize: 100,
-		SortBy:   "createdAt",
-		SortDir:  "desc",
-	})
-	if err != nil {
-		return nil, err
-	}
-	return result.Items, nil
-}
-
-// ListServiceAccountsPaged returns service accounts with pagination and sorting.
-func (s *Service) ListServiceAccountsPaged(ctx context.Context, params ServiceAccountListParams) (ServiceAccountListResult, error) {
-	normalizeServiceAccountListParams(&params)
-
-	query := s.db.WithContext(ctx).
-		Model(&User{}).
-		Where("type = ?", auth.UserTypeService)
-	if userSortNeedsConsumption(params.SortBy) {
-		query = query.Joins(userTokenConsumptionJoin())
-	}
-
-	var total int64
-	if err := query.Count(&total).Error; err != nil {
-		return ServiceAccountListResult{}, fmt.Errorf("count service accounts: %w", err)
-	}
-
-	var records []User
-	var err error
-	query, err = applyServiceAccountSort(query, params.SortBy, params.SortDir)
-	if err != nil {
-		return ServiceAccountListResult{}, err
-	}
-	if err := query.
-		Offset((params.Page - 1) * params.PageSize).
-		Limit(params.PageSize).
-		Find(&records).Error; err != nil {
-		return ServiceAccountListResult{}, fmt.Errorf("list service accounts: %w", err)
-	}
-
-	items := make([]ServiceAccount, 0, len(records))
-	for _, record := range records {
-		items = append(items, record.serviceAccount())
-	}
-	if err := s.attachServiceAccountTokenConsumption(ctx, items); err != nil {
-		return ServiceAccountListResult{}, err
-	}
-
-	return ServiceAccountListResult{
-		Items:    items,
-		Page:     params.Page,
-		PageSize: params.PageSize,
-		Total:    total,
-	}, nil
-}
-
-// GetServiceAccount returns one service account by ID.
-func (s *Service) GetServiceAccount(ctx context.Context, id string) (ServiceAccount, error) {
-	record, err := s.findServiceAccount(ctx, s.db, id)
-	if err != nil {
-		return ServiceAccount{}, err
-	}
-
-	items := []ServiceAccount{record.serviceAccount()}
-	if err := s.attachServiceAccountTokenConsumption(ctx, items); err != nil {
-		return ServiceAccount{}, err
-	}
-
-	return items[0], nil
-}
-
-// ServiceAccountProfile returns an auth profile for a service account.
-func (s *Service) ServiceAccountProfile(ctx context.Context, id string) (auth.UserProfile, error) {
-	record, err := s.findServiceAccount(ctx, s.db, id)
-	if err != nil {
-		return auth.UserProfile{}, err
-	}
-
-	return record.profile(), nil
-}
-
-// CreateServiceAccount creates an active service account with role user.
-func (s *Service) CreateServiceAccount(ctx context.Context, input ServiceAccountInput) (ServiceAccount, error) {
-	normalized, name, err := normalizeServiceAccountInput(input)
-	if err != nil {
-		return ServiceAccount{}, err
-	}
-
-	var record User
-	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := s.ensureServiceAccountIdentifierAvailable(ctx, tx, normalized, ""); err != nil {
-			return err
-		}
-
-		now := time.Now().UTC()
-		record = User{
-			ExternalSub:             "service:" + uuid.NewString(),
-			Email:                   "",
-			PreferredUsername:       normalized,
-			Name:                    name,
-			Type:                    auth.UserTypeService,
-			Role:                    auth.RoleUser,
-			IsActive:                input.IsActive,
-			FirewallOverrideEnabled: serviceAccountFirewallOverride(input, false),
-			LastLoginAt:             now,
-		}
-
-		if err := tx.Create(&record).Error; err != nil {
-			return fmt.Errorf("create service account: %w", err)
-		}
-
-		return nil
-	})
-	if err != nil {
-		return ServiceAccount{}, err
-	}
-
-	s.notifier.Notify(ctx, configevents.DomainAuth)
-	return record.serviceAccount(), nil
-}
-
-// UpdateServiceAccount updates service-account metadata and active status.
-func (s *Service) UpdateServiceAccount(ctx context.Context, id string, input ServiceAccountInput) (ServiceAccount, error) {
-	normalized, name, err := normalizeServiceAccountInput(input)
-	if err != nil {
-		return ServiceAccount{}, err
-	}
-
-	var record User
-	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		loaded, err := s.findServiceAccount(ctx, tx, id)
-		if err != nil {
-			return err
-		}
-		record = loaded
-
-		if err := s.ensureServiceAccountIdentifierAvailable(ctx, tx, normalized, id); err != nil {
-			return err
-		}
-
-		record.PreferredUsername = normalized
-		record.Name = name
-		record.Type = auth.UserTypeService
-		record.Role = auth.RoleUser
-		record.IsActive = input.IsActive
-		record.FirewallOverrideEnabled = serviceAccountFirewallOverride(input, record.FirewallOverrideEnabled)
-
-		if err := tx.Save(&record).Error; err != nil {
-			return fmt.Errorf("update service account: %w", err)
-		}
-
-		return nil
-	})
-	if err != nil {
-		return ServiceAccount{}, err
-	}
-
-	s.notifier.Notify(ctx, configevents.DomainAuth)
-	items := []ServiceAccount{record.serviceAccount()}
-	if err := s.attachServiceAccountTokenConsumption(ctx, items); err != nil {
-		return ServiceAccount{}, err
-	}
-
-	return items[0], nil
-}
-
-// DeleteServiceAccount permanently removes a service account by ID.
-func (s *Service) DeleteServiceAccount(ctx context.Context, id string) error {
-	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Exec(
-			"DELETE FROM firewall_rules WHERE type = ? AND referentiel_id = ?",
-			"service_account",
-			id,
-		).Error; err != nil {
-			return fmt.Errorf("delete service account firewall rules: %w", err)
-		}
-
-		result := tx.Where("type = ?", auth.UserTypeService).Delete(&User{}, "id = ?", id)
-		if result.Error != nil {
-			return fmt.Errorf("delete service account: %w", result.Error)
-		}
-		if result.RowsAffected == 0 {
-			return ErrUserNotFound
-		}
-		return nil
-	})
-	if err != nil {
-		return err
-	}
-
-	s.notifier.Notify(ctx, configevents.DomainAuth)
-	s.notifier.Notify(ctx, configevents.DomainFirewall)
-	return nil
-}
-
 // UpdateUser changes a user's role and active status, returning the updated admin view.
 func (s *Service) UpdateUser(ctx context.Context, id string, input UpdateUserInput) (AdminUser, error) {
 	if !input.Role.IsValid() {
@@ -674,85 +475,10 @@ func (s *Service) UpdateServiceAccountNote(ctx context.Context, id string, input
 	return items[0], nil
 }
 
-// ExpireAccess removes roles whose access expiration date has passed and revokes their tokens.
-func (s *Service) ExpireAccess(ctx context.Context, now time.Time) (int64, error) {
-	now = now.UTC()
-	var expiredIDs []string
-	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Model(&User{}).
-			Where("expires_at IS NOT NULL AND expires_at <= ? AND role <> ?", now, auth.RoleNone).
-			Pluck("id", &expiredIDs).Error; err != nil {
-			return fmt.Errorf("list expired user access: %w", err)
-		}
-		if len(expiredIDs) == 0 {
-			return nil
-		}
-
-		if err := tx.Model(&User{}).
-			Where("id IN ?", expiredIDs).
-			Updates(map[string]any{
-				"role":       auth.RoleNone,
-				"expires_at": nil,
-			}).Error; err != nil {
-			return fmt.Errorf("expire user access: %w", err)
-		}
-
-		if s.tokenRevoker != nil {
-			if _, err := s.tokenRevoker.RevokeUserTokensTx(ctx, tx, expiredIDs, now); err != nil {
-				return fmt.Errorf("revoke expired user tokens: %w", err)
-			}
-		}
-
-		return nil
-	})
-	if err != nil {
-		return 0, err
-	}
-	if len(expiredIDs) == 0 {
-		return 0, nil
-	}
-
-	s.notifier.Notify(ctx, configevents.DomainAuth)
-	return int64(len(expiredIDs)), nil
-}
-
-// StartAccessExpiration starts a background goroutine that periodically expires user access.
-func (s *Service) StartAccessExpiration(ctx context.Context, interval time.Duration) {
-	if interval <= 0 {
-		interval = time.Hour
-	}
-
-	go func() {
-		s.expireAccessLog(ctx)
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				s.expireAccessLog(ctx)
-			}
-		}
-	}()
-}
-
-// expireAccessLog expires user access and writes an operational log entry.
-func (s *Service) expireAccessLog(ctx context.Context) {
-	count, err := s.ExpireAccess(ctx, time.Now().UTC())
-	if err != nil {
-		slog.Error("failed to expire user access", "error", err)
-		return
-	}
-	if count > 0 {
-		slog.Info("expired user access", "users", count)
-	}
-}
-
 // DeleteUser permanently removes a user by ID, returning ErrUserNotFound if absent.
 func (s *Service) DeleteUser(ctx context.Context, id string) error {
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := deleteUserFirewallRulesTx(tx, id); err != nil {
+		if err := deleteAccountFirewallRulesTx(tx, "user", id); err != nil {
 			return err
 		}
 
@@ -774,24 +500,26 @@ func (s *Service) DeleteUser(ctx context.Context, id string) error {
 	return nil
 }
 
-// deleteUserFirewallRulesTx removes user-scoped firewall rules when the firewall table is present.
-func deleteUserFirewallRulesTx(tx *gorm.DB, id string) error {
+// deleteAccountFirewallRulesTx removes account-scoped firewall rules when the
+// optional firewall table is present.
+func deleteAccountFirewallRulesTx(tx *gorm.DB, ruleType, id string) error {
 	err := tx.Exec(
 		"DELETE FROM firewall_rules WHERE type = ? AND referentiel_id = ?",
-		"user",
+		ruleType,
 		id,
 	).Error
 	if err == nil || isMissingFirewallRulesTable(err) {
 		return nil
 	}
-	return fmt.Errorf("delete user firewall rules: %w", err)
+	return fmt.Errorf("delete %s firewall rules: %w", ruleType, err)
 }
 
 // isMissingFirewallRulesTable reports whether a database lacks the optional firewall table.
 func isMissingFirewallRulesTable(err error) bool {
 	message := strings.ToLower(err.Error())
 	return strings.Contains(message, "no such table: firewall_rules") ||
-		strings.Contains(message, `relation "firewall_rules" does not exist`)
+		strings.Contains(message, `relation "firewall_rules" does not exist`) ||
+		strings.Contains(message, "sqlstate 42p01")
 }
 
 // normalizeServiceAccountInput validates and normalizes service account form input.
@@ -860,70 +588,6 @@ func (s *Service) findServiceAccount(ctx context.Context, tx *gorm.DB, id string
 	}
 
 	return record, nil
-}
-
-// attachAdminUserTokenConsumption fills token totals on admin user rows.
-func (s *Service) attachAdminUserTokenConsumption(ctx context.Context, items []AdminUser) error {
-	ids := make([]string, 0, len(items))
-	for _, item := range items {
-		ids = append(ids, item.ID)
-	}
-
-	consumptionByUserID, err := s.loadTokenConsumption(ctx, ids)
-	if err != nil {
-		return err
-	}
-	for i := range items {
-		consumption := consumptionByUserID[items[i].ID]
-		items[i].InputTokens = consumption.InputTokens
-		items[i].OutputTokens = consumption.OutputTokens
-	}
-	return nil
-}
-
-// attachServiceAccountTokenConsumption fills token totals on service account rows.
-func (s *Service) attachServiceAccountTokenConsumption(ctx context.Context, items []ServiceAccount) error {
-	ids := make([]string, 0, len(items))
-	for _, item := range items {
-		ids = append(ids, item.ID)
-	}
-
-	consumptionByUserID, err := s.loadTokenConsumption(ctx, ids)
-	if err != nil {
-		return err
-	}
-	for i := range items {
-		consumption := consumptionByUserID[items[i].ID]
-		items[i].InputTokens = consumption.InputTokens
-		items[i].OutputTokens = consumption.OutputTokens
-	}
-	return nil
-}
-
-// loadTokenConsumption aggregates token input and output totals by user ID.
-func (s *Service) loadTokenConsumption(ctx context.Context, userIDs []string) (map[string]tokenConsumption, error) {
-	if len(userIDs) == 0 {
-		return map[string]tokenConsumption{}, nil
-	}
-
-	var rows []tokenConsumption
-	if err := s.db.WithContext(ctx).
-		Table("token_usages").
-		Select(`interceptions.initiator_id AS user_id,
-			COALESCE(SUM(token_usages.input_tokens), 0) AS input_tokens,
-			COALESCE(SUM(token_usages.output_tokens), 0) AS output_tokens`).
-		Joins("JOIN interceptions ON interceptions.id = token_usages.interception_id").
-		Where("interceptions.initiator_id IN ?", userIDs).
-		Group("interceptions.initiator_id").
-		Scan(&rows).Error; err != nil {
-		return nil, fmt.Errorf("load token consumption: %w", err)
-	}
-
-	consumptionByUserID := make(map[string]tokenConsumption, len(rows))
-	for _, row := range rows {
-		consumptionByUserID[row.UserID] = row
-	}
-	return consumptionByUserID, nil
 }
 
 // normalizeUserListParams applies default user pagination and sorting values.
@@ -1046,58 +710,5 @@ func normalizeSortDir(sortDir string) (string, error) {
 		return "DESC", nil
 	default:
 		return "", ErrInvalidSort
-	}
-}
-
-// profile maps the database User record to an auth.UserProfile.
-func (u *User) profile() auth.UserProfile {
-	return auth.UserProfile{
-		ID:                      u.ID,
-		Sub:                     u.ExternalSub,
-		PreferredUsername:       u.PreferredUsername,
-		Email:                   u.Email,
-		Name:                    u.Name,
-		Type:                    u.Type,
-		Role:                    u.Role,
-		IsActive:                u.IsActive,
-		FirewallOverrideEnabled: u.FirewallOverrideEnabled,
-		LastLoginAt:             u.LastLoginAt,
-	}
-}
-
-// adminUser maps the database User record to an AdminUser response with audit timestamps.
-func (u *User) adminUser() AdminUser {
-	return AdminUser{
-		ID:                      u.ID,
-		Sub:                     u.ExternalSub,
-		PreferredUsername:       u.PreferredUsername,
-		Email:                   u.Email,
-		Name:                    u.Name,
-		Type:                    u.Type,
-		Role:                    u.Role,
-		SubscriptionPlanID:      u.SubscriptionPlanID,
-		Note:                    u.Note,
-		IsActive:                u.IsActive,
-		FirewallOverrideEnabled: u.FirewallOverrideEnabled,
-		ExpiresAt:               u.ExpiresAt,
-		LastLoginAt:             u.LastLoginAt,
-		CreatedAt:               u.CreatedAt,
-		UpdatedAt:               u.UpdatedAt,
-	}
-}
-
-// serviceAccount maps the database User record to the service-account API response.
-func (u *User) serviceAccount() ServiceAccount {
-	return ServiceAccount{
-		ID:                      u.ID,
-		Identifier:              u.PreferredUsername,
-		Name:                    u.Name,
-		Role:                    auth.RoleUser,
-		SubscriptionPlanID:      u.SubscriptionPlanID,
-		Note:                    u.Note,
-		IsActive:                u.IsActive,
-		FirewallOverrideEnabled: u.FirewallOverrideEnabled,
-		CreatedAt:               u.CreatedAt,
-		UpdatedAt:               u.UpdatedAt,
 	}
 }

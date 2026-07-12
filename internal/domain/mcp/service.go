@@ -1,9 +1,7 @@
 package mcp
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
@@ -13,6 +11,7 @@ import (
 	"time"
 
 	"promptgate/backend/internal/platform/configevents"
+	"promptgate/backend/internal/platform/database"
 	"promptgate/backend/internal/platform/secrets"
 
 	"github.com/google/uuid"
@@ -53,39 +52,6 @@ func (s *Service) SetNotifier(notifier configevents.Notifier) {
 // AutoMigrate migrates MCP tables.
 func (s *Service) AutoMigrate(ctx context.Context) error {
 	return s.db.WithContext(ctx).AutoMigrate(&MCPServer{})
-}
-
-type HeaderValue struct {
-	Set   bool
-	Value *string
-}
-
-// UnmarshalJSON tracks whether a header value was present in the request.
-func (v *HeaderValue) UnmarshalJSON(data []byte) error {
-	v.Set = true
-	if bytes.Equal(data, []byte("null")) {
-		v.Value = nil
-		return nil
-	}
-	var value string
-	if err := json.Unmarshal(data, &value); err != nil {
-		return err
-	}
-	v.Value = &value
-	return nil
-}
-
-type HeaderInput struct {
-	Name      string      `json:"name"`
-	Value     HeaderValue `json:"value"`
-	Sensitive bool        `json:"sensitive"`
-}
-
-type HeaderResponse struct {
-	Name      string `json:"name"`
-	Value     string `json:"value,omitempty"`
-	Sensitive bool   `json:"sensitive"`
-	HasValue  bool   `json:"hasValue"`
 }
 
 type CreateServerInput struct {
@@ -343,7 +309,7 @@ func (s *Service) CreateServer(ctx context.Context, input CreateServerInput) (Se
 		Enabled:      input.Enabled,
 	}
 	if err := s.db.WithContext(ctx).Create(&record).Error; err != nil {
-		if isUniqueConstraintError(err) {
+		if database.IsUniqueViolation(err) {
 			return ServerResponse{}, ErrNameConflict
 		}
 		return ServerResponse{}, fmt.Errorf("create mcp server: %w", err)
@@ -412,7 +378,7 @@ func (s *Service) UpdateServer(ctx context.Context, id string, input UpdateServe
 	}
 
 	if err := s.db.WithContext(ctx).Save(&record).Error; err != nil {
-		if isUniqueConstraintError(err) {
+		if database.IsUniqueViolation(err) {
 			return ServerResponse{}, ErrNameConflict
 		}
 		return ServerResponse{}, fmt.Errorf("update mcp server: %w", err)
@@ -434,25 +400,6 @@ func (s *Service) DeleteServer(ctx context.Context, id string) error {
 	return nil
 }
 
-// HeadersForProxy decrypts and returns headers needed by the proxy.
-func (s *Service) HeadersForProxy(server MCPServer) (map[string]string, error) {
-	headers := make(map[string]string, len(server.Headers))
-	for _, header := range server.Headers {
-		value := header.Value
-		if header.Sensitive && header.ValueCiphertext != "" {
-			plain, err := s.cipher.Decrypt(header.ValueCiphertext)
-			if err != nil {
-				return nil, fmt.Errorf("decrypt mcp header %q: %w", header.Name, err)
-			}
-			value = plain
-		}
-		if value != "" {
-			headers[header.Name] = value
-		}
-	}
-	return headers, nil
-}
-
 // getServer fetches an MCP server or returns ErrNotFound.
 func (s *Service) getServer(ctx context.Context, db *gorm.DB, id string) (MCPServer, error) {
 	var record MCPServer
@@ -463,95 +410,6 @@ func (s *Service) getServer(ctx context.Context, db *gorm.DB, id string) (MCPSer
 		return MCPServer{}, fmt.Errorf("get mcp server: %w", err)
 	}
 	return record, nil
-}
-
-// buildHeaders validates and materializes structured MCP headers.
-func (s *Service) buildHeaders(inputs []HeaderInput, existing MCPHeaders) (MCPHeaders, error) {
-	existingByName := make(map[string]MCPHeader, len(existing))
-	for _, header := range existing {
-		existingByName[strings.ToLower(header.Name)] = header
-	}
-
-	out := make(MCPHeaders, 0, len(inputs))
-	seen := make(map[string]struct{}, len(inputs))
-	for _, input := range inputs {
-		name := httpHeaderName(input.Name)
-		if name == "" {
-			return nil, ErrInvalidHeader
-		}
-		key := strings.ToLower(name)
-		if _, ok := seen[key]; ok {
-			return nil, ErrInvalidHeader
-		}
-		seen[key] = struct{}{}
-
-		value, err := s.headerValue(input, existingByName[key])
-		if err != nil {
-			return nil, err
-		}
-		header := MCPHeader{Name: name, Sensitive: input.Sensitive}
-		if input.Sensitive {
-			if value != "" {
-				ciphertext, err := s.cipher.Encrypt(value)
-				if err != nil {
-					return nil, err
-				}
-				header.ValueCiphertext = ciphertext
-			}
-		} else {
-			header.Value = value
-		}
-		out = append(out, header)
-	}
-	return out, nil
-}
-
-// headerValue resolves clear or encrypted header storage for an input header.
-func (s *Service) headerValue(input HeaderInput, existing MCPHeader) (string, error) {
-	if input.Value.Set {
-		if input.Value.Value == nil {
-			return "", nil
-		}
-		return strings.TrimSpace(*input.Value.Value), nil
-	}
-	if existing.Name == "" {
-		return "", nil
-	}
-	if existing.Sensitive {
-		if existing.ValueCiphertext == "" {
-			return "", nil
-		}
-		return s.cipher.Decrypt(existing.ValueCiphertext)
-	}
-	return existing.Value, nil
-}
-
-// toResponse redacts sensitive MCP header values for admin API output.
-func (s *Service) toResponse(record MCPServer) ServerResponse {
-	headers := make([]HeaderResponse, 0, len(record.Headers))
-	for _, header := range record.Headers {
-		response := HeaderResponse{
-			Name:      header.Name,
-			Sensitive: header.Sensitive,
-			HasValue:  header.Value != "" || header.ValueCiphertext != "",
-		}
-		if !header.Sensitive {
-			response.Value = header.Value
-		}
-		headers = append(headers, response)
-	}
-	return ServerResponse{
-		ID:           record.ID,
-		Name:         record.Name,
-		DisplayName:  record.DisplayName,
-		URL:          record.URL,
-		Headers:      headers,
-		AllowPattern: record.AllowPattern,
-		DenyPattern:  record.DenyPattern,
-		Enabled:      record.Enabled,
-		CreatedAt:    record.CreatedAt,
-		UpdatedAt:    record.UpdatedAt,
-	}
 }
 
 // validateName normalizes and validates an MCP server name.
@@ -590,21 +448,4 @@ func validateRegex(pattern string) error {
 		return ErrInvalidRegex
 	}
 	return nil
-}
-
-// httpHeaderName canonicalizes an HTTP header name.
-func httpHeaderName(raw string) string {
-	name := strings.TrimSpace(raw)
-	if name == "" || strings.ContainsAny(name, " \t\r\n:") {
-		return ""
-	}
-	return name
-}
-
-// isUniqueConstraintError detects database uniqueness violations.
-func isUniqueConstraintError(err error) bool {
-	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "unique") ||
-		strings.Contains(msg, "duplicate key") ||
-		strings.Contains(msg, "23505")
 }

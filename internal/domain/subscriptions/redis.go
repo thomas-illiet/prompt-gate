@@ -201,8 +201,11 @@ func (s *RedisStore) ActiveUserIDs(ctx context.Context) ([]string, error) {
 		return nil, nil
 	}
 	cutoff := time.Now().UTC().Add(-7 * 24 * time.Hour).Unix()
-	ids, err := s.store.Client().ZRangeByScore(ctx, redisstore.SubscriptionActiveUsersZSetKey(), &redis.ZRangeBy{
-		Min: strconv.FormatInt(cutoff, 10), Max: "+inf",
+	ids, err := s.store.Client().ZRangeArgs(ctx, redis.ZRangeArgs{
+		Key:     redisstore.SubscriptionActiveUsersZSetKey(),
+		ByScore: true,
+		Start:   strconv.FormatInt(cutoff, 10),
+		Stop:    "+inf",
 	}).Result()
 	if errors.Is(err, redis.Nil) {
 		return nil, nil
@@ -326,9 +329,11 @@ func (s *RedisStore) windowUsage(ctx context.Context, userID string, window quot
 	hashKey := redisstore.SubscriptionUsageHashKey(userID, window.name)
 	cutoff := bucketStart(now.Add(-time.Duration(window.windowSeconds+window.bucketSeconds)*time.Second), window.bucketSeconds)
 
-	expired, err := client.ZRangeByScore(ctx, zsetKey, &redis.ZRangeBy{
-		Min: "-inf",
-		Max: strconv.FormatInt(cutoff, 10),
+	expired, err := client.ZRangeArgs(ctx, redis.ZRangeArgs{
+		Key:     zsetKey,
+		ByScore: true,
+		Start:   "-inf",
+		Stop:    strconv.FormatInt(cutoff, 10),
 	}).Result()
 	if err != nil && !errors.Is(err, redis.Nil) {
 		return 0, nil, err
@@ -337,7 +342,9 @@ func (s *RedisStore) windowUsage(ctx context.Context, userID string, window quot
 		pipe := client.Pipeline()
 		pipe.ZRem(ctx, zsetKey, stringMembers(expired)...)
 		pipe.HDel(ctx, hashKey, expired...)
-		_, _ = pipe.Exec(ctx)
+		if _, err := pipe.Exec(ctx); err != nil && !errors.Is(err, redis.Nil) {
+			return 0, nil, fmt.Errorf("remove expired quota buckets: %w", err)
+		}
 	}
 
 	members, err := client.ZRange(ctx, zsetKey, 0, -1).Result()

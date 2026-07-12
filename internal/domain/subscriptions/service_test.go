@@ -247,6 +247,62 @@ func TestListPlansPagedIncludesAssignmentCounts(t *testing.T) {
 	}
 }
 
+func TestAssignmentsReturnCompleteAccountProjections(t *testing.T) {
+	service, _, user := newSubscriptionTestStore(t)
+	ctx := context.Background()
+
+	plan, err := service.CreatePlan(ctx, PlanInput{Name: "Complete"})
+	if err != nil {
+		t.Fatalf("create plan: %v", err)
+	}
+	expiresAt := time.Now().UTC().Add(time.Hour).Truncate(time.Millisecond)
+	if err := service.db.Model(&users.User{}).Where("id = ?", user.ID).Updates(map[string]any{
+		"note":                      "keep user metadata",
+		"firewall_override_enabled": true,
+		"expires_at":                expiresAt,
+	}).Error; err != nil {
+		t.Fatalf("update user projection fields: %v", err)
+	}
+	seedSubscriptionTokenConsumption(t, service.db, user.ID, "user-complete", 12, 7)
+
+	planID := plan.ID
+	assignedUser, err := service.AssignUserPlan(ctx, user.ID, &planID)
+	if err != nil {
+		t.Fatalf("assign user plan: %v", err)
+	}
+	if !assignedUser.FirewallOverrideEnabled || assignedUser.Note != "keep user metadata" ||
+		assignedUser.ExpiresAt == nil || !assignedUser.ExpiresAt.Equal(expiresAt) ||
+		assignedUser.InputTokens != 12 || assignedUser.OutputTokens != 7 {
+		t.Fatalf("incomplete assigned user projection: %#v", assignedUser)
+	}
+
+	account := users.User{
+		ID:                      "55555555-5555-5555-5555-555555555555",
+		ExternalSub:             "service-complete",
+		PreferredUsername:       "complete-worker",
+		Name:                    "Complete Worker",
+		Type:                    auth.UserTypeService,
+		Role:                    auth.RoleUser,
+		Note:                    "keep service metadata",
+		IsActive:                true,
+		FirewallOverrideEnabled: true,
+		LastLoginAt:             time.Now().UTC(),
+	}
+	if err := service.db.Create(&account).Error; err != nil {
+		t.Fatalf("create service account: %v", err)
+	}
+	seedSubscriptionTokenConsumption(t, service.db, account.ID, "service-complete", 21, 4)
+
+	assignedAccount, err := service.AssignServiceAccountPlan(ctx, account.ID, &planID)
+	if err != nil {
+		t.Fatalf("assign service account plan: %v", err)
+	}
+	if !assignedAccount.FirewallOverrideEnabled || assignedAccount.Note != "keep service metadata" ||
+		assignedAccount.InputTokens != 21 || assignedAccount.OutputTokens != 4 {
+		t.Fatalf("incomplete assigned service-account projection: %#v", assignedAccount)
+	}
+}
+
 func newSubscriptionTestStore(t *testing.T) (*Service, *RedisStore, users.User) {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open("file:"+strings.ReplaceAll(t.Name(), "/", "_")+"?mode=memory&cache=shared"), &gorm.Config{})
@@ -260,6 +316,7 @@ func newSubscriptionTestStore(t *testing.T) (*Service, *RedisStore, users.User) 
 	if err := service.AutoMigrate(context.Background()); err != nil {
 		t.Fatalf("migrate subscriptions: %v", err)
 	}
+	createSubscriptionUsageTables(t, db)
 	user := users.User{
 		ID:                "11111111-1111-1111-1111-111111111111",
 		ExternalSub:       "sub",
@@ -284,6 +341,41 @@ func newSubscriptionTestStore(t *testing.T) (*Service, *RedisStore, users.User) 
 	store := NewRedisStore(redisStore, service, time.Minute, nil)
 	store.SyncVersion(context.Background())
 	return service, store, user
+}
+
+func createSubscriptionUsageTables(t *testing.T, db *gorm.DB) {
+	t.Helper()
+
+	for _, statement := range []string{
+		`CREATE TABLE interceptions (id text PRIMARY KEY, initiator_id text NOT NULL)`,
+		`CREATE TABLE token_usages (
+			id text PRIMARY KEY,
+			interception_id text NOT NULL,
+			input_tokens integer NOT NULL DEFAULT 0,
+			output_tokens integer NOT NULL DEFAULT 0
+		)`,
+	} {
+		if err := db.Exec(statement).Error; err != nil {
+			t.Fatalf("create subscription usage table: %v", err)
+		}
+	}
+}
+
+func seedSubscriptionTokenConsumption(t *testing.T, db *gorm.DB, userID, interceptionID string, input, output int64) {
+	t.Helper()
+
+	if err := db.Exec("INSERT INTO interceptions (id, initiator_id) VALUES (?, ?)", interceptionID, userID).Error; err != nil {
+		t.Fatalf("seed subscription interception: %v", err)
+	}
+	if err := db.Exec(
+		"INSERT INTO token_usages (id, interception_id, input_tokens, output_tokens) VALUES (?, ?, ?, ?)",
+		"usage-"+interceptionID,
+		interceptionID,
+		input,
+		output,
+	).Error; err != nil {
+		t.Fatalf("seed subscription token usage: %v", err)
+	}
 }
 
 func quotaRequest(userID string) *http.Request {

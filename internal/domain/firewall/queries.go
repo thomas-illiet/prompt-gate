@@ -77,11 +77,6 @@ func (s *Service) getRule(ctx context.Context, db *gorm.DB, id string) (Firewall
 	return record, nil
 }
 
-// getServiceAccountRule fetches a scoped service-account firewall rule or returns ErrNotFound.
-func (s *Service) getServiceAccountRule(ctx context.Context, db *gorm.DB, serviceAccountID string, id string) (FirewallRule, error) {
-	return s.getScopedRule(ctx, db, RuleTypeServiceAccount, serviceAccountID, id)
-}
-
 // getScopedRule fetches a scoped firewall rule or returns ErrNotFound.
 func (s *Service) getScopedRule(ctx context.Context, db *gorm.DB, ruleType RuleType, referentielID string, id string) (FirewallRule, error) {
 	var record FirewallRule
@@ -99,11 +94,6 @@ func (s *Service) getScopedRule(ctx context.Context, db *gorm.DB, ruleType RuleT
 // globalRuleQuery scopes a query to global firewall rules.
 func globalRuleQuery(query *gorm.DB) *gorm.DB {
 	return query.Where("type = ? AND referentiel_id IS NULL", RuleTypeGlobal)
-}
-
-// serviceAccountRuleQuery scopes a query to one service account.
-func serviceAccountRuleQuery(query *gorm.DB, serviceAccountID string) *gorm.DB {
-	return query.Where("type = ? AND referentiel_id = ?", RuleTypeServiceAccount, serviceAccountID)
 }
 
 // scopedRuleQuery scopes a query to one firewall rule namespace.
