@@ -1,0 +1,121 @@
+.app-markdown {
+  color: rgb(var(--app-shell-text-primary));
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+}
+
+.app-markdown h1,
+.app-markdown h2,
+.app-markdown h3,
+.app-markdown h4 {
+  margin-block: 0.9em 0.4em;
+  color: rgb(var(--app-shell-text-primary));
+  line-height: 1.3;
+}
+
+.app-markdown h1 { font-size: 1.5rem; }
+.app-markdown h2 { font-size: 1.3rem; }
+.app-markdown h3 { font-size: 1.15rem; }
+.app-markdown h4 { font-size: 1rem; }
+
+.app-markdown > :first-child { margin-top: 0; }
+.app-markdown > :last-child { margin-bottom: 0; }
+
+.app-markdown a {
+  color: rgb(var(--v-theme-primary));
+  text-underline-offset: 3px;
+}
+
+.app-markdown blockquote {
+  margin-inline: 0;
+  padding: 10px 14px;
+  border-left: 3px solid rgb(var(--v-theme-primary));
+  border-radius: 0 var(--app-control-radius) var(--app-control-radius) 0;
+  color: rgb(var(--app-shell-text-secondary));
+  background: rgba(var(--v-theme-primary), 0.055);
+}
+
+.app-markdown code {
+  padding: 0.15em 0.4em;
+  border: 1px solid rgba(var(--app-shell-border), 0.55);
+  border-radius: 5px;
+  color: rgb(var(--app-shell-text-primary));
+  background: rgba(var(--v-theme-primary), 0.07);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    'Liberation Mono', monospace;
+  font-size: 0.9em;
+}
+
+.app-markdown pre {
+  max-width: 100%;
+  margin-block: 16px;
+  overflow-x: auto;
+  padding: 16px 18px;
+  border: 1px solid rgb(var(--app-markdown-code-border));
+  border-radius: var(--app-card-radius);
+  color: rgb(var(--app-markdown-code-text));
+  background: rgb(var(--app-markdown-code-background));
+  box-shadow: inset 0 1px 0 rgba(var(--app-shell-surface-strong), 0.55);
+  line-height: 1.6;
+  tab-size: 2;
+}
+
+.app-markdown pre code {
+  padding: 0;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  font-size: 0.875rem;
+  white-space: pre;
+}
+
+.app-markdown table {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  margin-block: 16px;
+  overflow-x: auto;
+  border: 1px solid rgba(var(--app-shell-border), 0.62);
+  border-spacing: 0;
+  border-collapse: separate;
+  border-radius: var(--app-card-radius);
+}
+
+.app-markdown thead,
+.app-markdown tbody {
+  display: table;
+  width: 100%;
+  min-width: 480px;
+  table-layout: fixed;
+}
+
+.app-markdown th,
+.app-markdown td {
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(var(--app-shell-border), 0.48);
+  text-align: left;
+  vertical-align: top;
+}
+
+.app-markdown th + th,
+.app-markdown td + td {
+  border-left: 1px solid rgba(var(--app-shell-border), 0.38);
+}
+
+.app-markdown th {
+  color: rgb(var(--app-shell-text-secondary));
+  background: rgba(var(--app-shell-surface-muted), 0.92);
+  font-weight: 700;
+}
+
+.app-markdown tbody tr:nth-child(even) td {
+  background: rgba(var(--app-shell-surface-muted), 0.48);
+}
+
+.app-markdown tbody tr:hover td {
+  background: rgba(var(--v-theme-primary), 0.04);
+}
+
+.app-markdown tbody tr:last-child td {
+  border-bottom: 0;
+}

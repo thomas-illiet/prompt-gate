@@ -3,8 +3,8 @@ definePageMeta({
   requiredRoles: ['admin'],
   title: 'Setup guides',
   icon: 'mdi-book-cog-outline',
-  drawerIndex: 11,
-  drawerSection: 'Configuration',
+  drawerIndex: 2,
+  drawerSection: 'Content',
 })
 </script>
 <template>

@@ -32,6 +32,9 @@ html.dark {
   --app-card-shadow: 0 18px 44px -38px rgba(15, 23, 42, 0.42);
   --app-card-shadow-soft: 0 12px 30px -26px rgba(15, 23, 42, 0.28);
   --app-control-shadow: 0 10px 22px -18px rgba(15, 23, 42, 0.34);
+  --app-markdown-code-background: 241, 245, 243;
+  --app-markdown-code-border: 207, 218, 213;
+  --app-markdown-code-text: 31, 48, 42;
 }
 
 .v-theme--dark {
@@ -49,6 +52,9 @@ html.dark {
   --app-card-shadow: 0 18px 44px -34px rgba(0, 0, 0, 0.72);
   --app-card-shadow-soft: 0 12px 30px -24px rgba(0, 0, 0, 0.62);
   --app-control-shadow: 0 10px 22px -18px rgba(0, 0, 0, 0.64);
+  --app-markdown-code-background: 23, 33, 30;
+  --app-markdown-code-border: 58, 75, 69;
+  --app-markdown-code-text: 232, 241, 237;
 }
 
 .v-main {

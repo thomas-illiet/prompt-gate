@@ -6,8 +6,8 @@ import (
 	"net/http"
 
 	"promptgate/backend/internal/domain/auth"
-	"promptgate/backend/internal/domain/firewall"
 	"promptgate/backend/internal/domain/faq"
+	"promptgate/backend/internal/domain/firewall"
 	"promptgate/backend/internal/domain/groups"
 	"promptgate/backend/internal/domain/mcp"
 	"promptgate/backend/internal/domain/monitoring"
@@ -133,6 +133,10 @@ func NewHandler(a Dependencies) http.Handler {
 		middleware.RequireAppAccess(),
 		middleware.RequireRoles(auth.RoleUser, auth.RoleManager, auth.RoleAdmin),
 	}
+	mux.Handle(
+		"GET /api/v1/faq",
+		middleware.Chain(http.HandlerFunc(srv.handleFAQ), userMiddlewares...),
+	)
 	mux.Handle(
 		"GET /api/v1/me/dashboard/tokens",
 		middleware.Chain(http.HandlerFunc(srv.handleCurrentUserDashboardTokens), userMiddlewares...),
@@ -541,6 +545,13 @@ func NewHandler(a Dependencies) http.Handler {
 		"POST /api/v1/admin/monitoring/services/{id}/check",
 		middleware.Chain(http.HandlerFunc(adminH.HandleAdminCheckMonitoringService), adminMiddlewares...),
 	)
+	mux.Handle("GET /api/v1/admin/faqs", middleware.Chain(http.HandlerFunc(adminH.HandleAdminListFAQ), adminMiddlewares...))
+	mux.Handle("POST /api/v1/admin/faqs", middleware.Chain(http.HandlerFunc(adminH.HandleAdminCreateFAQ), adminMiddlewares...))
+	mux.Handle("POST /api/v1/admin/faqs/preview", middleware.Chain(http.HandlerFunc(adminH.HandleAdminPreviewFAQ), adminMiddlewares...))
+	mux.Handle("GET /api/v1/admin/faqs/{id}", middleware.Chain(http.HandlerFunc(adminH.HandleAdminGetFAQ), adminMiddlewares...))
+	mux.Handle("PATCH /api/v1/admin/faqs/{id}", middleware.Chain(http.HandlerFunc(adminH.HandleAdminUpdateFAQ), adminMiddlewares...))
+	mux.Handle("PATCH /api/v1/admin/faqs/{id}/position", middleware.Chain(http.HandlerFunc(adminH.HandleAdminMoveFAQ), adminMiddlewares...))
+	mux.Handle("DELETE /api/v1/admin/faqs/{id}", middleware.Chain(http.HandlerFunc(adminH.HandleAdminDeleteFAQ), adminMiddlewares...))
 	mux.Handle("GET /api/v1/admin/setup-guides", middleware.Chain(http.HandlerFunc(adminH.HandleAdminListSetupGuides), adminMiddlewares...))
 	mux.Handle("POST /api/v1/admin/setup-guides", middleware.Chain(http.HandlerFunc(adminH.HandleAdminCreateSetupGuide), adminMiddlewares...))
 	mux.Handle("POST /api/v1/admin/setup-guides/validate", middleware.Chain(http.HandlerFunc(adminH.HandleAdminValidateSetupGuide), adminMiddlewares...))

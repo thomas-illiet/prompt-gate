@@ -2,7 +2,7 @@
 definePageMeta({
   icon: 'mdi-account-group-outline',
   title: 'Administration',
-  drawerIndex: 5,
+  drawerIndex: 6,
   drawerGroup: true,
   requiredRoles: ['admin'],
   redirect: '/admin/users',
