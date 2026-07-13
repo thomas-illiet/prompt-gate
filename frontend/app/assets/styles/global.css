@@ -135,6 +135,12 @@ html.dark {
   letter-spacing: 0;
 }
 
+/* Vuetify 4.1 uses typed CSS division, which Firefox does not support yet. */
+.v-switch {
+  --v-switch-inset-thumb-off-scale: 0.666666667;
+  --v-switch-inset-thumb-pressed-scale: 1.166666667;
+}
+
 .v-btn:not(.v-btn--icon) {
   font-weight: 650;
 }

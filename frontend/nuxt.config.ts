@@ -83,6 +83,13 @@ export default defineNuxtConfig({
       'VisualMapComponent',
     ],
   },
+  postcss: {
+    plugins: {
+      cssnano: {
+        preset: ['default', { calc: false }],
+      },
+    },
+  },
   vite: {
     build: {
       sourcemap: false,
@@ -90,6 +97,15 @@ export default defineNuxtConfig({
       chunkSizeWarningLimit: 1000,
       rollupOptions: {
         onwarn(warning, defaultHandler) {
+          const warningId = warning.id?.replaceAll('\\', '/')
+
+          if (
+            warning.code === 'INVALID_ANNOTATION' &&
+            warningId?.endsWith('/node_modules/@vueuse/core/dist/index.js')
+          ) {
+            return
+          }
+
           if (
             warning.message.includes('Sourcemap is likely to be incorrect') &&
             warning.message.includes('nuxt:module-preload-polyfill')
