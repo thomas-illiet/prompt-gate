@@ -1,6 +1,6 @@
 module promptgate/backend
 
-go 1.25.6
+go 1.25.12
 
 tool honnef.co/go/tools/cmd/staticcheck
 
