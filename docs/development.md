@@ -33,15 +33,16 @@ The seeded provider is named `ollama` and points at
 ### Local Login Troubleshooting
 
 The first browser user synced into an empty Prompt Gate database becomes
-`admin`. If Keycloak is reset while the PostgreSQL volume is kept, the seeded
-`admin` user can receive a new OIDC subject and appear as a separate account
-with no application role.
+`admin`. Human users are matched by the exact OIDC `preferred_username` claim.
+If Keycloak is reset while the PostgreSQL volume is kept, signing in with the
+same username refreshes the stored OIDC subject while preserving the local
+account and its application role.
 
-When `admin` signs in but sees **Access denied** in local development, either:
+When `admin` signs in but sees **Access denied** in local development:
 
-- reset both persisted volumes with `docker compose down -v` and start again, or
-- promote the current `admin@promptgate.local` account from the User management
-  page or directly in PostgreSQL for local recovery.
+- verify that Keycloak emits the expected `preferred_username` claim, then
+- promote the matching account from the User management page or directly in
+  PostgreSQL for local recovery.
 
 ## Source-Based Setup
 

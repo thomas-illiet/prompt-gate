@@ -156,8 +156,8 @@ func TestSyncUserBootstrapsFirstAdminThenDefaultsToNone(t *testing.T) {
 	}
 }
 
-// TestSyncUserPreservesRoleAndStatusWhileRefreshingIdentity verifies sync does not overwrite admin-managed fields.
-func TestSyncUserPreservesRoleAndStatusWhileRefreshingIdentity(t *testing.T) {
+// TestSyncUserMatchesPreferredUsernameAndPreservesManagedFields verifies SSO matching ignores subject changes.
+func TestSyncUserMatchesPreferredUsernameAndPreservesManagedFields(t *testing.T) {
 	service := newTestService(t)
 	ctx := context.Background()
 
@@ -182,8 +182,8 @@ func TestSyncUserPreservesRoleAndStatusWhileRefreshingIdentity(t *testing.T) {
 	time.Sleep(10 * time.Millisecond)
 
 	resynced, err := service.SyncUser(ctx, auth.Identity{
-		Sub:               "sub-1",
-		PreferredUsername: "promptgate-manager",
+		Sub:               "replacement-sub",
+		PreferredUsername: "promptgate-user",
 		Email:             "manager@example.com",
 		Name:              "PromptGate Manager",
 	})
@@ -199,12 +199,63 @@ func TestSyncUserPreservesRoleAndStatusWhileRefreshingIdentity(t *testing.T) {
 		t.Fatal("expected inactive status to be preserved")
 	}
 
-	if resynced.Email != "manager@example.com" || resynced.Name != "PromptGate Manager" || resynced.PreferredUsername != "promptgate-manager" {
+	if resynced.ID != created.ID {
+		t.Fatalf("expected preferred username to match the existing user, got ids %q and %q", created.ID, resynced.ID)
+	}
+
+	if resynced.Sub != "replacement-sub" || resynced.Email != "manager@example.com" || resynced.Name != "PromptGate Manager" || resynced.PreferredUsername != "promptgate-user" {
 		t.Fatalf("expected identity fields to be refreshed, got %#v", resynced)
 	}
 
 	if !resynced.LastLoginAt.After(updated.LastLoginAt) {
 		t.Fatal("expected last login timestamp to move forward on re-sync")
+	}
+}
+
+// TestSyncUserDoesNotMatchServiceAccountIdentifier verifies SSO matching is restricted to human users.
+func TestSyncUserDoesNotMatchServiceAccountIdentifier(t *testing.T) {
+	service := newTestService(t)
+	ctx := context.Background()
+
+	account, err := service.CreateServiceAccount(ctx, ServiceAccountInput{
+		Identifier: "shared-identifier",
+		Name:       "Shared Identifier Bot",
+		IsActive:   true,
+	})
+	if err != nil {
+		t.Fatalf("create service account: %v", err)
+	}
+
+	profile, err := service.SyncUser(ctx, auth.Identity{
+		Sub:               "human-sub",
+		PreferredUsername: "shared-identifier",
+		Email:             "human@example.com",
+		Name:              "Human User",
+	})
+	if err != nil {
+		t.Fatalf("sync human user: %v", err)
+	}
+
+	if profile.ID == account.ID || profile.Type != auth.UserTypeUser {
+		t.Fatalf("expected a distinct human user, got %#v", profile)
+	}
+
+	storedAccount, err := service.GetServiceAccount(ctx, account.ID)
+	if err != nil {
+		t.Fatalf("load service account: %v", err)
+	}
+	if storedAccount.Name != "Shared Identifier Bot" {
+		t.Fatalf("expected service account to remain unchanged, got %#v", storedAccount)
+	}
+}
+
+// TestSyncUserRequiresPreferredUsername verifies the SSO match key cannot be empty.
+func TestSyncUserRequiresPreferredUsername(t *testing.T) {
+	service := newTestService(t)
+
+	_, err := service.SyncUser(context.Background(), auth.Identity{Sub: "sub-without-username"})
+	if !errors.Is(err, ErrPreferredUsernameRequired) {
+		t.Fatalf("expected preferred username validation error, got %v", err)
 	}
 }
 

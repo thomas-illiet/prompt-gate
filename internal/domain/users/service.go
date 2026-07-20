@@ -22,6 +22,7 @@ var (
 	ErrInvalidServiceAccountName       = errors.New("service account name is required")
 	ErrInvalidServiceAccountIdentifier = errors.New("service account identifier must be lowercase alphanumeric with dashes or underscores, max 64 chars")
 	ErrServiceAccountConflict          = errors.New("service account identifier already exists")
+	ErrPreferredUsernameRequired       = errors.New("preferred_username is required")
 	ErrInvalidSort                     = errors.New("invalid_sort")
 )
 
@@ -208,14 +209,23 @@ func (s *Service) AutoMigrate(ctx context.Context) error {
 	return s.db.WithContext(ctx).AutoMigrate(&User{})
 }
 
-// SyncUser upserts a user from the given OIDC identity, assigning admin role to the first user.
+// SyncUser upserts an OIDC user by preferred username, assigning admin role to the first user.
 func (s *Service) SyncUser(ctx context.Context, identity auth.Identity) (auth.UserProfile, error) {
+	if strings.TrimSpace(identity.PreferredUsername) == "" {
+		return auth.UserProfile{}, ErrPreferredUsernameRequired
+	}
+
 	var record User
 	now := time.Now().UTC()
 
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		err := tx.Where("external_sub = ?", identity.Sub).Take(&record).Error
+		err := tx.Where(
+			"type = ? AND preferred_username = ?",
+			auth.UserTypeUser,
+			identity.PreferredUsername,
+		).Take(&record).Error
 		if err == nil {
+			record.ExternalSub = identity.Sub
 			record.Email = identity.Email
 			record.PreferredUsername = identity.PreferredUsername
 			record.Name = identity.Name

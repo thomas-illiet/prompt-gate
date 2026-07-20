@@ -17,6 +17,9 @@ OIDC login uses:
 
 The first OIDC user synced into an empty database receives role `admin`.
 Subsequent users are created with role `none` until an admin grants access.
+Existing human users are matched by the exact `preferred_username` claim; their
+OIDC subject, email, display name, and last-login timestamp are refreshed at
+login while application-managed role and status fields are preserved.
 
 Browser sessions are stored in Redis when Redis is configured. Session cookies
 are HTTP-only, use `PROMPTGATE_SESSION_COOKIE_NAME`, and inherit secure-cookie
