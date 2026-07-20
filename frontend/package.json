@@ -22,25 +22,25 @@
     "@types/d3": "^7.4.3",
     "@vue/test-utils": "^2.4.11",
     "eslint": "^10.7.0",
-    "happy-dom": "^20.10.6",
-    "lightningcss": "^1.32.0",
-    "nuxt": "^4.4.8",
+    "happy-dom": "^20.11.0",
+    "lightningcss": "^1.33.0",
+    "nuxt": "^4.5.0",
     "nuxt-echarts": "^1.0.1",
     "playwright-core": "^1.61.1",
     "prettier": "^3.9.5",
     "vitest": "^4.1.10",
-    "vue": "^3.5.39",
+    "vue": "^3.5.40",
     "vue-router": "^5.1.0",
     "vue-tsc": "^3.3.7",
     "vuetify-nuxt-module": "^0.19.5"
   },
   "dependencies": {
-    "@pinia/nuxt": "^0.11.3",
+    "@pinia/nuxt": "^1.0.1",
     "@vueuse/nuxt": "^14.3.0",
     "d3": "^7.9.0",
     "echarts": "^6.1.0",
-    "pinia": "^3.0.4",
-    "vuetify": "^4.1.4"
+    "pinia": "^4.0.2",
+    "vuetify": "^4.1.5"
   },
   "overrides": {
     "glob": "^13.0.6"
