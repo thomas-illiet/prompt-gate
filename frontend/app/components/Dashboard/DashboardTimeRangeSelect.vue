@@ -15,6 +15,7 @@ const options: { title: string; value: UsageWindow }[] = [
     <span class="dashboard-time-range-select__label">Window</span>
     <v-select
       v-model="model"
+      aria-label="Usage window"
       class="dashboard-time-range-select__control"
       density="compact"
       variant="solo"

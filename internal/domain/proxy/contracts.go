@@ -88,6 +88,13 @@ type UsageWindowMeta struct {
 	EndsAt   time.Time   `json:"endsAt"`
 }
 
+type DashboardOverviewResponse struct {
+	UsageWindowMeta
+	Totals          UsageTotals  `json:"totals"`
+	TotalDurationMs int64        `json:"totalDurationMs"`
+	Daily           []DailyUsage `json:"daily"`
+}
+
 type DashboardTokensResponse struct {
 	UsageWindowMeta
 	InputTokens            int64          `json:"inputTokens"`

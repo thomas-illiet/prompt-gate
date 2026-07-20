@@ -135,4 +135,18 @@ describe('AdminUsersTable', () => {
 
     expect(wrapper.emitted('notes')).toEqual([[user]])
   })
+
+  it('emits the selected user from the usage-statistics action', async () => {
+    const wrapper = mountTable()
+
+    expect(
+      wrapper.get('[data-test="row-action-usageStatistics"]').text(),
+    ).toBe('Usage statistics')
+
+    await wrapper
+      .get('[data-test="row-action-usageStatistics"]')
+      .trigger('click')
+
+    expect(wrapper.emitted('usageStatistics')).toEqual([[user]])
+  })
 })

@@ -3,7 +3,7 @@ package httpapi
 import "promptgate/backend/internal/transport/httpapi/admin"
 
 func adminRoutes(handler *admin.Handler) []routeDefinition {
-	routes := make([]routeDefinition, 0, 104)
+	routes := make([]routeDefinition, 0, 105)
 	routes = append(routes, adminUserRoutes(handler)...)
 	routes = append(routes, adminPromptRoutes(handler)...)
 	routes = append(routes, adminDashboardRoutes(handler)...)
@@ -24,6 +24,7 @@ func adminUserRoutes(handler *admin.Handler) []routeDefinition {
 	return []routeDefinition{
 		{pattern: "GET /api/v1/admin/users", handler: handler.HandleAdminListUsers},
 		{pattern: "GET /api/v1/admin/users/{id}", handler: handler.HandleAdminGetUser},
+		{pattern: "GET /api/v1/admin/users/{id}/statistics", handler: handler.HandleAdminUserStatistics},
 		{pattern: "PATCH /api/v1/admin/users/{id}", handler: handler.HandleAdminUpdateUser},
 		{pattern: "PATCH /api/v1/admin/users/{id}/note", handler: handler.HandleAdminUpdateUserNote},
 		{pattern: "DELETE /api/v1/admin/users/{id}", handler: handler.HandleAdminDeleteUser},

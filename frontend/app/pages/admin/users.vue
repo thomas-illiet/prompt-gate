@@ -12,6 +12,7 @@ import AdminUserEditDialog from '~/components/AdminUsers/AdminUserEditDialog.vue
 import AdminServiceAccountFirewallDialog from '~/components/AdminServiceAccounts/AdminServiceAccountFirewallDialog.vue'
 import AdminUserGroupsDialog from '~/components/AdminUsers/AdminUserGroupsDialog.vue'
 import AdminUserTokensDialog from '~/components/AdminUsers/AdminUserTokensDialog.vue'
+import AdminUserUsageDialog from '~/components/AdminUsers/AdminUserUsageDialog.vue'
 import AdminAccountNoteDialog from '~/components/AdminAccounts/AdminAccountNoteDialog.vue'
 
 definePageMeta({
@@ -36,6 +37,7 @@ const groupsUser = shallowRef<AdminUser | null>(null)
 const noteDialog = useTargetDialog<AdminUser>()
 const statusDialog = useTargetDialog<AdminUser>()
 const tokenRevokeDialog = useTargetDialog<UserToken>()
+const usageDialog = useTargetDialog<AdminUser>()
 const statusConfirm = useToggleConfirmDialog(statusDialog.target, {
   disableIcon: 'mdi-account-cancel-outline',
   enableIcon: 'mdi-account-check-outline',
@@ -61,6 +63,13 @@ const revokeTokenMessage = computed(() => {
 // displayUser returns the best available user identifier for dialogs.
 function displayUser(user: AdminUser) {
   return user.name || user.preferredUsername || user.email
+}
+
+// updateUsageDialogOpen clears the selected user when the usage dialog closes.
+function updateUsageDialogOpen(isOpen: boolean) {
+  if (!isOpen) {
+    usageDialog.close()
+  }
 }
 
 // openEditDialog loads a user before showing the edit dialog.
@@ -376,6 +385,7 @@ async function saveUserNote(note: string) {
           @notes="noteDialog.open"
           @refresh="adminUsers.reload"
           @toggle-status="statusDialog.open"
+          @usage-statistics="usageDialog.open"
           @update:page="adminUsers.setPage"
           @update:page-size="adminUsers.setPageSize"
           @update:sort="adminUsers.setSort"
@@ -446,6 +456,12 @@ async function saveUserNote(note: string) {
       :selected-groups="adminUsers.userGroups.value"
       :user="groupsUser"
       @save="saveUserGroups"
+    />
+    <AdminUserUsageDialog
+      v-if="usageDialog.target.value"
+      :model-value="usageDialog.isOpen.value"
+      :user="usageDialog.target.value"
+      @update:model-value="updateUsageDialogOpen"
     />
     <AdminAccountNoteDialog
       v-model="noteDialog.isOpen.value"

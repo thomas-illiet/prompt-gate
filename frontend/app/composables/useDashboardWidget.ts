@@ -14,6 +14,7 @@ import { toApiErrorMessage } from '~/utils/api-error'
 
 const ERROR_MESSAGES = {
   invalid_usage_window: 'Usage window must be 7 days, 30 days, or all time.',
+  user_not_found: 'This user no longer exists.',
 }
 const DASHBOARD_REFRESH_KEY: InjectionKey<Ref<number>> = Symbol(
   'dashboard-refresh-version',

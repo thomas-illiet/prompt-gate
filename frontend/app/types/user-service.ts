@@ -171,6 +171,12 @@ export interface DashboardActivityResponse extends UsageWindowMeta {
   daily: DailyUsage[]
 }
 
+export interface DashboardOverviewResponse extends UsageWindowMeta {
+  totals: UsageTotals
+  totalDurationMs: number
+  daily: DailyUsage[]
+}
+
 export interface DashboardBreakdownResponse extends UsageWindowMeta {
   items: UsageBreakdown[]
 }

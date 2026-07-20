@@ -121,6 +121,7 @@ Admin dashboard token and activity responses follow the same optional
 | --- | --- | --- |
 | `GET` | `/api/v1/admin/users` | List users with pagination, filters, usage totals, and sorting. |
 | `GET` | `/api/v1/admin/users/{id}` | Get one user. |
+| `GET` | `/api/v1/admin/users/{id}/statistics` | Get aggregated usage totals, duration, and daily activity for one human user. |
 | `PATCH` | `/api/v1/admin/users/{id}` | Update role, active state, firewall override, or access expiration. |
 | `PATCH` | `/api/v1/admin/users/{id}/note` | Update the private administration note. |
 | `DELETE` | `/api/v1/admin/users/{id}` | Delete one user and its scoped firewall rules. |
@@ -140,6 +141,12 @@ Admin dashboard token and activity responses follow the same optional
 
 The first synced OIDC user is assigned role `admin`. Later users are created
 with role `none` until an admin grants access.
+
+User statistics accept `window=7d`, `window=30d`, or `window=all`, defaulting
+to `30d` when omitted. The response contains `window`, `startsAt`, `endsAt`,
+`totals`, `totalDurationMs`, and `daily`; `totals.estimatedCost` is omitted when
+usage cost estimation is disabled. Unknown users and service-account IDs both
+return `404 {"error":"user_not_found"}`.
 
 ### Service Accounts
 

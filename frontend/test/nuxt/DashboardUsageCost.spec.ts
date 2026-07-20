@@ -470,6 +470,27 @@ describe('dashboard usage cost display', () => {
     expect(html).toContain('$0.02')
   })
 
+  it('exposes daily activity as an accessible chart and data table', () => {
+    const wrapper = mount(DashboardUsageLineChart, {
+      props: {
+        daily: activityResponse().daily,
+      },
+      global: {
+        stubs: {
+          Echarts: VChartStub,
+          'v-chart': VChartStub,
+        },
+      },
+    })
+
+    expect(wrapper.get('[role="img"]').attributes('aria-label')).toContain(
+      'Daily usage chart',
+    )
+    expect(wrapper.get('caption').text()).toBe('Daily usage by date')
+    expect(wrapper.get('table').text()).toContain('2026-01-01')
+    expect(wrapper.get('table').text()).toContain('Embedding tokens')
+  })
+
   it('keeps chart tooltips cost-free when estimatedCost is absent', () => {
     const barOption = mountChartOption(DashboardBreakdownBarChart, {
       items: breakdownResponse().items,

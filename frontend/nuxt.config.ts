@@ -10,6 +10,7 @@ const runtimeMdiIcons = [
   'mdi:account-check-outline',
   'mdi:cloud-check-outline',
   'mdi:cloud-off-outline',
+  'mdi:chart-box-outline',
   'mdi:delete-outline',
   'mdi:key-chain',
   'mdi:key-plus',

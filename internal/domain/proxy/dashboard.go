@@ -30,7 +30,7 @@ func (s *Service) UsageSummary(ctx context.Context, userID string, days int, now
 	}
 
 	scope := currentUserDashboardScope(userID)
-	if err := s.loadAggregatedUsage(ctx, scope, resolved.StartsAt, resolved.EndsAt, &summary, dailyByDate); err != nil {
+	if _, err := s.loadAggregatedUsage(ctx, scope, resolved.StartsAt, resolved.EndsAt, &summary.Totals, dailyByDate); err != nil {
 		return UsageSummary{}, err
 	}
 	var rates usageCostRateBook
@@ -70,6 +70,37 @@ func (s *Service) UsageSummary(ctx context.Context, userID string, days int, now
 	summary.RecentPrompts = recent.Items
 
 	return summary, nil
+}
+
+// DashboardOverview returns usage totals, duration, and daily activity for one user.
+func (s *Service) DashboardOverview(ctx context.Context, userID string, window UsageWindow, now time.Time) (DashboardOverviewResponse, error) {
+	scope := currentUserDashboardScope(userID)
+	resolved, err := s.resolveDashboardWindow(ctx, scope, window, now)
+	if err != nil {
+		return DashboardOverviewResponse{}, err
+	}
+
+	response := DashboardOverviewResponse{
+		UsageWindowMeta: resolved.UsageWindowMeta,
+		Daily:           []DailyUsage{},
+	}
+	if resolved.Days > 0 {
+		response.Daily = buildDailyBuckets(resolved.StartsAt, resolved.Days)
+	}
+	dailyByDate := make(map[string]*DailyUsage, len(response.Daily))
+	for i := range response.Daily {
+		dailyByDate[response.Daily[i].Date] = &response.Daily[i]
+	}
+
+	response.TotalDurationMs, err = s.loadAggregatedUsage(ctx, scope, resolved.StartsAt, resolved.EndsAt, &response.Totals, dailyByDate)
+	if err != nil {
+		return DashboardOverviewResponse{}, err
+	}
+	if err := s.attachEstimatedCosts(ctx, scope, &response.Totals, response.Daily); err != nil {
+		return DashboardOverviewResponse{}, err
+	}
+
+	return response, nil
 }
 
 // DashboardTokens returns token totals for one dashboard window.
@@ -198,7 +229,7 @@ func (s *Service) dashboardActivity(ctx context.Context, scope dashboardUsageSco
 		dailyByDate[summary.Daily[i].Date] = &summary.Daily[i]
 	}
 
-	if err := s.loadAggregatedUsage(ctx, scope, resolved.StartsAt, resolved.EndsAt, &summary, dailyByDate); err != nil {
+	if _, err := s.loadAggregatedUsage(ctx, scope, resolved.StartsAt, resolved.EndsAt, &summary.Totals, dailyByDate); err != nil {
 		return DashboardActivityResponse{}, err
 	}
 	if err := s.attachEstimatedCosts(ctx, scope, &summary.Totals, summary.Daily); err != nil {

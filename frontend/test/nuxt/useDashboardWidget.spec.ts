@@ -175,5 +175,9 @@ describe('useDashboardWidget', () => {
     expect(
       toDashboardWidgetErrorMessage(apiError('invalid_usage_window')),
     ).toBe('Usage window must be 7 days, 30 days, or all time.')
+
+    expect(toDashboardWidgetErrorMessage(apiError('user_not_found'))).toBe(
+      'This user no longer exists.',
+    )
   })
 })

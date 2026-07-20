@@ -57,6 +57,14 @@ const option = computed<ECOption>(() => ({
   },
   legend: {
     top: 0,
+    left: 'center',
+    itemGap: 8,
+    itemWidth: 14,
+    itemHeight: 8,
+    formatter: (name: string) => name.replace(' tokens', ''),
+    textStyle: {
+      fontSize: 10,
+    },
     data: ['Requests', 'Input tokens', 'Output tokens', 'Embedding tokens'],
   },
   grid: {
@@ -144,5 +152,60 @@ const option = computed<ECOption>(() => ({
 </script>
 
 <template>
-  <v-chart :option="option" autoresize />
+  <div class="dashboard-usage-line-chart">
+    <v-chart
+      aria-label="Daily usage chart. Detailed daily values follow."
+      autoresize
+      class="dashboard-usage-line-chart__visual"
+      :option="option"
+      role="img"
+    />
+
+    <table class="dashboard-usage-line-chart__screen-reader-table">
+      <caption>
+        Daily usage by date
+      </caption>
+      <thead>
+        <tr>
+          <th scope="col">Date</th>
+          <th scope="col">Requests</th>
+          <th scope="col">Input tokens</th>
+          <th scope="col">Output tokens</th>
+          <th scope="col">Embedding tokens</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-for="item in props.daily" :key="item.date">
+          <th scope="row">{{ item.date }}</th>
+          <td>{{ item.requests }}</td>
+          <td>{{ item.completionInputTokens }}</td>
+          <td>{{ item.completionOutputTokens }}</td>
+          <td>{{ item.embeddingTokens }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
 </template>
+
+<style scoped>
+.dashboard-usage-line-chart {
+  position: relative;
+}
+
+.dashboard-usage-line-chart__visual {
+  width: 100%;
+  height: 100%;
+}
+
+.dashboard-usage-line-chart__screen-reader-table {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+</style>

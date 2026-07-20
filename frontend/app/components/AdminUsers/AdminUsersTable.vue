@@ -26,6 +26,7 @@ const emit = defineEmits<{
   notes: [user: AdminUser]
   refresh: []
   toggleStatus: [user: AdminUser]
+  usageStatistics: [user: AdminUser]
   'update:page': [value: number]
   'update:page-size': [value: number]
   'update:sort': [sortBy: string, sortDir: 'asc' | 'desc']
@@ -151,6 +152,12 @@ const rowActions: AppRowAction<AdminUser>[] = [
     key: 'groups',
     onSelect: (user) => emit('manageGroups', user),
     title: 'Manage groups',
+  },
+  {
+    icon: 'mdi-chart-box-outline',
+    key: 'usageStatistics',
+    onSelect: (user) => emit('usageStatistics', user),
+    title: 'Usage statistics',
   },
   {
     icon: 'mdi-note-edit-outline',

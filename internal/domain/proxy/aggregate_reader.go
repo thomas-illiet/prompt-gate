@@ -8,17 +8,19 @@ import (
 	"promptgate/backend/internal/domain/auth"
 )
 
-func (s *Service) loadAggregatedUsage(ctx context.Context, scope dashboardUsageScope, startsAt, endsAt time.Time, summary *UsageSummary, daily map[string]*DailyUsage) error {
+func (s *Service) loadAggregatedUsage(ctx context.Context, scope dashboardUsageScope, startsAt, endsAt time.Time, totals *UsageTotals, daily map[string]*DailyUsage) (int64, error) {
 	var rows []ProxyDailyUsageKPI
 	query := s.db.WithContext(ctx).Model(&ProxyDailyUsageKPI{})
 	startDay, endDay := usageDayBounds(startsAt, endsAt)
 	query = scope.applyInitiatorFilter(query, "initiator_id").
 		Where("day >= ? AND day <= ?", startDay, endDay)
 	if err := query.Find(&rows).Error; err != nil {
-		return fmt.Errorf("load aggregated usage: %w", err)
+		return 0, fmt.Errorf("load aggregated usage: %w", err)
 	}
+	totalDurationMs := int64(0)
 	for _, row := range rows {
-		accumulateKPIIntoTotals(&summary.Totals, row)
+		accumulateKPIIntoTotals(totals, row)
+		totalDurationMs += row.TotalDurationMs
 		if bucket := daily[dateKey(row.Day)]; bucket != nil {
 			bucket.Requests += row.Requests
 			bucket.Prompts += row.Prompts
@@ -31,7 +33,7 @@ func (s *Service) loadAggregatedUsage(ctx context.Context, scope dashboardUsageS
 			bucket.TotalTokens += row.TotalTokens
 		}
 	}
-	return nil
+	return totalDurationMs, nil
 }
 
 func (s *Service) aggregatedUsageTotals(ctx context.Context, scope dashboardUsageScope, startsAt, endsAt time.Time) (dashboardAggregateTotals, error) {
