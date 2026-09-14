@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
-import type { RouteRecordRaw } from 'vue-router'
+import type { RouteLocationRaw, RouteRecordRaw } from 'vue-router'
 
 import { hasRequiredRole } from '~/utils/auth'
 
@@ -85,13 +85,13 @@ const isItem = computed(
 )
 const title = computed(() => displayItem.value.meta?.title ?? item.meta?.title)
 const icon = computed(() => item.meta?.icon ?? displayItem.value.meta?.icon)
-const to = computed(() => {
+const to = computed<RouteLocationRaw>(() => {
   if (displayItem.value.name) {
-    return { name: displayItem.value.name }
+    return { name: displayItem.value.name } as RouteLocationRaw
   }
 
   if (item.name) {
-    return { name: item.name }
+    return { name: item.name } as RouteLocationRaw
   }
 
   return { path: item.path }

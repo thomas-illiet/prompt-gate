@@ -1,6 +1,6 @@
 import { FetchError } from 'ofetch'
 import { mockNuxtImport } from '@nuxt/test-utils/runtime'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useApiFetch } from '../../app/composables/useApiFetch'
 
@@ -53,6 +53,7 @@ mockNuxtImport('navigateTo', () => navigateToMock)
 mockNuxtImport('useAuthStore', () => useAuthStoreMock)
 mockNuxtImport('useRoute', () => useRouteMock)
 mockNuxtImport('useRuntimeConfig', () => useRuntimeConfigMock)
+mockNuxtImport('$fetch', () => fetchMock)
 
 function fetchError(status: number) {
   return Object.assign(Object.create(FetchError.prototype), {
@@ -73,11 +74,6 @@ describe('useApiFetch', () => {
     useRouteMock.mockClear()
     useRuntimeConfigMock.mockClear()
     waitUntilReadyMock.mockClear()
-    vi.stubGlobal('$fetch', fetchMock)
-  })
-
-  afterEach(() => {
-    vi.unstubAllGlobals()
   })
 
   it('clears the session and redirects to login on 401', async () => {
