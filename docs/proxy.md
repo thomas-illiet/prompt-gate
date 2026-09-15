@@ -17,7 +17,8 @@ GET /health
 
 ```mermaid
 flowchart TD
-    A["Incoming LLM request"] --> B["Bearer token middleware"]
+    A["Incoming LLM request"] --> Z["Optional request debug mirror"]
+    Z --> B["Bearer token middleware"]
     B --> C{"Valid Prompt Gate token?"}
     C -->|No| D["401 invalid_token or missing_auth_credentials"]
     C -->|Yes| E["Load user profile and cache it in Redis"]
@@ -32,6 +33,27 @@ flowchart TD
 
 The proxy strips inbound `Authorization` and `X-Api-Key` headers after Prompt
 Gate authentication so local credentials are not forwarded upstream.
+
+## Request Debug Mode
+
+Set `PROMPTGATE_PROXY_DEBUG_REQUESTS=true` only for short-lived diagnostics. The
+proxy then emits one JSON line to stdout for every incoming proxy request,
+independently of `PROMPTGATE_LOG_LEVEL`. Each event contains the timestamp,
+`DEBUG` level, event type, method, scheme, host, path, raw query, protocol,
+remote address, every incoming header value, and the request body. JSON objects
+and arrays are logged as structured JSON; other payloads are logged as raw
+strings.
+
+The middleware is the first proxy-request middleware, before authentication and
+any header mutation. It mirrors reads without pre-consuming or replacing the
+body stream. Its diagnostic copy is bounded by
+`PROMPTGATE_PROXY_MAX_BUFFERED_REQUEST_BYTES`; only oversized requests include
+`body_truncated: true`, and their normal processing or rejection is unchanged.
+Responses are never logged.
+
+**Warning:** this mode writes passwords, JWTs, cookies, provider keys, prompts,
+and personal data to stdout in cleartext. Never leave it enabled in production,
+and protect and delete collected logs according to your incident procedures.
 
 ## Provider Routing
 

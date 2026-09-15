@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
 
 	cdrslog "cdr.dev/slog/v3"
 	"go.opentelemetry.io/otel"
@@ -25,6 +26,7 @@ import (
 	"promptgate/backend/internal/platform/secrets"
 	"promptgate/backend/internal/platform/telemetry"
 	proxyruntime "promptgate/backend/internal/runtime/proxy"
+	httpmiddleware "promptgate/backend/internal/transport/httpmiddleware"
 )
 
 // ProxyRuntime owns the dependencies and HTTP handler of the proxy process.
@@ -135,7 +137,12 @@ func NewProxy(ctx context.Context, cfg config.ProxyConfig, logger *slog.Logger, 
 		logger:            logger,
 		telemetry:         telemetryProvider,
 	}
-	runtime.Handler = runtime.buildHandler(cfg, tokenService, userService, authCache, firewallSnapshot, accessSnapshot)
+	var debugRequestWriter *httpmiddleware.JSONLineWriter
+	if cfg.ProxyDebugRequests {
+		debugRequestWriter = httpmiddleware.NewJSONLineWriter(os.Stdout)
+		_ = debugRequestWriter.WriteStartupWarning()
+	}
+	runtime.Handler = runtime.buildHandler(cfg, tokenService, userService, authCache, firewallSnapshot, accessSnapshot, debugRequestWriter)
 	success = true
 	telemetryReady = true
 	return runtime, nil

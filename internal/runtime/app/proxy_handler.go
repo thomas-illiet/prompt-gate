@@ -24,6 +24,7 @@ func (p *ProxyRuntime) buildHandler(
 	authCache tokens.AuthCache,
 	firewallSnapshot *firewall.SnapshotStore,
 	accessSnapshot *groups.SnapshotStore,
+	debugRequestWriter *httpmiddleware.JSONLineWriter,
 ) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", proxyHealth)
@@ -55,6 +56,9 @@ func (p *ProxyRuntime) buildHandler(
 	}
 	proxyHandler = requestTimeout(cfg.ProxyUpstreamTimeout)(proxyHandler)
 	proxyHandler = proxyruntime.ResponseTimingMiddleware(proxyHandler)
+	if debugRequestWriter != nil {
+		proxyHandler = debugRequestWriter.DebugRequests(cfg.ProxyMaxBufferedRequestBytes)(proxyHandler)
+	}
 	mux.Handle("/", proxyHandler)
 	return httpmiddleware.SecurityHeaders()(mux)
 }

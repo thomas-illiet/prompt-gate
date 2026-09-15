@@ -89,6 +89,7 @@ type ScheduleIntervals struct {
 type ProxyRuntimeConfig struct {
 	ProxyTrustForwardHeaders      bool
 	ProxyTrustedProxies           []netip.Prefix
+	ProxyDebugRequests            bool
 	ProxyReloadDebounce           time.Duration
 	ProxyMaxBufferedRequestBytes  int64
 	ProxyMaxBufferedResponseBytes int64

@@ -468,6 +468,7 @@ func TestLoadProxyReadsSessionAndCORSConfig(t *testing.T) {
 	t.Setenv("PROMPTGATE_PROXY_MAX_BUFFERED_REQUEST_BYTES", "1024")
 	t.Setenv("PROMPTGATE_PROXY_MAX_BUFFERED_RESPONSE_BYTES", "2048")
 	t.Setenv("PROMPTGATE_PROXY_UPSTREAM_TIMEOUT", "3m")
+	t.Setenv("PROMPTGATE_PROXY_DEBUG_REQUESTS", "true")
 
 	cfg, err := LoadProxy()
 	if err != nil {
@@ -484,6 +485,9 @@ func TestLoadProxyReadsSessionAndCORSConfig(t *testing.T) {
 	}
 	if cfg.ProxyMaxBufferedRequestBytes != 1024 {
 		t.Fatalf("unexpected request buffer limit: %d", cfg.ProxyMaxBufferedRequestBytes)
+	}
+	if !cfg.ProxyDebugRequests {
+		t.Fatal("expected proxy request debugging to be enabled")
 	}
 	if cfg.ProxyMaxBufferedResponseBytes != 2048 {
 		t.Fatalf("unexpected response buffer limit: %d", cfg.ProxyMaxBufferedResponseBytes)

@@ -152,6 +152,10 @@ config:
   # Prefer this over proxyTrustForwardHeaders in production.
   proxyTrustedProxies: ""
 
+  # DANGER: writes credentials, prompts, and personal data to stdout in cleartext.
+  # Enable only temporarily for diagnosis and never leave enabled in production.
+  proxyDebugRequests: "false"
+
   redisCacheTtl: 5m
   proxyReloadDebounce: 250ms
 

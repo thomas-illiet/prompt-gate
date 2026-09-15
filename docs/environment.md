@@ -41,6 +41,7 @@ dotenv file.
 | `PROMPTGATE_USER_ACCESS_EXPIRATION_INTERVAL` | API, schedule | `1h` | Interval for user access expiration jobs. |
 | `PROMPTGATE_PROXY_TRUST_FORWARD_HEADERS` | proxy | `false` | Whether the proxy trusts `X-Forwarded-For` and `X-Real-IP`. Enable only behind trusted infrastructure. |
 | `PROMPTGATE_PROXY_TRUSTED_PROXIES` | proxy | empty | Comma-separated CIDRs for proxies whose `X-Forwarded-For` and `X-Real-IP` headers can be trusted. Prefer this over global forwarded-header trust in production. |
+| `PROMPTGATE_PROXY_DEBUG_REQUESTS` | proxy | `false` | Writes every incoming proxy request to stdout as JSON, including all headers and the body. **Danger:** credentials, JWTs, cookies, provider keys, prompts, and personal data are logged in cleartext. Enable only temporarily for diagnosis; never leave enabled in production. |
 | `PROMPTGATE_PROXY_MAX_BUFFERED_REQUEST_BYTES` | proxy | `8388608` | Maximum buffered request body size for routes that require inspection, in bytes. Must be greater than zero. |
 | `PROMPTGATE_PROXY_MAX_BUFFERED_RESPONSE_BYTES` | proxy | `16777216` | Maximum buffered upstream response size for inspected responses, in bytes. Must be greater than zero. |
 | `PROMPTGATE_PROXY_UPSTREAM_TIMEOUT` | proxy | `2m` | Complete upstream request timeout, including provider calls. Must be greater than zero. |
@@ -145,6 +146,7 @@ PROMPTGATE_TOKEN_CLEANUP_INTERVAL=1h
 PROMPTGATE_USER_ACCESS_EXPIRATION_INTERVAL=1h
 PROMPTGATE_PROXY_TRUST_FORWARD_HEADERS=false
 PROMPTGATE_PROXY_TRUSTED_PROXIES=
+PROMPTGATE_PROXY_DEBUG_REQUESTS=false
 PROMPTGATE_PROXY_MAX_BUFFERED_REQUEST_BYTES=8388608
 PROMPTGATE_PROXY_MAX_BUFFERED_RESPONSE_BYTES=16777216
 PROMPTGATE_PROXY_UPSTREAM_TIMEOUT=2m
