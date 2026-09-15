@@ -115,14 +115,35 @@ const UsersTableStub = defineComponent({
       required: true,
     },
   },
-  emits: ['usageStatistics'],
+  emits: ['manageIps', 'usageStatistics'],
   template: `
-    <button
-      data-test="open-usage"
-      @click="$emit('usageStatistics', items[0])"
-    >
-      Usage statistics
-    </button>
+    <div>
+      <button
+        data-test="open-ips"
+        @click="$emit('manageIps', items[0])"
+      >
+        IP addresses
+      </button>
+      <button
+        data-test="open-usage"
+        @click="$emit('usageStatistics', items[0])"
+      >
+        Usage statistics
+      </button>
+    </div>
+  `,
+})
+
+const IPAddressesDialogStub = defineComponent({
+  props: {
+    accountName: String,
+    modelValue: Boolean,
+  },
+  emits: ['update:modelValue'],
+  template: `
+    <section v-if="modelValue" data-test="ip-addresses-dialog">
+      {{ accountName }} IP addresses
+    </section>
   `,
 })
 
@@ -157,7 +178,7 @@ function mountPage() {
     global: {
       stubs: {
         AdminAccountNoteDialog: true,
-        AdminAccountIPAddressesDialog: true,
+        AdminAccountIPAddressesDialog: IPAddressesDialogStub,
         AdminServiceAccountFirewallDialog: true,
         AdminUserDeleteDialog: true,
         AdminUserEditDialog: true,
@@ -187,6 +208,19 @@ describe('Admin users page usage statistics dialog', () => {
       loadAllPlans: vi.fn(),
       plans: shallowRef([]),
     })
+  })
+
+  it('opens the IP addresses dialog from the table action', async () => {
+    const adminUsers = createAdminUsersMock()
+    useAdminUsersMock.mockReturnValue(adminUsers)
+    const wrapper = mountPage()
+
+    await wrapper.get('[data-test="open-ips"]').trigger('click')
+
+    expect(wrapper.get('[data-test="ip-addresses-dialog"]').text()).toContain(
+      'Ada Lovelace IP addresses',
+    )
+    expect(adminUsers.loadIPAddresses).toHaveBeenCalledWith(user.id)
   })
 
   it('mounts for the selected user and unmounts on every close', async () => {

@@ -82,9 +82,9 @@ function mountTable() {
 describe('AdminUsersTable', () => {
   it('exposes an IP addresses row action', async () => {
     const wrapper = mountTable()
-    expect(wrapper.get('[data-test="row-action-manageIPs"]').text()).toBe('IP addresses')
-    await wrapper.get('[data-test="row-action-manageIPs"]').trigger('click')
-    expect(wrapper.emitted('manageIPs')).toEqual([[user]])
+    expect(wrapper.get('[data-test="row-action-manageIps"]').text()).toBe('IP addresses')
+    await wrapper.get('[data-test="row-action-manageIps"]').trigger('click')
+    expect(wrapper.emitted('manageIps')).toEqual([[user]])
   })
 
   it('shows username and OIDC subject details to disambiguate duplicate identities', () => {

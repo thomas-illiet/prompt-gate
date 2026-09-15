@@ -21,7 +21,7 @@ const emit = defineEmits<{
   delete: [user: AdminUser]
   edit: [user: AdminUser]
   manageFirewall: [user: AdminUser]
-  manageIPs: [user: AdminUser]
+  manageIps: [user: AdminUser]
   manageGroups: [user: AdminUser]
   manageTokens: [user: AdminUser]
   notes: [user: AdminUser]
@@ -132,8 +132,8 @@ function planColor(user: AdminUser) {
 const rowActions: AppRowAction<AdminUser>[] = [
   {
     icon: 'mdi-ip-network-outline',
-    key: 'manageIPs',
-    onSelect: (user) => emit('manageIPs', user),
+    key: 'manageIps',
+    onSelect: (user) => emit('manageIps', user),
     title: 'IP addresses',
   },
   {

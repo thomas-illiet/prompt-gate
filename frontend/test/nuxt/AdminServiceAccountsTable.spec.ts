@@ -78,9 +78,9 @@ function mountTable() {
 describe('AdminServiceAccountsTable', () => {
   it('exposes an IP addresses row action', async () => {
     const wrapper = mountTable()
-    expect(wrapper.get('[data-test="row-action-manageIPs"]').text()).toBe('IP addresses')
-    await wrapper.get('[data-test="row-action-manageIPs"]').trigger('click')
-    expect(wrapper.emitted('manageIPs')).toEqual([[account]])
+    expect(wrapper.get('[data-test="row-action-manageIps"]').text()).toBe('IP addresses')
+    await wrapper.get('[data-test="row-action-manageIps"]').trigger('click')
+    expect(wrapper.emitted('manageIps')).toEqual([[account]])
   })
 
   it('exposes a notes row action', async () => {

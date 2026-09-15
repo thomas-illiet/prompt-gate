@@ -21,7 +21,7 @@ const emit = defineEmits<{
   delete: [account: ServiceAccount]
   edit: [account: ServiceAccount]
   manageFirewall: [account: ServiceAccount]
-  manageIPs: [account: ServiceAccount]
+  manageIps: [account: ServiceAccount]
   manageTokens: [account: ServiceAccount]
   notes: [account: ServiceAccount]
   refresh: []
@@ -76,8 +76,8 @@ const summaryLabel = computed(() => {
 const rowActions: AppRowAction<ServiceAccount>[] = [
   {
     icon: 'mdi-ip-network-outline',
-    key: 'manageIPs',
-    onSelect: (account) => emit('manageIPs', account),
+    key: 'manageIps',
+    onSelect: (account) => emit('manageIps', account),
     title: 'IP addresses',
   },
   {
