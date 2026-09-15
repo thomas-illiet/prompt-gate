@@ -95,6 +95,7 @@ const props = withDefaults(
 
 .app-section-card__scroll {
   overflow-x: auto;
+  overflow-y: hidden;
 }
 
 @media (max-width: 720px) {
