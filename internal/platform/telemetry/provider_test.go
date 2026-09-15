@@ -13,6 +13,7 @@ import (
 
 	"go.opentelemetry.io/otel/attribute"
 	collectortrace "go.opentelemetry.io/proto/otlp/collector/trace/v1"
+	commonv1 "go.opentelemetry.io/proto/otlp/common/v1"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -51,6 +52,10 @@ func TestProviderExportsAuthenticatedPhoenixBatch(t *testing.T) {
 	}
 	_, span := provider.tracerProvider.Tracer("test").Start(context.Background(), "llm")
 	span.SetAttributes(
+		attribute.String("openinference.span.kind", "LLM"),
+		attribute.String("gen_ai.operation.name", "chat"),
+		attribute.Int64("gen_ai.usage.input_tokens", 12),
+		attribute.Bool("gen_ai.request.stream", true),
 		attribute.String("session.id", "native-session"),
 		attribute.String("gen_ai.conversation.id", "native-session"),
 		attribute.String("promptgate.session.source", "x-session-id"),
@@ -69,17 +74,40 @@ func TestProviderExportsAuthenticatedPhoenixBatch(t *testing.T) {
 		if len(spans) != 1 {
 			t.Fatalf("expected one exported span, got %d", len(spans))
 		}
-		attributes := make(map[string]string, len(spans[0].Attributes))
-		for _, attr := range spans[0].Attributes {
-			attributes[attr.Key] = attr.Value.GetStringValue()
+		resourceAttributes := request.ResourceSpans[0].Resource.Attributes
+		resources := make(map[string]string, len(resourceAttributes))
+		for _, attr := range resourceAttributes {
+			resources[attr.Key] = attr.Value.GetStringValue()
 		}
 		for key, want := range map[string]string{
+			"service.name": "promptgate-proxy", "deployment.environment.name": "test", "openinference.project.name": "platform-analysis",
+		} {
+			if got := resources[key]; got != want {
+				t.Errorf("resource attribute %s: got %q, want %q", key, got, want)
+			}
+		}
+		attributes := make(map[string]any, len(spans[0].Attributes))
+		for _, attr := range spans[0].Attributes {
+			switch value := attr.Value.Value.(type) {
+			case *commonv1.AnyValue_StringValue:
+				attributes[attr.Key] = value.StringValue
+			case *commonv1.AnyValue_IntValue:
+				attributes[attr.Key] = value.IntValue
+			case *commonv1.AnyValue_BoolValue:
+				attributes[attr.Key] = value.BoolValue
+			}
+		}
+		for key, want := range map[string]any{
+			"openinference.span.kind":   "LLM",
+			"gen_ai.operation.name":     "chat",
+			"gen_ai.usage.input_tokens": int64(12),
+			"gen_ai.request.stream":     true,
 			"session.id":                "native-session",
 			"gen_ai.conversation.id":    "native-session",
 			"promptgate.session.source": "x-session-id",
 		} {
 			if got := attributes[key]; got != want {
-				t.Errorf("exported attribute %s: got %q, want %q", key, got, want)
+				t.Errorf("exported attribute %s: got %#v, want %#v", key, got, want)
 			}
 		}
 	case <-time.After(time.Second):

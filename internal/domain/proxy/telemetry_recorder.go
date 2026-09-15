@@ -8,8 +8,8 @@ import (
 	"time"
 
 	aibrecorder "github.com/coder/aibridge/recorder"
+	aibtracing "github.com/coder/aibridge/tracing"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 	proxyruntime "promptgate/backend/internal/runtime/proxy"
 )
@@ -32,7 +32,7 @@ type TelemetryRecorder struct {
 	interceptions  sync.Map
 }
 
-// NewTelemetryRecorder decorates a usage recorder with OpenInference attributes.
+// NewTelemetryRecorder decorates a usage recorder with OpenInference and OTel GenAI attributes.
 func NewTelemetryRecorder(inner aibrecorder.Recorder, capturePrompts bool) *TelemetryRecorder {
 	return &TelemetryRecorder{inner: inner, capturePrompts: capturePrompts}
 }
@@ -47,23 +47,19 @@ func (r *TelemetryRecorder) WithEstimatedCosts(input, output, embedding float64)
 func (r *TelemetryRecorder) RecordInterception(ctx context.Context, req *aibrecorder.InterceptionRecord) error {
 	if req != nil {
 		span := trace.SpanFromContext(ctx)
-		attrs := []attribute.KeyValue{
-			attribute.String("openinference.span.kind", "LLM"),
-			attribute.String("llm.system", req.Provider),
-			attribute.String("llm.provider", req.Provider),
-			attribute.String("llm.model_name", req.Model),
+		attrs := append(interceptionTelemetryAttributes(req.Provider, req.Model, aibtracing.InterceptionAttributesFromContext(ctx)),
 			attribute.String("promptgate.provider.name", req.ProviderName),
 			attribute.String("promptgate.interception.id", req.ID),
 			attribute.String("user.id", req.InitiatorID),
 			attribute.String("promptgate.client", req.Client),
 			attribute.String("promptgate.user_agent", req.UserAgent),
 			attribute.String("promptgate.credential.kind", req.CredentialKind),
-		}
+		)
 		if session, ok := proxyruntime.NativeSessionFromContext(ctx); ok {
 			if session.SessionID != "" {
 				attrs = append(attrs,
 					attribute.String("session.id", session.SessionID),
-					attribute.String("gen_ai.conversation.id", session.SessionID),
+					attribute.String(genAIConversationID, session.SessionID),
 					attribute.String("promptgate.session.source", session.SessionSource),
 				)
 			}
@@ -76,7 +72,7 @@ func (r *TelemetryRecorder) RecordInterception(ctx context.Context, req *aibreco
 		} else if req.ClientSessionID != nil {
 			attrs = append(attrs,
 				attribute.String("session.id", *req.ClientSessionID),
-				attribute.String("gen_ai.conversation.id", *req.ClientSessionID),
+				attribute.String(genAIConversationID, *req.ClientSessionID),
 				attribute.String("promptgate.session.source", "aibridge"),
 			)
 		}
@@ -108,8 +104,8 @@ func (r *TelemetryRecorder) RecordPromptUsage(ctx context.Context, req *aibrecor
 	if r.capturePrompts && req != nil {
 		if state, ok := r.load(req.InterceptionID); ok {
 			state.span.SetAttributes(
-				attribute.String("input.value", req.Prompt),
-				attribute.String("input.mime_type", "text/plain"),
+				attribute.String(openInferenceInputValue, req.Prompt),
+				attribute.String(openInferenceInputMIMEType, "text/plain"),
 			)
 		}
 	}
@@ -128,18 +124,10 @@ func (r *TelemetryRecorder) RecordTokenUsage(ctx context.Context, req *aibrecord
 				state.extra[key] += value
 			}
 			promptTokens := state.input + state.cacheRead + state.cacheWrite
-			attrs := []attribute.KeyValue{
-				attribute.Int64("llm.token_count.prompt", promptTokens),
-				attribute.Int64("llm.token_count.completion", state.output),
-				attribute.Int64("llm.token_count.total", promptTokens+state.output),
-				attribute.Int64("llm.token_count.prompt_details.cache_read", state.cacheRead),
-				attribute.Int64("llm.token_count.prompt_details.cache_write", state.cacheWrite),
-			}
+			reasoningTokens := state.extra["completion_reasoning"]
+			attrs := tokenTelemetryAttributes(promptTokens, state.output, state.cacheRead, state.cacheWrite, reasoningTokens)
 			for key, value := range state.extra {
 				attrs = append(attrs, attribute.Int64("promptgate.token_count."+key, value))
-			}
-			if value := state.extra["completion_reasoning"]; value > 0 {
-				attrs = append(attrs, attribute.Int64("llm.token_count.completion_details.reasoning", value))
 			}
 			if value := state.extra["prompt_audio"]; value > 0 {
 				attrs = append(attrs, attribute.Int64("llm.token_count.prompt_details.audio", value))
@@ -148,13 +136,19 @@ func (r *TelemetryRecorder) RecordTokenUsage(ctx context.Context, req *aibrecord
 				attrs = append(attrs, attribute.Int64("llm.token_count.completion_details.audio", value))
 			}
 			state.span.SetAttributes(attrs...)
+			isEmbedding := metadataTokenUsageType(req.Metadata) == tokenUsageTypeEmbedding
+			if isEmbedding {
+				state.span.SetAttributes(
+					attribute.String(openInferenceSpanKind, openInferenceSpanKindEmbedding),
+					attribute.String(genAIOperationName, genAIOperationEmbeddings),
+				)
+			}
 			if r.costEnabled {
 				inputCost := float64(promptTokens) * r.inputRate / usageCostTokenUnit
 				outputCost := float64(state.output) * r.outputRate / usageCostTokenUnit
-				if metadataTokenUsageType(req.Metadata) == tokenUsageTypeEmbedding {
+				if isEmbedding {
 					inputCost = float64(promptTokens) * r.embeddingRate / usageCostTokenUnit
 					outputCost = 0
-					state.span.SetAttributes(attribute.String("openinference.span.kind", "EMBEDDING"))
 				}
 				state.span.SetAttributes(
 					attribute.Float64("llm.cost.prompt", inputCost),
@@ -176,16 +170,18 @@ func (r *TelemetryRecorder) RecordToolUsage(ctx context.Context, req *aibrecorde
 			attrs := []attribute.KeyValue{
 				attribute.String("tool.name", req.Tool),
 				attribute.String("tool.call.id", req.ToolCallID),
-				attribute.String("input.value", string(args)),
-				attribute.String("input.mime_type", "application/json"),
+				attribute.String(openInferenceInputValue, string(args)),
+				attribute.String(openInferenceInputMIMEType, "application/json"),
 				attribute.Bool("promptgate.tool.injected", req.Injected),
 			}
 			if req.ServerURL != nil {
 				attrs = append(attrs, attribute.String("promptgate.tool.server_url", *req.ServerURL))
 			}
 			if req.InvocationError != nil {
-				attrs = append(attrs, attribute.String("error.message", req.InvocationError.Error()))
-				state.span.SetStatus(codes.Error, req.InvocationError.Error())
+				attrs = append(attrs,
+					attribute.String(standardErrorType, toolInvocationErrorType),
+					attribute.String(standardErrorMessage, req.InvocationError.Error()),
+				)
 			}
 			state.span.AddEvent(fmt.Sprintf("tool:%s", req.Tool), trace.WithAttributes(attrs...))
 		}

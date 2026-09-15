@@ -145,17 +145,33 @@ create interceptions and therefore do not update this table.
 ## Phoenix tracing
 
 Set `PROMPTGATE_OTEL_ENABLED=true` and configure
-`PROMPTGATE_OTEL_ENDPOINT` to export OpenInference spans to Phoenix over
-OTLP/HTTP. Traces contain the provider, model, complete account identity,
-virtual-key ID and name, session, token breakdowns, estimated cost, latency,
-tool calls, and errors. Provider credentials, Prompt Gate JWTs, and token hashes
-are never attached to spans.
+`PROMPTGATE_OTEL_ENDPOINT` to export spans using both OpenTelemetry GenAI and
+OpenInference conventions to Phoenix over OTLP/HTTP. Traces contain the
+provider, model, complete account identity, virtual-key ID and name, session,
+token breakdowns, estimated cost, latency, tool calls, and errors. Provider
+credentials, Prompt Gate JWTs, and token hashes are never attached to spans.
 
 Prompt content requires the independent
 `PROMPTGATE_OTEL_CAPTURE_PROMPTS=true` consent switch. When enabled, prompts
 are exported in full without truncation or redaction. Model response text is
-not exported. Telemetry failures are fail-open and do not change proxy or quota
-behavior.
+not exported. Disabling prompt capture does not make traces PII-free: textual
+account identity and tool arguments are still exported. Telemetry failures are
+fail-open and do not change proxy or quota behavior.
+
+Attribute families remain deliberately distinct during the migration:
+
+| Convention | Examples | Purpose |
+| --- | --- | --- |
+| OpenTelemetry GenAI / HTTP | `gen_ai.provider.name`, `gen_ai.operation.name`, `gen_ai.usage.*`, `url.path`, `error.type` | Vendor-neutral operation, usage, transport, and error semantics. |
+| OpenInference | `openinference.span.kind`, `llm.*`, `input.value`, `tool.*`, `session.id` | Phoenix compatibility, prompt/tool representation, and cost attributes. |
+| Prompt Gate | `promptgate.interception.id`, `promptgate.provider.name`, `promptgate.session.source`, `promptgate.credential.kind`, `promptgate.cost.estimated` | Product-specific identity, configuration, provenance, and internal correlations. |
+
+`input.value` remains the OpenInference prompt representation. Prompt Gate does
+not synthesize `gen_ai.input.messages` from raw text because the recorder does
+not always know the missing message roles and parts. The
+`promptgate.latency.time_to_first_byte_ms` measurement is also kept as a
+product attribute: its clock does not start exactly when the provider request
+is issued, so it is not equivalent to `gen_ai.response.time_to_first_chunk`.
 
 ### Native conversation correlation
 
