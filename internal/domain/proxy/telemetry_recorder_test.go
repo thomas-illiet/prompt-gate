@@ -7,6 +7,7 @@ import (
 	aibrecorder "github.com/coder/aibridge/recorder"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+	proxyruntime "promptgate/backend/internal/runtime/proxy"
 )
 
 // TestTelemetryRecorderMapsOpenInferenceAttributes verifies identity, prompts, and cumulative tokens.
@@ -41,6 +42,59 @@ func TestTelemetryRecorderMapsOpenInferenceAttributes(t *testing.T) {
 		if got := attrs[key]; got != want {
 			t.Errorf("attribute %s: got %#v, want %#v", key, got, want)
 		}
+	}
+}
+
+// TestTelemetryRecorderMapsNativeSession verifies native metadata takes priority over AIBridge.
+func TestTelemetryRecorderMapsNativeSession(t *testing.T) {
+	spans := tracetest.NewSpanRecorder()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spans))
+	ctx := proxyruntime.WithNativeSession(context.Background(), proxyruntime.NativeSession{
+		SessionID: "native-session", SessionSource: "x-openwebui-chat-id",
+		ParentSessionID: "parent-session", MessageID: "message-id",
+	})
+	ctx, span := provider.Tracer("test").Start(ctx, "interception")
+	fallback := "aibridge-session"
+	recorder := NewTelemetryRecorder(noopTelemetryRecorder{}, false)
+	if err := recorder.RecordInterception(ctx, &aibrecorder.InterceptionRecord{
+		ID: "id", ClientSessionID: &fallback,
+	}); err != nil {
+		t.Fatalf("record interception: %v", err)
+	}
+	span.End()
+	attrs := spanAttributes(spans.Ended()[0])
+	for key, want := range map[string]any{
+		"session.id":                   "native-session",
+		"gen_ai.conversation.id":       "native-session",
+		"promptgate.session.source":    "x-openwebui-chat-id",
+		"promptgate.parent_session.id": "parent-session",
+		"promptgate.message.id":        "message-id",
+	} {
+		if got := attrs[key]; got != want {
+			t.Errorf("attribute %s: got %#v, want %#v", key, got, want)
+		}
+	}
+}
+
+// TestTelemetryRecorderUsesAIBridgeSessionFallback verifies body-derived sessions remain supported.
+func TestTelemetryRecorderUsesAIBridgeSessionFallback(t *testing.T) {
+	spans := tracetest.NewSpanRecorder()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spans))
+	ctx, span := provider.Tracer("test").Start(context.Background(), "interception")
+	sessionID := "body-derived-session"
+	recorder := NewTelemetryRecorder(noopTelemetryRecorder{}, false)
+	if err := recorder.RecordInterception(ctx, &aibrecorder.InterceptionRecord{
+		ID: "id", ClientSessionID: &sessionID,
+	}); err != nil {
+		t.Fatalf("record interception: %v", err)
+	}
+	span.End()
+	attrs := spanAttributes(spans.Ended()[0])
+	if attrs["session.id"] != sessionID || attrs["gen_ai.conversation.id"] != sessionID {
+		t.Fatalf("unexpected session attributes: %#v", attrs)
+	}
+	if attrs["promptgate.session.source"] != "aibridge" {
+		t.Fatalf("unexpected session source: %#v", attrs["promptgate.session.source"])
 	}
 }
 

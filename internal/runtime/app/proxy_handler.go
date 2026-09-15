@@ -44,7 +44,7 @@ func (p *ProxyRuntime) buildHandler(
 					MaxBufferedRequestBytes: cfg.ProxyMaxBufferedRequestBytes,
 				})(
 					subscriptions.Middleware(p.subscriptionStore, p.logger)(
-						auth.ActorMiddleware(p.manager),
+						auth.ActorMiddleware(proxyruntime.SessionContextMiddleware(p.manager)),
 					),
 				),
 			),

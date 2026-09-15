@@ -16,6 +16,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
@@ -28,6 +29,10 @@ type Provider struct {
 // NewProvider builds and installs the global tracer provider when export is enabled.
 func NewProvider(ctx context.Context, cfg config.OTelConfig, logger *slog.Logger) (*Provider, error) {
 	provider := &Provider{}
+	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
+		propagation.TraceContext{},
+		propagation.Baggage{},
+	))
 	if logger == nil {
 		logger = slog.Default()
 	}

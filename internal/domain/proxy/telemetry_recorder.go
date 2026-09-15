@@ -59,8 +59,26 @@ func (r *TelemetryRecorder) RecordInterception(ctx context.Context, req *aibreco
 			attribute.String("promptgate.user_agent", req.UserAgent),
 			attribute.String("promptgate.credential.kind", req.CredentialKind),
 		}
-		if req.ClientSessionID != nil {
-			attrs = append(attrs, attribute.String("session.id", *req.ClientSessionID))
+		if session, ok := proxyruntime.NativeSessionFromContext(ctx); ok {
+			if session.SessionID != "" {
+				attrs = append(attrs,
+					attribute.String("session.id", session.SessionID),
+					attribute.String("gen_ai.conversation.id", session.SessionID),
+					attribute.String("promptgate.session.source", session.SessionSource),
+				)
+			}
+			if session.ParentSessionID != "" {
+				attrs = append(attrs, attribute.String("promptgate.parent_session.id", session.ParentSessionID))
+			}
+			if session.MessageID != "" {
+				attrs = append(attrs, attribute.String("promptgate.message.id", session.MessageID))
+			}
+		} else if req.ClientSessionID != nil {
+			attrs = append(attrs,
+				attribute.String("session.id", *req.ClientSessionID),
+				attribute.String("gen_ai.conversation.id", *req.ClientSessionID),
+				attribute.String("promptgate.session.source", "aibridge"),
+			)
 		}
 		if req.CorrelatingToolCallID != nil {
 			attrs = append(attrs, attribute.String("promptgate.correlating_tool_call.id", *req.CorrelatingToolCallID))

@@ -135,6 +135,46 @@ are exported in full without truncation or redaction. Model response text is
 not exported. Telemetry failures are fail-open and do not change proxy or quota
 behavior.
 
+### Native conversation correlation
+
+Prompt Gate uses only conversation identifiers supplied by supported clients;
+it never generates, prefixes, hashes, or otherwise rewrites them. Header names
+are case-insensitive, values are trimmed at their boundaries, and invalid or
+oversized values are ignored. The first valid header in this list wins:
+
+| Priority | Header | Known client | Phoenix mapping |
+| ---: | --- | --- | --- |
+| 1 | `x-claude-code-session-id` | Claude Code | `session.id` |
+| 2 | `x-openwebui-chat-id` | Open WebUI | `session.id` |
+| 3 | `x-coder-chat-id` | Coder Agents | `session.id` |
+| 4 | `x-kilocode-taskid` | Kilo Code | `session.id` |
+| 5 | `x-client-session-id` | GitHub Copilot CLI | `session.id` |
+| 6 | `x-interaction-id` | GitHub Copilot VS Code | `session.id` |
+| 7 | `x-mux-workspace-id` | Mux | `session.id` |
+| 8 | `x-session-id` | OpenCode | `session.id` |
+| 9 | `session-id` | OpenCode OpenAI plugin | `session.id` |
+| 10 | `session_id` | Codex/AIBridge | `session.id` |
+
+The selected value is also exported as `gen_ai.conversation.id`, while
+`promptgate.session.source` records the matching header name.
+`x-parent-session-id` is exported separately as
+`promptgate.parent_session.id`, and `x-openwebui-message-id` as
+`promptgate.message.id`; neither can become the conversation identifier.
+
+For example, OpenCode can send `x-session-id` and
+`x-parent-session-id`. Open WebUI can send `x-openwebui-chat-id` and
+`x-openwebui-message-id`. Claude Code and Codex are accepted through their
+native headers, with AIBridge's request-body extraction retained as a fallback
+for Claude Code. A Langflow flow must map its existing `session_id` into a
+supported provider header; Prompt Gate will not create one for it.
+
+Incoming W3C `traceparent`, `tracestate`, and `baggage` fields are extracted to
+preserve distributed trace ancestry. They represent trace propagation rather
+than conversation identity: Prompt Gate never converts a trace ID or baggage
+entry into `session.id`, and does not copy baggage entries into Phoenix span
+attributes. The similarly named `Session-ID` from RFC 7989 is specific to SIP
+and is not a generic HTTP session standard.
+
 ## Redis Cache And Snapshots
 
 The proxy uses Redis for:

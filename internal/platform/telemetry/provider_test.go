@@ -11,6 +11,7 @@ import (
 
 	"promptgate/backend/internal/platform/config"
 
+	"go.opentelemetry.io/otel/attribute"
 	collectortrace "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	"google.golang.org/protobuf/proto"
 )
@@ -49,6 +50,11 @@ func TestProviderExportsAuthenticatedPhoenixBatch(t *testing.T) {
 		t.Fatalf("new provider: %v", err)
 	}
 	_, span := provider.tracerProvider.Tracer("test").Start(context.Background(), "llm")
+	span.SetAttributes(
+		attribute.String("session.id", "native-session"),
+		attribute.String("gen_ai.conversation.id", "native-session"),
+		attribute.String("promptgate.session.source", "x-session-id"),
+	)
 	span.End()
 	if err := provider.Shutdown(context.Background()); err != nil {
 		t.Fatalf("shutdown provider: %v", err)
@@ -58,6 +64,23 @@ func TestProviderExportsAuthenticatedPhoenixBatch(t *testing.T) {
 	case request := <-received:
 		if len(request.ResourceSpans) != 1 || len(request.ResourceSpans[0].ScopeSpans) != 1 {
 			t.Fatalf("unexpected OTLP payload: %#v", request)
+		}
+		spans := request.ResourceSpans[0].ScopeSpans[0].Spans
+		if len(spans) != 1 {
+			t.Fatalf("expected one exported span, got %d", len(spans))
+		}
+		attributes := make(map[string]string, len(spans[0].Attributes))
+		for _, attr := range spans[0].Attributes {
+			attributes[attr.Key] = attr.Value.GetStringValue()
+		}
+		for key, want := range map[string]string{
+			"session.id":                "native-session",
+			"gen_ai.conversation.id":    "native-session",
+			"promptgate.session.source": "x-session-id",
+		} {
+			if got := attributes[key]; got != want {
+				t.Errorf("exported attribute %s: got %q, want %q", key, got, want)
+			}
 		}
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for OTLP export")
