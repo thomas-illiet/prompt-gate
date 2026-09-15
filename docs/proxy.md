@@ -107,11 +107,10 @@ The proxy recorder stores:
 - provider name and provider type
 - model name
 - token usage, including cache read/write token counts
-- prompt history
 - MCP tool usage and tool invocation errors
 
-This data powers the current-user dashboard, admin prompt history, and user or
-service-account usage totals.
+This data powers the current-user dashboard and user or service-account usage
+totals. Prompt contents are not recorded.
 
 ## Redis Cache And Snapshots
 

@@ -237,13 +237,13 @@ func TestDashboardCostEstimatesUseConfiguredModelPrices(t *testing.T) {
 	otherUserID := "22222222-2222-2222-2222-222222222222"
 	at := now.AddDate(0, 0, -1)
 
-	seedProxyInteraction(t, db, userID, "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "Priced model", "gpt-5", at, 100, 50)
+	seedProxyInteraction(t, db, userID, "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "gpt-5", at, 100, 50)
 	setInterceptionProvider(t, db, "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "openai-main", "openai")
-	seedProxyInteraction(t, db, userID, "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", "Fallback model", "claude-4", at, 200, 25)
+	seedProxyInteraction(t, db, userID, "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", "claude-4", at, 200, 25)
 	setInterceptionProvider(t, db, "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", "anthropic-main", "anthropic")
-	seedProxyInteraction(t, db, userID, "cccccccc-cccc-cccc-cccc-cccccccccccc", "Shared model fallback provider", "gpt-5", at, 20, 10)
+	seedProxyInteraction(t, db, userID, "cccccccc-cccc-cccc-cccc-cccccccccccc", "gpt-5", at, 20, 10)
 	setInterceptionProvider(t, db, "cccccccc-cccc-cccc-cccc-cccccccccccc", "anthropic-main", "anthropic")
-	seedProxyInteraction(t, db, otherUserID, "dddddddd-dddd-dddd-dddd-dddddddddddd", "Other user", "gpt-5", at, 10, 10)
+	seedProxyInteraction(t, db, otherUserID, "dddddddd-dddd-dddd-dddd-dddddddddddd", "gpt-5", at, 10, 10)
 	setInterceptionProvider(t, db, "dddddddd-dddd-dddd-dddd-dddddddddddd", "openai-main", "openai")
 	mustAggregateUsageKPIs(t, service)
 
@@ -320,7 +320,7 @@ func TestDashboardCostPricingQueriesAreNotPerUsageRow(t *testing.T) {
 	userID := "11111111-1111-1111-1111-111111111111"
 	for i := 0; i < 25; i++ {
 		id := fmt.Sprintf("aaaaaaaa-aaaa-aaaa-aaaa-%012d", i)
-		seedProxyInteraction(t, countedDB, userID, id, "", "gpt-5", now.Add(-time.Duration(i+1)*time.Minute), 10, 5)
+		seedProxyInteraction(t, countedDB, userID, id, "gpt-5", now.Add(-time.Duration(i+1)*time.Minute), 10, 5)
 		setInterceptionProvider(t, countedDB, id, "openai-main", "openai")
 		if err := countedDB.Model(&TokenUsage{}).
 			Where("interception_id = ?", id).

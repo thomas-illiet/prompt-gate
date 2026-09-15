@@ -82,7 +82,6 @@ function activityResponse(cost?: EstimatedCost): DashboardActivityResponse {
       {
         date: '2026-01-01',
         requests: 2,
-        prompts: 1,
         inputTokens: 10,
         outputTokens: 20,
         completionInputTokens: 10,

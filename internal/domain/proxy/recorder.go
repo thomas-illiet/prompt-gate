@@ -86,23 +86,8 @@ func (r *Recorder) RecordTokenUsage(ctx context.Context, req *aibrecorder.TokenU
 	return nil
 }
 
-// RecordPromptUsage persists a user prompt observed by the proxy.
-func (r *Recorder) RecordPromptUsage(ctx context.Context, req *aibrecorder.PromptUsageRecord) error {
-	metadata, err := marshalMetadata(req.Metadata)
-	if err != nil {
-		return err
-	}
-	record := UserPrompt{
-		ID:                 uuid.NewString(),
-		InterceptionID:     req.InterceptionID,
-		ProviderResponseID: req.MsgID,
-		Prompt:             req.Prompt,
-		Metadata:           metadata,
-		CreatedAt:          timestamp(req.CreatedAt),
-	}
-	if err := r.db.WithContext(ctx).Create(&record).Error; err != nil {
-		return fmt.Errorf("record prompt usage: %w", err)
-	}
+// RecordPromptUsage satisfies the recorder interface without collecting prompts.
+func (r *Recorder) RecordPromptUsage(_ context.Context, _ *aibrecorder.PromptUsageRecord) error {
 	return nil
 }
 

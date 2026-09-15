@@ -43,16 +43,6 @@ type TokenUsage struct {
 	CreatedAt             time.Time     `gorm:"not null" json:"createdAt"`
 }
 
-type UserPrompt struct {
-	ID                 string        `gorm:"type:uuid;primaryKey" json:"id"`
-	InterceptionID     string        `gorm:"type:uuid;not null;index" json:"interceptionId"`
-	Interception       *Interception `gorm:"foreignKey:InterceptionID;references:ID;constraint:OnDelete:CASCADE" json:"-"`
-	ProviderResponseID string        `gorm:"not null" json:"providerResponseId"`
-	Prompt             string        `gorm:"not null" json:"prompt"`
-	Metadata           string        `json:"metadata"`
-	CreatedAt          time.Time     `gorm:"not null" json:"createdAt"`
-}
-
 type ToolUsage struct {
 	ID                 string        `gorm:"type:uuid;primaryKey" json:"id"`
 	InterceptionID     string        `gorm:"type:uuid;not null;index" json:"interceptionId"`
@@ -72,7 +62,6 @@ type ProxyDailyUsageKPI struct {
 	InitiatorID            string      `gorm:"type:uuid;not null;uniqueIndex:idx_proxy_daily_usage_kpis_day_initiator;index" json:"initiatorId"`
 	Initiator              *users.User `gorm:"foreignKey:InitiatorID;references:ID;constraint:OnDelete:RESTRICT" json:"-"`
 	Requests               int64       `gorm:"not null;default:0" json:"requests"`
-	Prompts                int64       `gorm:"not null;default:0" json:"prompts"`
 	ToolCalls              int64       `gorm:"not null;default:0" json:"toolCalls"`
 	TotalDurationMs        int64       `gorm:"not null;default:0" json:"totalDurationMs"`
 	InputTokens            int64       `gorm:"not null;default:0" json:"inputTokens"`
@@ -141,12 +130,6 @@ func (i *Interception) BeforeCreate(_ *gorm.DB) error {
 // BeforeCreate assigns a UUID before inserting token usage.
 func (u *TokenUsage) BeforeCreate(_ *gorm.DB) error {
 	setID(&u.ID)
-	return nil
-}
-
-// BeforeCreate assigns a UUID before inserting a user prompt.
-func (p *UserPrompt) BeforeCreate(_ *gorm.DB) error {
-	setID(&p.ID)
 	return nil
 }
 

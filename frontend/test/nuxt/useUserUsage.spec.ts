@@ -34,7 +34,6 @@ function usageSummary(days: 7 | 30): UserUsageSummary {
     endsAt: '2026-01-30T00:00:00Z',
     totals: {
       requests: days,
-      prompts: 2,
       toolCalls: 1,
       inputTokens: 10,
       outputTokens: 20,
@@ -49,7 +48,6 @@ function usageSummary(days: 7 | 30): UserUsageSummary {
     daily: [],
     topModels: [],
     topProviders: [],
-    recentPrompts: [],
   }
 }
 

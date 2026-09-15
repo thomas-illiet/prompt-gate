@@ -8,7 +8,7 @@ import (
 	"promptgate/backend/internal/domain/auth"
 )
 
-// UsageSummary builds usage totals, daily buckets, and recent prompts for a user.
+// UsageSummary builds usage totals and daily buckets for a user.
 func (s *Service) UsageSummary(ctx context.Context, userID string, days int, now time.Time) (UsageSummary, error) {
 	window, err := usageWindowForDays(days)
 	if err != nil {
@@ -62,12 +62,6 @@ func (s *Service) UsageSummary(ctx context.Context, userID string, days int, now
 			return UsageSummary{}, err
 		}
 	}
-
-	recent, err := s.ListPrompts(ctx, userID, PromptListParams{Page: 1, PageSize: 5})
-	if err != nil {
-		return UsageSummary{}, err
-	}
-	summary.RecentPrompts = recent.Items
 
 	return summary, nil
 }

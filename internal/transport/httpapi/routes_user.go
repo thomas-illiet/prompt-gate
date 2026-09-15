@@ -18,7 +18,6 @@ func userRoutes(srv *server) []routeDefinition {
 func currentUserRoutes(srv *server) []routeDefinition {
 	return []routeDefinition{
 		{pattern: "GET /api/v1/me/usage", handler: srv.handleCurrentUserUsage},
-		{pattern: "GET /api/v1/me/prompts", handler: srv.handleCurrentUserPrompts},
 		{pattern: "GET /api/v1/me/quota", handler: srv.handleCurrentUserQuota},
 		{pattern: "GET /api/v1/me/help/setup", handler: srv.handleHelpSetup},
 		{pattern: "GET /api/v1/me/dashboard/tokens", handler: srv.handleCurrentUserDashboardTokens},

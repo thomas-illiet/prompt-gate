@@ -26,14 +26,13 @@ assets from `/` and falls back to the SPA shell for frontend routes.
 ## User Routes
 
 These routes require a valid browser session and active app access. The
-dashboard, prompt, usage, setup, and token routes require role `user`,
+dashboard, usage, setup, and token routes require role `user`,
 `manager`, or `admin`.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/api/v1/me` | Current authenticated user profile. |
 | `GET` | `/api/v1/me/usage` | Usage summary for the current user. |
-| `GET` | `/api/v1/me/prompts` | Prompt history for the current user. |
 | `GET` | `/api/v1/me/quota` | Current subscription quota state and reset windows. |
 | `GET` | `/api/v1/me/groups` | Access groups assigned to the current user. |
 | `GET` | `/api/v1/me/help/setup` | Provider setup helper with proxy base URLs and available models. |
@@ -137,7 +136,6 @@ Admin dashboard token and activity responses follow the same optional
 | `PATCH` | `/api/v1/admin/users/{id}/firewall/rules/{ruleId}/priority` | Move a scoped user rule up or down. |
 | `POST` | `/api/v1/admin/users/{id}/firewall/simulate` | Simulate a scoped user decision. |
 | `DELETE` | `/api/v1/admin/users/{id}/firewall/rules/{ruleId}` | Delete a scoped user rule. |
-| `GET` | `/api/v1/admin/prompts` | List prompt history across users. |
 
 The first synced OIDC user is assigned role `admin`. Later users are created
 with role `none` until an admin grants access.

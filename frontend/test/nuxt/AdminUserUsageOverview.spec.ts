@@ -11,7 +11,6 @@ import type {
 const day: DailyUsage = {
   date: '2026-07-13',
   requests: 3,
-  prompts: 2,
   inputTokens: 120,
   outputTokens: 30,
   completionInputTokens: 100,
@@ -27,7 +26,6 @@ const response: DashboardOverviewResponse = {
   endsAt: '2026-07-13T23:59:59Z',
   totals: {
     requests: 3,
-    prompts: 2,
     toolCalls: 1,
     inputTokens: 120,
     outputTokens: 30,
@@ -165,7 +163,6 @@ describe('AdminUserUsageOverview', () => {
     const emptyDay: DailyUsage = {
       ...day,
       requests: 0,
-      prompts: 0,
       inputTokens: 0,
       outputTokens: 0,
       completionInputTokens: 0,
@@ -180,7 +177,6 @@ describe('AdminUserUsageOverview', () => {
         totals: {
           ...response.totals,
           requests: 0,
-          prompts: 0,
           toolCalls: 0,
           inputTokens: 0,
           outputTokens: 0,

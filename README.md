@@ -14,7 +14,7 @@ binary:
   optional static frontend hosting.
 - `proxy` runs the LLM proxy that validates Prompt Gate API tokens,
   applies firewall rules, routes to configured providers, and enqueues usage.
-- `worker` consumes proxy usage events, stores raw prompt exploration data, and
+- `worker` consumes proxy usage events, stores raw operational usage data, and
   updates dashboard KPI aggregates.
 - `schedule` runs recurring background jobs, including raw usage cleanup.
 - `migrate` applies database schema migrations.
@@ -130,13 +130,6 @@ Usage totals, request volume, token trends, and top model/provider breakdowns.
 
 Personal virtual key inventory with status, creation dates, expiry dates, and
 row actions.
-
-### Prompt History
-
-![Prompt Gate prompt history table with providers and token counts](docs/assets/screenshots/prompt-history.png)
-
-Recorded proxy prompts with provider, model, token usage, duration, and
-timestamp context.
 
 ### Setup Guide
 

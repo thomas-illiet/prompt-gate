@@ -50,7 +50,7 @@ flowchart LR
 | `internal/domain/firewall` | Global, user, and service-account firewall rules, snapshots, middleware. |
 | `internal/domain/provider` | LLM provider configuration, encrypted API keys, setup helper metadata. |
 | `internal/domain/mcp` | MCP server configuration, encrypted sensitive headers, regex filters. |
-| `internal/domain/proxy` | Usage, prompt, tool, and interception recording plus dashboards. |
+| `internal/domain/proxy` | Usage, tool, and interception recording plus dashboards. |
 | `internal/platform/*` | Configuration, Postgres, Redis, migrations, and secret encryption. |
 | `internal/transport/httpapi` | HTTP routes and JSON handlers. |
 | `internal/transport/httpmiddleware` | Session, CORS, authorization, and request logging middleware. |
@@ -64,7 +64,7 @@ PostgreSQL is the source of truth for durable application data:
 - firewall rules
 - LLM provider definitions
 - MCP server definitions
-- proxy interceptions, token usage, prompts, and tool usage for prompt exploration
+- proxy interceptions, token usage, and tool usage for operational metrics
 - daily dashboard KPI aggregates and processed usage event ids
 
 Redis is required by the current runtime configuration. It is used for:

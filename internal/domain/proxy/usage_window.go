@@ -176,8 +176,3 @@ func dayStart(value time.Time) time.Time {
 func daysBetween(start, end time.Time) int {
 	return int(dayStart(end).Sub(dayStart(start)).Hours() / 24)
 }
-
-// promptTokenKey builds a collision-safe key for prompt token totals.
-func promptTokenKey(interceptionID, responseID string) string {
-	return interceptionID + "\x00" + responseID
-}

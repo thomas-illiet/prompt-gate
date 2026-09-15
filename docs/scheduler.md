@@ -76,7 +76,7 @@ Optional scheduler settings:
 | `PROMPTGATE_USER_ACCESS_EXPIRATION_INTERVAL` | `1h` | Interval for user access expiration. |
 | `PROMPTGATE_REDIS_CACHE_TTL` | `5m` | Redis TTL used by shared services. |
 | `PROMPTGATE_PROXY_RELOAD_DEBOUNCE` | `250ms` | Loaded for shared configuration consistency; scheduler jobs do not use it directly. |
-| `PROMPTGATE_USAGE_RAW_RETENTION` | `2160h` | Retention for raw proxy usage tables used by prompt exploration. |
+| `PROMPTGATE_USAGE_RAW_RETENTION` | `2160h` | Retention for raw proxy usage tables used by operational metrics. |
 | `PROMPTGATE_USAGE_RAW_CLEANUP_INTERVAL` | `1h` | Interval for raw proxy usage cleanup. |
 | `PROMPTGATE_SUBSCRIPTION_QUOTA_SYNC_INTERVAL` | `5m` | Interval for syncing Redis subscription quota state to PostgreSQL. |
 

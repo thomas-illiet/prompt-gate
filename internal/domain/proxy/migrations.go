@@ -22,7 +22,6 @@ func AutoMigrate(ctx context.Context, db *gorm.DB) error {
 	if err := db.WithContext(ctx).AutoMigrate(
 		&Interception{},
 		&TokenUsage{},
-		&UserPrompt{},
 		&ToolUsage{},
 		&ProxyDailyUsageKPI{},
 		&ProxyDailyUsageBreakdown{},
@@ -43,6 +42,21 @@ func AutoMigrate(ctx context.Context, db *gorm.DB) error {
 // MigrateLegacySchema applies explicit destructive cleanup for legacy proxy schema artifacts.
 func MigrateLegacySchema(ctx context.Context, db *gorm.DB) error {
 	migrator := db.WithContext(ctx).Migrator()
+	if migrator.HasTable("user_prompts") {
+		if err := migrator.DropTable("user_prompts"); err != nil {
+			return fmt.Errorf("drop user prompts table: %w", err)
+		}
+	}
+	if migrator.HasColumn("proxy_daily_usage_kpis", "prompts") {
+		if err := db.WithContext(ctx).Exec("ALTER TABLE proxy_daily_usage_kpis DROP COLUMN prompts").Error; err != nil {
+			return fmt.Errorf("drop prompt count column: %w", err)
+		}
+	}
+	if err := db.WithContext(ctx).
+		Where("type = ?", legacyPromptUsageType).
+		Delete(&ProcessedUsageEvent{}).Error; err != nil {
+		return fmt.Errorf("delete prompt usage event markers: %w", err)
+	}
 	if migrator.HasTable("model_thoughts") {
 		if err := migrator.DropTable("model_thoughts"); err != nil {
 			return fmt.Errorf("drop model thoughts table: %w", err)

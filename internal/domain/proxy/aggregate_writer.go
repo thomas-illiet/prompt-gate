@@ -9,6 +9,15 @@ import (
 	"gorm.io/gorm/clause"
 )
 
+// durationMilliseconds returns a completed interception duration in milliseconds.
+func durationMilliseconds(startedAt time.Time, endedAt *time.Time) *int64 {
+	if startedAt.IsZero() || endedAt == nil || endedAt.Before(startedAt) {
+		return nil
+	}
+	duration := endedAt.Sub(startedAt).Milliseconds()
+	return &duration
+}
+
 func aggregateInterceptionStarted(tx *gorm.DB, interception Interception) error {
 	day := dayStart(interception.StartedAt)
 	if err := upsertDailyUsageKPI(tx, ProxyDailyUsageKPI{
@@ -41,14 +50,6 @@ func aggregateInterceptionDuration(tx *gorm.DB, interception Interception) error
 		Day:             dayStart(interception.StartedAt),
 		InitiatorID:     interception.InitiatorID,
 		TotalDurationMs: *duration,
-	})
-}
-
-func aggregatePromptUsage(tx *gorm.DB, interception Interception, prompt UserPrompt) error {
-	return upsertDailyUsageKPI(tx, ProxyDailyUsageKPI{
-		Day:         dayStart(prompt.CreatedAt),
-		InitiatorID: interception.InitiatorID,
-		Prompts:     1,
 	})
 }
 
@@ -111,7 +112,6 @@ func upsertDailyUsageKPI(tx *gorm.DB, delta ProxyDailyUsageKPI) error {
 		Columns: []clause.Column{{Name: "day"}, {Name: "initiator_id"}},
 		DoUpdates: clause.Assignments(map[string]any{
 			"requests":                 incrementColumn(table, "requests", delta.Requests),
-			"prompts":                  incrementColumn(table, "prompts", delta.Prompts),
 			"tool_calls":               incrementColumn(table, "tool_calls", delta.ToolCalls),
 			"total_duration_ms":        incrementColumn(table, "total_duration_ms", delta.TotalDurationMs),
 			"input_tokens":             incrementColumn(table, "input_tokens", delta.InputTokens),
@@ -162,7 +162,6 @@ func incrementColumn(table, column string, delta int64) clause.Expr {
 
 func accumulateKPIIntoTotals(totals *UsageTotals, row ProxyDailyUsageKPI) {
 	totals.Requests += row.Requests
-	totals.Prompts += row.Prompts
 	totals.ToolCalls += row.ToolCalls
 	totals.InputTokens += row.InputTokens
 	totals.OutputTokens += row.OutputTokens

@@ -14,7 +14,6 @@ function summary(
       {
         date: '2026-06-02',
         requests: 1,
-        prompts: 1,
         inputTokens: 100,
         outputTokens: 0,
         completionInputTokens: 100,
@@ -30,7 +29,6 @@ function summary(
     peakDay: {
       date: '2026-06-02',
       requests: 1,
-      prompts: 1,
       inputTokens: 100,
       outputTokens: 0,
       completionInputTokens: 100,

@@ -5,7 +5,6 @@ import "promptgate/backend/internal/transport/httpapi/admin"
 func adminRoutes(handler *admin.Handler) []routeDefinition {
 	routes := make([]routeDefinition, 0, 105)
 	routes = append(routes, adminUserRoutes(handler)...)
-	routes = append(routes, adminPromptRoutes(handler)...)
 	routes = append(routes, adminDashboardRoutes(handler)...)
 	routes = append(routes, adminServiceAccountRoutes(handler)...)
 	routes = append(routes, adminFirewallRoutes(handler)...)
@@ -40,12 +39,6 @@ func adminUserRoutes(handler *admin.Handler) []routeDefinition {
 		{pattern: "PATCH /api/v1/admin/users/{id}/firewall/rules/{ruleId}/priority", handler: handler.HandleAdminMoveUserFirewallRulePriority},
 		{pattern: "POST /api/v1/admin/users/{id}/firewall/simulate", handler: handler.HandleAdminSimulateUserFirewallRule},
 		{pattern: "DELETE /api/v1/admin/users/{id}/firewall/rules/{ruleId}", handler: handler.HandleAdminDeleteUserFirewallRule},
-	}
-}
-
-func adminPromptRoutes(handler *admin.Handler) []routeDefinition {
-	return []routeDefinition{
-		{pattern: "GET /api/v1/admin/prompts", handler: handler.HandleAdminListPrompts},
 	}
 }
 

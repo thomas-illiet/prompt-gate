@@ -143,7 +143,6 @@ function profileTokenUsageDay(
   return {
     date,
     requests: day?.requests ?? 0,
-    prompts: day?.prompts ?? 0,
     inputTokens: day?.inputTokens ?? 0,
     outputTokens: day?.outputTokens ?? 0,
     completionInputTokens: day?.completionInputTokens ?? 0,

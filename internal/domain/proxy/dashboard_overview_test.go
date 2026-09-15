@@ -22,9 +22,9 @@ func TestDashboardOverviewAggregatesScopedUsage(t *testing.T) {
 	oldAt := time.Date(2026, 1, 2, 10, 0, 0, 0, time.UTC)
 	recentAt := now.AddDate(0, 0, -1)
 
-	seedProxyInteraction(t, countedDB, userID, "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "Old prompt", "gpt-old", oldAt, 100, 200)
-	seedProxyInteraction(t, countedDB, userID, "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", "Recent prompt", "gpt-5", recentAt, 11, 13)
-	seedProxyInteraction(t, countedDB, otherUserID, "cccccccc-cccc-cccc-cccc-cccccccccccc", "Hidden prompt", "gpt-5", recentAt, 1000, 1000)
+	seedProxyInteraction(t, countedDB, userID, "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "gpt-old", oldAt, 100, 200)
+	seedProxyInteraction(t, countedDB, userID, "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", "gpt-5", recentAt, 11, 13)
+	seedProxyInteraction(t, countedDB, otherUserID, "cccccccc-cccc-cccc-cccc-cccccccccccc", "gpt-5", recentAt, 1000, 1000)
 	if err := countedDB.Create(&ToolUsage{
 		InterceptionID:     "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
 		ProviderResponseID: "response-bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
@@ -45,7 +45,7 @@ func TestDashboardOverviewAggregatesScopedUsage(t *testing.T) {
 	if recent.Window != UsageWindow7Days || len(recent.Daily) != 7 {
 		t.Fatalf("unexpected 7 day window: %#v", recent.UsageWindowMeta)
 	}
-	if recent.Totals.Requests != 1 || recent.Totals.Prompts != 1 || recent.Totals.ToolCalls != 1 {
+	if recent.Totals.Requests != 1 || recent.Totals.ToolCalls != 1 {
 		t.Fatalf("unexpected recent request totals: %#v", recent.Totals)
 	}
 	if recent.Totals.InputTokens != 11 || recent.Totals.OutputTokens != 13 || recent.Totals.TotalTokens != 31 {
@@ -75,7 +75,7 @@ func TestDashboardOverviewAggregatesScopedUsage(t *testing.T) {
 	if allTime.Window != UsageWindowAll || len(allTime.Daily) != 29 || allTime.Daily[0].Date != "2026-01-02" {
 		t.Fatalf("unexpected all-time window: meta=%#v daily=%#v", allTime.UsageWindowMeta, allTime.Daily)
 	}
-	if allTime.Totals.Requests != 2 || allTime.Totals.Prompts != 2 || allTime.Totals.ToolCalls != 1 {
+	if allTime.Totals.Requests != 2 || allTime.Totals.ToolCalls != 1 {
 		t.Fatalf("unexpected all-time request totals: %#v", allTime.Totals)
 	}
 	if allTime.Totals.InputTokens != 111 || allTime.Totals.OutputTokens != 213 || allTime.Totals.TotalTokens != 338 {

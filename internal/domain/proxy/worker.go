@@ -18,6 +18,7 @@ import (
 )
 
 var errUsageEventAlreadyProcessed = errors.New("usage event already processed")
+var errLegacyPromptUsageEvent = errors.New("legacy prompt usage event")
 
 var ackDeleteUsageScript = redis.NewScript(`
 for _, id in ipairs(ARGV) do
@@ -159,6 +160,10 @@ func (w *Worker) handleMessages(ctx context.Context, client *redis.Client, messa
 	decoded := make([]UsageEventMessage, 0, len(messages))
 	for _, message := range messages {
 		event, err := usageEventFromMessage(message)
+		if errors.Is(err, errLegacyPromptUsageEvent) {
+			ackIDs = append(ackIDs, message.ID)
+			continue
+		}
 		if err != nil {
 			w.logger.Error("dropping invalid usage event", "redisMessageId", message.ID, "error", err)
 			ackIDs = append(ackIDs, message.ID)
@@ -276,6 +281,9 @@ func usageEventFromMessage(message redis.XMessage) (UsageEvent, error) {
 	}
 	if event.EventID == "" {
 		event.EventID = message.ID
+	}
+	if string(event.Type) == legacyPromptUsageType {
+		return UsageEvent{}, errLegacyPromptUsageEvent
 	}
 	return event, nil
 }

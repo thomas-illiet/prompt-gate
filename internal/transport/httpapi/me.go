@@ -141,40 +141,6 @@ func (s server) handleCurrentUserDashboardTopProviderTypes(w http.ResponseWriter
 	writeJSON(w, http.StatusOK, response)
 }
 
-// handleCurrentUserPrompts returns paged prompt history for the authenticated user.
-func (s server) handleCurrentUserPrompts(w http.ResponseWriter, r *http.Request) {
-	user, ok := auth.UserFromContext(r.Context())
-	if !ok {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "missing user in context"})
-		return
-	}
-	params, err := parsePromptListParams(r)
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_pagination"})
-		return
-	}
-	if s.proxyService == nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "proxy usage service unavailable"})
-		return
-	}
-
-	result, err := s.proxyService.ListPrompts(r.Context(), user.ID, params)
-	if err != nil {
-		if errors.Is(err, proxy.ErrInvalidSort) {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_sort"})
-			return
-		}
-		if errors.Is(err, proxy.ErrInvalidPagination) {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_pagination"})
-			return
-		}
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-		return
-	}
-
-	writeJSON(w, http.StatusOK, result)
-}
-
 // handleCurrentUserGroups returns the authenticated user's access groups.
 func (s server) handleCurrentUserGroups(w http.ResponseWriter, r *http.Request) {
 	user, ok := auth.UserFromContext(r.Context())
@@ -318,37 +284,4 @@ func parseUsageDays(r *http.Request) (int, error) {
 		return 0, proxy.ErrInvalidUsageWindow
 	}
 	return days, nil
-}
-
-// parsePromptListParams converts prompt history query parameters into service filters.
-func parsePromptListParams(r *http.Request) (proxy.PromptListParams, error) {
-	query := r.URL.Query()
-	page := 1
-	pageSize := 10
-
-	if value := query.Get("page"); value != "" {
-		parsed, err := strconv.Atoi(value)
-		if err != nil {
-			return proxy.PromptListParams{}, err
-		}
-		page = parsed
-	}
-	if value := query.Get("pageSize"); value != "" {
-		parsed, err := strconv.Atoi(value)
-		if err != nil {
-			return proxy.PromptListParams{}, err
-		}
-		pageSize = parsed
-	}
-	if page <= 0 || pageSize <= 0 || pageSize > 100 {
-		return proxy.PromptListParams{}, proxy.ErrInvalidPagination
-	}
-
-	return proxy.PromptListParams{
-		Page:     page,
-		PageSize: pageSize,
-		Search:   query.Get("search"),
-		SortBy:   query.Get("sortBy"),
-		SortDir:  query.Get("sortDir"),
-	}, nil
 }

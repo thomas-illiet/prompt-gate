@@ -103,7 +103,7 @@ func newProxyServiceTestDB(t *testing.T) (*gorm.DB, *Service) {
 }
 
 // seedProxyInteraction seeds proxy interaction.
-func seedProxyInteraction(t *testing.T, db *gorm.DB, userID, id, prompt, model string, at time.Time, inputTokens, outputTokens int64) {
+func seedProxyInteraction(t *testing.T, db *gorm.DB, userID, id, model string, at time.Time, inputTokens, outputTokens int64) {
 	t.Helper()
 	endedAt := at.Add(90 * time.Second)
 	if err := db.Create(&Interception{
@@ -117,17 +117,6 @@ func seedProxyInteraction(t *testing.T, db *gorm.DB, userID, id, prompt, model s
 		Metadata:     "{}",
 	}).Error; err != nil {
 		t.Fatalf("seed interception: %v", err)
-	}
-	if prompt != "" {
-		if err := db.Create(&UserPrompt{
-			InterceptionID:     id,
-			ProviderResponseID: "response-" + id,
-			Prompt:             prompt,
-			Metadata:           "{}",
-			CreatedAt:          at.Add(time.Minute),
-		}).Error; err != nil {
-			t.Fatalf("seed prompt: %v", err)
-		}
 	}
 	if inputTokens > 0 || outputTokens > 0 {
 		if err := db.Create(&TokenUsage{
@@ -208,20 +197,6 @@ func mustAggregateUsageKPIs(t *testing.T, service *Service) {
 				return err
 			}
 			if err := aggregateInterceptionDuration(tx, interception); err != nil {
-				return err
-			}
-		}
-
-		var prompts []UserPrompt
-		if err := tx.Find(&prompts).Error; err != nil {
-			return fmt.Errorf("load fixture prompts: %w", err)
-		}
-		for _, prompt := range prompts {
-			interception, ok := interceptionsByID[prompt.InterceptionID]
-			if !ok {
-				continue
-			}
-			if err := aggregatePromptUsage(tx, interception, prompt); err != nil {
 				return err
 			}
 		}
@@ -309,11 +284,63 @@ func TestMigrateLegacySchemaDropsModelThoughts(t *testing.T) {
 	}
 }
 
+func TestMigrateLegacySchemaDropsPromptStorage(t *testing.T) {
+	db, _ := newProxyServiceTestDB(t)
+	if err := db.Exec(`CREATE TABLE user_prompts (
+		id text primary key,
+		interception_id text not null,
+		prompt text not null
+	)`).Error; err != nil {
+		t.Fatalf("create legacy user prompts table: %v", err)
+	}
+	if err := db.Exec(`ALTER TABLE proxy_daily_usage_kpis ADD COLUMN prompts integer NOT NULL DEFAULT 0`).Error; err != nil {
+		t.Fatalf("add legacy prompt counter: %v", err)
+	}
+	marker := ProcessedUsageEvent{
+		EventID: "legacy-prompt-event", Type: legacyPromptUsageType,
+		CreatedAt: time.Now().UTC(), ProcessedAt: time.Now().UTC(),
+	}
+	if err := db.Create(&marker).Error; err != nil {
+		t.Fatalf("seed legacy prompt marker: %v", err)
+	}
+
+	if err := MigrateLegacySchema(context.Background(), db); err != nil {
+		t.Fatalf("migrate proxy legacy schema: %v", err)
+	}
+	if db.Migrator().HasTable("user_prompts") {
+		t.Fatal("expected user prompts table to be dropped")
+	}
+	if db.Migrator().HasColumn("proxy_daily_usage_kpis", "prompts") {
+		t.Fatal("expected prompt counter column to be dropped")
+	}
+	var markers int64
+	if err := db.Model(&ProcessedUsageEvent{}).Where("type = ?", legacyPromptUsageType).Count(&markers).Error; err != nil {
+		t.Fatalf("count legacy prompt markers: %v", err)
+	}
+	if markers != 0 {
+		t.Fatalf("expected legacy prompt markers deleted, got %d", markers)
+	}
+}
+
+func TestRecorderDoesNotPersistPrompts(t *testing.T) {
+	db, _ := newProxyServiceTestDB(t)
+	recorder := NewRecorder(db)
+	if err := recorder.RecordPromptUsage(context.Background(), &aibrecorder.PromptUsageRecord{
+		InterceptionID: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+		Prompt:         "must not be stored",
+	}); err != nil {
+		t.Fatalf("record prompt usage: %v", err)
+	}
+	if db.Migrator().HasTable("user_prompts") {
+		t.Fatal("expected prompt recording to leave PostgreSQL untouched")
+	}
+}
+
 // TestMigrateLegacySchemaBackfillsEmbeddingTokenTypeAndDropsEndpoint verifies explicit legacy migration drops endpoint.
 func TestMigrateLegacySchemaBackfillsEmbeddingTokenTypeAndDropsEndpoint(t *testing.T) {
 	db, _ := newProxyServiceTestDB(t)
 	now := time.Date(2026, 1, 30, 15, 0, 0, 0, time.UTC)
-	seedProxyInteraction(t, db, "11111111-1111-1111-1111-111111111111", "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "", "text-embedding-3-small", now, 0, 0)
+	seedProxyInteraction(t, db, "11111111-1111-1111-1111-111111111111", "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "text-embedding-3-small", now, 0, 0)
 	if err := db.Create(&TokenUsage{
 		InterceptionID:     "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
 		ProviderResponseID: "embedding-response",
@@ -384,8 +411,8 @@ func TestUsageSummaryAggregatesOnlyCurrentUser(t *testing.T) {
 	now := time.Date(2026, 1, 30, 15, 0, 0, 0, time.UTC)
 	interactionAt := now.AddDate(0, 0, -1)
 
-	seedProxyInteraction(t, db, "11111111-1111-1111-1111-111111111111", "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "Alpha prompt", "gpt-5", interactionAt, 11, 13)
-	seedProxyInteraction(t, db, "22222222-2222-2222-2222-222222222222", "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", "Other prompt", "gpt-5", interactionAt, 101, 103)
+	seedProxyInteraction(t, db, "11111111-1111-1111-1111-111111111111", "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "gpt-5", interactionAt, 11, 13)
+	seedProxyInteraction(t, db, "22222222-2222-2222-2222-222222222222", "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", "gpt-5", interactionAt, 101, 103)
 
 	if err := db.Create(&ToolUsage{
 		InterceptionID:     "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
@@ -404,14 +431,11 @@ func TestUsageSummaryAggregatesOnlyCurrentUser(t *testing.T) {
 		t.Fatalf("usage summary: %v", err)
 	}
 
-	if summary.Totals.Requests != 1 || summary.Totals.Prompts != 1 || summary.Totals.ToolCalls != 1 {
+	if summary.Totals.Requests != 1 || summary.Totals.ToolCalls != 1 {
 		t.Fatalf("unexpected totals: %#v", summary.Totals)
 	}
 	if summary.Totals.InputTokens != 11 || summary.Totals.OutputTokens != 13 || summary.Totals.TotalTokens != 31 {
 		t.Fatalf("unexpected token totals: %#v", summary.Totals)
-	}
-	if len(summary.RecentPrompts) != 1 || summary.RecentPrompts[0].Prompt != "Alpha prompt" {
-		t.Fatalf("unexpected recent prompts: %#v", summary.RecentPrompts)
 	}
 	if len(summary.TopModels) != 1 || summary.TopModels[0].Name != "gpt-5" {
 		t.Fatalf("unexpected top models: %#v", summary.TopModels)
@@ -428,13 +452,13 @@ func TestDashboardWidgetsAggregateByWindowAndDimension(t *testing.T) {
 	recentAt := now.AddDate(0, 0, -1)
 	latestAt := now.AddDate(0, 0, -2)
 
-	seedProxyInteraction(t, db, userID, "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "Old prompt", "gpt-old", oldAt, 100, 200)
+	seedProxyInteraction(t, db, userID, "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "gpt-old", oldAt, 100, 200)
 	setInterceptionProvider(t, db, "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "legacy-provider", "ollama")
-	seedProxyInteraction(t, db, userID, "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", "Recent prompt", "gpt-5", recentAt, 11, 13)
+	seedProxyInteraction(t, db, userID, "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", "gpt-5", recentAt, 11, 13)
 	setInterceptionProvider(t, db, "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", "openai-main", "openai")
-	seedProxyInteraction(t, db, userID, "cccccccc-cccc-cccc-cccc-cccccccccccc", "Latest prompt", "claude-4", latestAt, 50, 10)
+	seedProxyInteraction(t, db, userID, "cccccccc-cccc-cccc-cccc-cccccccccccc", "claude-4", latestAt, 50, 10)
 	setInterceptionProvider(t, db, "cccccccc-cccc-cccc-cccc-cccccccccccc", "anthropic-main", "anthropic")
-	seedProxyInteraction(t, db, otherUserID, "dddddddd-dddd-dddd-dddd-dddddddddddd", "Hidden prompt", "gpt-5", latestAt, 1000, 1000)
+	seedProxyInteraction(t, db, otherUserID, "dddddddd-dddd-dddd-dddd-dddddddddddd", "gpt-5", latestAt, 1000, 1000)
 
 	pendingEndedAt := (*time.Time)(nil)
 	setInterceptionEndedAt(t, db, "cccccccc-cccc-cccc-cccc-cccccccccccc", pendingEndedAt)
@@ -531,10 +555,10 @@ func TestAdminDashboardWidgetsAggregateGlobally(t *testing.T) {
 		t.Fatalf("seed service account: %v", err)
 	}
 
-	seedProxyInteraction(t, db, userID, "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "Current user", "gpt-5", recentAt, 10, 20)
-	seedProxyInteraction(t, db, otherUserID, "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", "Other user", "gpt-5", latestAt, 30, 40)
-	seedProxyInteraction(t, db, serviceAccountID, "cccccccc-cccc-cccc-cccc-cccccccccccc", "Service account", "claude-4", latestAt, 50, 60)
-	seedProxyInteraction(t, db, otherUserID, "dddddddd-dddd-dddd-dddd-dddddddddddd", "Old global", "gpt-old", oldAt, 1, 1)
+	seedProxyInteraction(t, db, userID, "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "gpt-5", recentAt, 10, 20)
+	seedProxyInteraction(t, db, otherUserID, "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", "gpt-5", latestAt, 30, 40)
+	seedProxyInteraction(t, db, serviceAccountID, "cccccccc-cccc-cccc-cccc-cccccccccccc", "claude-4", latestAt, 50, 60)
+	seedProxyInteraction(t, db, otherUserID, "dddddddd-dddd-dddd-dddd-dddddddddddd", "gpt-old", oldAt, 1, 1)
 
 	revokedAt := now.Add(-time.Hour)
 	expiredAt := now.Add(-30 * time.Minute)

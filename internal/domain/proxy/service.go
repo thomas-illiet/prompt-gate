@@ -12,7 +12,6 @@ import (
 
 var (
 	ErrInvalidUsageWindow = errors.New("usage window must be 7 days, 30 days, or all time")
-	ErrInvalidPagination  = errors.New("pagination must use page >= 1 and pageSize between 1 and 100")
 	ErrInvalidSort        = errors.New("invalid_sort")
 )
 
@@ -53,37 +52,6 @@ func WithPriceResolver(resolver *pricing.Service) ServiceOption {
 	return func(s *Service) {
 		s.priceResolver = resolver
 	}
-}
-
-type promptRow struct {
-	ID                 string
-	InterceptionID     string
-	ProviderResponseID string
-	Provider           string
-	ProviderType       string
-	Model              string
-	Prompt             string
-	StartedAt          time.Time
-	EndedAt            *time.Time
-	CreatedAt          time.Time
-}
-
-type adminPromptRow struct {
-	ID                    string
-	InterceptionID        string
-	ProviderResponseID    string
-	Provider              string
-	ProviderType          string
-	Model                 string
-	Prompt                string
-	UserID                string
-	UserName              string
-	UserEmail             string
-	UserPreferredUsername string
-	ClientIP              string
-	StartedAt             time.Time
-	EndedAt               *time.Time
-	CreatedAt             time.Time
 }
 
 type tokenUsageRow struct {
@@ -141,7 +109,7 @@ func (scope dashboardUsageScope) applyInitiatorFilter(query *gorm.DB, column str
 	return query.Where(column+" = ?", scope.userID)
 }
 
-// NewService creates a proxy usage and prompt history service.
+// NewService creates a proxy usage service.
 func NewService(db *gorm.DB, options ...ServiceOption) *Service {
 	service := &Service{
 		db:        db,

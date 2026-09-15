@@ -6,6 +6,7 @@ const (
 	UsageEventsStream        = "promptgate:usage:events"
 	UsageEventsConsumerGroup = "promptgate-workers"
 	UsageEventPayloadField   = "payload"
+	legacyPromptUsageType    = "prompt_usage"
 )
 
 type UsageEventType string
@@ -14,7 +15,6 @@ const (
 	UsageEventInterceptionStarted UsageEventType = "interception_started"
 	UsageEventInterceptionEnded   UsageEventType = "interception_ended"
 	UsageEventTokenUsage          UsageEventType = "token_usage"
-	UsageEventPromptUsage         UsageEventType = "prompt_usage"
 	UsageEventToolUsage           UsageEventType = "tool_usage"
 )
 
@@ -25,7 +25,6 @@ type UsageEvent struct {
 	InterceptionStarted *InterceptionStartedEvent `json:"interceptionStarted,omitempty"`
 	InterceptionEnded   *InterceptionEndedEvent   `json:"interceptionEnded,omitempty"`
 	TokenUsage          *TokenUsageEvent          `json:"tokenUsage,omitempty"`
-	PromptUsage         *PromptUsageEvent         `json:"promptUsage,omitempty"`
 	ToolUsage           *ToolUsageEvent           `json:"toolUsage,omitempty"`
 }
 
@@ -61,14 +60,6 @@ type TokenUsageEvent struct {
 	Type                  string    `json:"type"`
 	Metadata              string    `json:"metadata"`
 	CreatedAt             time.Time `json:"createdAt"`
-}
-
-type PromptUsageEvent struct {
-	InterceptionID     string    `json:"interceptionId"`
-	ProviderResponseID string    `json:"providerResponseId"`
-	Prompt             string    `json:"prompt"`
-	Metadata           string    `json:"metadata"`
-	CreatedAt          time.Time `json:"createdAt"`
 }
 
 type ToolUsageEvent struct {

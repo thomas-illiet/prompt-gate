@@ -23,7 +23,6 @@ func (s *Service) loadAggregatedUsage(ctx context.Context, scope dashboardUsageS
 		totalDurationMs += row.TotalDurationMs
 		if bucket := daily[dateKey(row.Day)]; bucket != nil {
 			bucket.Requests += row.Requests
-			bucket.Prompts += row.Prompts
 			bucket.InputTokens += row.InputTokens
 			bucket.OutputTokens += row.OutputTokens
 			bucket.CompletionInputTokens += row.CompletionInputTokens
@@ -39,7 +38,6 @@ func (s *Service) loadAggregatedUsage(ctx context.Context, scope dashboardUsageS
 func (s *Service) aggregatedUsageTotals(ctx context.Context, scope dashboardUsageScope, startsAt, endsAt time.Time) (dashboardAggregateTotals, error) {
 	var row struct {
 		Requests               int64
-		Prompts                int64
 		ToolCalls              int64
 		TotalDurationMs        int64
 		InputTokens            int64
@@ -56,7 +54,6 @@ func (s *Service) aggregatedUsageTotals(ctx context.Context, scope dashboardUsag
 	query := s.db.WithContext(ctx).
 		Table("proxy_daily_usage_kpis").
 		Select(`COALESCE(SUM(requests), 0) AS requests,
-			COALESCE(SUM(prompts), 0) AS prompts,
 			COALESCE(SUM(tool_calls), 0) AS tool_calls,
 			COALESCE(SUM(total_duration_ms), 0) AS total_duration_ms,
 			COALESCE(SUM(input_tokens), 0) AS input_tokens,
@@ -76,7 +73,6 @@ func (s *Service) aggregatedUsageTotals(ctx context.Context, scope dashboardUsag
 	return dashboardAggregateTotals{
 		UsageTotals: UsageTotals{
 			Requests:               row.Requests,
-			Prompts:                row.Prompts,
 			ToolCalls:              row.ToolCalls,
 			InputTokens:            row.InputTokens,
 			OutputTokens:           row.OutputTokens,

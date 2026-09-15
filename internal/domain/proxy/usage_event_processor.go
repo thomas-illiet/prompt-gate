@@ -40,8 +40,6 @@ func processUsageEvent(tx *gorm.DB, event UsageEvent) error {
 		return processInterceptionEnded(tx, event.InterceptionEnded)
 	case UsageEventTokenUsage:
 		return processTokenUsage(tx, event.TokenUsage)
-	case UsageEventPromptUsage:
-		return processPromptUsage(tx, event.PromptUsage)
 	case UsageEventToolUsage:
 		return processToolUsage(tx, event.ToolUsage)
 	default:
@@ -109,25 +107,6 @@ func processTokenUsage(tx *gorm.DB, payload *TokenUsageEvent) error {
 		return fmt.Errorf("record token usage: %w", err)
 	}
 	return aggregateTokenUsage(tx, interception, record)
-}
-
-func processPromptUsage(tx *gorm.DB, payload *PromptUsageEvent) error {
-	if payload == nil {
-		return errors.New("missing prompt_usage payload")
-	}
-	interception, err := loadUsageInterception(tx, payload.InterceptionID)
-	if err != nil {
-		return err
-	}
-	record := UserPrompt{
-		ID: uuid.NewString(), InterceptionID: payload.InterceptionID,
-		ProviderResponseID: payload.ProviderResponseID, Prompt: payload.Prompt,
-		Metadata: payload.Metadata, CreatedAt: timestamp(payload.CreatedAt),
-	}
-	if err := tx.Create(&record).Error; err != nil {
-		return fmt.Errorf("record prompt usage: %w", err)
-	}
-	return aggregatePromptUsage(tx, interception, record)
 }
 
 func processToolUsage(tx *gorm.DB, payload *ToolUsageEvent) error {

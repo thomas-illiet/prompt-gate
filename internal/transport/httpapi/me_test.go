@@ -161,27 +161,6 @@ func TestHandleCurrentUserGroupsReturnsProfileSafeMemberships(t *testing.T) {
 	}
 }
 
-// TestHandleCurrentUserPromptsRejectsInvalidPagination verifies handle current user prompts rejects invalid pagination.
-func TestHandleCurrentUserPromptsRejectsInvalidPagination(t *testing.T) {
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/me/prompts?page=0", nil)
-	req = req.WithContext(auth.ContextWithUser(context.Background(), testUserProfile()))
-	recorder := httptest.NewRecorder()
-
-	server{}.handleCurrentUserPrompts(recorder, req)
-
-	if recorder.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d: %s", recorder.Code, recorder.Body.String())
-	}
-
-	var body map[string]string
-	if err := json.NewDecoder(recorder.Body).Decode(&body); err != nil {
-		t.Fatalf("decode body: %v", err)
-	}
-	if body["error"] != "invalid_pagination" {
-		t.Fatalf("expected invalid_pagination, got %#v", body)
-	}
-}
-
 // TestHandleHelpSetupReturnsUserScopedRedactedProviderMetadata verifies handle help setup returns user scoped redacted provider metadata.
 func TestHandleHelpSetupReturnsUserScopedRedactedProviderMetadata(t *testing.T) {
 	providerService, groupService, db := newHTTPSetupServices(t)

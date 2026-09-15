@@ -10,7 +10,6 @@ function profileDay(date: string, totalTokens: number): ProfileTokenUsageDay {
   return {
     date,
     requests: totalTokens > 0 ? 1 : 0,
-    prompts: totalTokens > 0 ? 1 : 0,
     inputTokens: totalTokens,
     outputTokens: 0,
     completionInputTokens: totalTokens,

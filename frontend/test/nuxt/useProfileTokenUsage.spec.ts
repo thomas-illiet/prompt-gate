@@ -38,7 +38,6 @@ function dailyUsage(
   return {
     date,
     requests,
-    prompts: requests,
     inputTokens: totalTokens,
     outputTokens: 0,
     completionInputTokens: totalTokens,

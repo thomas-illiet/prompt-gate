@@ -15,6 +15,7 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	aibrecorder "github.com/coder/aibridge/recorder"
+	"github.com/redis/go-redis/v9"
 )
 
 func TestProcessUsageEventRejectsMissingPayloads(t *testing.T) {
@@ -26,7 +27,6 @@ func TestProcessUsageEventRejectsMissingPayloads(t *testing.T) {
 		{name: "interception started", event: UsageEvent{Type: UsageEventInterceptionStarted}, want: "missing interception_started payload"},
 		{name: "interception ended", event: UsageEvent{Type: UsageEventInterceptionEnded}, want: "missing interception_ended payload"},
 		{name: "token usage", event: UsageEvent{Type: UsageEventTokenUsage}, want: "missing token_usage payload"},
-		{name: "prompt usage", event: UsageEvent{Type: UsageEventPromptUsage}, want: "missing prompt_usage payload"},
 		{name: "tool usage", event: UsageEvent{Type: UsageEventToolUsage}, want: "missing tool_usage payload"},
 		{name: "unknown", event: UsageEvent{Type: UsageEventType("unknown")}, want: "unknown usage event type"},
 	}
@@ -82,6 +82,60 @@ func TestRedisRecorderEnqueuesUsageEventWithClientIP(t *testing.T) {
 	}
 	if event.InterceptionStarted.ClientIP != "198.51.100.9" || event.InterceptionStarted.Provider != "openai-main" || event.InterceptionStarted.ProviderType != "openai" {
 		t.Fatalf("unexpected interception payload: %#v", event.InterceptionStarted)
+	}
+}
+
+func TestRedisRecorderDoesNotEnqueuePrompts(t *testing.T) {
+	srv := miniredis.RunT(t)
+	store, err := redisstore.NewRequired(context.Background(), "redis://"+srv.Addr(), time.Minute, nil)
+	if err != nil {
+		t.Fatalf("new redis store: %v", err)
+	}
+	defer store.Close()
+
+	recorder := NewRedisRecorder(store, nil)
+	if err := recorder.RecordPromptUsage(context.Background(), &aibrecorder.PromptUsageRecord{
+		InterceptionID: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+		Prompt:         "must not be stored",
+	}); err != nil {
+		t.Fatalf("record prompt usage: %v", err)
+	}
+	if srv.Exists(UsageEventsStream) {
+		t.Fatal("expected prompt recording to leave Redis untouched")
+	}
+}
+
+func TestWorkerDeletesLegacyPromptEvents(t *testing.T) {
+	ctx := context.Background()
+	srv := miniredis.RunT(t)
+	store, err := redisstore.NewRequired(ctx, "redis://"+srv.Addr(), time.Minute, nil)
+	if err != nil {
+		t.Fatalf("new redis store: %v", err)
+	}
+	defer store.Close()
+	client := store.Client()
+	if err := ensureUsageConsumerGroup(ctx, client); err != nil {
+		t.Fatalf("ensure consumer group: %v", err)
+	}
+	messageID, err := client.XAdd(ctx, &redis.XAddArgs{
+		Stream: UsageEventsStream,
+		Values: map[string]any{UsageEventPayloadField: `{"eventId":"legacy-prompt","type":"prompt_usage","promptUsage":{"prompt":"must be deleted"}}`},
+	}).Result()
+	if err != nil {
+		t.Fatalf("enqueue legacy prompt event: %v", err)
+	}
+	streams, err := client.XReadGroup(ctx, &redis.XReadGroupArgs{
+		Group: UsageEventsConsumerGroup, Consumer: "test-worker",
+		Streams: []string{UsageEventsStream, ">"}, Count: 1,
+	}).Result()
+	if err != nil {
+		t.Fatalf("read legacy prompt event: %v", err)
+	}
+
+	worker := NewWorker(nil, store, WorkerOptions{}, nil)
+	worker.handleMessages(ctx, client, streams[0].Messages)
+	if length, err := client.XLen(ctx, UsageEventsStream).Result(); err != nil || length != 0 {
+		t.Fatalf("expected legacy event %s deleted, length=%d error=%v", messageID, length, err)
 	}
 }
 
@@ -143,18 +197,6 @@ func TestWorkerProcessesEventsIdempotentlyAcrossInstances(t *testing.T) {
 			CreatedAt:             startedAt,
 		},
 	}
-	promptUsage := UsageEvent{
-		EventID:   "event-prompt",
-		Type:      UsageEventPromptUsage,
-		CreatedAt: startedAt,
-		PromptUsage: &PromptUsageEvent{
-			InterceptionID:     "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
-			ProviderResponseID: "response-1",
-			Prompt:             "Hello",
-			Metadata:           "{}",
-			CreatedAt:          startedAt,
-		},
-	}
 	ended := UsageEvent{
 		EventID:   "event-ended",
 		Type:      UsageEventInterceptionEnded,
@@ -165,7 +207,7 @@ func TestWorkerProcessesEventsIdempotentlyAcrossInstances(t *testing.T) {
 		},
 	}
 
-	for _, event := range []UsageEvent{started, tokenUsage, promptUsage, ended} {
+	for _, event := range []UsageEvent{started, tokenUsage, ended} {
 		if err := workerOne.ProcessUsageEvent(context.Background(), event, event.EventID+"-redis"); err != nil {
 			t.Fatalf("process %s: %v", event.Type, err)
 		}
@@ -194,13 +236,6 @@ func TestWorkerProcessesEventsIdempotentlyAcrossInstances(t *testing.T) {
 	}
 	if duration.TotalDurationMs != 2000 {
 		t.Fatalf("expected 2000ms duration, got %#v", duration)
-	}
-	prompts, err := service.ListPrompts(context.Background(), "11111111-1111-1111-1111-111111111111", PromptListParams{})
-	if err != nil {
-		t.Fatalf("list prompts: %v", err)
-	}
-	if prompts.Total != 1 || prompts.Items[0].Prompt != "Hello" {
-		t.Fatalf("unexpected prompts: %#v", prompts)
 	}
 }
 
@@ -241,8 +276,8 @@ func TestRawUsageCleanupKeepsAggregatedKPIs(t *testing.T) {
 	oldAt := time.Date(2026, 1, 1, 10, 0, 0, 0, time.UTC)
 	newAt := time.Date(2026, 1, 20, 10, 0, 0, 0, time.UTC)
 
-	seedProxyInteraction(t, db, userID, "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "Old prompt", "gpt-5", oldAt, 10, 20)
-	seedProxyInteraction(t, db, userID, "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", "New prompt", "gpt-5", newAt, 30, 40)
+	seedProxyInteraction(t, db, userID, "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "gpt-5", oldAt, 10, 20)
+	seedProxyInteraction(t, db, userID, "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", "gpt-5", newAt, 30, 40)
 	mustAggregateUsageKPIs(t, service)
 
 	deleted, err := service.DeleteRawUsageBefore(context.Background(), time.Date(2026, 1, 10, 0, 0, 0, 0, time.UTC))
@@ -259,13 +294,6 @@ func TestRawUsageCleanupKeepsAggregatedKPIs(t *testing.T) {
 	}
 	if activity.Window != UsageWindowAll || len(activity.Daily) != 30 || activity.Daily[0].Date != "2026-01-01" {
 		t.Fatalf("expected durable KPI activity to keep old day, got %#v", activity)
-	}
-	prompts, err := service.ListPrompts(context.Background(), userID, PromptListParams{Page: 1, PageSize: 10})
-	if err != nil {
-		t.Fatalf("list prompts: %v", err)
-	}
-	if prompts.Total != 1 || prompts.Items[0].Prompt != "New prompt" {
-		t.Fatalf("expected raw prompt exploration to only keep new prompt, got %#v", prompts)
 	}
 }
 

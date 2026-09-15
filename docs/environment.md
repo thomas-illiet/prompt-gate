@@ -50,7 +50,7 @@ dotenv file.
 | `PROMPTGATE_WORKER_BLOCK_TIMEOUT` | worker | `5s` | Long-poll timeout for new Redis Stream events. |
 | `PROMPTGATE_WORKER_PENDING_IDLE_TIMEOUT` | worker | `30s` | Minimum idle time before a worker can reclaim pending usage events. |
 | `PROMPTGATE_WORKER_CONSUMER_NAME` | worker | generated | Optional Redis consumer name. Leave empty for `hostname-pid-random`. |
-| `PROMPTGATE_USAGE_RAW_RETENTION` | schedule | `2160h` | Retention for raw proxy usage rows used by prompt exploration. |
+| `PROMPTGATE_USAGE_RAW_RETENTION` | schedule | `2160h` | Retention for raw proxy usage rows used by operational metrics. |
 | `PROMPTGATE_USAGE_RAW_CLEANUP_INTERVAL` | schedule | `1h` | Interval for raw proxy usage cleanup. |
 | `PROMPTGATE_SUBSCRIPTION_QUOTA_SYNC_INTERVAL` | schedule | `5m` | Interval for copying live Redis subscription quota state into PostgreSQL. |
 | `PROMPTGATE_USAGE_COST_ENABLED` | API | `true` | Enables dashboard usage cost estimates. Set to `false` to omit cost fields from web API responses. |

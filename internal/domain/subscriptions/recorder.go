@@ -73,8 +73,8 @@ func (r *QuotaRecorder) RecordTokenUsage(ctx context.Context, req *aibrecorder.T
 	return r.inner.RecordTokenUsage(ctx, req)
 }
 
-func (r *QuotaRecorder) RecordPromptUsage(ctx context.Context, req *aibrecorder.PromptUsageRecord) error {
-	return r.inner.RecordPromptUsage(ctx, req)
+func (r *QuotaRecorder) RecordPromptUsage(_ context.Context, _ *aibrecorder.PromptUsageRecord) error {
+	return nil
 }
 
 func (r *QuotaRecorder) RecordToolUsage(ctx context.Context, req *aibrecorder.ToolUsageRecord) error {

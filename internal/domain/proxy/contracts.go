@@ -32,7 +32,6 @@ type EstimatedCost struct {
 
 type UsageTotals struct {
 	Requests               int64          `json:"requests"`
-	Prompts                int64          `json:"prompts"`
 	ToolCalls              int64          `json:"toolCalls"`
 	InputTokens            int64          `json:"inputTokens"`
 	OutputTokens           int64          `json:"outputTokens"`
@@ -49,7 +48,6 @@ type UsageTotals struct {
 type DailyUsage struct {
 	Date                   string         `json:"date"`
 	Requests               int64          `json:"requests"`
-	Prompts                int64          `json:"prompts"`
 	InputTokens            int64          `json:"inputTokens"`
 	OutputTokens           int64          `json:"outputTokens"`
 	CompletionInputTokens  int64          `json:"completionInputTokens"`
@@ -72,14 +70,13 @@ type UsageBreakdown struct {
 }
 
 type UsageSummary struct {
-	Days          int                 `json:"days"`
-	StartsAt      time.Time           `json:"startsAt"`
-	EndsAt        time.Time           `json:"endsAt"`
-	Totals        UsageTotals         `json:"totals"`
-	Daily         []DailyUsage        `json:"daily"`
-	TopModels     []UsageBreakdown    `json:"topModels"`
-	TopProviders  []UsageBreakdown    `json:"topProviders"`
-	RecentPrompts []PromptHistoryItem `json:"recentPrompts"`
+	Days         int              `json:"days"`
+	StartsAt     time.Time        `json:"startsAt"`
+	EndsAt       time.Time        `json:"endsAt"`
+	Totals       UsageTotals      `json:"totals"`
+	Daily        []DailyUsage     `json:"daily"`
+	TopModels    []UsageBreakdown `json:"topModels"`
+	TopProviders []UsageBreakdown `json:"topProviders"`
 }
 
 type UsageWindowMeta struct {
@@ -134,70 +131,4 @@ type DashboardAdoptionResponse struct {
 	ActiveUsers           int64 `json:"activeUsers"`
 	ActiveServiceAccounts int64 `json:"activeServiceAccounts"`
 	ActiveVirtualKeys     int64 `json:"activeVirtualKeys"`
-}
-
-type PromptHistoryItem struct {
-	ID                 string    `json:"id"`
-	InterceptionID     string    `json:"interceptionId"`
-	ProviderResponseID string    `json:"providerResponseId"`
-	Provider           string    `json:"provider"`
-	ProviderType       string    `json:"providerType"`
-	Model              string    `json:"model"`
-	Prompt             string    `json:"prompt"`
-	InputTokens        int64     `json:"inputTokens"`
-	OutputTokens       int64     `json:"outputTokens"`
-	TotalTokens        int64     `json:"totalTokens"`
-	DurationMs         *int64    `json:"durationMs"`
-	CreatedAt          time.Time `json:"createdAt"`
-}
-
-type AdminPromptHistoryItem struct {
-	ID                    string    `json:"id"`
-	InterceptionID        string    `json:"interceptionId"`
-	ProviderResponseID    string    `json:"providerResponseId"`
-	Provider              string    `json:"provider"`
-	ProviderType          string    `json:"providerType"`
-	Model                 string    `json:"model"`
-	Prompt                string    `json:"prompt"`
-	UserID                string    `json:"userId"`
-	UserName              string    `json:"userName"`
-	UserEmail             string    `json:"userEmail"`
-	UserPreferredUsername string    `json:"userPreferredUsername"`
-	ClientIP              string    `json:"clientIp"`
-	InputTokens           int64     `json:"inputTokens"`
-	OutputTokens          int64     `json:"outputTokens"`
-	TotalTokens           int64     `json:"totalTokens"`
-	DurationMs            *int64    `json:"durationMs"`
-	CreatedAt             time.Time `json:"createdAt"`
-}
-
-type PromptListParams struct {
-	Page     int
-	PageSize int
-	Search   string
-	SortBy   string
-	SortDir  string
-}
-
-type AdminPromptListParams struct {
-	Page     int
-	PageSize int
-	Search   string
-	SortBy   string
-	SortDir  string
-	UserID   string
-}
-
-type PromptListResult struct {
-	Items    []PromptHistoryItem `json:"items"`
-	Page     int                 `json:"page"`
-	PageSize int                 `json:"pageSize"`
-	Total    int64               `json:"total"`
-}
-
-type AdminPromptListResult struct {
-	Items    []AdminPromptHistoryItem `json:"items"`
-	Page     int                      `json:"page"`
-	PageSize int                      `json:"pageSize"`
-	Total    int64                    `json:"total"`
 }

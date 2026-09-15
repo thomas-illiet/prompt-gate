@@ -57,7 +57,6 @@ export interface EstimatedCost {
 
 export interface UsageTotals {
   requests: number
-  prompts: number
   toolCalls: number
   inputTokens: number
   outputTokens: number
@@ -80,7 +79,6 @@ export interface UsageWindowMeta {
 export interface DailyUsage {
   date: string
   requests: number
-  prompts: number
   inputTokens: number
   outputTokens: number
   completionInputTokens: number
@@ -98,43 +96,6 @@ export interface UsageBreakdown {
   estimatedCost?: EstimatedCost
 }
 
-export interface PromptHistoryItem {
-  id: string
-  interceptionId: string
-  providerResponseId: string
-  provider: string
-  providerType: string
-  model: string
-  prompt: string
-  inputTokens: number
-  outputTokens: number
-  totalTokens: number
-  durationMs: number | null
-  createdAt: string
-}
-
-export interface AdminPromptHistoryItem extends PromptHistoryItem {
-  userId: string
-  userName: string
-  userEmail: string
-  userPreferredUsername: string
-  clientIp: string
-}
-
-export interface PromptHistoryResponse {
-  items: PromptHistoryItem[]
-  page: number
-  pageSize: number
-  total: number
-}
-
-export interface AdminPromptHistoryResponse {
-  items: AdminPromptHistoryItem[]
-  page: number
-  pageSize: number
-  total: number
-}
-
 export interface UserUsageSummary {
   days: UsageDays
   startsAt: string
@@ -143,7 +104,6 @@ export interface UserUsageSummary {
   daily: DailyUsage[]
   topModels: UsageBreakdown[]
   topProviders: UsageBreakdown[]
-  recentPrompts: PromptHistoryItem[]
 }
 
 export interface DashboardTokensResponse extends UsageWindowMeta {

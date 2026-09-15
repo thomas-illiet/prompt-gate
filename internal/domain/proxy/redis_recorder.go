@@ -82,22 +82,9 @@ func (r *RedisRecorder) RecordTokenUsage(ctx context.Context, req *aibrecorder.T
 	return r.enqueue(ctx, event)
 }
 
-// RecordPromptUsage enqueues a user prompt observed by the proxy.
-func (r *RedisRecorder) RecordPromptUsage(ctx context.Context, req *aibrecorder.PromptUsageRecord) error {
-	metadata, err := marshalMetadata(req.Metadata)
-	if err != nil {
-		r.logEventError(UsageEventPromptUsage, req.InterceptionID, "", err)
-		return nil
-	}
-	event := newUsageEvent(UsageEventPromptUsage)
-	event.PromptUsage = &PromptUsageEvent{
-		InterceptionID:     req.InterceptionID,
-		ProviderResponseID: req.MsgID,
-		Prompt:             req.Prompt,
-		Metadata:           metadata,
-		CreatedAt:          timestamp(req.CreatedAt),
-	}
-	return r.enqueue(ctx, event)
+// RecordPromptUsage satisfies the recorder interface without collecting prompts.
+func (r *RedisRecorder) RecordPromptUsage(_ context.Context, _ *aibrecorder.PromptUsageRecord) error {
+	return nil
 }
 
 // RecordToolUsage enqueues tool invocation data observed by the proxy.
@@ -186,8 +173,6 @@ func eventInterceptionID(event UsageEvent) string {
 		return event.InterceptionEnded.ID
 	case event.TokenUsage != nil:
 		return event.TokenUsage.InterceptionID
-	case event.PromptUsage != nil:
-		return event.PromptUsage.InterceptionID
 	case event.ToolUsage != nil:
 		return event.ToolUsage.InterceptionID
 	default:
