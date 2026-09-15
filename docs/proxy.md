@@ -190,8 +190,9 @@ oversized values are ignored. The first valid header in this list wins:
 | 6 | `x-interaction-id` | GitHub Copilot VS Code | `session.id` |
 | 7 | `x-mux-workspace-id` | Mux | `session.id` |
 | 8 | `x-session-id` | OpenCode | `session.id` |
-| 9 | `session-id` | OpenCode OpenAI plugin | `session.id` |
-| 10 | `session_id` | Codex/AIBridge | `session.id` |
+| 9 | `x-session-affinity` | OpenCode | `session.id` |
+| 10 | `session-id` | OpenCode OpenAI plugin | `session.id` |
+| 11 | `session_id` | Codex/AIBridge | `session.id` |
 
 The selected value is also exported as `gen_ai.conversation.id`, while
 `promptgate.session.source` records the matching header name.
@@ -199,7 +200,7 @@ The selected value is also exported as `gen_ai.conversation.id`, while
 `promptgate.parent_session.id`, and `x-openwebui-message-id` as
 `promptgate.message.id`; neither can become the conversation identifier.
 
-For example, OpenCode can send `x-session-id` and
+For example, OpenCode can send `x-session-id`, `x-session-affinity`, and
 `x-parent-session-id`. Open WebUI can send `x-openwebui-chat-id` and
 `x-openwebui-message-id`. Claude Code and Codex are accepted through their
 native headers, with AIBridge's request-body extraction retained as a fallback

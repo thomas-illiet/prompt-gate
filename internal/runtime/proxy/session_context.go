@@ -20,6 +20,7 @@ var nativeSessionHeaders = [...]string{
 	"x-interaction-id",
 	"x-mux-workspace-id",
 	"x-session-id",
+	"x-session-affinity",
 	"session-id",
 	"session_id",
 }

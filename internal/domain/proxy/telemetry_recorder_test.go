@@ -153,7 +153,7 @@ func TestTelemetryRecorderMapsNativeSession(t *testing.T) {
 	spans := tracetest.NewSpanRecorder()
 	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spans))
 	ctx := proxyruntime.WithNativeSession(context.Background(), proxyruntime.NativeSession{
-		SessionID: "native-session", SessionSource: "x-openwebui-chat-id",
+		SessionID: "native-session", SessionSource: "x-session-affinity",
 		ParentSessionID: "parent-session", MessageID: "message-id",
 	})
 	ctx, span := provider.Tracer("test").Start(ctx, "interception")
@@ -169,7 +169,7 @@ func TestTelemetryRecorderMapsNativeSession(t *testing.T) {
 	for key, want := range map[string]any{
 		"session.id":                   "native-session",
 		"gen_ai.conversation.id":       "native-session",
-		"promptgate.session.source":    "x-openwebui-chat-id",
+		"promptgate.session.source":    "x-session-affinity",
 		"promptgate.parent_session.id": "parent-session",
 		"promptgate.message.id":        "message-id",
 	} {

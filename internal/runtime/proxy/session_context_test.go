@@ -25,6 +25,7 @@ func TestSessionContextMiddlewareRecognizesAllowlistedHeaders(t *testing.T) {
 		{"x-interaction-id", "copilot-vscode"},
 		{"x-mux-workspace-id", "mux"},
 		{"x-session-id", "opencode"},
+		{"x-session-affinity", "opencode-affinity"},
 		{"session-id", "opencode-openai"},
 		{"session_id", "codex"},
 	}
@@ -51,6 +52,28 @@ func TestSessionContextMiddlewareUsesPriorityAndRelatedIDs(t *testing.T) {
 		SessionID: "chat-id", SessionSource: "x-openwebui-chat-id",
 		ParentSessionID: "parent-id", MessageID: "message-id",
 	}) {
+		t.Fatalf("unexpected session metadata: %#v", got)
+	}
+}
+
+func TestSessionContextMiddlewarePrefersOpenCodeSessionIDOverAffinity(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/provider/v1/chat/completions", nil)
+	req.Header.Set("X-Session-Id", "opencode-session")
+	req.Header.Set("X-Session-Affinity", "opencode-affinity")
+
+	got := captureNativeSession(t, req)
+	if got.SessionID != "opencode-session" || got.SessionSource != "x-session-id" {
+		t.Fatalf("unexpected session metadata: %#v", got)
+	}
+}
+
+func TestSessionContextMiddlewareUsesOpenCodeAffinityAsFallback(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/provider/v1/chat/completions", nil)
+	req.Header.Set("X-Session-Id", "session\x7fvalue")
+	req.Header.Set("X-Session-Affinity", "  opencode-affinity  ")
+
+	got := captureNativeSession(t, req)
+	if got.SessionID != "opencode-affinity" || got.SessionSource != "x-session-affinity" {
 		t.Fatalf("unexpected session metadata: %#v", got)
 	}
 }
