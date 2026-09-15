@@ -1,0 +1,76 @@
+package telemetry
+
+import (
+	"context"
+	"io"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+
+	"promptgate/backend/internal/platform/config"
+
+	collectortrace "go.opentelemetry.io/proto/otlp/collector/trace/v1"
+	"google.golang.org/protobuf/proto"
+)
+
+// TestProviderExportsAuthenticatedPhoenixBatch verifies the OTLP wire contract and project routing.
+func TestProviderExportsAuthenticatedPhoenixBatch(t *testing.T) {
+	received := make(chan *collectortrace.ExportTraceServiceRequest, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer phoenix-secret" {
+			t.Errorf("unexpected authorization header %q", r.Header.Get("Authorization"))
+		}
+		if r.Header.Get("X-Project-Name") != "platform-analysis" {
+			t.Errorf("unexpected project header %q", r.Header.Get("X-Project-Name"))
+		}
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read request: %v", err)
+			return
+		}
+		request := &collectortrace.ExportTraceServiceRequest{}
+		if err := proto.Unmarshal(body, request); err != nil {
+			t.Errorf("decode OTLP request: %v", err)
+			return
+		}
+		received <- request
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	provider, err := NewProvider(context.Background(), config.OTelConfig{
+		Enabled: true, Endpoint: server.URL, APIKey: "phoenix-secret", ProjectName: "platform-analysis",
+		ServiceName: "promptgate-proxy", Environment: "test", Insecure: true,
+		ExportTimeout: time.Second, BatchTimeout: time.Millisecond, MaxQueueSize: 10, MaxExportBatchSize: 10,
+	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatalf("new provider: %v", err)
+	}
+	_, span := provider.tracerProvider.Tracer("test").Start(context.Background(), "llm")
+	span.End()
+	if err := provider.Shutdown(context.Background()); err != nil {
+		t.Fatalf("shutdown provider: %v", err)
+	}
+
+	select {
+	case request := <-received:
+		if len(request.ResourceSpans) != 1 || len(request.ResourceSpans[0].ScopeSpans) != 1 {
+			t.Fatalf("unexpected OTLP payload: %#v", request)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for OTLP export")
+	}
+}
+
+// TestProviderDisabledIsNoop verifies disabled telemetry needs no endpoint.
+func TestProviderDisabledIsNoop(t *testing.T) {
+	provider, err := NewProvider(context.Background(), config.OTelConfig{}, slog.Default())
+	if err != nil {
+		t.Fatalf("disabled provider: %v", err)
+	}
+	if provider.tracerProvider != nil {
+		t.Fatal("disabled provider must not install an SDK tracer provider")
+	}
+}

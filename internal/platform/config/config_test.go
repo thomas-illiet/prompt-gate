@@ -50,6 +50,64 @@ func setRequiredProxyEnv(t *testing.T) {
 	t.Setenv("PROMPTGATE_SECRETS_KEY", "0123456789abcdef0123456789abcdef")
 }
 
+// TestLoadProxyOTelDefaults verifies telemetry is safely disabled by default.
+func TestLoadProxyOTelDefaults(t *testing.T) {
+	setRequiredProxyEnv(t)
+	cfg, err := LoadProxy()
+	if err != nil {
+		t.Fatalf("load proxy config: %v", err)
+	}
+	if cfg.OTel.Enabled || cfg.OTel.CapturePrompts {
+		t.Fatalf("expected telemetry and prompt capture disabled: %#v", cfg.OTel)
+	}
+	if cfg.OTel.ProjectName != "prompt-gate" || cfg.OTel.ServiceName != "promptgate-proxy" {
+		t.Fatalf("unexpected telemetry defaults: %#v", cfg.OTel)
+	}
+}
+
+// TestLoadProxyOTelConfig verifies explicit Phoenix exporter settings.
+func TestLoadProxyOTelConfig(t *testing.T) {
+	setRequiredProxyEnv(t)
+	t.Setenv("PROMPTGATE_OTEL_ENABLED", "true")
+	t.Setenv("PROMPTGATE_OTEL_ENDPOINT", "http://phoenix:6006/v1/traces")
+	t.Setenv("PROMPTGATE_OTEL_INSECURE", "true")
+	t.Setenv("PROMPTGATE_OTEL_CAPTURE_PROMPTS", "true")
+	t.Setenv("PROMPTGATE_OTEL_PROJECT_NAME", "platform-analysis")
+
+	cfg, err := LoadProxy()
+	if err != nil {
+		t.Fatalf("load proxy config: %v", err)
+	}
+	if !cfg.OTel.Enabled || !cfg.OTel.CapturePrompts || cfg.OTel.ProjectName != "platform-analysis" {
+		t.Fatalf("unexpected telemetry config: %#v", cfg.OTel)
+	}
+}
+
+// TestLoadProxyRejectsInvalidOTelConfig verifies required endpoint, TLS, and queue constraints.
+func TestLoadProxyRejectsInvalidOTelConfig(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		env  map[string]string
+		want string
+	}{
+		{name: "missing endpoint", env: map[string]string{}, want: "PROMPTGATE_OTEL_ENDPOINT"},
+		{name: "plain HTTP", env: map[string]string{"PROMPTGATE_OTEL_ENDPOINT": "http://phoenix:6006/v1/traces"}, want: "PROMPTGATE_OTEL_INSECURE"},
+		{name: "batch larger than queue", env: map[string]string{"PROMPTGATE_OTEL_ENDPOINT": "https://phoenix.example/v1/traces", "PROMPTGATE_OTEL_MAX_QUEUE_SIZE": "10", "PROMPTGATE_OTEL_MAX_EXPORT_BATCH_SIZE": "11"}, want: "must not exceed"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			setRequiredProxyEnv(t)
+			t.Setenv("PROMPTGATE_OTEL_ENABLED", "true")
+			for key, value := range test.env {
+				t.Setenv(key, value)
+			}
+			_, err := LoadProxy()
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("expected error containing %q, got %v", test.want, err)
+			}
+		})
+	}
+}
+
 // TestLoadApiDefaultSessionTTL verifies load API default session TTL.
 func TestLoadApiDefaultSessionTTL(t *testing.T) {
 	setRequiredAPIEnv(t)

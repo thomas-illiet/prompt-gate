@@ -110,6 +110,23 @@ type UsageCostConfig struct {
 	Embedding float64
 }
 
+// OTelConfig controls OpenTelemetry trace export from the proxy process.
+type OTelConfig struct {
+	Enabled            bool
+	Endpoint           string
+	APIKey             string
+	ProjectName        string
+	ServiceName        string
+	Environment        string
+	CapturePrompts     bool
+	ExportTimeout      time.Duration
+	BatchTimeout       time.Duration
+	MaxQueueSize       int
+	MaxExportBatchSize int
+	CAFile             string
+	Insecure           bool
+}
+
 // APIConfig contains the settings loaded by the management API runtime.
 type APIConfig struct {
 	LogConfig
@@ -153,6 +170,8 @@ type ProxyConfig struct {
 	SecretsConfig
 	PublicURLConfig
 	ProxyRuntimeConfig
+	OTel      OTelConfig
+	UsageCost UsageCostConfig
 }
 
 // WorkerConfig contains the settings loaded by the Redis worker.

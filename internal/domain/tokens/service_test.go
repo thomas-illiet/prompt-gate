@@ -324,6 +324,25 @@ func TestValidateTokenAcceptsActiveServiceAccountAndRejectsInactive(t *testing.T
 	}
 }
 
+// TestValidatePrincipalReturnsVirtualKeyIdentity verifies trace attribution uses the stored key identity.
+func TestValidatePrincipalReturnsVirtualKeyIdentity(t *testing.T) {
+	tokenService, userService, _, user := newTokenTestServices(t)
+	created, err := tokenService.CreateToken(context.Background(), user, "phoenix_key", "", nil)
+	if err != nil {
+		t.Fatalf("create token: %v", err)
+	}
+	principal, expiresAt, err := tokenService.ValidatePrincipalWithExpiry(context.Background(), created.Token, userService)
+	if err != nil {
+		t.Fatalf("validate principal: %v", err)
+	}
+	if principal.User.ID != user.ID || principal.CredentialID != created.TokenInfo.ID || principal.CredentialName != "phoenix_key" {
+		t.Fatalf("unexpected principal: %#v", principal)
+	}
+	if !expiresAt.Equal(created.TokenInfo.ExpiresAt) {
+		t.Fatalf("unexpected expiration: %s", expiresAt)
+	}
+}
+
 // TestValidateTokenRejectsRevokedTokenAndInactiveUser verifies revoked tokens and inactive users are rejected.
 func TestValidateTokenRejectsRevokedTokenAndInactiveUser(t *testing.T) {
 	tokenService, userService, db, user := newTokenTestServices(t)

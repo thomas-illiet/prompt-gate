@@ -179,9 +179,15 @@ func (s *Service) ValidateToken(ctx context.Context, rawToken string, users User
 
 // ValidateTokenWithExpiry validates a JWT and returns its user profile and expiration.
 func (s *Service) ValidateTokenWithExpiry(ctx context.Context, rawToken string, users UserResolver) (auth.UserProfile, time.Time, error) {
+	principal, expiresAt, err := s.ValidatePrincipalWithExpiry(ctx, rawToken, users)
+	return principal.User, expiresAt, err
+}
+
+// ValidatePrincipalWithExpiry validates a JWT and returns its account and virtual-key identity.
+func (s *Service) ValidatePrincipalWithExpiry(ctx context.Context, rawToken string, users UserResolver) (auth.Principal, time.Time, error) {
 	rawToken = strings.TrimSpace(rawToken)
 	if rawToken == "" {
-		return auth.UserProfile{}, time.Time{}, ErrInvalidToken
+		return auth.Principal{}, time.Time{}, ErrInvalidToken
 	}
 
 	claims := &tokenClaims{}
@@ -192,10 +198,10 @@ func (s *Service) ValidateTokenWithExpiry(ctx context.Context, rawToken string, 
 		return s.jwtSecret, nil
 	})
 	if err != nil || !parsed.Valid {
-		return auth.UserProfile{}, time.Time{}, ErrInvalidToken
+		return auth.Principal{}, time.Time{}, ErrInvalidToken
 	}
 	if strings.TrimSpace(claims.Subject) == "" || strings.TrimSpace(claims.ID) == "" {
-		return auth.UserProfile{}, time.Time{}, ErrInvalidToken
+		return auth.Principal{}, time.Time{}, ErrInvalidToken
 	}
 
 	var record Token
@@ -203,33 +209,33 @@ func (s *Service) ValidateTokenWithExpiry(ctx context.Context, rawToken string, 
 		Where("token_hash = ?", sha256hex(rawToken)).
 		First(&record).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return auth.UserProfile{}, time.Time{}, ErrInvalidToken
+			return auth.Principal{}, time.Time{}, ErrInvalidToken
 		}
-		return auth.UserProfile{}, time.Time{}, fmt.Errorf("load token: %w", err)
+		return auth.Principal{}, time.Time{}, fmt.Errorf("load token: %w", err)
 	}
 	if record.UserID != claims.Subject {
-		return auth.UserProfile{}, time.Time{}, ErrInvalidToken
+		return auth.Principal{}, time.Time{}, ErrInvalidToken
 	}
 	if record.RevokedAt != nil {
-		return auth.UserProfile{}, time.Time{}, ErrTokenRevoked
+		return auth.Principal{}, time.Time{}, ErrTokenRevoked
 	}
 	now := time.Now().UTC()
 	if record.ExpiredAt != nil || record.ExpiresAt.Before(now) {
-		return auth.UserProfile{}, time.Time{}, ErrTokenExpired
+		return auth.Principal{}, time.Time{}, ErrTokenExpired
 	}
 
 	user, err := users.UserByID(ctx, record.UserID)
 	if err != nil {
-		return auth.UserProfile{}, time.Time{}, err
+		return auth.Principal{}, time.Time{}, err
 	}
 	if !user.IsActive {
-		return auth.UserProfile{}, time.Time{}, ErrAccountInactive
+		return auth.Principal{}, time.Time{}, ErrAccountInactive
 	}
 	switch user.Role {
 	case auth.RoleUser, auth.RoleManager, auth.RoleAdmin:
-		return user, record.ExpiresAt, nil
+		return auth.Principal{User: user, CredentialID: record.ID, CredentialName: record.Name}, record.ExpiresAt, nil
 	default:
-		return auth.UserProfile{}, time.Time{}, ErrInsufficientRole
+		return auth.Principal{}, time.Time{}, ErrInsufficientRole
 	}
 }
 

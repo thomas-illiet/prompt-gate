@@ -1,4 +1,5 @@
 {{- if .Values.proxy.enabled -}}
+{{- include "prompt-gate.validateOTelApiKey" . -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -29,6 +30,11 @@ spec:
         {{- end }}
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- if ne (include "prompt-gate.otelApiKeyValue" .) "" }}
+        checksum/otel-api-key: {{ include (print $.Template.BasePath "/secret-otel-api-key.yaml") . | sha256sum }}
+        {{- else if ne (default "" .Values.otelApiKey.existingSecret.name | toString | trim) "" }}
+        prompt-gate.io/otel-api-key-rollout: {{ default "" .Values.otelApiKey.rolloutToken | quote }}
+        {{- end }}
         {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -53,6 +59,14 @@ spec:
               containerPort: {{ .Values.config.proxyPort }}
               protocol: TCP
           {{- include "prompt-gate.envFrom" . | nindent 10 }}
+          {{- if or (ne (include "prompt-gate.otelApiKeyValue" .) "") (ne (default "" .Values.otelApiKey.existingSecret.name | toString | trim) "") }}
+          env:
+            - name: PROMPTGATE_OTEL_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "prompt-gate.otelApiKeySecretName" . }}
+                  key: {{ include "prompt-gate.otelApiKeySecretKey" . }}
+          {{- end }}
           securityContext:
             {{- include "prompt-gate.containerSecurityContext" . | nindent 12 }}
           resources:

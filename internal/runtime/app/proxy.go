@@ -23,6 +23,7 @@ import (
 	platformhttp "promptgate/backend/internal/platform/httpclient"
 	"promptgate/backend/internal/platform/redisstore"
 	"promptgate/backend/internal/platform/secrets"
+	"promptgate/backend/internal/platform/telemetry"
 	proxyruntime "promptgate/backend/internal/runtime/proxy"
 )
 
@@ -34,6 +35,7 @@ type ProxyRuntime struct {
 	subscriptionStore *subscriptions.RedisStore
 	redis             *redisstore.Store
 	logger            *slog.Logger
+	telemetry         *telemetry.Provider
 }
 
 // NewProxy initializes a proxy runtime from typed configuration.
@@ -41,6 +43,16 @@ func NewProxy(ctx context.Context, cfg config.ProxyConfig, logger *slog.Logger, 
 	if logger == nil {
 		logger = slog.Default()
 	}
+	telemetryProvider, err := telemetry.NewProvider(ctx, cfg.OTel, logger)
+	if err != nil {
+		return nil, fmt.Errorf("initialize telemetry: %w", err)
+	}
+	telemetryReady := false
+	defer func() {
+		if !telemetryReady {
+			_ = telemetryProvider.Shutdown(context.Background())
+		}
+	}()
 	db, err := database.OpenPostgres(ctx, cfg.DatabaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("initialize postgres: %w", err)
@@ -77,7 +89,11 @@ func NewProxy(ctx context.Context, cfg config.ProxyConfig, logger *slog.Logger, 
 		return nil, fmt.Errorf("warm subscription snapshot: %w", err)
 	}
 
-	recorder := subscriptions.NewQuotaRecorder(localproxy.NewRedisRecorder(redisStore, logger), subscriptionStore, logger)
+	usageRecorder := localproxy.NewTelemetryRecorder(localproxy.NewRedisRecorder(redisStore, logger), cfg.OTel.CapturePrompts)
+	if cfg.UsageCost.Enabled {
+		usageRecorder.WithEstimatedCosts(cfg.UsageCost.Input, cfg.UsageCost.Output, cfg.UsageCost.Embedding)
+	}
+	recorder := subscriptions.NewQuotaRecorder(usageRecorder, subscriptionStore, logger)
 	proxyHTTPClient := &http.Client{Timeout: cfg.ProxyUpstreamTimeout}
 	caHTTPClient, err := platformhttp.NewWithCAFile(cfg.CAFile, cfg.ProxyUpstreamTimeout)
 	if err != nil {
@@ -117,9 +133,11 @@ func NewProxy(ctx context.Context, cfg config.ProxyConfig, logger *slog.Logger, 
 		subscriptionStore: subscriptionStore,
 		redis:             redisStore,
 		logger:            logger,
+		telemetry:         telemetryProvider,
 	}
 	runtime.Handler = runtime.buildHandler(cfg, tokenService, userService, authCache, firewallSnapshot, accessSnapshot)
 	success = true
+	telemetryReady = true
 	return runtime, nil
 }
 
@@ -136,5 +154,5 @@ func (p *ProxyRuntime) Reload(ctx context.Context) error {
 
 // Close releases the proxy bridge and Redis connection.
 func (p *ProxyRuntime) Close(ctx context.Context) error {
-	return errors.Join(p.manager.Shutdown(ctx), p.redis.Close())
+	return errors.Join(p.manager.Shutdown(ctx), p.redis.Close(), p.telemetry.Shutdown(ctx))
 }

@@ -26,18 +26,18 @@ func MiddlewareWithOptions(opts MiddlewareOptions) func(http.Handler) http.Handl
 	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			user, authenticated := auth.UserProfile{}, false
+			principal, authenticated := auth.Principal{}, false
 			if rawToken, ok := bearerToken(r.Header.Get("Authorization")); ok {
 				tokenHash := sha256hex(rawToken)
 				var expiresAt time.Time
-				if user, authenticated = cache.Get(r.Context(), tokenHash); !authenticated {
+				if principal, authenticated = cache.Get(r.Context(), tokenHash); !authenticated {
 					var err error
-					user, expiresAt, err = opts.TokenService.ValidateTokenWithExpiry(r.Context(), rawToken, opts.UserResolver)
+					principal, expiresAt, err = opts.TokenService.ValidatePrincipalWithExpiry(r.Context(), rawToken, opts.UserResolver)
 					if err != nil {
 						writeAuthError(w, err)
 						return
 					}
-					cache.Set(r.Context(), tokenHash, user, time.Until(expiresAt))
+					cache.Set(r.Context(), tokenHash, principal, time.Until(expiresAt))
 					authenticated = true
 				}
 			}
@@ -49,7 +49,7 @@ func MiddlewareWithOptions(opts MiddlewareOptions) func(http.Handler) http.Handl
 
 			r.Header.Del("Authorization")
 			r.Header.Del("X-Api-Key")
-			next.ServeHTTP(w, r.WithContext(auth.ContextWithUser(r.Context(), user)))
+			next.ServeHTTP(w, r.WithContext(auth.ContextWithPrincipal(r.Context(), principal)))
 		})
 	}
 }

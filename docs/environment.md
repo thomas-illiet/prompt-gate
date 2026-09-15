@@ -53,10 +53,23 @@ dotenv file.
 | `PROMPTGATE_USAGE_RAW_RETENTION` | schedule | `2160h` | Retention for raw proxy usage rows used by operational metrics. |
 | `PROMPTGATE_USAGE_RAW_CLEANUP_INTERVAL` | schedule | `1h` | Interval for raw proxy usage cleanup. |
 | `PROMPTGATE_SUBSCRIPTION_QUOTA_SYNC_INTERVAL` | schedule | `5m` | Interval for copying live Redis subscription quota state into PostgreSQL. |
-| `PROMPTGATE_USAGE_COST_ENABLED` | API | `true` | Enables dashboard usage cost estimates. Set to `false` to omit cost fields from web API responses. |
-| `PROMPTGATE_USAGE_COST_INPUT` | API | `5.00` | Estimated USD price per 1M completion input tokens. |
-| `PROMPTGATE_USAGE_COST_OUTPUT` | API | `30.00` | Estimated USD price per 1M completion output tokens. |
-| `PROMPTGATE_USAGE_COST_EMBEDDING` | API | `0.02` | Estimated USD price per 1M embedding tokens. |
+| `PROMPTGATE_USAGE_COST_ENABLED` | API, proxy | `true` | Enables dashboard estimates and estimated OpenInference cost attributes. |
+| `PROMPTGATE_USAGE_COST_INPUT` | API, proxy | `5.00` | Estimated USD price per 1M completion input tokens. |
+| `PROMPTGATE_USAGE_COST_OUTPUT` | API, proxy | `30.00` | Estimated USD price per 1M completion output tokens. |
+| `PROMPTGATE_USAGE_COST_EMBEDDING` | API, proxy | `0.02` | Estimated USD price per 1M embedding tokens. |
+| `PROMPTGATE_OTEL_ENABLED` | proxy | `false` | Enables OTLP/HTTP trace export. |
+| `PROMPTGATE_OTEL_ENDPOINT` | proxy | empty | Full OTLP traces endpoint, required when enabled, for example `https://phoenix.example.com/v1/traces`. |
+| `PROMPTGATE_OTEL_API_KEY` | proxy | empty | Optional Phoenix API key sent as a Bearer authorization header. Store it as a secret. |
+| `PROMPTGATE_OTEL_PROJECT_NAME` | proxy | `prompt-gate` | Phoenix project selected through resource attributes and `x-project-name`. |
+| `PROMPTGATE_OTEL_SERVICE_NAME` | proxy | `promptgate-proxy` | OpenTelemetry `service.name`. |
+| `PROMPTGATE_OTEL_ENVIRONMENT` | proxy | `production` | Deployment environment resource attribute. |
+| `PROMPTGATE_OTEL_CAPTURE_PROMPTS` | proxy | `false` | Explicitly allows raw prompt content to leave Prompt Gate. Responses are never captured. |
+| `PROMPTGATE_OTEL_EXPORT_TIMEOUT` | proxy | `10s` | Timeout for one OTLP export. |
+| `PROMPTGATE_OTEL_BATCH_TIMEOUT` | proxy | `5s` | Maximum delay before exporting a queued batch. |
+| `PROMPTGATE_OTEL_MAX_QUEUE_SIZE` | proxy | `2048` | Maximum queued spans. |
+| `PROMPTGATE_OTEL_MAX_EXPORT_BATCH_SIZE` | proxy | `512` | Maximum spans per export; cannot exceed the queue size. |
+| `PROMPTGATE_OTEL_CA_FILE` | proxy | empty | Optional PEM CA bundle used only by the OTLP exporter. |
+| `PROMPTGATE_OTEL_INSECURE` | proxy | `false` | Permits a plain HTTP endpoint. Use only on trusted development networks. |
 
 ## Per Command Requirements
 
@@ -148,6 +161,19 @@ PROMPTGATE_USAGE_COST_ENABLED=true
 PROMPTGATE_USAGE_COST_INPUT=5.00
 PROMPTGATE_USAGE_COST_OUTPUT=30.00
 PROMPTGATE_USAGE_COST_EMBEDDING=0.02
+PROMPTGATE_OTEL_ENABLED=false
+PROMPTGATE_OTEL_ENDPOINT=
+PROMPTGATE_OTEL_API_KEY=
+PROMPTGATE_OTEL_PROJECT_NAME=prompt-gate
+PROMPTGATE_OTEL_SERVICE_NAME=promptgate-proxy
+PROMPTGATE_OTEL_ENVIRONMENT=production
+PROMPTGATE_OTEL_CAPTURE_PROMPTS=false
+PROMPTGATE_OTEL_EXPORT_TIMEOUT=10s
+PROMPTGATE_OTEL_BATCH_TIMEOUT=5s
+PROMPTGATE_OTEL_MAX_QUEUE_SIZE=2048
+PROMPTGATE_OTEL_MAX_EXPORT_BATCH_SIZE=512
+PROMPTGATE_OTEL_CA_FILE=
+PROMPTGATE_OTEL_INSECURE=false
 ```
 
 ## Notes
@@ -173,6 +199,9 @@ PROMPTGATE_USAGE_COST_EMBEDDING=0.02
 - Dashboard usage cost fields are indicative estimates only. They are
   calculated from recorded token counts and the configured rates, not from an
   OpenAI invoice.
+- OTLP export is fail-open: exporter failures are logged and never fail an LLM
+  request. Enabling prompt capture sends raw, unredacted prompt text to the
+  configured collector; review Phoenix access and retention before enabling it.
 
 Related docs:
 

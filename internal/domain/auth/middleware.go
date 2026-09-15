@@ -10,16 +10,20 @@ import (
 // ActorMiddleware injects the authenticated user as an promptgate actor.
 func ActorMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		user, ok := UserFromContext(r.Context())
+		principal, ok := PrincipalFromContext(r.Context())
 		if !ok {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "missing_authenticated_user"})
 			return
 		}
+		user := principal.User
 		metadata := coderbridge.Metadata{
 			"email":             user.Email,
 			"name":              user.Name,
 			"preferredUsername": user.PreferredUsername,
 			"role":              string(user.Role),
+			"userType":          string(user.Type),
+			"credentialId":      principal.CredentialID,
+			"credentialName":    principal.CredentialName,
 		}
 		next.ServeHTTP(w, r.WithContext(coderbridge.AsActor(r.Context(), user.ID, metadata)))
 	})

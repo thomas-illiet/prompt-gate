@@ -42,3 +42,15 @@ data:
   PROMPTGATE_USAGE_COST_INPUT: {{ .Values.config.usageCostInput | quote }}
   PROMPTGATE_USAGE_COST_OUTPUT: {{ .Values.config.usageCostOutput | quote }}
   PROMPTGATE_USAGE_COST_EMBEDDING: {{ .Values.config.usageCostEmbedding | quote }}
+  PROMPTGATE_OTEL_ENABLED: {{ .Values.config.otelEnabled | quote }}
+  PROMPTGATE_OTEL_ENDPOINT: {{ .Values.config.otelEndpoint | quote }}
+  PROMPTGATE_OTEL_PROJECT_NAME: {{ .Values.config.otelProjectName | quote }}
+  PROMPTGATE_OTEL_SERVICE_NAME: {{ .Values.config.otelServiceName | quote }}
+  PROMPTGATE_OTEL_ENVIRONMENT: {{ .Values.config.otelEnvironment | quote }}
+  PROMPTGATE_OTEL_CAPTURE_PROMPTS: {{ .Values.config.otelCapturePrompts | quote }}
+  PROMPTGATE_OTEL_EXPORT_TIMEOUT: {{ .Values.config.otelExportTimeout | quote }}
+  PROMPTGATE_OTEL_BATCH_TIMEOUT: {{ .Values.config.otelBatchTimeout | quote }}
+  PROMPTGATE_OTEL_MAX_QUEUE_SIZE: {{ .Values.config.otelMaxQueueSize | quote }}
+  PROMPTGATE_OTEL_MAX_EXPORT_BATCH_SIZE: {{ .Values.config.otelMaxExportBatchSize | quote }}
+  PROMPTGATE_OTEL_CA_FILE: {{ .Values.config.otelCaFile | quote }}
+  PROMPTGATE_OTEL_INSECURE: {{ .Values.config.otelInsecure | quote }}

@@ -3,6 +3,7 @@ package tokens
 import (
 	"context"
 	"log/slog"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -12,8 +13,8 @@ import (
 )
 
 type AuthCache interface {
-	Get(ctx context.Context, tokenHash string) (auth.UserProfile, bool)
-	Set(ctx context.Context, tokenHash string, user auth.UserProfile, ttl time.Duration)
+	Get(ctx context.Context, tokenHash string) (auth.Principal, bool)
+	Set(ctx context.Context, tokenHash string, principal auth.Principal, ttl time.Duration)
 	Version() int64
 	SetVersion(version int64)
 }
@@ -21,12 +22,12 @@ type AuthCache interface {
 type NoopAuthCache struct{}
 
 // Get implements an always-miss auth cache.
-func (NoopAuthCache) Get(context.Context, string) (auth.UserProfile, bool) {
-	return auth.UserProfile{}, false
+func (NoopAuthCache) Get(context.Context, string) (auth.Principal, bool) {
+	return auth.Principal{}, false
 }
 
 // Set implements a no-op auth cache write.
-func (NoopAuthCache) Set(context.Context, string, auth.UserProfile, time.Duration) {}
+func (NoopAuthCache) Set(context.Context, string, auth.Principal, time.Duration) {}
 
 // Version returns the no-op auth cache version.
 func (NoopAuthCache) Version() int64 { return 0 }
@@ -64,28 +65,31 @@ func (c *RedisAuthCache) SyncVersion(ctx context.Context) {
 }
 
 // Get loads a cached user profile by token hash.
-func (c *RedisAuthCache) Get(ctx context.Context, tokenHash string) (auth.UserProfile, bool) {
+func (c *RedisAuthCache) Get(ctx context.Context, tokenHash string) (auth.Principal, bool) {
 	if c == nil || c.store == nil || !c.store.Enabled() {
-		return auth.UserProfile{}, false
+		return auth.Principal{}, false
 	}
-	var user auth.UserProfile
-	ok, err := c.store.GetJSON(ctx, redisstore.AuthCacheKey(c.Version(), tokenHash), &user)
+	var principal auth.Principal
+	ok, err := c.store.GetJSON(ctx, redisstore.AuthCacheKey(c.Version(), tokenHash), &principal)
 	if err != nil {
 		c.logger.Warn("auth cache get failed", "error", err)
-		return auth.UserProfile{}, false
+		return auth.Principal{}, false
 	}
-	return user, ok
+	if ok && (strings.TrimSpace(principal.User.ID) == "" || strings.TrimSpace(principal.CredentialID) == "") {
+		return auth.Principal{}, false
+	}
+	return principal, ok
 }
 
 // Set stores a cached user profile by token hash.
-func (c *RedisAuthCache) Set(ctx context.Context, tokenHash string, user auth.UserProfile, ttl time.Duration) {
+func (c *RedisAuthCache) Set(ctx context.Context, tokenHash string, principal auth.Principal, ttl time.Duration) {
 	if c == nil || c.store == nil || !c.store.Enabled() || ttl <= 0 {
 		return
 	}
 	if c.ttl > 0 && ttl > c.ttl {
 		ttl = c.ttl
 	}
-	if err := c.store.SetJSON(ctx, redisstore.AuthCacheKey(c.Version(), tokenHash), user, ttl); err != nil {
+	if err := c.store.SetJSON(ctx, redisstore.AuthCacheKey(c.Version(), tokenHash), principal, ttl); err != nil {
 		c.logger.Warn("auth cache set failed", "error", err)
 	}
 }

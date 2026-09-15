@@ -98,6 +98,15 @@ adminApiKey:
   # Generated Secrets use an automatic checksum annotation instead.
   rolloutToken: ""
 
+otelApiKey:
+  # Development-only inline Phoenix API key. Prefer an existing Secret in production.
+  value: ""
+  existingSecret:
+    name: ""
+    key: PROMPTGATE_OTEL_API_KEY
+  # Change after rotating an externally managed Secret to force a proxy rollout.
+  rolloutToken: ""
+
 config:
   # API process listen port and Service target port.
   port: 8080
@@ -168,6 +177,20 @@ config:
   usageCostInput: "5.00"
   usageCostOutput: "30.00"
   usageCostEmbedding: "0.02"
+
+  # Phoenix/OpenTelemetry trace export. Prompt content requires separate consent.
+  otelEnabled: "false"
+  otelEndpoint: ""
+  otelProjectName: prompt-gate
+  otelServiceName: promptgate-proxy
+  otelEnvironment: production
+  otelCapturePrompts: "false"
+  otelExportTimeout: 10s
+  otelBatchTimeout: 5s
+  otelMaxQueueSize: "2048"
+  otelMaxExportBatchSize: "512"
+  otelCaFile: ""
+  otelInsecure: "false"
 
 # Extra pod annotations and labels applied to all application Pods.
 podAnnotations: {}

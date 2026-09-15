@@ -94,6 +94,31 @@ curl --fail-with-body \
   https://promptgate.example.com/api/v1/admin/users
 ```
 
+## Phoenix API Key
+
+Enable OTLP export with the `config.otel*` values. When Phoenix authentication
+is enabled, reference a dedicated Secret so only the proxy Deployment receives
+the API key:
+
+```yaml
+config:
+  otelEnabled: "true"
+  otelEndpoint: https://phoenix.example.com/v1/traces
+  otelProjectName: prompt-gate
+  otelEnvironment: production
+  otelCapturePrompts: "true"
+otelApiKey:
+  existingSecret:
+    name: prompt-gate-phoenix-api-key
+    key: PROMPTGATE_OTEL_API_KEY
+  rolloutToken: "2026-09-rotation-1"
+```
+
+For local development, `otelApiKey.value` creates a chart-managed dedicated
+Secret. Never commit a production Phoenix key. Prompt capture exports raw,
+unredacted content and remains disabled independently of trace export by
+default. Change `rolloutToken` after rotating an externally managed Secret.
+
 ## Image Pull Secrets
 
 When the image registry is private, create the pull secret in the destination

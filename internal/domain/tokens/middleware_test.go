@@ -11,18 +11,18 @@ import (
 )
 
 type memoryAuthCache struct {
-	user auth.UserProfile
-	ok   bool
-	set  bool
+	principal auth.Principal
+	ok        bool
+	set       bool
 }
 
 // Get returns a cached profile from the in-memory test auth cache.
-func (c *memoryAuthCache) Get(context.Context, string) (auth.UserProfile, bool) {
-	return c.user, c.ok
+func (c *memoryAuthCache) Get(context.Context, string) (auth.Principal, bool) {
+	return c.principal, c.ok
 }
 
 // Set stores a profile in the in-memory test auth cache.
-func (c *memoryAuthCache) Set(context.Context, string, auth.UserProfile, time.Duration) {
+func (c *memoryAuthCache) Set(context.Context, string, auth.Principal, time.Duration) {
 	c.set = true
 }
 
@@ -53,7 +53,7 @@ func TestMiddlewareRejectsMissingBearer(t *testing.T) {
 // TestMiddlewareUsesCacheAndStripsProviderCredentials verifies auth cache hits and upstream credential stripping.
 func TestMiddlewareUsesCacheAndStripsProviderCredentials(t *testing.T) {
 	tokenService, userService, _, user := newTokenTestServices(t)
-	cache := &memoryAuthCache{user: user, ok: true}
+	cache := &memoryAuthCache{principal: auth.Principal{User: user, CredentialID: "key-id", CredentialName: "key-name"}, ok: true}
 	handler := MiddlewareWithOptions(MiddlewareOptions{
 		TokenService: tokenService,
 		UserResolver: userService,
@@ -61,6 +61,10 @@ func TestMiddlewareUsesCacheAndStripsProviderCredentials(t *testing.T) {
 	})(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if _, ok := auth.UserFromContext(r.Context()); !ok {
 			t.Fatal("expected user in context")
+		}
+		principal, ok := auth.PrincipalFromContext(r.Context())
+		if !ok || principal.CredentialID != "key-id" || principal.CredentialName != "key-name" {
+			t.Fatalf("unexpected principal: %#v", principal)
 		}
 		if r.Header.Get("Authorization") != "" || r.Header.Get("X-Api-Key") != "" {
 			t.Fatal("expected provider credentials stripped")

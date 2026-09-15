@@ -157,16 +157,6 @@ func setInterceptionProvider(t *testing.T, db *gorm.DB, id, providerName, provid
 	}
 }
 
-// setInterceptionClientIP sets interception client IP.
-func setInterceptionClientIP(t *testing.T, db *gorm.DB, id, clientIP string) {
-	t.Helper()
-	if err := db.Model(&Interception{}).
-		Where("id = ?", id).
-		Update("client_ip", clientIP).Error; err != nil {
-		t.Fatalf("set interception client IP: %v", err)
-	}
-}
-
 // assertFloatClose asserts float close.
 func assertFloatClose(t *testing.T, got, want float64) {
 	t.Helper()

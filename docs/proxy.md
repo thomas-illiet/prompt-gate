@@ -110,7 +110,22 @@ The proxy recorder stores:
 - MCP tool usage and tool invocation errors
 
 This data powers the current-user dashboard and user or service-account usage
-totals. Prompt contents are not recorded.
+totals. Prompt contents are never stored in PostgreSQL.
+
+## Phoenix tracing
+
+Set `PROMPTGATE_OTEL_ENABLED=true` and configure
+`PROMPTGATE_OTEL_ENDPOINT` to export OpenInference spans to Phoenix over
+OTLP/HTTP. Traces contain the provider, model, complete account identity,
+virtual-key ID and name, session, token breakdowns, estimated cost, latency,
+tool calls, and errors. Provider credentials, Prompt Gate JWTs, and token hashes
+are never attached to spans.
+
+Prompt content requires the independent
+`PROMPTGATE_OTEL_CAPTURE_PROMPTS=true` consent switch. When enabled, prompts
+are exported in full without truncation or redaction. Model response text is
+not exported. Telemetry failures are fail-open and do not change proxy or quota
+behavior.
 
 ## Redis Cache And Snapshots
 

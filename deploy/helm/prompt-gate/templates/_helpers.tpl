@@ -73,6 +73,26 @@ Existing runtime secret name.
 {{- default (printf "%s-secrets" (include "prompt-gate.fullname" .)) .Values.secret.existingSecret -}}
 {{- end -}}
 
+{{/* Phoenix API key Secret helpers. */}}
+{{- define "prompt-gate.otelApiKeyValue" -}}
+{{- default "" .Values.otelApiKey.value | toString | trim -}}
+{{- end -}}
+
+{{- define "prompt-gate.otelApiKeySecretName" -}}
+{{- $existing := default "" .Values.otelApiKey.existingSecret.name | toString | trim -}}
+{{- if ne $existing "" -}}{{- $existing -}}{{- else -}}{{ include "prompt-gate.fullname" . }}-otel-api-key{{- end -}}
+{{- end -}}
+
+{{- define "prompt-gate.otelApiKeySecretKey" -}}
+{{- default "PROMPTGATE_OTEL_API_KEY" .Values.otelApiKey.existingSecret.key | toString | trim -}}
+{{- end -}}
+
+{{- define "prompt-gate.validateOTelApiKey" -}}
+{{- $value := include "prompt-gate.otelApiKeyValue" . -}}
+{{- $existing := default "" .Values.otelApiKey.existingSecret.name | toString | trim -}}
+{{- if and (ne $value "") (ne $existing "") -}}{{- fail "otelApiKey.value and otelApiKey.existingSecret.name are mutually exclusive" -}}{{- end -}}
+{{- end -}}
+
 {{/*
 Trim the configured inline administration API key. The application applies the
 same normalization when loading PROMPTGATE_ADMIN_API_KEY.

@@ -13,6 +13,7 @@ import (
 	"promptgate/backend/internal/domain/users"
 	"promptgate/backend/internal/platform/clientip"
 	"promptgate/backend/internal/platform/config"
+	proxyruntime "promptgate/backend/internal/runtime/proxy"
 	httpmiddleware "promptgate/backend/internal/transport/httpmiddleware"
 )
 
@@ -53,6 +54,7 @@ func (p *ProxyRuntime) buildHandler(
 		proxyHandler = httpmiddleware.CORS(cfg.CORSAllowedOrigins)(proxyHandler)
 	}
 	proxyHandler = requestTimeout(cfg.ProxyUpstreamTimeout)(proxyHandler)
+	proxyHandler = proxyruntime.ResponseTimingMiddleware(proxyHandler)
 	mux.Handle("/", proxyHandler)
 	return httpmiddleware.SecurityHeaders()(mux)
 }

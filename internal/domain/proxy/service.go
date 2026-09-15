@@ -69,11 +69,6 @@ type tokenUsageRow struct {
 	CreatedAt             time.Time
 }
 
-type tokenTotals struct {
-	Input  int64
-	Output int64
-}
-
 type usageRange struct {
 	UsageWindowMeta
 	Days int

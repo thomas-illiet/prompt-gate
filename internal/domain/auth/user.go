@@ -55,6 +55,13 @@ type UserProfile struct {
 	LastLoginAt             time.Time `json:"lastLoginAt"`
 }
 
+// Principal identifies both the account and the virtual key used to authenticate a proxy call.
+type Principal struct {
+	User           UserProfile `json:"user"`
+	CredentialID   string      `json:"credentialId"`
+	CredentialName string      `json:"credentialName"`
+}
+
 type Identity struct {
 	Sub               string `json:"sub"`
 	PreferredUsername string `json:"preferredUsername"`
