@@ -4,7 +4,9 @@ import (
 	"errors"
 	"net/http"
 
+	"promptgate/backend/internal/domain/auth"
 	"promptgate/backend/internal/domain/firewall"
+	"promptgate/backend/internal/domain/proxy"
 	"promptgate/backend/internal/domain/tokens"
 	"promptgate/backend/internal/domain/users"
 )
@@ -135,6 +137,26 @@ func (h *Handler) HandleAdminDeleteServiceAccount(w http.ResponseWriter, r *http
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// HandleAdminListServiceAccountIPAddresses lists client IP addresses observed for a service account.
+func (h *Handler) HandleAdminListServiceAccountIPAddresses(w http.ResponseWriter, r *http.Request) {
+	query := parseListQuery(r, "lastSeen", "desc")
+	list, err := h.proxy.ListAccountIPAddresses(r.Context(), r.PathValue("id"), auth.UserTypeService, proxy.AccountIPAddressListParams{
+		Page: query.Page, PageSize: query.PageSize, SortBy: query.SortBy, SortDir: query.SortDir,
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, users.ErrUserNotFound):
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "service_account_not_found"})
+		case errors.Is(err, proxy.ErrInvalidSort):
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_sort"})
+		default:
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		}
+		return
+	}
+	writeJSON(w, http.StatusOK, list)
 }
 
 // HandleAdminListServiceAccountTokens lists tokens for a service account.

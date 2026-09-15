@@ -28,6 +28,8 @@ func TestAdminUsageRoutesRequireAdminRole(t *testing.T) {
 	for _, path := range []string{
 		"/api/v1/admin/dashboard/tokens",
 		"/api/v1/admin/users/11111111-1111-1111-1111-111111111111/statistics",
+		"/api/v1/admin/users/11111111-1111-1111-1111-111111111111/ips",
+		"/api/v1/admin/service-accounts/11111111-1111-1111-1111-111111111111/ips",
 	} {
 		t.Run(path, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, path, nil)

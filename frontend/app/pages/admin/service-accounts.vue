@@ -16,6 +16,7 @@ import AdminServiceAccountFirewallDialog from '~/components/AdminServiceAccounts
 import AdminServiceAccountTokenCreatedDialog from '~/components/AdminServiceAccounts/AdminServiceAccountTokenCreatedDialog.vue'
 import AdminServiceAccountTokensDialog from '~/components/AdminServiceAccounts/AdminServiceAccountTokensDialog.vue'
 import AdminAccountNoteDialog from '~/components/AdminAccounts/AdminAccountNoteDialog.vue'
+import AdminAccountIPAddressesDialog from '~/components/AdminAccounts/AdminAccountIPAddressesDialog.vue'
 
 definePageMeta({
   requiredRoles: ['admin'],
@@ -35,6 +36,7 @@ const createdTokenDialogOpen = shallowRef(false)
 const deleteDialog = useTargetDialog<ServiceAccount>()
 const noteDialog = useTargetDialog<ServiceAccount>()
 const statusDialog = useTargetDialog<ServiceAccount>()
+const ipDialog = useTargetDialog<ServiceAccount>()
 const firewallAccount = shallowRef<ServiceAccount | null>(null)
 const tokenAccount = shallowRef<ServiceAccount | null>(null)
 const showRevokedTokens = shallowRef(false)
@@ -94,6 +96,33 @@ async function openTokenDialog(account: ServiceAccount) {
   void adminServiceAccounts
     .loadTokens(account.id, showRevokedTokens.value)
     .catch(() => {})
+}
+
+// openIPDialog loads observed proxy addresses before showing the dialog.
+function openIPDialog(account: ServiceAccount) {
+  ipDialog.open(account)
+  adminServiceAccounts.ipAddresses.value = []
+  adminServiceAccounts.setIPPage(1)
+  void adminServiceAccounts.loadIPAddresses(account.id).catch(() => {})
+}
+
+async function refreshIPAddresses() {
+  if (ipDialog.target.value) await adminServiceAccounts.loadIPAddresses(ipDialog.target.value.id)
+}
+
+async function updateIPPage(value: number) {
+  adminServiceAccounts.setIPPage(value)
+  await refreshIPAddresses()
+}
+
+async function updateIPPageSize(value: number) {
+  adminServiceAccounts.setIPPageSize(value)
+  await refreshIPAddresses()
+}
+
+async function updateIPSort(sortBy: string, sortDir: 'asc' | 'desc') {
+  adminServiceAccounts.setIPSort(sortBy, sortDir)
+  await refreshIPAddresses()
 }
 
 // openFirewallDialog loads scoped firewall rules for a service account.
@@ -375,6 +404,7 @@ async function confirmToggleStatus() {
           @delete="deleteDialog.open"
           @edit="openEditDialog"
           @manage-firewall="openFirewallDialog"
+          @manage-ips="openIPDialog"
           @manage-tokens="openTokenDialog"
           @notes="noteDialog.open"
           @refresh="adminServiceAccounts.reload"
@@ -459,6 +489,21 @@ async function confirmToggleStatus() {
       :account="noteDialog.target.value"
       :loading="adminServiceAccounts.saving.value"
       @save="saveAccountNote"
+    />
+    <AdminAccountIPAddressesDialog
+      v-model="ipDialog.isOpen.value"
+      :account-name="ipDialog.target.value?.name ?? 'Service account'"
+      :items="adminServiceAccounts.ipAddresses.value"
+      :loading="adminServiceAccounts.ipLoading.value"
+      :page="adminServiceAccounts.ipPage.value"
+      :page-size="adminServiceAccounts.ipPageSize.value"
+      :sort-by="adminServiceAccounts.ipSortBy.value"
+      :sort-dir="adminServiceAccounts.ipSortDir.value"
+      :total="adminServiceAccounts.ipTotal.value"
+      @refresh="refreshIPAddresses"
+      @update:page="updateIPPage"
+      @update:page-size="updateIPPageSize"
+      @update:sort="updateIPSort"
     />
 
     <AppConfirmDialog

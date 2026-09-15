@@ -216,6 +216,21 @@ describe('useAdminUsers', () => {
     expect(adminUsers.tokens.value[0]?.revokedAt).toBe('2026-02-01T00:00:00Z')
   })
 
+  it('loads paged IP addresses for a user', async () => {
+    const addresses = [{ ip: '2001:db8::1', lastSeen: '2026-09-15T08:00:00Z' }]
+    apiFetch
+      .mockResolvedValueOnce(userResponse([user]))
+      .mockResolvedValueOnce({ items: addresses, page: 1, pageSize: 10, total: 1 })
+    const adminUsers = useAdminUsers()
+    await vi.waitFor(() => expect(adminUsers.loading.value).toBe(false))
+    await adminUsers.loadIPAddresses(user.id)
+    expect(apiFetch).toHaveBeenNthCalledWith(
+      2,
+      `/api/v1/admin/users/${user.id}/ips?page=1&pageSize=10&sortBy=lastSeen&sortDir=desc`,
+    )
+    expect(adminUsers.ipAddresses.value).toEqual(addresses)
+  })
+
   it('updates a selected user note and reloads users', async () => {
     const notedUser = { ...user, note: 'Follow up before renewal.' }
     apiFetch

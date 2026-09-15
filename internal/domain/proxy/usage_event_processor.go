@@ -3,6 +3,7 @@ package proxy
 import (
 	"errors"
 	"fmt"
+	"net"
 	"strings"
 	"time"
 
@@ -61,9 +62,30 @@ func processInterceptionStarted(tx *gorm.DB, payload *InterceptionStartedEvent) 
 		return fmt.Errorf("record interception: %w", result.Error)
 	}
 	if result.RowsAffected == 0 {
-		return nil
+		return upsertAccountIPAddress(tx, payload.InitiatorID, payload.ClientIP, timestamp(payload.StartedAt))
+	}
+	if err := upsertAccountIPAddress(tx, payload.InitiatorID, payload.ClientIP, record.StartedAt); err != nil {
+		return err
 	}
 	return aggregateInterceptionStarted(tx, record)
+}
+
+func upsertAccountIPAddress(tx *gorm.DB, userID, rawIP string, lastSeen time.Time) error {
+	ip := net.ParseIP(strings.TrimSpace(rawIP))
+	if ip == nil {
+		return fmt.Errorf("record account IP address: invalid IP %q", rawIP)
+	}
+	record := AccountIPAddress{UserID: userID, IP: ip.String(), LastSeen: lastSeen.UTC()}
+	result := tx.Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "user_id"}, {Name: "ip"}},
+		DoUpdates: clause.Assignments(map[string]any{
+			"last_seen": gorm.Expr("CASE WHEN excluded.last_seen > account_ip_addresses.last_seen THEN excluded.last_seen ELSE account_ip_addresses.last_seen END"),
+		}),
+	}).Create(&record)
+	if result.Error != nil {
+		return fmt.Errorf("record account IP address: %w", result.Error)
+	}
+	return nil
 }
 
 func processInterceptionEnded(tx *gorm.DB, payload *InterceptionEndedEvent) error {
