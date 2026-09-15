@@ -106,6 +106,30 @@ type ProcessedUsageEvent struct {
 	ProcessedAt    time.Time `gorm:"not null;index" json:"processedAt"`
 }
 
+// AccountIPAddress tracks the last time an account used one client IP through the proxy.
+type AccountIPAddress struct {
+	UserID   string      `gorm:"type:uuid;primaryKey" json:"-"`
+	User     *users.User `gorm:"foreignKey:UserID;references:ID;constraint:OnDelete:CASCADE" json:"-"`
+	IP       string      `gorm:"primaryKey;not null" json:"ip"`
+	LastSeen time.Time   `gorm:"not null;index" json:"lastSeen"`
+}
+
+// AccountIPAddressListParams configures account IP pagination and sorting.
+type AccountIPAddressListParams struct {
+	Page     int
+	PageSize int
+	SortBy   string
+	SortDir  string
+}
+
+// AccountIPAddressListResult is a paginated account IP response.
+type AccountIPAddressListResult struct {
+	Items    []AccountIPAddress `json:"items"`
+	Page     int                `json:"page"`
+	PageSize int                `json:"pageSize"`
+	Total    int64              `json:"total"`
+}
+
 // TableName returns the stable dashboard KPI table name.
 func (ProxyDailyUsageKPI) TableName() string {
 	return "proxy_daily_usage_kpis"
@@ -119,6 +143,11 @@ func (ProxyDailyUsageBreakdown) TableName() string {
 // TableName returns the stable processed event table name.
 func (ProcessedUsageEvent) TableName() string {
 	return "processed_usage_events"
+}
+
+// TableName returns the stable account IP address table name.
+func (AccountIPAddress) TableName() string {
+	return "account_ip_addresses"
 }
 
 // BeforeCreate assigns a UUID before inserting an interception.

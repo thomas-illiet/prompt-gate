@@ -5,6 +5,7 @@ import type {
   FirewallRulePayload,
   FirewallSimulationResponse,
 } from '~/types/firewall'
+import type { AccountIPAddress, AccountIPAddressListResponse } from '~/types/account-ips'
 import type {
   CreatedTokenResponse,
   ServiceAccount,
@@ -66,6 +67,13 @@ export function useAdminServiceAccounts() {
   const tokenSortBy = shallowRef('createdAt')
   const tokenSortDir = shallowRef<'asc' | 'desc'>('desc')
   const tokenTotal = shallowRef(0)
+  const ipAddresses = shallowRef<AccountIPAddress[]>([])
+  const ipLoading = shallowRef(false)
+  const ipPage = shallowRef(1)
+  const ipPageSize = shallowRef(10)
+  const ipSortBy = shallowRef('lastSeen')
+  const ipSortDir = shallowRef<'asc' | 'desc'>('desc')
+  const ipTotal = shallowRef(0)
   const firewallRules = shallowRef<FirewallRule[]>([])
   const firewallLoading = shallowRef(false)
   const firewallPage = shallowRef(1)
@@ -154,6 +162,37 @@ export function useAdminServiceAccounts() {
       adminServiceAccountPath(accountId),
     )
     return selectedAccount.value
+  }
+
+  // loadIPAddresses fetches observed proxy IP addresses for one service account.
+  async function loadIPAddresses(accountId: string) {
+    ipLoading.value = true
+    try {
+      const params = new URLSearchParams({
+        page: ipPage.value.toString(),
+        pageSize: ipPageSize.value.toString(),
+        sortBy: ipSortBy.value,
+        sortDir: ipSortDir.value,
+      })
+      const response = await apiFetch<AccountIPAddressListResponse>(
+        withApiQuery(adminServiceAccountPath(accountId, 'ips'), params),
+      )
+      ipAddresses.value = response.items
+      ipTotal.value = response.total
+      return ipAddresses.value
+    } catch (error) {
+      Notify.error(toAdminServiceAccountErrorMessage(error))
+      throw error
+    } finally {
+      ipLoading.value = false
+    }
+  }
+
+  function setIPPage(value: number) { ipPage.value = value }
+  function setIPPageSize(value: number) { ipPageSize.value = value }
+  function setIPSort(sortBy: string, sortDir: 'asc' | 'desc') {
+    ipSortBy.value = sortBy
+    ipSortDir.value = sortDir
   }
 
   // updateAccount patches a service account and keeps the selected copy fresh.
@@ -538,9 +577,17 @@ export function useAdminServiceAccounts() {
     firewallSortBy,
     firewallSortDir,
     firewallTotal,
+    ipAddresses,
+    ipLoading,
+    ipPage,
+    ipPageSize,
+    ipSortBy,
+    ipSortDir,
+    ipTotal,
     listError: accountList.listError,
     loadAccount,
     loadFirewallRules,
+    loadIPAddresses,
     loading: accountList.loading,
     loadTokens,
     moveFirewallRulePriority,
@@ -557,6 +604,9 @@ export function useAdminServiceAccounts() {
     setFirewallPage,
     setFirewallPageSize,
     setFirewallSort,
+    setIPPage,
+    setIPPageSize,
+    setIPSort,
     setTokenPage,
     setTokenPageSize,
     setTokenSort,

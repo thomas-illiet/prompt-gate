@@ -169,6 +169,21 @@ describe('useAdminServiceAccounts', () => {
     expect(adminServiceAccounts.accounts.value).toEqual([])
   })
 
+  it('loads paged IP addresses for a service account', async () => {
+    const addresses = [{ ip: '192.0.2.10', lastSeen: '2026-09-15T08:00:00Z' }]
+    apiFetch
+      .mockResolvedValueOnce(accountResponse([account]))
+      .mockResolvedValueOnce({ items: addresses, page: 1, pageSize: 10, total: 1 })
+    const adminServiceAccounts = useAdminServiceAccounts()
+    await vi.waitFor(() => expect(adminServiceAccounts.loading.value).toBe(false))
+    await adminServiceAccounts.loadIPAddresses(account.id)
+    expect(apiFetch).toHaveBeenNthCalledWith(
+      2,
+      `/api/v1/admin/service-accounts/${account.id}/ips?page=1&pageSize=10&sortBy=lastSeen&sortDir=desc`,
+    )
+    expect(adminServiceAccounts.ipAddresses.value).toEqual(addresses)
+  })
+
   it('creates, updates, loads, and deletes service accounts', async () => {
     apiFetch
       .mockResolvedValueOnce(accountResponse([]))

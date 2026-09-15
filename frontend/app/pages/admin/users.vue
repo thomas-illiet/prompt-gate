@@ -14,6 +14,7 @@ import AdminUserGroupsDialog from '~/components/AdminUsers/AdminUserGroupsDialog
 import AdminUserTokensDialog from '~/components/AdminUsers/AdminUserTokensDialog.vue'
 import AdminUserUsageDialog from '~/components/AdminUsers/AdminUserUsageDialog.vue'
 import AdminAccountNoteDialog from '~/components/AdminAccounts/AdminAccountNoteDialog.vue'
+import AdminAccountIPAddressesDialog from '~/components/AdminAccounts/AdminAccountIPAddressesDialog.vue'
 
 definePageMeta({
   requiredRoles: ['admin'],
@@ -38,6 +39,7 @@ const noteDialog = useTargetDialog<AdminUser>()
 const statusDialog = useTargetDialog<AdminUser>()
 const tokenRevokeDialog = useTargetDialog<UserToken>()
 const usageDialog = useTargetDialog<AdminUser>()
+const ipDialog = useTargetDialog<AdminUser>()
 const statusConfirm = useToggleConfirmDialog(statusDialog.target, {
   disableIcon: 'mdi-account-cancel-outline',
   enableIcon: 'mdi-account-check-outline',
@@ -115,6 +117,33 @@ function openTokenDialog(user: AdminUser) {
   adminUsers.tokens.value = []
   adminUsers.setTokenPage(1)
   void adminUsers.loadTokens(user.id).catch(() => {})
+}
+
+// openIPDialog loads observed proxy addresses before showing the dialog.
+function openIPDialog(user: AdminUser) {
+  ipDialog.open(user)
+  adminUsers.ipAddresses.value = []
+  adminUsers.setIPPage(1)
+  void adminUsers.loadIPAddresses(user.id).catch(() => {})
+}
+
+async function refreshIPAddresses() {
+  if (ipDialog.target.value) await adminUsers.loadIPAddresses(ipDialog.target.value.id)
+}
+
+async function updateIPPage(value: number) {
+  adminUsers.setIPPage(value)
+  await refreshIPAddresses()
+}
+
+async function updateIPPageSize(value: number) {
+  adminUsers.setIPPageSize(value)
+  await refreshIPAddresses()
+}
+
+async function updateIPSort(sortBy: string, sortDir: 'asc' | 'desc') {
+  adminUsers.setIPSort(sortBy, sortDir)
+  await refreshIPAddresses()
 }
 
 // openFirewallDialog loads scoped firewall rules for a user.
@@ -380,6 +409,7 @@ async function saveUserNote(note: string) {
           @delete="openDeleteDialog"
           @edit="openEditDialog"
           @manage-firewall="openFirewallDialog"
+          @manage-ips="openIPDialog"
           @manage-groups="openGroupsDialog"
           @manage-tokens="openTokenDialog"
           @notes="noteDialog.open"
@@ -468,6 +498,21 @@ async function saveUserNote(note: string) {
       :account="noteDialog.target.value"
       :loading="adminUsers.saving.value"
       @save="saveUserNote"
+    />
+    <AdminAccountIPAddressesDialog
+      v-model="ipDialog.isOpen.value"
+      :account-name="ipDialog.target.value ? displayUser(ipDialog.target.value) : 'User'"
+      :items="adminUsers.ipAddresses.value"
+      :loading="adminUsers.ipLoading.value"
+      :page="adminUsers.ipPage.value"
+      :page-size="adminUsers.ipPageSize.value"
+      :sort-by="adminUsers.ipSortBy.value"
+      :sort-dir="adminUsers.ipSortDir.value"
+      :total="adminUsers.ipTotal.value"
+      @refresh="refreshIPAddresses"
+      @update:page="updateIPPage"
+      @update:page-size="updateIPPageSize"
+      @update:sort="updateIPSort"
     />
     <AppConfirmDialog
       v-model="statusDialog.isOpen.value"

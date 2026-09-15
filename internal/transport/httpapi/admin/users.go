@@ -8,6 +8,7 @@ import (
 
 	"promptgate/backend/internal/domain/auth"
 	"promptgate/backend/internal/domain/firewall"
+	"promptgate/backend/internal/domain/proxy"
 	"promptgate/backend/internal/domain/users"
 )
 
@@ -215,6 +216,26 @@ func (h *Handler) HandleAdminDeleteUser(w http.ResponseWriter, r *http.Request) 
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// HandleAdminListUserIPAddresses lists client IP addresses observed for a human user.
+func (h *Handler) HandleAdminListUserIPAddresses(w http.ResponseWriter, r *http.Request) {
+	query := parseListQuery(r, "lastSeen", "desc")
+	list, err := h.proxy.ListAccountIPAddresses(r.Context(), r.PathValue("id"), auth.UserTypeUser, proxy.AccountIPAddressListParams{
+		Page: query.Page, PageSize: query.PageSize, SortBy: query.SortBy, SortDir: query.SortDir,
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, users.ErrUserNotFound):
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "user_not_found"})
+		case errors.Is(err, proxy.ErrInvalidSort):
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_sort"})
+		default:
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		}
+		return
+	}
+	writeJSON(w, http.StatusOK, list)
 }
 
 // HandleAdminListUserFirewallRules lists scoped firewall rules for a human user.

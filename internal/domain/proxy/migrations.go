@@ -26,6 +26,7 @@ func AutoMigrate(ctx context.Context, db *gorm.DB) error {
 		&ProxyDailyUsageKPI{},
 		&ProxyDailyUsageBreakdown{},
 		&ProcessedUsageEvent{},
+		&AccountIPAddress{},
 	); err != nil {
 		return err
 	}

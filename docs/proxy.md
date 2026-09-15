@@ -108,9 +108,17 @@ The proxy recorder stores:
 - model name
 - token usage, including cache read/write token counts
 - MCP tool usage and tool invocation errors
+- the normalized client IP and its most recent use per user or service account
 
 This data powers the current-user dashboard and user or service-account usage
 totals. Prompt contents are never stored in PostgreSQL.
+
+Usage events are injected into the `promptgate:usage:events` Redis Stream. When
+the worker processes an `interception_started` event, it upserts the
+`account_ip_addresses` row identified by the account and IP. `last_seen` only
+moves forward, including when Redis retries or delivers older events later.
+Requests rejected by authentication, firewall, group, or quota checks do not
+create interceptions and therefore do not update this table.
 
 ## Phoenix tracing
 
@@ -137,6 +145,7 @@ The proxy uses Redis for:
 - firewall snapshots
 - config version counters
 - config reload pub/sub
+- asynchronous proxy usage and account IP events
 
 `PROMPTGATE_REDIS_CACHE_TTL` controls the default TTL for snapshots and cached
 auth records. Cached auth entries also never outlive the token's expiration.

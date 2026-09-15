@@ -118,6 +118,7 @@ Admin dashboard token and activity responses follow the same optional
 
 | Method | Path | Purpose |
 | --- | --- | --- |
+| `GET` | `/api/v1/admin/users/{id}/ips` | List client IP addresses observed for a user, paginated and sortable by `ip` or `lastSeen`. |
 | `GET` | `/api/v1/admin/users` | List users with pagination, filters, usage totals, and sorting. |
 | `GET` | `/api/v1/admin/users/{id}` | Get one user. |
 | `GET` | `/api/v1/admin/users/{id}/statistics` | Get aggregated usage totals, duration, and daily activity for one human user. |
@@ -157,6 +158,7 @@ return `404 {"error":"user_not_found"}`.
 | `PATCH` | `/api/v1/admin/service-accounts/{id}/note` | Update the private administration note. |
 | `DELETE` | `/api/v1/admin/service-accounts/{id}` | Delete one service account and its scoped firewall rules. |
 | `GET` | `/api/v1/admin/service-accounts/{id}/tokens` | List service-account tokens. |
+| `GET` | `/api/v1/admin/service-accounts/{id}/ips` | List client IP addresses observed for a service account, paginated and sortable by `ip` or `lastSeen`. |
 | `POST` | `/api/v1/admin/service-accounts/{id}/tokens` | Create a service-account token. |
 | `DELETE` | `/api/v1/admin/service-accounts/{id}/tokens/{tokenId}` | Revoke a service-account token. |
 | `PUT` | `/api/v1/admin/service-accounts/{id}/subscription-plan` | Assign or clear the service account's subscription plan. |
