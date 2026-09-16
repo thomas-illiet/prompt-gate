@@ -86,6 +86,7 @@ func (r *TelemetryRecorder) RecordInterception(ctx context.Context, req *aibreco
 		}
 		span.SetAttributes(attrs...)
 		proxyruntime.BindResponseTiming(ctx, span)
+		proxyruntime.BindOutputSpan(ctx, span)
 		r.interceptions.Store(req.ID, &telemetryInterception{span: span, extra: make(map[string]int64)})
 	}
 	return r.inner.RecordInterception(ctx, req)
@@ -94,6 +95,7 @@ func (r *TelemetryRecorder) RecordInterception(ctx context.Context, req *aibreco
 func (r *TelemetryRecorder) RecordInterceptionEnded(ctx context.Context, req *aibrecorder.InterceptionRecordEnded) error {
 	if req != nil {
 		if _, ok := r.load(req.ID); ok {
+			proxyruntime.PublishOutput(ctx)
 			time.AfterFunc(5*time.Minute, func() { r.interceptions.Delete(req.ID) })
 		}
 	}

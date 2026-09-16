@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"math"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	aibrecorder "github.com/coder/aibridge/recorder"
@@ -212,6 +214,29 @@ func TestTelemetryRecorderDoesNotCapturePromptByDefault(t *testing.T) {
 	span.End()
 	if _, exists := spanAttributes(spans.Ended()[0])["input.value"]; exists {
 		t.Fatal("prompt must not be attached when capture is disabled")
+	}
+}
+
+func TestTelemetryRecorderPublishesClientVisibleOutputOnInterceptionSpan(t *testing.T) {
+	spans := tracetest.NewSpanRecorder()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spans))
+	handler := proxyruntime.OutputCaptureMiddleware(1024)(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		ctx, span := provider.Tracer("test").Start(request.Context(), "interception")
+		recorder := NewTelemetryRecorder(noopTelemetryRecorder{}, false)
+		if err := recorder.RecordInterception(ctx, &aibrecorder.InterceptionRecord{ID: "id"}); err != nil {
+			t.Fatalf("record interception: %v", err)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: {\"type\":\"response.output_text.delta\",\"delta\":\"visible output\"}\n\n"))
+		if err := recorder.RecordInterceptionEnded(context.WithoutCancel(ctx), &aibrecorder.InterceptionRecordEnded{ID: "id"}); err != nil {
+			t.Fatalf("record interception ended: %v", err)
+		}
+		span.End()
+	}))
+	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/", nil))
+	attrs := spanAttributes(spans.Ended()[0])
+	if attrs["output.value"] != "visible output" || attrs["output.mime_type"] != "text/plain" {
+		t.Fatalf("output was not attached to interception span: %#v", attrs)
 	}
 }
 

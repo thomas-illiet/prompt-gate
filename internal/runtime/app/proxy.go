@@ -105,13 +105,6 @@ func NewProxy(ctx context.Context, cfg config.ProxyConfig, logger *slog.Logger, 
 		logger.Info("loaded proxy CA file", "path", cfg.CAFile)
 		proxyHTTPClient = caHTTPClient
 	}
-	if cfg.OTel.CaptureOutput {
-		proxyHTTPClient.Transport = proxyruntime.NewOutputCaptureTransport(
-			proxyHTTPClient.Transport,
-			cfg.ProxyMaxBufferedResponseBytes,
-		)
-	}
-
 	authCache := tokens.NewRedisAuthCache(redisStore, cfg.RedisCacheTTL, logger)
 	authCache.SyncVersion(ctx)
 	firewallSnapshot := firewall.NewSnapshotStore(firewallService)
