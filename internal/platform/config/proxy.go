@@ -34,6 +34,7 @@ func LoadProxy() (ProxyConfig, error) {
 	v.SetDefault("otel_service_name", "promptgate-proxy")
 	v.SetDefault("otel_environment", "production")
 	v.SetDefault("otel_capture_prompts", false)
+	v.SetDefault("otel_capture_output", false)
 	v.SetDefault("otel_export_timeout", "10s")
 	v.SetDefault("otel_batch_timeout", "5s")
 	v.SetDefault("otel_max_queue_size", 2048)
@@ -84,6 +85,7 @@ func LoadProxy() (ProxyConfig, error) {
 			ServiceName:        strings.TrimSpace(v.GetString("otel_service_name")),
 			Environment:        strings.TrimSpace(v.GetString("otel_environment")),
 			CapturePrompts:     v.GetBool("otel_capture_prompts"),
+			CaptureOutput:      v.GetBool("otel_capture_output"),
 			ExportTimeout:      v.GetDuration("otel_export_timeout"),
 			BatchTimeout:       v.GetDuration("otel_batch_timeout"),
 			MaxQueueSize:       v.GetInt("otel_max_queue_size"),

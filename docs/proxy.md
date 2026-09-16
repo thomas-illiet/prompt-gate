@@ -153,8 +153,11 @@ credentials, Prompt Gate JWTs, and token hashes are never attached to spans.
 
 Prompt content requires the independent
 `PROMPTGATE_OTEL_CAPTURE_PROMPTS=true` consent switch. When enabled, prompts
-are exported in full without truncation or redaction. Model response text is
-not exported. Disabling prompt capture does not make traces PII-free: textual
+are exported in full without truncation or redaction. Model response text has
+its own independent `PROMPTGATE_OTEL_CAPTURE_OUTPUT=true` consent switch. When
+enabled, assistant text is exported in full as the OpenInference `output.value`
+attribute; oversized responses are omitted rather than truncated. Disabling
+content capture does not make traces PII-free: textual
 account identity and tool arguments are still exported. Telemetry failures are
 fail-open and do not change proxy or quota behavior.
 

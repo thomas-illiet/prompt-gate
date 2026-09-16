@@ -189,6 +189,7 @@ config:
   otelServiceName: promptgate-proxy
   otelEnvironment: production
   otelCapturePrompts: "false"
+  otelCaptureOutput: "false"
   otelExportTimeout: 10s
   otelBatchTimeout: 5s
   otelMaxQueueSize: "2048"

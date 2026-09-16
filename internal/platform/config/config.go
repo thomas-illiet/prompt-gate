@@ -120,6 +120,7 @@ type OTelConfig struct {
 	ServiceName        string
 	Environment        string
 	CapturePrompts     bool
+	CaptureOutput      bool
 	ExportTimeout      time.Duration
 	BatchTimeout       time.Duration
 	MaxQueueSize       int

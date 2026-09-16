@@ -64,7 +64,8 @@ dotenv file.
 | `PROMPTGATE_OTEL_PROJECT_NAME` | proxy | `prompt-gate` | Phoenix project selected through resource attributes and `x-project-name`. |
 | `PROMPTGATE_OTEL_SERVICE_NAME` | proxy | `promptgate-proxy` | OpenTelemetry `service.name`. |
 | `PROMPTGATE_OTEL_ENVIRONMENT` | proxy | `production` | Deployment environment resource attribute. |
-| `PROMPTGATE_OTEL_CAPTURE_PROMPTS` | proxy | `false` | Explicitly allows raw prompt content to leave Prompt Gate. Responses are never captured; identity text and tool arguments are always exported, so `false` does not make traces PII-free. |
+| `PROMPTGATE_OTEL_CAPTURE_PROMPTS` | proxy | `false` | Explicitly allows raw prompt content to leave Prompt Gate. |
+| `PROMPTGATE_OTEL_CAPTURE_OUTPUT` | proxy | `false` | Independently allows raw assistant output to leave Prompt Gate as `output.value`; oversized responses are omitted. Identity text and tool arguments are exported regardless, so `false` does not make traces PII-free. |
 | `PROMPTGATE_OTEL_EXPORT_TIMEOUT` | proxy | `10s` | Timeout for one OTLP export. |
 | `PROMPTGATE_OTEL_BATCH_TIMEOUT` | proxy | `5s` | Maximum delay before exporting a queued batch. |
 | `PROMPTGATE_OTEL_MAX_QUEUE_SIZE` | proxy | `2048` | Maximum queued spans. |
@@ -170,6 +171,7 @@ PROMPTGATE_OTEL_PROJECT_NAME=prompt-gate
 PROMPTGATE_OTEL_SERVICE_NAME=promptgate-proxy
 PROMPTGATE_OTEL_ENVIRONMENT=production
 PROMPTGATE_OTEL_CAPTURE_PROMPTS=false
+PROMPTGATE_OTEL_CAPTURE_OUTPUT=false
 PROMPTGATE_OTEL_EXPORT_TIMEOUT=10s
 PROMPTGATE_OTEL_BATCH_TIMEOUT=5s
 PROMPTGATE_OTEL_MAX_QUEUE_SIZE=2048
