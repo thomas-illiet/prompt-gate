@@ -23,23 +23,29 @@ const (
 type outputCaptureContextKey struct{}
 
 type outputCapture struct {
-	mu          sync.Mutex
-	span        trace.Span
-	statusCode  int
-	contentType string
-	maxBytes    int64
-	buffer      bytes.Buffer
-	overflow    bool
-	published   bool
+	mu              sync.Mutex
+	span            trace.Span
+	captureOutput   bool
+	captureThinking bool
+	statusCode      int
+	contentType     string
+	maxBytes        int64
+	buffer          bytes.Buffer
+	overflow        bool
+	published       bool
 }
 
 // OutputCaptureMiddleware observes the client-visible provider response without
 // delaying writes. The buffered body is bounded and only enabled by explicit
 // output-capture consent.
-func OutputCaptureMiddleware(maxBytes int64) func(http.Handler) http.Handler {
+func OutputCaptureMiddleware(maxBytes int64, captureOutput, captureThinking bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			capture := &outputCapture{maxBytes: maxBytes}
+			capture := &outputCapture{
+				maxBytes:        maxBytes,
+				captureOutput:   captureOutput,
+				captureThinking: captureThinking,
+			}
 			ctx := context.WithValue(r.Context(), outputCaptureContextKey{}, capture)
 			next.ServeHTTP(&outputCaptureResponseWriter{ResponseWriter: w, capture: capture}, r.WithContext(ctx))
 		})
@@ -114,14 +120,27 @@ func (c *outputCapture) publish() {
 	if c.span == nil || !c.span.IsRecording() || c.overflow || c.statusCode < 200 || c.statusCode >= 300 {
 		return
 	}
-	output := extractAssistantOutput(c.buffer.Bytes(), c.contentType)
-	if output == "" {
-		return
+	output, thinking := extractAssistantContent(c.buffer.Bytes(), c.contentType)
+	attrs := make([]attribute.KeyValue, 0, 5)
+	if c.captureOutput && output != "" {
+		attrs = append(attrs,
+			attribute.String(openInferenceOutputValue, output),
+			attribute.String(openInferenceOutputMIMEType, "text/plain"),
+		)
 	}
-	c.span.SetAttributes(
-		attribute.String(openInferenceOutputValue, output),
-		attribute.String(openInferenceOutputMIMEType, "text/plain"),
-	)
+	// Chat Completions responses do not produce ModelThoughtRecord values in
+	// AIBridge. Capture their client-visible reasoning_content here instead.
+	if c.captureThinking && thinking != "" {
+		attrs = append(attrs,
+			attribute.String("llm.output_messages.0.message.role", "assistant"),
+			attribute.String("llm.output_messages.0.message.contents.0.message_content.type", "reasoning"),
+			attribute.String("llm.output_messages.0.message.contents.0.message_content.text", thinking),
+			attribute.String("promptgate.model_thoughts.0.source", "chat_completions"),
+		)
+	}
+	if len(attrs) > 0 {
+		c.span.SetAttributes(attrs...)
+	}
 }
 
 type outputCaptureResponseWriter struct {
@@ -154,14 +173,19 @@ func (w *outputCaptureResponseWriter) ReadFrom(reader io.Reader) (int64, error) 
 func (w *outputCaptureResponseWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
 func extractAssistantOutput(raw []byte, contentType string) string {
+	output, _ := extractAssistantContent(raw, contentType)
+	return output
+}
+
+func extractAssistantContent(raw []byte, contentType string) (output, thinking string) {
 	if strings.Contains(strings.ToLower(contentType), "text/event-stream") {
-		return extractSSEOutput(raw)
+		return extractSSEContent(raw)
 	}
 	var payload map[string]any
 	if json.Unmarshal(raw, &payload) != nil {
-		return ""
+		return "", ""
 	}
-	return extractJSONOutput(payload)
+	return extractJSONOutput(payload), extractJSONThinking(payload)
 }
 
 func extractJSONOutput(payload map[string]any) string {
@@ -187,6 +211,21 @@ func extractJSONOutput(payload map[string]any) string {
 	return strings.Join(parts, "")
 }
 
+func extractJSONThinking(payload map[string]any) string {
+	var parts []string
+	choices, _ := payload["choices"].([]any)
+	for _, choice := range choices {
+		choiceMap, _ := choice.(map[string]any)
+		message, _ := choiceMap["message"].(map[string]any)
+		for _, key := range []string{"reasoning_content", "reasoning"} {
+			if content, _ := message[key].(string); content != "" {
+				parts = append(parts, content)
+			}
+		}
+	}
+	return strings.Join(parts, "\n\n")
+}
+
 func appendTextContent(parts []string, content any) []string {
 	switch value := content.(type) {
 	case string:
@@ -210,8 +249,9 @@ func appendTypedText(parts []string, content []any, allowedType string) []string
 	return parts
 }
 
-func extractSSEOutput(raw []byte) string {
+func extractSSEContent(raw []byte) (string, string) {
 	var output strings.Builder
+	var thinking strings.Builder
 	scanner := bufio.NewScanner(bytes.NewReader(raw))
 	scanner.Buffer(make([]byte, 64*1024), len(raw)+1)
 	for scanner.Scan() {
@@ -245,8 +285,10 @@ func extractSSEOutput(raw []byte) string {
 				delta, _ := choiceMap["delta"].(map[string]any)
 				text, _ := delta["content"].(string)
 				output.WriteString(text)
+				reasoning, _ := delta["reasoning_content"].(string)
+				thinking.WriteString(reasoning)
 			}
 		}
 	}
-	return output.String()
+	return output.String(), thinking.String()
 }

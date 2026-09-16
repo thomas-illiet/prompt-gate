@@ -54,8 +54,12 @@ func (p *ProxyRuntime) buildHandler(
 	if len(cfg.CORSAllowedOrigins) > 0 {
 		proxyHandler = httpmiddleware.CORS(cfg.CORSAllowedOrigins)(proxyHandler)
 	}
-	if cfg.OTel.CaptureOutput {
-		proxyHandler = proxyruntime.OutputCaptureMiddleware(cfg.ProxyMaxBufferedResponseBytes)(proxyHandler)
+	if cfg.OTel.CaptureOutput || cfg.OTel.CaptureThinking {
+		proxyHandler = proxyruntime.OutputCaptureMiddleware(
+			cfg.ProxyMaxBufferedResponseBytes,
+			cfg.OTel.CaptureOutput,
+			cfg.OTel.CaptureThinking,
+		)(proxyHandler)
 	}
 	proxyHandler = requestTimeout(cfg.ProxyUpstreamTimeout)(proxyHandler)
 	proxyHandler = proxyruntime.ResponseTimingMiddleware(proxyHandler)

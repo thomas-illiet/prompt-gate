@@ -220,7 +220,7 @@ func TestTelemetryRecorderDoesNotCapturePromptByDefault(t *testing.T) {
 func TestTelemetryRecorderPublishesClientVisibleOutputOnInterceptionSpan(t *testing.T) {
 	spans := tracetest.NewSpanRecorder()
 	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spans))
-	handler := proxyruntime.OutputCaptureMiddleware(1024)(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+	handler := proxyruntime.OutputCaptureMiddleware(1024, true, false)(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		ctx, span := provider.Tracer("test").Start(request.Context(), "interception")
 		recorder := NewTelemetryRecorder(noopTelemetryRecorder{}, false)
 		if err := recorder.RecordInterception(ctx, &aibrecorder.InterceptionRecord{ID: "id"}); err != nil {

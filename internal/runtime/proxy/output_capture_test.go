@@ -13,7 +13,7 @@ import (
 
 func TestOutputCaptureMiddlewarePublishesBlockingOutputOnBoundSpan(t *testing.T) {
 	body := `{"choices":[{"message":{"content":"hello world"}}]}`
-	got, attrs := captureHandlerOutput(t, "application/json", []string{body}, int64(len(body)), http.StatusOK)
+	got, attrs := captureHandlerOutput(t, "application/json", []string{body}, int64(len(body)), http.StatusOK, true, false)
 	if got != body {
 		t.Fatalf("client response changed: got %q, want %q", got, body)
 	}
@@ -29,9 +29,42 @@ func TestOutputCaptureMiddlewarePublishesCompleteStreamingOutput(t *testing.T) {
 		"data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"message\"}}\n\n",
 		"data: [DONE]\n\n",
 	}
-	_, attrs := captureHandlerOutput(t, "text/event-stream", chunks, 4096, http.StatusOK)
+	_, attrs := captureHandlerOutput(t, "text/event-stream", chunks, 4096, http.StatusOK, true, false)
 	if attrs[openInferenceOutputValue] != "chat response message" {
 		t.Fatalf("unexpected streaming output: %#v", attrs)
+	}
+}
+
+func TestOutputCaptureMiddlewarePublishesChatCompletionsThinkingWithoutOutputCapture(t *testing.T) {
+	body := `{"choices":[{"message":{"content":"visible answer","reasoning_content":"provider reasoning"}}]}`
+	_, attrs := captureHandlerOutput(t, "application/json", []string{body}, int64(len(body)), http.StatusOK, false, true)
+	if _, ok := attrs[openInferenceOutputValue]; ok {
+		t.Fatalf("output must remain disabled: %#v", attrs)
+	}
+	for key, want := range map[string]any{
+		"llm.output_messages.0.message.role":                            "assistant",
+		"llm.output_messages.0.message.contents.0.message_content.type": "reasoning",
+		"llm.output_messages.0.message.contents.0.message_content.text": "provider reasoning",
+		"promptgate.model_thoughts.0.source":                            "chat_completions",
+	} {
+		if got := attrs[key]; got != want {
+			t.Errorf("attribute %s: got %#v, want %#v", key, got, want)
+		}
+	}
+}
+
+func TestOutputCaptureMiddlewarePublishesStreamingChatCompletionsThinking(t *testing.T) {
+	chunks := []string{
+		"data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"first \"}}]}\n\n",
+		"data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"second\",\"content\":\"answer\"}}]}\n\n",
+		"data: [DONE]\n\n",
+	}
+	_, attrs := captureHandlerOutput(t, "text/event-stream", chunks, 4096, http.StatusOK, true, true)
+	if attrs[openInferenceOutputValue] != "answer" {
+		t.Fatalf("unexpected output: %#v", attrs)
+	}
+	if attrs["llm.output_messages.0.message.contents.0.message_content.text"] != "first second" {
+		t.Fatalf("unexpected thinking: %#v", attrs)
 	}
 }
 
@@ -47,7 +80,7 @@ func TestOutputCaptureMiddlewareOmitsUnsafeResponses(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, attrs := captureHandlerOutput(t, "application/json", []string{body}, tt.maxBytes, tt.statusCode)
+			_, attrs := captureHandlerOutput(t, "application/json", []string{body}, tt.maxBytes, tt.statusCode, true, true)
 			if _, ok := attrs[openInferenceOutputValue]; ok {
 				t.Fatalf("output must be omitted: %#v", attrs)
 			}
@@ -55,11 +88,11 @@ func TestOutputCaptureMiddlewareOmitsUnsafeResponses(t *testing.T) {
 	}
 }
 
-func captureHandlerOutput(t *testing.T, contentType string, chunks []string, maxBytes int64, statusCode int) (string, map[string]any) {
+func captureHandlerOutput(t *testing.T, contentType string, chunks []string, maxBytes int64, statusCode int, captureOutput, captureThinking bool) (string, map[string]any) {
 	t.Helper()
 	spans := tracetest.NewSpanRecorder()
 	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spans))
-	handler := OutputCaptureMiddleware(maxBytes)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := OutputCaptureMiddleware(maxBytes, captureOutput, captureThinking)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, span := provider.Tracer("test").Start(r.Context(), "interception")
 		BindOutputSpan(r.Context(), span)
 		w.Header().Set("Content-Type", contentType)
