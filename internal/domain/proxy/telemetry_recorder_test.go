@@ -240,6 +240,45 @@ func TestTelemetryRecorderPublishesClientVisibleOutputOnInterceptionSpan(t *test
 	}
 }
 
+func TestTelemetryRecorderExportsProviderThinkingWithExplicitConsent(t *testing.T) {
+	spans := tracetest.NewSpanRecorder()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spans))
+	ctx, span := provider.Tracer("test").Start(context.Background(), "interception")
+	recorder := NewTelemetryRecorder(noopTelemetryRecorder{}, false).WithThinkingCapture(true)
+	_ = recorder.RecordInterception(ctx, &aibrecorder.InterceptionRecord{ID: "id"})
+	_ = recorder.RecordModelThought(ctx, &aibrecorder.ModelThoughtRecord{
+		InterceptionID: "id",
+		Content:        "provider reasoning summary",
+		Metadata:       aibrecorder.Metadata{"source": aibrecorder.ThoughtSourceReasoningSummary},
+	})
+	span.End()
+	attrs := spanAttributes(spans.Ended()[0])
+	for key, want := range map[string]any{
+		"llm.output_messages.0.message.role":                            "assistant",
+		"llm.output_messages.0.message.contents.0.message_content.type": "reasoning",
+		"llm.output_messages.0.message.contents.0.message_content.text": "provider reasoning summary",
+		"promptgate.model_thoughts.0.source":                            aibrecorder.ThoughtSourceReasoningSummary,
+	} {
+		if got := attrs[key]; got != want {
+			t.Errorf("attribute %s: got %#v, want %#v", key, got, want)
+		}
+	}
+}
+
+func TestTelemetryRecorderDoesNotExportThinkingByDefault(t *testing.T) {
+	spans := tracetest.NewSpanRecorder()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spans))
+	ctx, span := provider.Tracer("test").Start(context.Background(), "interception")
+	recorder := NewTelemetryRecorder(noopTelemetryRecorder{}, false)
+	_ = recorder.RecordInterception(ctx, &aibrecorder.InterceptionRecord{ID: "id"})
+	_ = recorder.RecordModelThought(ctx, &aibrecorder.ModelThoughtRecord{InterceptionID: "id", Content: "secret thinking"})
+	span.End()
+	attrs := spanAttributes(spans.Ended()[0])
+	if _, exists := attrs["llm.output_messages.0.message.contents.0.message_content.text"]; exists {
+		t.Fatal("thinking must not be attached without explicit consent")
+	}
+}
+
 func spanAttributes(span sdktrace.ReadOnlySpan) map[string]any {
 	values := make(map[string]any)
 	for _, attr := range span.Attributes() {

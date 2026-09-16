@@ -50,6 +50,7 @@ data:
   PROMPTGATE_OTEL_ENVIRONMENT: {{ .Values.config.otelEnvironment | quote }}
   PROMPTGATE_OTEL_CAPTURE_PROMPTS: {{ .Values.config.otelCapturePrompts | quote }}
   PROMPTGATE_OTEL_CAPTURE_OUTPUT: {{ .Values.config.otelCaptureOutput | quote }}
+  PROMPTGATE_OTEL_CAPTURE_THINKING: {{ .Values.config.otelCaptureThinking | quote }}
   PROMPTGATE_OTEL_EXPORT_TIMEOUT: {{ .Values.config.otelExportTimeout | quote }}
   PROMPTGATE_OTEL_BATCH_TIMEOUT: {{ .Values.config.otelBatchTimeout | quote }}
   PROMPTGATE_OTEL_MAX_QUEUE_SIZE: {{ .Values.config.otelMaxQueueSize | quote }}

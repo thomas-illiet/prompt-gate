@@ -92,6 +92,7 @@ func NewProxy(ctx context.Context, cfg config.ProxyConfig, logger *slog.Logger, 
 	}
 
 	usageRecorder := localproxy.NewTelemetryRecorder(localproxy.NewRedisRecorder(redisStore, logger), cfg.OTel.CapturePrompts)
+	usageRecorder.WithThinkingCapture(cfg.OTel.CaptureThinking)
 	if cfg.UsageCost.Enabled {
 		usageRecorder.WithEstimatedCosts(cfg.UsageCost.Input, cfg.UsageCost.Output, cfg.UsageCost.Embedding)
 	}

@@ -156,7 +156,10 @@ Prompt content requires the independent
 are exported in full without truncation or redaction. Model response text has
 its own independent `PROMPTGATE_OTEL_CAPTURE_OUTPUT=true` consent switch. When
 enabled, assistant text is exported in full as the OpenInference `output.value`
-attribute; oversized responses are omitted rather than truncated. Disabling
+attribute; oversized responses are omitted rather than truncated. Provider-returned
+thinking, reasoning summaries, and commentary require the separate
+`PROMPTGATE_OTEL_CAPTURE_THINKING=true` switch and are exported in full as
+OpenInference reasoning message content. Disabling
 content capture does not make traces PII-free: textual
 account identity and tool arguments are still exported. Telemetry failures are
 fail-open and do not change proxy or quota behavior.

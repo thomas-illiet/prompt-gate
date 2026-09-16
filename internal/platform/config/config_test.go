@@ -57,7 +57,7 @@ func TestLoadProxyOTelDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load proxy config: %v", err)
 	}
-	if cfg.OTel.Enabled || cfg.OTel.CapturePrompts || cfg.OTel.CaptureOutput {
+	if cfg.OTel.Enabled || cfg.OTel.CapturePrompts || cfg.OTel.CaptureOutput || cfg.OTel.CaptureThinking {
 		t.Fatalf("expected telemetry and prompt capture disabled: %#v", cfg.OTel)
 	}
 	if cfg.OTel.ProjectName != "prompt-gate" || cfg.OTel.ServiceName != "promptgate-proxy" {
@@ -73,13 +73,14 @@ func TestLoadProxyOTelConfig(t *testing.T) {
 	t.Setenv("PROMPTGATE_OTEL_INSECURE", "true")
 	t.Setenv("PROMPTGATE_OTEL_CAPTURE_PROMPTS", "true")
 	t.Setenv("PROMPTGATE_OTEL_CAPTURE_OUTPUT", "true")
+	t.Setenv("PROMPTGATE_OTEL_CAPTURE_THINKING", "true")
 	t.Setenv("PROMPTGATE_OTEL_PROJECT_NAME", "platform-analysis")
 
 	cfg, err := LoadProxy()
 	if err != nil {
 		t.Fatalf("load proxy config: %v", err)
 	}
-	if !cfg.OTel.Enabled || !cfg.OTel.CapturePrompts || !cfg.OTel.CaptureOutput || cfg.OTel.ProjectName != "platform-analysis" {
+	if !cfg.OTel.Enabled || !cfg.OTel.CapturePrompts || !cfg.OTel.CaptureOutput || !cfg.OTel.CaptureThinking || cfg.OTel.ProjectName != "platform-analysis" {
 		t.Fatalf("unexpected telemetry config: %#v", cfg.OTel)
 	}
 }

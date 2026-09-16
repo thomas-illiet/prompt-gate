@@ -190,6 +190,7 @@ config:
   otelEnvironment: production
   otelCapturePrompts: "false"
   otelCaptureOutput: "false"
+  otelCaptureThinking: "false"
   otelExportTimeout: 10s
   otelBatchTimeout: 5s
   otelMaxQueueSize: "2048"

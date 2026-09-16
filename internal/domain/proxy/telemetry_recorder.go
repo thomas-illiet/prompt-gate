@@ -19,17 +19,25 @@ type telemetryInterception struct {
 	mu                                   sync.Mutex
 	input, output, cacheRead, cacheWrite int64
 	extra                                map[string]int64
+	thoughtCount                         int
 }
 
 // TelemetryRecorder enriches AIBridge interception spans and delegates persistence.
 type TelemetryRecorder struct {
-	inner          aibrecorder.Recorder
-	capturePrompts bool
-	costEnabled    bool
-	inputRate      float64
-	outputRate     float64
-	embeddingRate  float64
-	interceptions  sync.Map
+	inner           aibrecorder.Recorder
+	capturePrompts  bool
+	captureThinking bool
+	costEnabled     bool
+	inputRate       float64
+	outputRate      float64
+	embeddingRate   float64
+	interceptions   sync.Map
+}
+
+// WithThinkingCapture controls export of provider-returned thinking and reasoning summaries.
+func (r *TelemetryRecorder) WithThinkingCapture(enabled bool) *TelemetryRecorder {
+	r.captureThinking = enabled
+	return r
 }
 
 // NewTelemetryRecorder decorates a usage recorder with OpenInference and OTel GenAI attributes.
@@ -192,6 +200,24 @@ func (r *TelemetryRecorder) RecordToolUsage(ctx context.Context, req *aibrecorde
 }
 
 func (r *TelemetryRecorder) RecordModelThought(ctx context.Context, req *aibrecorder.ModelThoughtRecord) error {
+	if r.captureThinking && req != nil && req.Content != "" {
+		if state, ok := r.load(req.InterceptionID); ok {
+			state.mu.Lock()
+			index := state.thoughtCount
+			state.thoughtCount++
+			prefix := fmt.Sprintf("llm.output_messages.0.message.contents.%d.message_content", index)
+			attrs := []attribute.KeyValue{
+				attribute.String("llm.output_messages.0.message.role", "assistant"),
+				attribute.String(prefix+".type", "reasoning"),
+				attribute.String(prefix+".text", req.Content),
+			}
+			if source, _ := req.Metadata["source"].(string); source != "" {
+				attrs = append(attrs, attribute.String(fmt.Sprintf("promptgate.model_thoughts.%d.source", index), source))
+			}
+			state.span.SetAttributes(attrs...)
+			state.mu.Unlock()
+		}
+	}
 	return r.inner.RecordModelThought(ctx, req)
 }
 

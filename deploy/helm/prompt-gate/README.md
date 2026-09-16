@@ -108,6 +108,7 @@ config:
   otelEnvironment: production
   otelCapturePrompts: "true"
   otelCaptureOutput: "true"
+  otelCaptureThinking: "true"
 otelApiKey:
   existingSecret:
     name: prompt-gate-phoenix-api-key
