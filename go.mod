@@ -25,7 +25,7 @@ require (
 	go.opentelemetry.io/proto/otlp v1.11.0
 	golang.org/x/oauth2 v0.37.0
 	google.golang.org/protobuf v1.36.12
-	gorm.io/driver/postgres v1.6.2
+	gorm.io/driver/postgres v1.6.3
 	gorm.io/driver/sqlite v1.6.0
 	gorm.io/gorm v1.31.2
 )
