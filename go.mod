@@ -5,7 +5,7 @@ go 1.26.0
 tool honnef.co/go/tools/cmd/staticcheck
 
 require (
-	cdr.dev/slog/v3 v3.1.0
+	cdr.dev/slog/v3 v3.2.0
 	github.com/MicahParks/keyfunc/v3 v3.8.2
 	github.com/alicebob/miniredis/v2 v2.39.0
 	github.com/coder/aibridge v1.1.2
@@ -25,7 +25,7 @@ require (
 	go.opentelemetry.io/proto/otlp v1.11.0
 	golang.org/x/oauth2 v0.37.0
 	google.golang.org/protobuf v1.36.12
-	gorm.io/driver/postgres v1.6.2
+	gorm.io/driver/postgres v1.6.3
 	gorm.io/driver/sqlite v1.6.0
 	gorm.io/gorm v1.31.2
 )
