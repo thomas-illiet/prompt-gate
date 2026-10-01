@@ -3,7 +3,6 @@ package configevents
 import "context"
 
 const (
-	DomainFirewall      = "firewall"
 	DomainProviders     = "providers"
 	DomainMCP           = "mcp"
 	DomainAuth          = "auth"

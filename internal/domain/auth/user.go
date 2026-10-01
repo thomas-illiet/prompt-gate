@@ -43,16 +43,15 @@ func (t UserType) IsValid() bool {
 }
 
 type UserProfile struct {
-	ID                      string    `json:"id"`
-	Sub                     string    `json:"sub"`
-	PreferredUsername       string    `json:"preferredUsername"`
-	Email                   string    `json:"email"`
-	Name                    string    `json:"name"`
-	Type                    UserType  `json:"type"`
-	Role                    AppRole   `json:"role"`
-	IsActive                bool      `json:"isActive"`
-	FirewallOverrideEnabled bool      `json:"firewallOverrideEnabled"`
-	LastLoginAt             time.Time `json:"lastLoginAt"`
+	ID                string    `json:"id"`
+	Sub               string    `json:"sub"`
+	PreferredUsername string    `json:"preferredUsername"`
+	Email             string    `json:"email"`
+	Name              string    `json:"name"`
+	Type              UserType  `json:"type"`
+	Role              AppRole   `json:"role"`
+	IsActive          bool      `json:"isActive"`
+	LastLoginAt       time.Time `json:"lastLoginAt"`
 }
 
 // Principal identifies both the account and the virtual key used to authenticate a proxy call.

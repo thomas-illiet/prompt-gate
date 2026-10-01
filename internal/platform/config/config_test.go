@@ -48,6 +48,7 @@ func setRequiredProxyEnv(t *testing.T) {
 	setRequiredWorkerEnv(t)
 	t.Setenv("PROMPTGATE_JWT_SECRET", "0123456789abcdef0123456789abcdef")
 	t.Setenv("PROMPTGATE_SECRETS_KEY", "0123456789abcdef0123456789abcdef")
+	t.Setenv("PROMPTGATE_OPA_URL", "http://opa:8181")
 }
 
 // TestLoadProxyOTelDefaults verifies telemetry is safely disabled by default.
@@ -471,6 +472,7 @@ func TestLoadProxyReadsSessionAndCORSConfig(t *testing.T) {
 	t.Setenv("PROMPTGATE_PROXY_MAX_BUFFERED_RESPONSE_BYTES", "2048")
 	t.Setenv("PROMPTGATE_PROXY_UPSTREAM_TIMEOUT", "3m")
 	t.Setenv("PROMPTGATE_PROXY_DEBUG_REQUESTS", "true")
+	t.Setenv("PROMPTGATE_OPA_URL", "http://opa:8181")
 
 	cfg, err := LoadProxy()
 	if err != nil {
@@ -506,6 +508,7 @@ func TestLoadProxyReadsTrustedProxies(t *testing.T) {
 	t.Setenv("PROMPTGATE_SECRETS_KEY", "0123456789abcdef0123456789abcdef")
 	t.Setenv("PROMPTGATE_REDIS_URL", "redis://localhost:6379/0")
 	t.Setenv("PROMPTGATE_PROXY_TRUSTED_PROXIES", "10.0.0.0/8, 192.168.0.0/16")
+	t.Setenv("PROMPTGATE_OPA_URL", "http://opa:8181")
 
 	cfg, err := LoadProxy()
 	if err != nil {

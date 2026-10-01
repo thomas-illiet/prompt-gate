@@ -78,7 +78,7 @@ flowchart TD
 - Session lookup refreshes the user profile through `UserResolver`. If the user
   no longer exists, the session is deleted and rejected.
 - `ContextWithUser` and `UserFromContext` are the shared contract used by API,
-  token, firewall, and proxy middleware.
+  token, policy, and proxy middleware.
 - `ActorMiddleware` requires an authenticated `UserProfile` in context and
   injects the AIBridge actor used by the proxy bridge.
 

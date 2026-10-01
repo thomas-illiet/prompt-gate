@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"promptgate/backend/internal/domain/auth"
-	"promptgate/backend/internal/domain/firewall"
 	"promptgate/backend/internal/domain/groups"
+	"promptgate/backend/internal/domain/policy"
 	"promptgate/backend/internal/domain/subscriptions"
 	"promptgate/backend/internal/domain/tokens"
 	"promptgate/backend/internal/domain/users"
@@ -22,12 +22,13 @@ func (p *ProxyRuntime) buildHandler(
 	tokenService *tokens.Service,
 	userService *users.Service,
 	authCache tokens.AuthCache,
-	firewallSnapshot *firewall.SnapshotStore,
+	policyEvaluator *policy.Evaluator,
+	opaClient *policy.Client,
 	accessSnapshot *groups.SnapshotStore,
 	debugRequestWriter *httpmiddleware.JSONLineWriter,
 ) http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /health", proxyHealth)
+	mux.HandleFunc("GET /health", proxyHealth(opaClient))
 
 	clientIPOptions := clientip.Options{
 		TrustForwardHeaders: cfg.ProxyTrustForwardHeaders,
@@ -40,7 +41,7 @@ func (p *ProxyRuntime) buildHandler(
 		Logger:       p.logger,
 	})(
 		clientip.MiddlewareWithOptions(clientIPOptions)(
-			firewall.MiddlewareWithOptions(firewallSnapshot, clientIPOptions, p.logger)(
+			policy.Middleware(policyEvaluator, p.logger)(
 				groups.MiddlewareWithOptions(accessSnapshot, p.logger, groups.MiddlewareOptions{
 					MaxBufferedRequestBytes: cfg.ProxyMaxBufferedRequestBytes,
 				})(
@@ -70,10 +71,17 @@ func (p *ProxyRuntime) buildHandler(
 	return httpmiddleware.SecurityHeaders()(mux)
 }
 
-func proxyHealth(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(`{"status":"ok"}`))
+func proxyHealth(opaClient *policy.Client) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if err := opaClient.Health(r.Context()); err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"status":"degraded","dependency":"opa"}`))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	}
 }
 
 // requestTimeout bounds a complete proxy request while preserving streaming.

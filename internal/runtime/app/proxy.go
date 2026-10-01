@@ -11,9 +11,9 @@ import (
 	cdrslog "cdr.dev/slog/v3"
 	"go.opentelemetry.io/otel"
 
-	"promptgate/backend/internal/domain/firewall"
 	"promptgate/backend/internal/domain/groups"
 	localmcp "promptgate/backend/internal/domain/mcp"
+	"promptgate/backend/internal/domain/policy"
 	localprovider "promptgate/backend/internal/domain/provider"
 	localproxy "promptgate/backend/internal/domain/proxy"
 	"promptgate/backend/internal/domain/subscriptions"
@@ -80,7 +80,6 @@ func NewProxy(ctx context.Context, cfg config.ProxyConfig, logger *slog.Logger, 
 
 	userService := users.NewService(db)
 	tokenService := tokens.NewService(db, cfg.JWTSecret)
-	firewallService := firewall.NewService(db)
 	groupService := groups.NewService(db)
 	subscriptionService := subscriptions.NewService(db)
 	providerService := localprovider.NewService(db, secretCipher)
@@ -108,13 +107,24 @@ func NewProxy(ctx context.Context, cfg config.ProxyConfig, logger *slog.Logger, 
 	}
 	authCache := tokens.NewRedisAuthCache(redisStore, cfg.RedisCacheTTL, logger)
 	authCache.SyncVersion(ctx)
-	firewallSnapshot := firewall.NewSnapshotStore(firewallService)
 	accessSnapshot := groups.NewSnapshotStore(groupService)
+	opaHTTPClient := &http.Client{Timeout: cfg.OPATimeout}
+	customOPAHTTPClient, err := platformhttp.NewWithCAFile(cfg.CAFile, cfg.OPATimeout)
+	if err != nil {
+		return nil, fmt.Errorf("initialize OPA CA HTTP client: %w", err)
+	}
+	if customOPAHTTPClient != nil {
+		opaHTTPClient = customOPAHTTPClient
+	}
+	opaClient, err := policy.NewClient(cfg.OPAURL, cfg.OPAPolicyPath, opaHTTPClient)
+	if err != nil {
+		return nil, fmt.Errorf("initialize OPA client: %w", err)
+	}
+	policyEvaluator := policy.NewEvaluator(opaClient, redisStore, cfg.OPAPolicyPath, cfg.OPACacheTTL, logger)
 	manager, err := proxyruntime.NewManager(ctx, proxyruntime.Options{
 		Providers:                providerService,
 		MCP:                      mcpService,
 		Recorder:                 recorder,
-		FirewallSnapshot:         firewallSnapshot,
 		AccessSnapshot:           accessSnapshot,
 		AuthCache:                authCache,
 		Redis:                    redisStore,
@@ -142,7 +152,7 @@ func NewProxy(ctx context.Context, cfg config.ProxyConfig, logger *slog.Logger, 
 		debugRequestWriter = httpmiddleware.NewJSONLineWriter(os.Stdout)
 		_ = debugRequestWriter.WriteStartupWarning()
 	}
-	runtime.Handler = runtime.buildHandler(cfg, tokenService, userService, authCache, firewallSnapshot, accessSnapshot, debugRequestWriter)
+	runtime.Handler = runtime.buildHandler(cfg, tokenService, userService, authCache, policyEvaluator, opaClient, accessSnapshot, debugRequestWriter)
 	success = true
 	telemetryReady = true
 	return runtime, nil

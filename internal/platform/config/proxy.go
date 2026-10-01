@@ -29,6 +29,9 @@ func LoadProxy() (ProxyConfig, error) {
 	v.SetDefault("proxy_max_buffered_request_bytes", proxylimits.DefaultMaxBufferedRequestBytes)
 	v.SetDefault("proxy_max_buffered_response_bytes", proxylimits.DefaultMaxBufferedResponseBytes)
 	v.SetDefault("proxy_upstream_timeout", proxylimits.DefaultUpstreamTimeout)
+	v.SetDefault("opa_policy_path", "promptgate/proxy/decision")
+	v.SetDefault("opa_timeout", "2s")
+	v.SetDefault("opa_cache_ttl", "10m")
 	v.SetDefault("otel_enabled", false)
 	v.SetDefault("otel_project_name", "prompt-gate")
 	v.SetDefault("otel_service_name", "promptgate-proxy")
@@ -77,6 +80,10 @@ func LoadProxy() (ProxyConfig, error) {
 			ProxyMaxBufferedRequestBytes:  v.GetInt64("proxy_max_buffered_request_bytes"),
 			ProxyMaxBufferedResponseBytes: v.GetInt64("proxy_max_buffered_response_bytes"),
 			ProxyUpstreamTimeout:          v.GetDuration("proxy_upstream_timeout"),
+			OPAURL:                        strings.TrimRight(strings.TrimSpace(v.GetString("opa_url")), "/"),
+			OPAPolicyPath:                 strings.Trim(strings.TrimSpace(v.GetString("opa_policy_path")), "/"),
+			OPATimeout:                    v.GetDuration("opa_timeout"),
+			OPACacheTTL:                   v.GetDuration("opa_cache_ttl"),
 		},
 		OTel: OTelConfig{
 			Enabled:            v.GetBool("otel_enabled"),
@@ -131,9 +138,21 @@ func LoadProxy() (ProxyConfig, error) {
 	if cfg.ProxyUpstreamTimeout <= 0 {
 		return ProxyConfig{}, errors.New("PROMPTGATE_PROXY_UPSTREAM_TIMEOUT must be greater than zero")
 	}
+	if cfg.OPAURL == "" {
+		return ProxyConfig{}, errors.New("PROMPTGATE_OPA_URL is required")
+	}
+	opaURL, err := url.Parse(cfg.OPAURL)
+	if err != nil || opaURL.Host == "" || (opaURL.Scheme != "https" && opaURL.Scheme != "http") {
+		return ProxyConfig{}, errors.New("PROMPTGATE_OPA_URL must be an absolute HTTP(S) URL")
+	}
+	if cfg.OPAPolicyPath == "" {
+		return ProxyConfig{}, errors.New("PROMPTGATE_OPA_POLICY_PATH must not be empty")
+	}
 	if err := validatePositiveDurations(
 		positiveDuration{"PROMPTGATE_REDIS_CACHE_TTL", cfg.RedisCacheTTL},
 		positiveDuration{"PROMPTGATE_PROXY_RELOAD_DEBOUNCE", cfg.ProxyReloadDebounce},
+		positiveDuration{"PROMPTGATE_OPA_TIMEOUT", cfg.OPATimeout},
+		positiveDuration{"PROMPTGATE_OPA_CACHE_TTL", cfg.OPACacheTTL},
 	); err != nil {
 		return ProxyConfig{}, err
 	}

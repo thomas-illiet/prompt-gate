@@ -45,13 +45,6 @@ func (m *Manager) mcpRecords(ctx context.Context) ([]localmcp.MCPServer, error) 
 	return records, nil
 }
 
-func (m *Manager) cacheFirewallSnapshot(ctx context.Context) error {
-	if m.opts.Redis == nil || m.opts.FirewallSnapshot == nil {
-		return nil
-	}
-	return m.opts.Redis.SetJSON(ctx, redisstore.SnapshotKey(configevents.DomainFirewall), m.opts.FirewallSnapshot.Snapshot(), m.opts.Redis.TTL())
-}
-
 func (m *Manager) cacheAccessSnapshot(ctx context.Context) error {
 	if m.opts.Redis == nil || m.opts.AccessSnapshot == nil {
 		return nil

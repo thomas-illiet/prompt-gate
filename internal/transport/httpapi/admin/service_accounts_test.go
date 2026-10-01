@@ -10,7 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	"promptgate/backend/internal/domain/firewall"
 	"promptgate/backend/internal/domain/tokens"
 	"promptgate/backend/internal/domain/users"
 
@@ -42,12 +41,7 @@ func newServiceAccountsTestHandler(t *testing.T) (*Handler, *users.Service, *tok
 	if err := tokenService.AutoMigrate(context.Background()); err != nil {
 		t.Fatalf("auto-migrate tokens table: %v", err)
 	}
-	firewallService := firewall.NewService(db)
-	if err := firewallService.AutoMigrate(context.Background()); err != nil {
-		t.Fatalf("auto-migrate firewall tables: %v", err)
-	}
-
-	return NewHandler(Dependencies{Users: userService, Tokens: tokenService, Firewall: firewallService}), userService, tokenService
+	return NewHandler(Dependencies{Users: userService, Tokens: tokenService}), userService, tokenService
 }
 
 // TestHandleAdminCreateServiceAccountRejectsInvalidIdentifier verifies handle admin create service account rejects invalid identifier.
@@ -274,134 +268,5 @@ func TestHandleAdminListServiceAccountTokensFiltersRevokedByDefault(t *testing.T
 	}
 	if len(list.Items) != 2 {
 		t.Fatalf("expected active and revoked tokens, got %#v", list)
-	}
-}
-
-// TestHandleAdminServiceAccountFirewallRules verifies handle admin service account firewall rules.
-func TestHandleAdminServiceAccountFirewallRules(t *testing.T) {
-	handler, userService, _ := newServiceAccountsTestHandler(t)
-	ctx := context.Background()
-
-	account, err := userService.CreateServiceAccount(ctx, users.ServiceAccountInput{
-		Identifier: "worker",
-		Name:       "Worker",
-		IsActive:   true,
-	})
-	if err != nil {
-		t.Fatalf("create service account: %v", err)
-	}
-
-	req := httptest.NewRequest(
-		http.MethodPost,
-		"/api/v1/admin/service-accounts/"+account.ID+"/firewall/rules",
-		bytes.NewBufferString(`{"address":"10.0.0.10","priority":1,"action":"allow","enabled":true,"description":"ci"}`),
-	)
-	req.SetPathValue("id", account.ID)
-	recorder := httptest.NewRecorder()
-
-	handler.HandleAdminCreateServiceAccountFirewallRule(recorder, req)
-
-	if recorder.Code != http.StatusCreated {
-		t.Fatalf("expected 201, got %d: %s", recorder.Code, recorder.Body.String())
-	}
-
-	var created firewall.RuleResponse
-	if err := json.NewDecoder(recorder.Body).Decode(&created); err != nil {
-		t.Fatalf("decode created firewall rule: %v", err)
-	}
-	if created.ServiceAccountID != account.ID {
-		t.Fatalf("expected serviceAccountId %q, got %q", account.ID, created.ServiceAccountID)
-	}
-
-	req = httptest.NewRequest(
-		http.MethodGet,
-		"/api/v1/admin/service-accounts/"+account.ID+"/firewall/rules",
-		nil,
-	)
-	req.SetPathValue("id", account.ID)
-	recorder = httptest.NewRecorder()
-
-	handler.HandleAdminListServiceAccountFirewallRules(recorder, req)
-
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", recorder.Code, recorder.Body.String())
-	}
-	var list firewall.ListResult
-	if err := json.NewDecoder(recorder.Body).Decode(&list); err != nil {
-		t.Fatalf("decode firewall list: %v", err)
-	}
-	if len(list.Items) != 1 || list.Items[0].ID != created.ID {
-		t.Fatalf("expected created firewall rule, got %#v", list)
-	}
-}
-
-// TestHandleAdminServiceAccountFirewallSimulateDefaultsToDeny verifies handle admin service account firewall simulate defaults to deny.
-func TestHandleAdminServiceAccountFirewallSimulateDefaultsToDeny(t *testing.T) {
-	handler, userService, _ := newServiceAccountsTestHandler(t)
-	ctx := context.Background()
-
-	account, err := userService.CreateServiceAccount(ctx, users.ServiceAccountInput{
-		Identifier: "worker",
-		Name:       "Worker",
-		IsActive:   true,
-	})
-	if err != nil {
-		t.Fatalf("create service account: %v", err)
-	}
-
-	req := httptest.NewRequest(
-		http.MethodPost,
-		"/api/v1/admin/service-accounts/"+account.ID+"/firewall/simulate",
-		bytes.NewBufferString(`{"clientIp":"10.0.0.25"}`),
-	)
-	req.SetPathValue("id", account.ID)
-	recorder := httptest.NewRecorder()
-
-	handler.HandleAdminSimulateServiceAccountFirewallRule(recorder, req)
-
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", recorder.Code, recorder.Body.String())
-	}
-	var response simulateFirewallResponse
-	if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
-		t.Fatalf("decode simulation response: %v", err)
-	}
-	if response.Allowed || response.MatchedRule != nil {
-		t.Fatalf("expected default deny without match, got %#v", response)
-	}
-}
-
-// TestHandleAdminServiceAccountFirewallRuleConflict verifies handle admin service account firewall rule conflict.
-func TestHandleAdminServiceAccountFirewallRuleConflict(t *testing.T) {
-	handler, userService, _ := newServiceAccountsTestHandler(t)
-	ctx := context.Background()
-
-	account, err := userService.CreateServiceAccount(ctx, users.ServiceAccountInput{
-		Identifier: "worker",
-		Name:       "Worker",
-		IsActive:   true,
-	})
-	if err != nil {
-		t.Fatalf("create service account: %v", err)
-	}
-
-	for i, address := range []string{"10.0.0.10", "10.0.0.11"} {
-		req := httptest.NewRequest(
-			http.MethodPost,
-			"/api/v1/admin/service-accounts/"+account.ID+"/firewall/rules",
-			bytes.NewBufferString(fmt.Sprintf(`{"address":%q,"priority":1,"action":"allow","enabled":true}`, address)),
-		)
-		req.SetPathValue("id", account.ID)
-		recorder := httptest.NewRecorder()
-
-		handler.HandleAdminCreateServiceAccountFirewallRule(recorder, req)
-
-		expected := http.StatusCreated
-		if i == 1 {
-			expected = http.StatusConflict
-		}
-		if recorder.Code != expected {
-			t.Fatalf("expected %d, got %d: %s", expected, recorder.Code, recorder.Body.String())
-		}
 	}
 }

@@ -15,7 +15,6 @@ const user: AdminUser = {
   role: 'user',
   note: '',
   isActive: true,
-  firewallOverrideEnabled: true,
   lastLoginAt: '2026-01-02T00:00:00Z',
   inputTokens: 123,
   outputTokens: 456,
@@ -70,7 +69,7 @@ function mountTable() {
         AppServerDataTable: {
           props: ['items'],
           template:
-            '<div><div v-for="item in items" :key="item.id"><slot name="item.name" :item="item" /><slot name="item.email" :item="item" /><slot name="item.firewallOverrideEnabled" :item="item" /><slot name="item.actions" :item="item" /></div></div>',
+            '<div><div v-for="item in items" :key="item.id"><slot name="item.name" :item="item" /><slot name="item.email" :item="item" /><slot name="item.actions" :item="item" /></div></div>',
         },
         VBtn: { template: '<button><slot /></button>' },
         VChip: { template: '<span><slot /></span>' },
@@ -104,21 +103,6 @@ describe('AdminUsersTable', () => {
     await wrapper.get('[data-test="row-action-tokens"]').trigger('click')
 
     expect(wrapper.emitted('manageTokens')).toEqual([[user]])
-  })
-
-  it('shows firewall override state and exposes a firewall row action', async () => {
-    const wrapper = mountTable()
-
-    expect(wrapper.text()).toContain('Override')
-    expect(wrapper.get('[data-test="row-action-manageFirewall"]').text()).toBe(
-      'Firewall',
-    )
-
-    await wrapper
-      .get('[data-test="row-action-manageFirewall"]')
-      .trigger('click')
-
-    expect(wrapper.emitted('manageFirewall')).toEqual([[user]])
   })
 
   it('exposes a manage-groups row action', async () => {

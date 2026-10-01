@@ -38,12 +38,6 @@ func (m *Manager) Watch(ctx context.Context) {
 func (m *Manager) handleConfigEvent(ctx context.Context, domain string, version int64, reload *reloadDebouncer) {
 	m.opts.Logger.Info("config reload event received", "domain", domain, "version", version)
 	switch domain {
-	case configevents.DomainFirewall:
-		if err := m.RefreshFirewall(ctx); err != nil {
-			m.opts.Logger.Error("firewall snapshot reload failed", "error", err)
-			return
-		}
-		m.opts.Logger.Info("firewall snapshot reloaded", "version", version)
 	case configevents.DomainGroups:
 		if err := m.RefreshAccessGroups(ctx); err != nil {
 			m.opts.Logger.Error("group access snapshot reload failed", "error", err)

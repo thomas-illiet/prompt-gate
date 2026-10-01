@@ -15,7 +15,6 @@ export interface ServiceAccount {
   quotaState?: AccountQuotaState
   note: string
   isActive: boolean
-  firewallOverrideEnabled: boolean
   inputTokens: number
   outputTokens: number
   createdAt: string
@@ -33,7 +32,6 @@ export interface ServiceAccountPayload {
   identifier: string
   name: string
   isActive: boolean
-  firewallOverrideEnabled?: boolean
 }
 
 export interface ServiceAccountFormPayload extends ServiceAccountPayload {

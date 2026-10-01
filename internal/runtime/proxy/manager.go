@@ -12,7 +12,6 @@ import (
 	aibrecorder "github.com/coder/aibridge/recorder"
 	"go.opentelemetry.io/otel/trace"
 
-	"promptgate/backend/internal/domain/firewall"
 	"promptgate/backend/internal/domain/groups"
 	localmcp "promptgate/backend/internal/domain/mcp"
 	localprovider "promptgate/backend/internal/domain/provider"
@@ -25,7 +24,6 @@ type Options struct {
 	Providers                *localprovider.Service
 	MCP                      *localmcp.Service
 	Recorder                 aibrecorder.Recorder
-	FirewallSnapshot         *firewall.SnapshotStore
 	AccessSnapshot           *groups.SnapshotStore
 	AuthCache                tokens.AuthCache
 	Redis                    *redisstore.Store
@@ -63,12 +61,6 @@ func NewManager(ctx context.Context, opts Options) (*Manager, error) {
 	}).httpClient
 	manager := &Manager{opts: opts}
 	manager.buildBridge = manager.newBridge
-	if opts.FirewallSnapshot != nil {
-		if err := opts.FirewallSnapshot.Refresh(ctx); err != nil {
-			return nil, fmt.Errorf("load firewall snapshot: %w", err)
-		}
-		_ = manager.cacheFirewallSnapshot(ctx)
-	}
 	if opts.AccessSnapshot != nil {
 		if err := manager.RefreshAccessGroups(ctx); err != nil {
 			return nil, fmt.Errorf("load group access snapshot: %w", err)
@@ -122,17 +114,6 @@ func (m *Manager) installBridge(bridge managedBridge) {
 	}
 }
 
-// RefreshFirewall reloads the firewall snapshot without rebuilding the bridge.
-func (m *Manager) RefreshFirewall(ctx context.Context) error {
-	if m.opts.FirewallSnapshot == nil {
-		return nil
-	}
-	if err := m.opts.FirewallSnapshot.Refresh(ctx); err != nil {
-		return err
-	}
-	return m.cacheFirewallSnapshot(ctx)
-}
-
 // RefreshAccessGroups reloads group access rules without rebuilding the bridge.
 func (m *Manager) RefreshAccessGroups(ctx context.Context) error {
 	if m.opts.AccessSnapshot == nil {
@@ -158,9 +139,6 @@ func (m *Manager) RefreshAccessGroups(ctx context.Context) error {
 
 // Reload refreshes runtime-backed configuration without restarting the process.
 func (m *Manager) Reload(ctx context.Context) error {
-	if err := m.RefreshFirewall(ctx); err != nil {
-		return fmt.Errorf("refresh firewall snapshot: %w", err)
-	}
 	if err := m.RefreshAccessGroups(ctx); err != nil {
 		return fmt.Errorf("refresh group access snapshot: %w", err)
 	}

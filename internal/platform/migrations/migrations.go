@@ -8,7 +8,6 @@ import (
 	"gorm.io/gorm"
 
 	"promptgate/backend/internal/domain/faq"
-	"promptgate/backend/internal/domain/firewall"
 	"promptgate/backend/internal/domain/groups"
 	"promptgate/backend/internal/domain/mcp"
 	"promptgate/backend/internal/domain/monitoring"
@@ -36,11 +35,6 @@ func Run(ctx context.Context, db *gorm.DB) error {
 	slog.Info("running database migrations", "models", "tokens")
 	if err := db.WithContext(ctx).AutoMigrate(&tokens.Token{}); err != nil {
 		return fmt.Errorf("migrate tokens: %w", err)
-	}
-
-	slog.Info("running database migrations", "models", "firewall")
-	if err := db.WithContext(ctx).AutoMigrate(&firewall.FirewallRule{}); err != nil {
-		return fmt.Errorf("migrate firewall: %w", err)
 	}
 
 	slog.Info("running database migrations", "models", "faq")
@@ -85,7 +79,25 @@ func Run(ctx context.Context, db *gorm.DB) error {
 	if err := proxy.MigrateLegacySchema(ctx, db); err != nil {
 		return fmt.Errorf("migrate proxy legacy schema: %w", err)
 	}
+	if err := removeLegacyFirewall(ctx, db); err != nil {
+		return fmt.Errorf("remove legacy firewall schema: %w", err)
+	}
 
 	slog.Info("database migrations completed")
+	return nil
+}
+
+func removeLegacyFirewall(ctx context.Context, db *gorm.DB) error {
+	migrator := db.WithContext(ctx).Migrator()
+	if migrator.HasTable("firewall_rules") {
+		if err := migrator.DropTable("firewall_rules"); err != nil {
+			return err
+		}
+	}
+	if migrator.HasColumn(&users.User{}, "firewall_override_enabled") {
+		if err := migrator.DropColumn(&users.User{}, "firewall_override_enabled"); err != nil {
+			return err
+		}
+	}
 	return nil
 }

@@ -20,7 +20,6 @@ const emit = defineEmits<{
   create: []
   delete: [account: ServiceAccount]
   edit: [account: ServiceAccount]
-  manageFirewall: [account: ServiceAccount]
   manageIps: [account: ServiceAccount]
   manageTokens: [account: ServiceAccount]
   notes: [account: ServiceAccount]
@@ -37,11 +36,6 @@ const headers: DataTableHeader[] = [
   appTableCenteredColumn({
     title: 'Status',
     key: 'isActive',
-  }),
-  appTableCenteredColumn({
-    title: 'Firewall',
-    key: 'firewallOverrideEnabled',
-    sortable: false,
   }),
   appTableCenteredColumn({
     title: 'Plan',
@@ -79,12 +73,6 @@ const rowActions: AppRowAction<ServiceAccount>[] = [
     key: 'manageIps',
     onSelect: (account) => emit('manageIps', account),
     title: 'IP addresses',
-  },
-  {
-    icon: 'mdi-shield-account-outline',
-    key: 'manageFirewall',
-    onSelect: (account) => emit('manageFirewall', account),
-    title: 'Firewall',
   },
   {
     icon: 'mdi-key-chain',
@@ -200,19 +188,6 @@ function planColor(account: ServiceAccount) {
             inactive-label="Inactive"
             @click="emit('toggleStatus', item)"
           />
-        </div>
-      </template>
-
-      <template #item.firewallOverrideEnabled="{ item }">
-        <div class="app-table-center">
-          <v-chip
-            size="small"
-            label
-            variant="tonal"
-            :color="item.firewallOverrideEnabled ? 'success' : 'default'"
-          >
-            {{ item.firewallOverrideEnabled ? 'Override' : 'Global' }}
-          </v-chip>
         </div>
       </template>
 

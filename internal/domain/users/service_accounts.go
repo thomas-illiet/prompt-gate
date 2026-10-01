@@ -89,14 +89,13 @@ func (s *Service) CreateServiceAccount(ctx context.Context, input ServiceAccount
 			return err
 		}
 		record = User{
-			ExternalSub:             "service:" + uuid.NewString(),
-			PreferredUsername:       normalized,
-			Name:                    name,
-			Type:                    auth.UserTypeService,
-			Role:                    auth.RoleUser,
-			IsActive:                input.IsActive,
-			FirewallOverrideEnabled: serviceAccountFirewallOverride(input, false),
-			LastLoginAt:             time.Now().UTC(),
+			ExternalSub:       "service:" + uuid.NewString(),
+			PreferredUsername: normalized,
+			Name:              name,
+			Type:              auth.UserTypeService,
+			Role:              auth.RoleUser,
+			IsActive:          input.IsActive,
+			LastLoginAt:       time.Now().UTC(),
 		}
 		if err := tx.Create(&record).Error; err != nil {
 			return fmt.Errorf("create service account: %w", err)
@@ -130,7 +129,6 @@ func (s *Service) UpdateServiceAccount(ctx context.Context, id string, input Ser
 		record.Type = auth.UserTypeService
 		record.Role = auth.RoleUser
 		record.IsActive = input.IsActive
-		record.FirewallOverrideEnabled = serviceAccountFirewallOverride(input, record.FirewallOverrideEnabled)
 		if err := tx.Save(&record).Error; err != nil {
 			return fmt.Errorf("update service account: %w", err)
 		}
@@ -149,9 +147,6 @@ func (s *Service) UpdateServiceAccount(ctx context.Context, id string, input Ser
 
 func (s *Service) DeleteServiceAccount(ctx context.Context, id string) error {
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := deleteAccountFirewallRulesTx(tx, "service_account", id); err != nil {
-			return err
-		}
 		result := tx.Where("type = ?", auth.UserTypeService).Delete(&User{}, "id = ?", id)
 		if result.Error != nil {
 			return fmt.Errorf("delete service account: %w", result.Error)
@@ -165,6 +160,5 @@ func (s *Service) DeleteServiceAccount(ctx context.Context, id string) error {
 		return err
 	}
 	s.notifier.Notify(ctx, configevents.DomainAuth)
-	s.notifier.Notify(ctx, configevents.DomainFirewall)
 	return nil
 }

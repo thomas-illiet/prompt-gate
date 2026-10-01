@@ -116,7 +116,6 @@ func newAPIHandler(a *app.App) http.Handler {
 		DB:            a.DB,
 		Users:         a.Users,
 		Tokens:        a.Tokens,
-		Firewall:      a.Firewall,
 		FAQ:           a.FAQ,
 		Groups:        a.Groups,
 		Providers:     a.Providers,

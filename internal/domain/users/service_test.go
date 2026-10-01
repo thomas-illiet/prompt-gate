@@ -344,7 +344,7 @@ func TestCreateServiceAccountForcesServiceTypeAndUserRole(t *testing.T) {
 	}
 }
 
-func TestDeleteServiceAccountAllowsMissingOptionalFirewallTable(t *testing.T) {
+func TestDeleteServiceAccountDoesNotRequireLegacyFirewallTable(t *testing.T) {
 	service := newTestService(t)
 	ctx := context.Background()
 
@@ -358,7 +358,7 @@ func TestDeleteServiceAccountAllowsMissingOptionalFirewallTable(t *testing.T) {
 	}
 
 	if err := service.DeleteServiceAccount(ctx, account.ID); err != nil {
-		t.Fatalf("delete service account without firewall table: %v", err)
+		t.Fatalf("delete service account without legacy firewall table: %v", err)
 	}
 	if _, err := service.GetServiceAccount(ctx, account.ID); !errors.Is(err, ErrUserNotFound) {
 		t.Fatalf("expected deleted service account to be absent, got %v", err)

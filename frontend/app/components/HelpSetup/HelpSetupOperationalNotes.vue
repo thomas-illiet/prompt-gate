@@ -30,10 +30,10 @@
       <div class="help-setup-operational-notes__item">
         <v-icon color="primary" icon="mdi-shield-check-outline" size="22" />
         <div>
-          <h3>Check firewall decisions</h3>
+          <h3>Check policy decisions</h3>
           <p>
-            A forbidden proxy response usually means a global or scoped firewall
-            rule denied the client IP.
+            A forbidden proxy response means the external OPA policy denied the
+            authenticated identity and request context.
           </p>
         </div>
       </div>

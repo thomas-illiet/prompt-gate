@@ -31,21 +31,20 @@ const maxAccountNoteLength = 2000
 var serviceAccountIdentifierRegexp = regexp.MustCompile(`^[a-z0-9_-]{1,64}$`)
 
 type User struct {
-	ID                      string        `gorm:"type:uuid;primaryKey"`
-	ExternalSub             string        `gorm:"column:external_sub;uniqueIndex;not null"`
-	Email                   string        `gorm:"not null;index"`
-	PreferredUsername       string        `gorm:"column:preferred_username;not null;index"`
-	Name                    string        `gorm:"not null"`
-	Type                    auth.UserType `gorm:"type:varchar(16);not null;default:'user';index"`
-	Role                    auth.AppRole  `gorm:"type:varchar(16);not null;index"`
-	SubscriptionPlanID      *string       `gorm:"column:subscription_plan_id;type:uuid;index"`
-	Note                    string        `gorm:"type:text;not null;default:''"`
-	IsActive                bool          `gorm:"not null;default:true;index"`
-	FirewallOverrideEnabled bool          `gorm:"column:firewall_override_enabled;not null;default:false;index"`
-	ExpiresAt               *time.Time    `gorm:"column:expires_at;index"`
-	LastLoginAt             time.Time     `gorm:"column:last_login_at;not null;index"`
-	CreatedAt               time.Time
-	UpdatedAt               time.Time
+	ID                 string        `gorm:"type:uuid;primaryKey"`
+	ExternalSub        string        `gorm:"column:external_sub;uniqueIndex;not null"`
+	Email              string        `gorm:"not null;index"`
+	PreferredUsername  string        `gorm:"column:preferred_username;not null;index"`
+	Name               string        `gorm:"not null"`
+	Type               auth.UserType `gorm:"type:varchar(16);not null;default:'user';index"`
+	Role               auth.AppRole  `gorm:"type:varchar(16);not null;index"`
+	SubscriptionPlanID *string       `gorm:"column:subscription_plan_id;type:uuid;index"`
+	Note               string        `gorm:"type:text;not null;default:''"`
+	IsActive           bool          `gorm:"not null;default:true;index"`
+	ExpiresAt          *time.Time    `gorm:"column:expires_at;index"`
+	LastLoginAt        time.Time     `gorm:"column:last_login_at;not null;index"`
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
 }
 
 type AdminUser struct {
@@ -62,7 +61,6 @@ type AdminUser struct {
 	QuotaState                *AccountQuotaState       `json:"quotaState,omitempty"`
 	Note                      string                   `json:"note"`
 	IsActive                  bool                     `json:"isActive"`
-	FirewallOverrideEnabled   bool                     `json:"firewallOverrideEnabled"`
 	InputTokens               int64                    `json:"inputTokens"`
 	OutputTokens              int64                    `json:"outputTokens"`
 	ExpiresAt                 *time.Time               `json:"expiresAt"`
@@ -100,7 +98,6 @@ type ServiceAccount struct {
 	QuotaState                *AccountQuotaState       `json:"quotaState,omitempty"`
 	Note                      string                   `json:"note"`
 	IsActive                  bool                     `json:"isActive"`
-	FirewallOverrideEnabled   bool                     `json:"firewallOverrideEnabled"`
 	InputTokens               int64                    `json:"inputTokens"`
 	OutputTokens              int64                    `json:"outputTokens"`
 	CreatedAt                 time.Time                `json:"createdAt"`
@@ -144,17 +141,15 @@ type ServiceAccountListResult struct {
 }
 
 type ServiceAccountInput struct {
-	Identifier              string `json:"identifier"`
-	Name                    string `json:"name"`
-	IsActive                bool   `json:"isActive"`
-	FirewallOverrideEnabled *bool  `json:"firewallOverrideEnabled,omitempty"`
+	Identifier string `json:"identifier"`
+	Name       string `json:"name"`
+	IsActive   bool   `json:"isActive"`
 }
 
 type UpdateUserInput struct {
-	Role                    auth.AppRole `json:"role"`
-	IsActive                bool         `json:"isActive"`
-	FirewallOverrideEnabled *bool        `json:"firewallOverrideEnabled,omitempty"`
-	ExpiresAt               *time.Time   `json:"expiresAt"`
+	Role      auth.AppRole `json:"role"`
+	IsActive  bool         `json:"isActive"`
+	ExpiresAt *time.Time   `json:"expiresAt"`
 }
 
 type UpdateAccountNoteInput struct {
@@ -396,9 +391,6 @@ func (s *Service) UpdateUser(ctx context.Context, id string, input UpdateUserInp
 		revokesTokens := record.Role != auth.RoleNone && input.Role == auth.RoleNone
 		record.Role = input.Role
 		record.IsActive = input.IsActive
-		if input.FirewallOverrideEnabled != nil {
-			record.FirewallOverrideEnabled = *input.FirewallOverrideEnabled
-		}
 		record.ExpiresAt = input.ExpiresAt
 
 		if err := tx.Save(&record).Error; err != nil {
@@ -488,10 +480,6 @@ func (s *Service) UpdateServiceAccountNote(ctx context.Context, id string, input
 // DeleteUser permanently removes a user by ID, returning ErrUserNotFound if absent.
 func (s *Service) DeleteUser(ctx context.Context, id string) error {
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := deleteAccountFirewallRulesTx(tx, "user", id); err != nil {
-			return err
-		}
-
 		result := tx.Where("type = ?", auth.UserTypeUser).Delete(&User{}, "id = ?", id)
 		if result.Error != nil {
 			return fmt.Errorf("delete user: %w", result.Error)
@@ -506,30 +494,7 @@ func (s *Service) DeleteUser(ctx context.Context, id string) error {
 	}
 
 	s.notifier.Notify(ctx, configevents.DomainAuth)
-	s.notifier.Notify(ctx, configevents.DomainFirewall)
 	return nil
-}
-
-// deleteAccountFirewallRulesTx removes account-scoped firewall rules when the
-// optional firewall table is present.
-func deleteAccountFirewallRulesTx(tx *gorm.DB, ruleType, id string) error {
-	err := tx.Exec(
-		"DELETE FROM firewall_rules WHERE type = ? AND referentiel_id = ?",
-		ruleType,
-		id,
-	).Error
-	if err == nil || isMissingFirewallRulesTable(err) {
-		return nil
-	}
-	return fmt.Errorf("delete %s firewall rules: %w", ruleType, err)
-}
-
-// isMissingFirewallRulesTable reports whether a database lacks the optional firewall table.
-func isMissingFirewallRulesTable(err error) bool {
-	message := strings.ToLower(err.Error())
-	return strings.Contains(message, "no such table: firewall_rules") ||
-		strings.Contains(message, `relation "firewall_rules" does not exist`) ||
-		strings.Contains(message, "sqlstate 42p01")
 }
 
 // normalizeServiceAccountInput validates and normalizes service account form input.
@@ -545,14 +510,6 @@ func normalizeServiceAccountInput(input ServiceAccountInput) (string, string, er
 	}
 
 	return identifier, name, nil
-}
-
-// serviceAccountFirewallOverride returns the requested override flag or the preserved value.
-func serviceAccountFirewallOverride(input ServiceAccountInput, fallback bool) bool {
-	if input.FirewallOverrideEnabled == nil {
-		return fallback
-	}
-	return *input.FirewallOverrideEnabled
 }
 
 // normalizeAccountNote validates account note length while preserving entered text.

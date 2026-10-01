@@ -22,9 +22,9 @@ describe('api path helpers', () => {
       '/api/v1/admin/users/user%2Fwith%20space/tokens/token%2Fid',
     )
     expect(
-      adminServiceAccountPath('service account', 'firewall', 'rules', '1/2'),
+      adminServiceAccountPath('service account', 'tokens', '1/2'),
     ).toBe(
-      '/api/v1/admin/service-accounts/service%20account/firewall/rules/1%2F2',
+      '/api/v1/admin/service-accounts/service%20account/tokens/1%2F2',
     )
     expect(adminGroupPath('group/id')).toBe('/api/v1/admin/groups/group%2Fid')
   })

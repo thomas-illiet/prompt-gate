@@ -13,7 +13,6 @@ const account: ServiceAccount = {
   role: 'user',
   note: '',
   isActive: true,
-  firewallOverrideEnabled: false,
   inputTokens: 1234,
   outputTokens: 5678,
   createdAt: '2026-01-01T00:00:00Z',

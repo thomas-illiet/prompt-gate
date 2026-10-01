@@ -5,14 +5,7 @@ import type {
   TokenPayload,
   TokenResponse,
 } from '~/types/service-accounts'
-import type {
-  FirewallMoveDirection,
-  FirewallRule,
-  FirewallRulePayload,
-  FirewallSimulationResponse,
-} from '~/types/firewall'
 import AdminServiceAccountDialog from '~/components/AdminServiceAccounts/AdminServiceAccountDialog.vue'
-import AdminServiceAccountFirewallDialog from '~/components/AdminServiceAccounts/AdminServiceAccountFirewallDialog.vue'
 import AdminServiceAccountTokenCreatedDialog from '~/components/AdminServiceAccounts/AdminServiceAccountTokenCreatedDialog.vue'
 import AdminServiceAccountTokensDialog from '~/components/AdminServiceAccounts/AdminServiceAccountTokensDialog.vue'
 import AdminAccountNoteDialog from '~/components/AdminAccounts/AdminAccountNoteDialog.vue'
@@ -29,7 +22,6 @@ definePageMeta({
 const adminServiceAccounts = useAdminServiceAccounts()
 const adminSubscriptions = useAdminSubscriptions()
 const accountDialogOpen = shallowRef(false)
-const firewallDialogOpen = shallowRef(false)
 const tokenDialogOpen = shallowRef(false)
 const tokenCreateDialogOpen = shallowRef(false)
 const createdTokenDialogOpen = shallowRef(false)
@@ -37,7 +29,6 @@ const deleteDialog = useTargetDialog<ServiceAccount>()
 const noteDialog = useTargetDialog<ServiceAccount>()
 const statusDialog = useTargetDialog<ServiceAccount>()
 const ipDialog = useTargetDialog<ServiceAccount>()
-const firewallAccount = shallowRef<ServiceAccount | null>(null)
 const tokenAccount = shallowRef<ServiceAccount | null>(null)
 const showRevokedTokens = shallowRef(false)
 const statusConfirm = useToggleConfirmDialog(statusDialog.target, {
@@ -123,142 +114,6 @@ async function updateIPPageSize(value: number) {
 async function updateIPSort(sortBy: string, sortDir: 'asc' | 'desc') {
   adminServiceAccounts.setIPSort(sortBy, sortDir)
   await refreshIPAddresses()
-}
-
-// openFirewallDialog loads scoped firewall rules for a service account.
-async function openFirewallDialog(account: ServiceAccount) {
-  firewallAccount.value = account
-  adminServiceAccounts.selectedAccount.value = account
-  firewallDialogOpen.value = true
-  adminServiceAccounts.firewallRules.value = []
-  adminServiceAccounts.setFirewallPage(1)
-  void adminServiceAccounts.loadFirewallRules(account.id).catch(() => {})
-}
-
-// refreshFirewallRules reloads scoped firewall rows for the selected account.
-async function refreshFirewallRules() {
-  if (!firewallAccount.value) {
-    return
-  }
-
-  await adminServiceAccounts.loadFirewallRules(firewallAccount.value.id)
-}
-
-// toggleFirewallOverride updates the selected account override flag.
-async function toggleFirewallOverride(enabled: boolean) {
-  if (!firewallAccount.value) {
-    return
-  }
-
-  const updated = await adminServiceAccounts.updateAccount(
-    firewallAccount.value.id,
-    {
-      identifier: firewallAccount.value.identifier,
-      name: firewallAccount.value.name,
-      isActive: firewallAccount.value.isActive,
-      firewallOverrideEnabled: enabled,
-    },
-  )
-  firewallAccount.value = updated
-}
-
-// createFirewallRule creates a scoped firewall rule.
-async function createFirewallRule(payload: FirewallRulePayload) {
-  if (!firewallAccount.value) {
-    return
-  }
-
-  await adminServiceAccounts.createFirewallRule(
-    firewallAccount.value.id,
-    payload,
-  )
-}
-
-// updateFirewallRule updates a scoped firewall rule.
-async function updateFirewallRule(
-  rule: FirewallRule,
-  payload: FirewallRulePayload,
-) {
-  if (!firewallAccount.value) {
-    return
-  }
-
-  await adminServiceAccounts.updateFirewallRule(
-    firewallAccount.value.id,
-    rule.id,
-    payload,
-  )
-}
-
-// deleteFirewallRule deletes a scoped firewall rule.
-async function deleteFirewallRule(rule: FirewallRule) {
-  if (!firewallAccount.value) {
-    return
-  }
-
-  await adminServiceAccounts.deleteFirewallRule(
-    firewallAccount.value.id,
-    rule.id,
-  )
-}
-
-// moveFirewallRule changes scoped firewall rule priority.
-async function moveFirewallRule(
-  rule: FirewallRule,
-  direction: FirewallMoveDirection,
-) {
-  if (!firewallAccount.value) {
-    return
-  }
-
-  await adminServiceAccounts.moveFirewallRulePriority(
-    firewallAccount.value.id,
-    rule.id,
-    direction,
-  )
-}
-
-// toggleFirewallRule flips scoped firewall rule enabled state.
-async function toggleFirewallRule(rule: FirewallRule) {
-  await updateFirewallRule(rule, {
-    address: rule.address,
-    description: rule.description,
-    priority: rule.priority,
-    action: rule.action,
-    enabled: !rule.enabled,
-  })
-}
-
-// simulateFirewallIp evaluates an IP against scoped firewall rules.
-async function simulateFirewallIp(
-  clientIp: string,
-): Promise<FirewallSimulationResponse> {
-  if (!firewallAccount.value) {
-    throw new Error('Service account is required.')
-  }
-
-  return await adminServiceAccounts.simulateFirewallIp(
-    firewallAccount.value.id,
-    clientIp,
-  )
-}
-
-// updateFirewallPage changes scoped firewall pagination and reloads rules.
-async function updateFirewallPage(value: number) {
-  adminServiceAccounts.setFirewallPage(value)
-  await refreshFirewallRules()
-}
-
-// updateFirewallPageSize changes scoped firewall page size and reloads rules.
-async function updateFirewallPageSize(value: number) {
-  adminServiceAccounts.setFirewallPageSize(value)
-  await refreshFirewallRules()
-}
-
-// updateFirewallSort changes scoped firewall sorting and reloads rules.
-async function updateFirewallSort(sortBy: string, sortDir: 'asc' | 'desc') {
-  adminServiceAccounts.setFirewallSort(sortBy, sortDir)
-  await refreshFirewallRules()
 }
 
 // createToken creates a service account token and opens the secret dialog.
@@ -403,7 +258,6 @@ async function confirmToggleStatus() {
           @create="openCreateDialog"
           @delete="deleteDialog.open"
           @edit="openEditDialog"
-          @manage-firewall="openFirewallDialog"
           @manage-ips="openIPDialog"
           @manage-tokens="openTokenDialog"
           @notes="noteDialog.open"
@@ -422,31 +276,6 @@ async function confirmToggleStatus() {
       :loading="adminServiceAccounts.saving.value"
       :subscription-plans="adminSubscriptions.plans.value"
       @save="saveAccount"
-    />
-
-    <AdminServiceAccountFirewallDialog
-      v-model="firewallDialogOpen"
-      :account="firewallAccount"
-      :create-rule="createFirewallRule"
-      :delete-rule="deleteFirewallRule"
-      :loading="adminServiceAccounts.firewallLoading.value"
-      :move-rule="moveFirewallRule"
-      :next-priority="adminServiceAccounts.nextFirewallPriority.value"
-      :page="adminServiceAccounts.firewallPage.value"
-      :page-size="adminServiceAccounts.firewallPageSize.value"
-      :refresh="refreshFirewallRules"
-      :rules="adminServiceAccounts.firewallRules.value"
-      :saving="adminServiceAccounts.saving.value"
-      :simulate="simulateFirewallIp"
-      :sort-by="adminServiceAccounts.firewallSortBy.value"
-      :sort-dir="adminServiceAccounts.firewallSortDir.value"
-      :toggle-override="toggleFirewallOverride"
-      :toggle-rule="toggleFirewallRule"
-      :total="adminServiceAccounts.firewallTotal.value"
-      :update-rule="updateFirewallRule"
-      @update:page="updateFirewallPage"
-      @update:page-size="updateFirewallPageSize"
-      @update:sort="updateFirewallSort"
     />
 
     <AdminServiceAccountTokensDialog

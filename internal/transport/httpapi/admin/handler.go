@@ -2,11 +2,11 @@ package admin
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"strconv"
 
 	"promptgate/backend/internal/domain/faq"
-	"promptgate/backend/internal/domain/firewall"
 	"promptgate/backend/internal/domain/groups"
 	"promptgate/backend/internal/domain/mcp"
 	"promptgate/backend/internal/domain/monitoring"
@@ -23,7 +23,6 @@ import (
 type Handler struct {
 	users         *users.Service
 	tokens        *tokens.Service
-	firewall      *firewall.Service
 	faq           *faq.Service
 	groups        *groups.Service
 	providers     *provider.Service
@@ -35,11 +34,25 @@ type Handler struct {
 	setupGuides   *setupguide.Service
 }
 
+func decodeRequestBody(w http.ResponseWriter, r *http.Request, dst any) bool {
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(dst); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_request_body"})
+		return false
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_request_body"})
+		return false
+	}
+	return true
+}
+
 // Dependencies lists the services consumed by administration handlers.
 type Dependencies struct {
 	Users         *users.Service
 	Tokens        *tokens.Service
-	Firewall      *firewall.Service
 	FAQ           *faq.Service
 	Groups        *groups.Service
 	Providers     *provider.Service
@@ -56,7 +69,6 @@ func NewHandler(deps Dependencies) *Handler {
 	return &Handler{
 		users:         deps.Users,
 		tokens:        deps.Tokens,
-		firewall:      deps.Firewall,
 		faq:           deps.FAQ,
 		groups:        deps.Groups,
 		providers:     deps.Providers,

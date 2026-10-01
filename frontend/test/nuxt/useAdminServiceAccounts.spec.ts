@@ -8,11 +8,6 @@ import {
   useAdminServiceAccounts,
 } from '../../app/composables/useAdminServiceAccounts'
 import type {
-  FirewallRule,
-  FirewallRuleListResponse,
-  FirewallRulePayload,
-} from '../../app/types/firewall'
-import type {
   CreatedTokenResponse,
   ServiceAccount,
   ServiceAccountListResponse,
@@ -47,7 +42,6 @@ const account: ServiceAccount = {
   role: 'user',
   note: '',
   isActive: true,
-  firewallOverrideEnabled: false,
   inputTokens: 1234,
   outputTokens: 5678,
   createdAt: '2026-01-01T00:00:00Z',
@@ -80,26 +74,6 @@ const createdToken: CreatedTokenResponse = {
   tokenInfo: token,
 }
 
-const firewallRule: FirewallRule = {
-  id: 'firewall-rule-id',
-  serviceAccountId: account.id,
-  address: '10.0.0.10',
-  description: 'CI runner',
-  priority: 1,
-  action: 'allow',
-  enabled: true,
-  createdAt: '2026-01-01T00:00:00Z',
-  updatedAt: '2026-01-01T00:00:00Z',
-}
-
-const firewallPayload: FirewallRulePayload = {
-  address: '10.0.0.10',
-  description: 'CI runner',
-  priority: 1,
-  action: 'allow',
-  enabled: true,
-}
-
 function accountResponse(
   items: ServiceAccount[],
   total = items.length,
@@ -116,18 +90,6 @@ function tokenResponse(
   items: TokenResponse[],
   total = items.length,
 ): TokenListResponse {
-  return {
-    items,
-    page: 1,
-    pageSize: 10,
-    total,
-  }
-}
-
-function firewallResponse(
-  items: FirewallRule[],
-  total = items.length,
-): FirewallRuleListResponse {
   return {
     items,
     page: 1,
@@ -317,86 +279,6 @@ describe('useAdminServiceAccounts', () => {
     )
   })
 
-  it('manages scoped service account firewall rules', async () => {
-    apiFetch
-      .mockResolvedValueOnce(accountResponse([]))
-      .mockResolvedValueOnce(firewallResponse([firewallRule]))
-      .mockResolvedValueOnce(firewallRule)
-      .mockResolvedValueOnce(firewallResponse([firewallRule]))
-      .mockResolvedValueOnce(firewallRule)
-      .mockResolvedValueOnce(firewallResponse([firewallRule]))
-      .mockResolvedValueOnce(firewallRule)
-      .mockResolvedValueOnce(firewallResponse([firewallRule]))
-      .mockResolvedValueOnce({ allowed: true, matchedRule: firewallRule })
-      .mockResolvedValueOnce(undefined)
-      .mockResolvedValueOnce(firewallResponse([]))
-
-    const adminServiceAccounts = useAdminServiceAccounts()
-    await vi.waitFor(() =>
-      expect(adminServiceAccounts.loading.value).toBe(false),
-    )
-
-    await adminServiceAccounts.loadFirewallRules(account.id)
-    await adminServiceAccounts.createFirewallRule(account.id, firewallPayload)
-    await adminServiceAccounts.updateFirewallRule(
-      account.id,
-      firewallRule.id,
-      firewallPayload,
-    )
-    await adminServiceAccounts.moveFirewallRulePriority(
-      account.id,
-      firewallRule.id,
-      'increase',
-    )
-    const simulation = await adminServiceAccounts.simulateFirewallIp(
-      account.id,
-      '10.0.0.10',
-    )
-    await adminServiceAccounts.deleteFirewallRule(account.id, firewallRule.id)
-
-    expect(apiFetch).toHaveBeenNthCalledWith(
-      2,
-      `/api/v1/admin/service-accounts/${account.id}/firewall/rules?page=1&pageSize=10&sortBy=priority&sortDir=asc`,
-    )
-    expect(apiFetch).toHaveBeenNthCalledWith(
-      3,
-      `/api/v1/admin/service-accounts/${account.id}/firewall/rules`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(firewallPayload),
-      },
-    )
-    expect(apiFetch).toHaveBeenNthCalledWith(
-      5,
-      `/api/v1/admin/service-accounts/${account.id}/firewall/rules/${firewallRule.id}`,
-      {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(firewallPayload),
-      },
-    )
-    expect(apiFetch).toHaveBeenNthCalledWith(
-      7,
-      `/api/v1/admin/service-accounts/${account.id}/firewall/rules/${firewallRule.id}/priority`,
-      {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ direction: 'increase' }),
-      },
-    )
-    expect(simulation).toEqual({ allowed: true, matchedRule: firewallRule })
-    expect(apiFetch).toHaveBeenNthCalledWith(
-      10,
-      `/api/v1/admin/service-accounts/${account.id}/firewall/rules/${firewallRule.id}`,
-      { method: 'DELETE' },
-    )
-    expect(apiFetch).toHaveBeenNthCalledWith(
-      11,
-      `/api/v1/admin/service-accounts/${account.id}/firewall/rules?page=1&pageSize=10&sortBy=priority&sortDir=asc`,
-    )
-  })
-
   it('maps API errors to readable messages', () => {
     expect(
       toAdminServiceAccountErrorMessage(apiError('service_account_not_found')),
@@ -407,8 +289,5 @@ describe('useAdminServiceAccounts', () => {
     expect(
       toAdminServiceAccountErrorMessage(apiError('invalid_token_ttl')),
     ).toBe('Virtual key lifetime must be between 1 and 365 days.')
-    expect(
-      toAdminServiceAccountErrorMessage(apiError('priority_conflict')),
-    ).toBe('Another firewall rule already uses this priority.')
   })
 })

@@ -21,18 +21,18 @@ func TestStoreNotifyVersionAndSubscribe(t *testing.T) {
 	defer cancel()
 
 	events := store.Subscribe(ctx)
-	store.Notify(ctx, "firewall")
+	store.Notify(ctx, "providers")
 
 	select {
 	case event := <-events:
-		if event.Domain != "firewall" || event.Version != 1 {
+		if event.Domain != "providers" || event.Version != 1 {
 			t.Fatalf("unexpected event: %#v", event)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for redis event")
 	}
 
-	version, err := store.Version(context.Background(), "firewall")
+	version, err := store.Version(context.Background(), "providers")
 	if err != nil {
 		t.Fatalf("version: %v", err)
 	}

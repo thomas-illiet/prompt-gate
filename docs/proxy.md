@@ -22,9 +22,9 @@ flowchart TD
     B --> C{"Valid Prompt Gate token?"}
     C -->|No| D["401 invalid_token or missing_auth_credentials"]
     C -->|Yes| E["Load user profile and cache it in Redis"]
-    E --> F["Firewall middleware"]
-    F --> G{"Allowed IP?"}
-    G -->|No| H["403 firewall_denied"]
+    E --> F["External OPA decision (Redis-cached)"]
+    F --> G{"Policy allows?"}
+    G -->|No| H["403 policy_denied or 503 policy_unavailable"]
     G -->|Yes| I["AIBridge actor middleware"]
     I --> J["Current proxy bridge"]
     J --> K["Provider or MCP server"]
@@ -92,24 +92,12 @@ has:
 Sensitive header values are encrypted in PostgreSQL. When MCP initialization
 returns a warning, the proxy logs it and continues with the available tools.
 
-## Firewall Behavior
+## OPA policy behavior
 
-The proxy evaluates firewall rules after token authentication and before
-forwarding to providers.
-
-Global firewall rules apply to users and service accounts that do not enable
-firewall override:
-
-- enabled rules are evaluated by ascending priority
-- first matching rule wins
-- no match allows the request
-
-Users and service accounts with `firewallOverrideEnabled=true` use only their
-scoped rules:
-
-- enabled scoped rules are evaluated by ascending priority
-- first matching rule wins
-- no match denies the request
+The proxy evaluates an external OPA decision after token authentication and
+before group, quota, and provider processing. Both allowed and denied decisions
+are cached in Redis. OPA failures return `503 policy_unavailable` on a cache
+miss; explicit policy denials return `403 policy_denied`.
 
 By default the proxy uses the TCP remote address. In production, prefer setting
 `PROMPTGATE_PROXY_TRUSTED_PROXIES` to the CIDRs of trusted ingress or reverse
@@ -139,7 +127,7 @@ Usage events are injected into the `promptgate:usage:events` Redis Stream. When
 the worker processes an `interception_started` event, it upserts the
 `account_ip_addresses` row identified by the account and IP. `last_seen` only
 moves forward, including when Redis retries or delivers older events later.
-Requests rejected by authentication, firewall, group, or quota checks do not
+Requests rejected by authentication, OPA policy, group, or quota checks do not
 create interceptions and therefore do not update this table.
 
 ## Phoenix tracing
@@ -227,13 +215,14 @@ The proxy uses Redis for:
 - API token auth cache keys
 - provider snapshots
 - MCP server snapshots
-- firewall snapshots
+- OPA allow and deny decisions
 - config version counters
 - config reload pub/sub
 - asynchronous proxy usage and account IP events
 
 `PROMPTGATE_REDIS_CACHE_TTL` controls the default TTL for snapshots and cached
 auth records. Cached auth entries also never outlive the token's expiration.
+`PROMPTGATE_OPA_CACHE_TTL` independently controls policy-decision expiration.
 
 ## Hot Reload
 
@@ -241,7 +230,6 @@ The proxy subscribes to `promptgate:config:events`.
 
 | Event domain | Proxy action |
 | --- | --- |
-| `firewall` | Refresh the firewall snapshot. |
 | `providers` | Schedule a debounced bridge rebuild. |
 | `mcp` | Schedule a debounced bridge rebuild. |
 | `auth` | Update the auth cache version. |
@@ -262,6 +250,7 @@ PROMPTGATE_DATABASE_URL
 PROMPTGATE_REDIS_URL
 PROMPTGATE_JWT_SECRET
 PROMPTGATE_SECRETS_KEY
+PROMPTGATE_OPA_URL
 ```
 
 At least one supported enabled provider must exist before the proxy can build

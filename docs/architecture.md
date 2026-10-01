@@ -21,6 +21,7 @@ flowchart LR
 
     API --> Redis["Redis"]
     Proxy --> Redis
+    Proxy --> OPA["External OPA"]
     WorkerJobs --> Redis
     Jobs --> Redis
 
@@ -31,11 +32,11 @@ flowchart LR
 
 | Command | Responsibility |
 | --- | --- |
-| `promptgate api` | HTTP API, OIDC browser login, sessions, user/admin routes, token creation, provider and MCP configuration, firewall management, optional static frontend hosting. |
-| `promptgate proxy` | API-token authentication for LLM traffic, firewall enforcement, provider routing, MCP proxying, Redis usage event enqueueing, hot reload. |
+| `promptgate api` | HTTP API, OIDC browser login, sessions, user/admin routes, token creation, provider and MCP configuration, optional static frontend hosting. |
+| `promptgate proxy` | API-token authentication for LLM traffic, external OPA authorization, provider routing, MCP proxying, Redis usage event enqueueing, hot reload. |
 | `promptgate worker` | Redis Stream consumer for proxy usage events, raw usage persistence, and dashboard KPI aggregation. |
 | `promptgate schedule` | Background token expiration marking, user access expiration, monitoring checks, and raw proxy usage cleanup. |
-| `promptgate migrate` | GORM migrations for users, tokens, firewall rules, providers, MCP servers, proxy recorder tables, and dashboard KPI tables. |
+| `promptgate migrate` | GORM migrations for users, tokens, providers, MCP servers, proxy recorder tables, and dashboard KPI tables, plus removal of legacy firewall schema. |
 
 ## Package Layout
 
@@ -47,7 +48,7 @@ flowchart LR
 | `internal/domain/auth` | OIDC, sessions, roles, user profile context, proxy actor injection. |
 | `internal/domain/tokens` | Prompt Gate API token creation, validation, revocation, cleanup, Redis auth cache. |
 | `internal/domain/users` | Human users, service accounts, role management, access expiration. |
-| `internal/domain/firewall` | Global, user, and service-account firewall rules, snapshots, middleware. |
+| `internal/domain/policy` | OPA client, Redis decision cache, policy middleware, and observability. |
 | `internal/domain/provider` | LLM provider configuration, encrypted API keys, setup helper metadata. |
 | `internal/domain/mcp` | MCP server configuration, encrypted sensitive headers, regex filters. |
 | `internal/domain/proxy` | Usage, tool, and interception recording plus dashboards. |
@@ -61,7 +62,6 @@ PostgreSQL is the source of truth for durable application data:
 
 - users and service accounts
 - Prompt Gate API token records and token hashes
-- firewall rules
 - LLM provider definitions
 - MCP server definitions
 - proxy interceptions, token usage, and tool usage for operational metrics
@@ -71,7 +71,8 @@ Redis is required by the current runtime configuration. It is used for:
 
 - browser sessions and OIDC authorization requests
 - proxy auth cache entries
-- provider, MCP, and firewall snapshots
+- provider and MCP snapshots
+- cached OPA allow and deny decisions
 - config version counters and hot-reload events
 - proxy usage event stream `promptgate:usage:events`
 
@@ -86,6 +87,7 @@ sequenceDiagram
     participant O as OIDC provider
     participant R as Redis
     participant D as PostgreSQL
+    participant O as External OPA
 
     B->>A: GET /auth/login
     A->>R: Store state, nonce, PKCE verifier
@@ -116,7 +118,8 @@ sequenceDiagram
     C->>P: Bearer Prompt Gate API token
     P->>R: Check auth cache
     P->>D: Validate token hash and user when cache misses
-    P->>P: Apply firewall snapshot
+    P->>R: Check cached policy decision
+    P->>O: Evaluate policy on cache miss
     P->>U: Forward request through AIBridge
     P->>R: XADD usage events
     W->>R: XREADGROUP usage events
@@ -138,14 +141,13 @@ flowchart TD
     DB --> Event["Redis version bump and event"]
     Event --> Proxy["Proxy watcher"]
     Proxy --> Kind{"Domain"}
-    Kind -->|firewall| Snapshot["Refresh firewall snapshot"]
     Kind -->|providers or mcp| Bridge["Debounced bridge rebuild"]
     Kind -->|auth| AuthCache["Update auth cache version"]
 ```
 
-Provider and MCP updates trigger a debounced bridge rebuild. Firewall updates
-refresh the in-memory snapshot only. Auth updates bump the token auth cache
-version, which invalidates old cache keys.
+Provider and MCP updates trigger a debounced bridge rebuild. Auth updates bump
+the token auth cache version, which invalidates old cache keys. OPA decisions
+expire only through `PROMPTGATE_OPA_CACHE_TTL`.
 
 ## Migrations
 
@@ -153,10 +155,10 @@ version, which invalidates old cache keys.
 
 1. users
 2. tokens
-3. firewall
-4. providers
-5. MCP
-6. proxy recorder and dashboard KPI tables
+3. providers
+4. MCP
+5. proxy recorder and dashboard KPI tables
+6. destructive removal of the legacy firewall table and user override column
 
 Run migrations before starting API, proxy, worker, or scheduler processes in a
 new environment.

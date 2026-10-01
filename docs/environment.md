@@ -46,6 +46,10 @@ dotenv file.
 | `PROMPTGATE_PROXY_MAX_BUFFERED_RESPONSE_BYTES` | proxy | `16777216` | Maximum buffered upstream response size for inspected responses, in bytes. Must be greater than zero. |
 | `PROMPTGATE_PROXY_UPSTREAM_TIMEOUT` | proxy | `2m` | Complete upstream request timeout, including provider calls. Must be greater than zero. |
 | `PROMPTGATE_REDIS_CACHE_TTL` | API, proxy, worker, schedule | `5m` | TTL for Redis-backed cache entries and snapshots. |
+| `PROMPTGATE_OPA_URL` | proxy | required | Absolute HTTP(S) base URL of the external OPA server. |
+| `PROMPTGATE_OPA_POLICY_PATH` | proxy | `promptgate/proxy/decision` | OPA data API document returning `{allow, reason}`. |
+| `PROMPTGATE_OPA_TIMEOUT` | proxy | `2s` | Timeout for OPA decision and health requests. |
+| `PROMPTGATE_OPA_CACHE_TTL` | proxy | `10m` | Redis TTL for allow and deny decisions. |
 | `PROMPTGATE_PROXY_RELOAD_DEBOUNCE` | API, proxy, schedule | `250ms` | Debounce duration for proxy provider and MCP reload notifications. |
 | `PROMPTGATE_WORKER_BATCH_SIZE` | worker | `100` | Maximum Redis Stream events read per worker batch. |
 | `PROMPTGATE_WORKER_BLOCK_TIMEOUT` | worker | `5s` | Long-poll timeout for new Redis Stream events. |
@@ -153,6 +157,10 @@ PROMPTGATE_PROXY_MAX_BUFFERED_REQUEST_BYTES=8388608
 PROMPTGATE_PROXY_MAX_BUFFERED_RESPONSE_BYTES=16777216
 PROMPTGATE_PROXY_UPSTREAM_TIMEOUT=2m
 PROMPTGATE_REDIS_CACHE_TTL=5m
+PROMPTGATE_OPA_URL=http://prompt-gate-opa:8181
+PROMPTGATE_OPA_POLICY_PATH=promptgate/proxy/decision
+PROMPTGATE_OPA_TIMEOUT=2s
+PROMPTGATE_OPA_CACHE_TTL=10m
 PROMPTGATE_PROXY_RELOAD_DEBOUNCE=250ms
 PROMPTGATE_WORKER_BATCH_SIZE=100
 PROMPTGATE_WORKER_BLOCK_TIMEOUT=5s

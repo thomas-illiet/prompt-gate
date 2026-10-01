@@ -78,15 +78,15 @@ No. The proxy removes Prompt Gate authentication details before forwarding the r
 
 ## 20. What is a service account?
 
-A service account is a non-human identity intended for applications, automations, and shared integrations. It can have its own virtual keys, subscription plan, and dedicated firewall rules without depending on an employee's personal account.
+A service account is a non-human identity intended for applications, automations, and shared integrations. It can have its own virtual keys and subscription plan without depending on an employee's personal account. Its proxy access is decided by the external OPA policy.
 
-## 21. What is the Prompt Gate firewall used for?
+## 21. How is proxy access authorized?
 
-The firewall allows or blocks proxy calls based on their IPv4 address or CIDR range. Enabled rules are evaluated in priority order, and the first matching rule determines the decision.
+Prompt Gate sends a minimal identity and request context to an external OPA server. OPA is the sole policy engine and can evaluate roles, identity type, route, method, host, and client IP. Decisions are cached in Redis for the configured TTL.
 
-## 22. Why was my request rejected with a `firewall_denied` error?
+## 22. Why was my request rejected with `policy_denied` or `policy_unavailable`?
 
-The detected IP address is not allowed by the rules that apply to your identity. When a dedicated firewall is enabled, a request is also denied if no rule matches. Send the source address and network context to an administrator so they can simulate and verify the decision.
+`policy_denied` means OPA explicitly refused the request. `policy_unavailable` means no valid decision could be obtained from either Redis or OPA. The policy reason is retained in server observability but is intentionally not returned to the client.
 
 ## 23. What is MCP in Prompt Gate?
 
@@ -94,7 +94,7 @@ MCP makes external tools available to AI clients through the proxy. Administrato
 
 ## 24. Do I need to restart my client when a provider or rule changes?
 
-Usually not. Prompt Gate dynamically reloads providers, MCP servers, firewall rules, and authentication state. However, you must update your client configuration if a new URL or provider name is introduced.
+Usually not. Prompt Gate dynamically reloads providers, MCP servers, and authentication state. OPA policy changes take effect after an existing cached decision expires, at most 10 minutes with the default configuration.
 
 ## 25. How can I tell whether a service is unavailable or degraded?
 
@@ -102,7 +102,7 @@ The monitoring view displays the current state of monitored services, their late
 
 ## 26. What can an administrator manage in Prompt Gate?
 
-An administrator can manage users, roles, access expiration dates, service accounts, keys, providers, MCP servers, access groups, subscription plans, quotas, firewall rules, setup guides, FAQ entries, and monitored services. Administrators can also access global usage statistics.
+An administrator can manage users, roles, access expiration dates, service accounts, keys, providers, MCP servers, access groups, subscription plans, quotas, setup guides, FAQ entries, and monitored services. OPA policies are operated independently. Administrators can also access global usage statistics.
 
 ## 27. How are provider and MCP server secrets protected?
 
@@ -114,4 +114,4 @@ First, verify that your key is active and that neither its expiration nor your q
 
 ## 29. Where can I find additional help?
 
-Start with the setup page for examples tailored to the available providers, then review your profile, access groups, quotas, and monitoring status. Contact your organization's Prompt Gate administrator to request changes to permissions, subscription plans, firewall rules, or providers.
+Start with the setup page for examples tailored to the available providers, then review your profile, access groups, quotas, and monitoring status. Contact your organization's Prompt Gate administrator to request changes to permissions, subscription plans, OPA policy, or providers.

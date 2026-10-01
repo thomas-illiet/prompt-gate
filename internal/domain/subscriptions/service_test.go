@@ -257,9 +257,8 @@ func TestAssignmentsReturnCompleteAccountProjections(t *testing.T) {
 	}
 	expiresAt := time.Now().UTC().Add(time.Hour).Truncate(time.Millisecond)
 	if err := service.db.Model(&users.User{}).Where("id = ?", user.ID).Updates(map[string]any{
-		"note":                      "keep user metadata",
-		"firewall_override_enabled": true,
-		"expires_at":                expiresAt,
+		"note":       "keep user metadata",
+		"expires_at": expiresAt,
 	}).Error; err != nil {
 		t.Fatalf("update user projection fields: %v", err)
 	}
@@ -270,23 +269,22 @@ func TestAssignmentsReturnCompleteAccountProjections(t *testing.T) {
 	if err != nil {
 		t.Fatalf("assign user plan: %v", err)
 	}
-	if !assignedUser.FirewallOverrideEnabled || assignedUser.Note != "keep user metadata" ||
+	if assignedUser.Note != "keep user metadata" ||
 		assignedUser.ExpiresAt == nil || !assignedUser.ExpiresAt.Equal(expiresAt) ||
 		assignedUser.InputTokens != 12 || assignedUser.OutputTokens != 7 {
 		t.Fatalf("incomplete assigned user projection: %#v", assignedUser)
 	}
 
 	account := users.User{
-		ID:                      "55555555-5555-5555-5555-555555555555",
-		ExternalSub:             "service-complete",
-		PreferredUsername:       "complete-worker",
-		Name:                    "Complete Worker",
-		Type:                    auth.UserTypeService,
-		Role:                    auth.RoleUser,
-		Note:                    "keep service metadata",
-		IsActive:                true,
-		FirewallOverrideEnabled: true,
-		LastLoginAt:             time.Now().UTC(),
+		ID:                "55555555-5555-5555-5555-555555555555",
+		ExternalSub:       "service-complete",
+		PreferredUsername: "complete-worker",
+		Name:              "Complete Worker",
+		Type:              auth.UserTypeService,
+		Role:              auth.RoleUser,
+		Note:              "keep service metadata",
+		IsActive:          true,
+		LastLoginAt:       time.Now().UTC(),
 	}
 	if err := service.db.Create(&account).Error; err != nil {
 		t.Fatalf("create service account: %v", err)
@@ -297,7 +295,7 @@ func TestAssignmentsReturnCompleteAccountProjections(t *testing.T) {
 	if err != nil {
 		t.Fatalf("assign service account plan: %v", err)
 	}
-	if !assignedAccount.FirewallOverrideEnabled || assignedAccount.Note != "keep service metadata" ||
+	if assignedAccount.Note != "keep service metadata" ||
 		assignedAccount.InputTokens != 21 || assignedAccount.OutputTokens != 4 {
 		t.Fatalf("incomplete assigned service-account projection: %#v", assignedAccount)
 	}

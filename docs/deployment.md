@@ -47,7 +47,8 @@ Recommended production layout:
 Prompt Gate requires:
 
 - PostgreSQL for durable data
-- Redis for sessions, auth cache, snapshots, config reload events, and usage event streams
+- Redis for sessions, auth and OPA decision caches, snapshots, config reload events, and usage event streams
+- an independently operated OPA server for every proxy decision
 - Keycloak or another OIDC-compatible provider
 - public API, proxy, and frontend origins configured with `PROMPTGATE_*`
 
@@ -56,7 +57,7 @@ reference.
 
 ## Deployment Order
 
-1. Provision PostgreSQL and Redis.
+1. Provision PostgreSQL, Redis, and OPA.
 2. Configure the OIDC client and callback URL:
    `https://api.example.com/auth/callback`.
 3. Create runtime secrets:
@@ -68,7 +69,7 @@ reference.
 6. Start the proxy with `/app/promptgate proxy`.
 7. Start one or more workers with `/app/promptgate worker`.
 8. Start the scheduler with `/app/promptgate schedule`.
-9. Configure provider, MCP, firewall, users, service accounts, and tokens
+9. Configure provider, MCP, users, service accounts, tokens, and the external OPA policy
    through the admin API or frontend.
 
 ## Container Examples

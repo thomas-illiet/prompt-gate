@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"promptgate/backend/internal/domain/auth"
-	"promptgate/backend/internal/domain/firewall"
 	"promptgate/backend/internal/domain/users"
 
 	"github.com/glebarez/sqlite"
@@ -34,9 +33,6 @@ func newTokenTestServices(t *testing.T) (*Service, *users.Service, *gorm.DB, aut
 	}
 	if err := tokenService.AutoMigrate(context.Background()); err != nil {
 		t.Fatalf("migrate tokens: %v", err)
-	}
-	if err := firewall.NewService(db).AutoMigrate(context.Background()); err != nil {
-		t.Fatalf("migrate firewall: %v", err)
 	}
 	createUsageTables(t, db)
 	user := users.User{

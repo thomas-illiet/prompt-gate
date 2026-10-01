@@ -122,21 +122,14 @@ Admin dashboard token and activity responses follow the same optional
 | `GET` | `/api/v1/admin/users` | List users with pagination, filters, usage totals, and sorting. |
 | `GET` | `/api/v1/admin/users/{id}` | Get one user. |
 | `GET` | `/api/v1/admin/users/{id}/statistics` | Get aggregated usage totals, duration, and daily activity for one human user. |
-| `PATCH` | `/api/v1/admin/users/{id}` | Update role, active state, firewall override, or access expiration. |
+| `PATCH` | `/api/v1/admin/users/{id}` | Update role, active state, or access expiration. |
 | `PATCH` | `/api/v1/admin/users/{id}/note` | Update the private administration note. |
-| `DELETE` | `/api/v1/admin/users/{id}` | Delete one user and its scoped firewall rules. |
+| `DELETE` | `/api/v1/admin/users/{id}` | Delete one user. |
 | `GET` | `/api/v1/admin/users/{id}/tokens` | List a user's tokens. |
 | `DELETE` | `/api/v1/admin/users/{id}/tokens/{tokenId}` | Revoke one user token. |
 | `GET` | `/api/v1/admin/users/{id}/groups` | List the user's access groups. |
 | `PUT` | `/api/v1/admin/users/{id}/groups` | Replace the user's access groups. |
 | `PUT` | `/api/v1/admin/users/{id}/subscription-plan` | Assign or clear the user's subscription plan. |
-| `GET` | `/api/v1/admin/users/{id}/firewall/rules` | List scoped user rules. |
-| `POST` | `/api/v1/admin/users/{id}/firewall/rules` | Create a scoped user rule. |
-| `GET` | `/api/v1/admin/users/{id}/firewall/rules/{ruleId}` | Get a scoped user rule. |
-| `PATCH` | `/api/v1/admin/users/{id}/firewall/rules/{ruleId}` | Update a scoped user rule. |
-| `PATCH` | `/api/v1/admin/users/{id}/firewall/rules/{ruleId}/priority` | Move a scoped user rule up or down. |
-| `POST` | `/api/v1/admin/users/{id}/firewall/simulate` | Simulate a scoped user decision. |
-| `DELETE` | `/api/v1/admin/users/{id}/firewall/rules/{ruleId}` | Delete a scoped user rule. |
 
 The first synced OIDC user is assigned role `admin`. Later users are created
 with role `none` until an admin grants access.
@@ -154,9 +147,9 @@ return `404 {"error":"user_not_found"}`.
 | `GET` | `/api/v1/admin/service-accounts` | List service accounts. |
 | `POST` | `/api/v1/admin/service-accounts` | Create a service account. |
 | `GET` | `/api/v1/admin/service-accounts/{id}` | Get one service account. |
-| `PATCH` | `/api/v1/admin/service-accounts/{id}` | Update identifier, name, active state, or firewall override. |
+| `PATCH` | `/api/v1/admin/service-accounts/{id}` | Update identifier, name, or active state. |
 | `PATCH` | `/api/v1/admin/service-accounts/{id}/note` | Update the private administration note. |
-| `DELETE` | `/api/v1/admin/service-accounts/{id}` | Delete one service account and its scoped firewall rules. |
+| `DELETE` | `/api/v1/admin/service-accounts/{id}` | Delete one service account. |
 | `GET` | `/api/v1/admin/service-accounts/{id}/tokens` | List service-account tokens. |
 | `GET` | `/api/v1/admin/service-accounts/{id}/ips` | List client IP addresses observed for a service account, paginated and sortable by `ip` or `lastSeen`. |
 | `POST` | `/api/v1/admin/service-accounts/{id}/tokens` | Create a service-account token. |
@@ -165,35 +158,6 @@ return `404 {"error":"user_not_found"}`.
 
 Service account identifiers must be lowercase alphanumeric with dashes or
 underscores and have a maximum length of 64 characters.
-
-### Firewall
-
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/api/v1/admin/firewall/rules` | List global firewall rules. |
-| `POST` | `/api/v1/admin/firewall/rules` | Create a global firewall rule. |
-| `GET` | `/api/v1/admin/firewall/rules/{id}` | Get a global firewall rule. |
-| `PATCH` | `/api/v1/admin/firewall/rules/{id}` | Update a global firewall rule. |
-| `PATCH` | `/api/v1/admin/firewall/rules/{id}/priority` | Move a global firewall rule up or down. |
-| `POST` | `/api/v1/admin/firewall/simulate` | Simulate a global firewall decision. |
-| `DELETE` | `/api/v1/admin/firewall/rules/{id}` | Delete a global firewall rule. |
-| `GET` | `/api/v1/admin/users/{id}/firewall/rules` | List scoped user rules. |
-| `POST` | `/api/v1/admin/users/{id}/firewall/rules` | Create a scoped user rule. |
-| `GET` | `/api/v1/admin/users/{id}/firewall/rules/{ruleId}` | Get a scoped user rule. |
-| `PATCH` | `/api/v1/admin/users/{id}/firewall/rules/{ruleId}` | Update a scoped user rule. |
-| `PATCH` | `/api/v1/admin/users/{id}/firewall/rules/{ruleId}/priority` | Move a scoped user rule up or down. |
-| `POST` | `/api/v1/admin/users/{id}/firewall/simulate` | Simulate a scoped user decision. |
-| `DELETE` | `/api/v1/admin/users/{id}/firewall/rules/{ruleId}` | Delete a scoped user rule. |
-| `GET` | `/api/v1/admin/service-accounts/{id}/firewall/rules` | List scoped service-account rules. |
-| `POST` | `/api/v1/admin/service-accounts/{id}/firewall/rules` | Create a scoped service-account rule. |
-| `GET` | `/api/v1/admin/service-accounts/{id}/firewall/rules/{ruleId}` | Get a scoped service-account rule. |
-| `PATCH` | `/api/v1/admin/service-accounts/{id}/firewall/rules/{ruleId}` | Update a scoped service-account rule. |
-| `PATCH` | `/api/v1/admin/service-accounts/{id}/firewall/rules/{ruleId}/priority` | Move a scoped rule up or down. |
-| `POST` | `/api/v1/admin/service-accounts/{id}/firewall/simulate` | Simulate a scoped service-account decision. |
-| `DELETE` | `/api/v1/admin/service-accounts/{id}/firewall/rules/{ruleId}` | Delete a scoped service-account rule. |
-
-Firewall rules support `allow` and `deny` actions, priorities from `1` to
-`9999`, individual IPv4 addresses, and IPv4 CIDR ranges.
 
 ### Subscriptions
 
@@ -321,4 +285,4 @@ Middleware failures use a simple JSON error shape:
 
 Examples include `missing_auth_credentials`, `invalid_token`,
 `invalid_admin_api_key`, `account_inactive`, `account_role_none`,
-`insufficient_role`, and `firewall_denied`.
+`insufficient_role`, `policy_denied`, and `policy_unavailable`.

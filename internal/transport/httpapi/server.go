@@ -6,7 +6,6 @@ import (
 
 	"promptgate/backend/internal/domain/auth"
 	"promptgate/backend/internal/domain/faq"
-	"promptgate/backend/internal/domain/firewall"
 	"promptgate/backend/internal/domain/groups"
 	"promptgate/backend/internal/domain/mcp"
 	"promptgate/backend/internal/domain/monitoring"
@@ -28,7 +27,6 @@ type Dependencies struct {
 	DB            *gorm.DB
 	Users         *users.Service
 	Tokens        *tokens.Service
-	Firewall      *firewall.Service
 	FAQ           *faq.Service
 	Groups        *groups.Service
 	Providers     *provider.Service
@@ -65,7 +63,6 @@ func NewHandler(deps Dependencies) http.Handler {
 	adminHandler := admin.NewHandler(admin.Dependencies{
 		Users:         deps.Users,
 		Tokens:        deps.Tokens,
-		Firewall:      deps.Firewall,
 		FAQ:           deps.FAQ,
 		Groups:        deps.Groups,
 		Providers:     deps.Providers,

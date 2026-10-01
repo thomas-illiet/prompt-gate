@@ -7,7 +7,6 @@ func adminRoutes(handler *admin.Handler) []routeDefinition {
 	routes = append(routes, adminUserRoutes(handler)...)
 	routes = append(routes, adminDashboardRoutes(handler)...)
 	routes = append(routes, adminServiceAccountRoutes(handler)...)
-	routes = append(routes, adminFirewallRoutes(handler)...)
 	routes = append(routes, adminSubscriptionRoutes(handler)...)
 	routes = append(routes, adminGroupRoutes(handler)...)
 	routes = append(routes, adminProviderRoutes(handler)...)
@@ -33,13 +32,6 @@ func adminUserRoutes(handler *admin.Handler) []routeDefinition {
 		{pattern: "GET /api/v1/admin/users/{id}/groups", handler: handler.HandleAdminListUserGroups},
 		{pattern: "PUT /api/v1/admin/users/{id}/groups", handler: handler.HandleAdminReplaceUserGroups},
 		{pattern: "PUT /api/v1/admin/users/{id}/subscription-plan", handler: handler.HandleAdminAssignUserSubscriptionPlan},
-		{pattern: "GET /api/v1/admin/users/{id}/firewall/rules", handler: handler.HandleAdminListUserFirewallRules},
-		{pattern: "POST /api/v1/admin/users/{id}/firewall/rules", handler: handler.HandleAdminCreateUserFirewallRule},
-		{pattern: "GET /api/v1/admin/users/{id}/firewall/rules/{ruleId}", handler: handler.HandleAdminGetUserFirewallRule},
-		{pattern: "PATCH /api/v1/admin/users/{id}/firewall/rules/{ruleId}", handler: handler.HandleAdminUpdateUserFirewallRule},
-		{pattern: "PATCH /api/v1/admin/users/{id}/firewall/rules/{ruleId}/priority", handler: handler.HandleAdminMoveUserFirewallRulePriority},
-		{pattern: "POST /api/v1/admin/users/{id}/firewall/simulate", handler: handler.HandleAdminSimulateUserFirewallRule},
-		{pattern: "DELETE /api/v1/admin/users/{id}/firewall/rules/{ruleId}", handler: handler.HandleAdminDeleteUserFirewallRule},
 	}
 }
 
@@ -70,25 +62,6 @@ func adminServiceAccountRoutes(handler *admin.Handler) []routeDefinition {
 		{pattern: "POST /api/v1/admin/service-accounts/{id}/tokens", handler: handler.HandleAdminCreateServiceAccountToken},
 		{pattern: "DELETE /api/v1/admin/service-accounts/{id}/tokens/{tokenId}", handler: handler.HandleAdminRevokeServiceAccountToken},
 		{pattern: "PUT /api/v1/admin/service-accounts/{id}/subscription-plan", handler: handler.HandleAdminAssignServiceAccountSubscriptionPlan},
-		{pattern: "GET /api/v1/admin/service-accounts/{id}/firewall/rules", handler: handler.HandleAdminListServiceAccountFirewallRules},
-		{pattern: "POST /api/v1/admin/service-accounts/{id}/firewall/rules", handler: handler.HandleAdminCreateServiceAccountFirewallRule},
-		{pattern: "GET /api/v1/admin/service-accounts/{id}/firewall/rules/{ruleId}", handler: handler.HandleAdminGetServiceAccountFirewallRule},
-		{pattern: "PATCH /api/v1/admin/service-accounts/{id}/firewall/rules/{ruleId}", handler: handler.HandleAdminUpdateServiceAccountFirewallRule},
-		{pattern: "PATCH /api/v1/admin/service-accounts/{id}/firewall/rules/{ruleId}/priority", handler: handler.HandleAdminMoveServiceAccountFirewallRulePriority},
-		{pattern: "POST /api/v1/admin/service-accounts/{id}/firewall/simulate", handler: handler.HandleAdminSimulateServiceAccountFirewallRule},
-		{pattern: "DELETE /api/v1/admin/service-accounts/{id}/firewall/rules/{ruleId}", handler: handler.HandleAdminDeleteServiceAccountFirewallRule},
-	}
-}
-
-func adminFirewallRoutes(handler *admin.Handler) []routeDefinition {
-	return []routeDefinition{
-		{pattern: "GET /api/v1/admin/firewall/rules", handler: handler.HandleAdminListFirewallRules},
-		{pattern: "POST /api/v1/admin/firewall/rules", handler: handler.HandleAdminCreateFirewallRule},
-		{pattern: "GET /api/v1/admin/firewall/rules/{id}", handler: handler.HandleAdminGetFirewallRule},
-		{pattern: "PATCH /api/v1/admin/firewall/rules/{id}", handler: handler.HandleAdminUpdateFirewallRule},
-		{pattern: "PATCH /api/v1/admin/firewall/rules/{id}/priority", handler: handler.HandleAdminMoveFirewallRulePriority},
-		{pattern: "POST /api/v1/admin/firewall/simulate", handler: handler.HandleAdminSimulateFirewallRule},
-		{pattern: "DELETE /api/v1/admin/firewall/rules/{id}", handler: handler.HandleAdminDeleteFirewallRule},
 	}
 }
 

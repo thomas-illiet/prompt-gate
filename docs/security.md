@@ -88,29 +88,17 @@ moving its Redis auth cache to a new version.
 ## Service Accounts
 
 Service accounts are stored as users with type `service`. They can receive
-Prompt Gate API tokens and can be restricted with scoped firewall rules.
+Prompt Gate API tokens and are evaluated by the external OPA policy.
 
 Service account identifiers must be lowercase alphanumeric with dashes or
 underscores and have a maximum length of 64 characters.
 
-When `firewallOverrideEnabled` is true, the proxy evaluates only the scoped
-firewall rules for that user or service account. No scoped match denies by
-default.
+## External OPA policy
 
-## Firewall
-
-Firewall rules are evaluated inside the proxy after token authentication.
-
-Supported rule inputs:
-
-- IPv4 address
-- IPv4 CIDR range
-- priority from `1` to `9999`
-- action `allow` or `deny`
-- enabled flag
-
-Global rules use first match wins and allow on no match. Scoped user and
-service-account rules use first match wins and deny on no match.
+After token authentication, the proxy sends OPA only stable identity IDs,
+role/type, virtual-key metadata, resolved client IP, method, path, and host.
+Tokens, personal profile fields, headers, and request bodies are never sent.
+OPA is the sole policy source and the supplied example denies by default.
 
 The proxy normally uses the TCP remote address. In production, prefer
 `PROMPTGATE_PROXY_TRUSTED_PROXIES` with explicit ingress or reverse-proxy CIDRs
@@ -154,6 +142,6 @@ local development.
   invalidation.
 - Prefer explicit `PROMPTGATE_PROXY_TRUSTED_PROXIES` CIDRs over global
   forwarded-header trust.
-- Review service-account firewall overrides before issuing long-lived tokens.
+- Review OPA rules for service accounts before issuing long-lived tokens.
 - Restrict the administration API key to trusted CLI and server workloads, and
   restart or roll out every API replica after rotating it.

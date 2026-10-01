@@ -157,6 +157,10 @@ config:
   proxyDebugRequests: "false"
 
   redisCacheTtl: 5m
+  opaUrl: "http://prompt-gate-opa:8181"
+  opaPolicyPath: promptgate/proxy/decision
+  opaTimeout: 2s
+  opaCacheTtl: 10m
   proxyReloadDebounce: 250ms
 
   # Proxy buffer and upstream timeout limits. Byte values are strings to avoid

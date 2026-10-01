@@ -5,7 +5,7 @@
 Prompt Gate is the Go service layer for Prompt Gate, a control plane
 for safely exposing LLM providers to teams. It combines browser login, role
 management, API token issuance, a provider-aware LLM proxy, MCP server routing,
-firewall checks, usage recording, and scheduled cleanup jobs.
+external OPA policy checks, usage recording, and scheduled cleanup jobs.
 
 The product is designed as a small set of deployable processes built from one
 binary:
@@ -13,7 +13,7 @@ binary:
 - `api` runs the HTTP API, OIDC login flow, admin endpoints, and
   optional static frontend hosting.
 - `proxy` runs the LLM proxy that validates Prompt Gate API tokens,
-  applies firewall rules, routes to configured providers, and enqueues usage.
+  evaluates external OPA policy, routes to configured providers, and enqueues usage.
 - `worker` consumes proxy usage events, stores raw operational usage data, and
   updates dashboard KPI aggregates.
 - `schedule` runs recurring background jobs, including raw usage cleanup.
@@ -140,10 +140,10 @@ ready-to-use snippets.
 
 ### Service Accounts
 
-![Prompt Gate service accounts table with scoped firewall and virtual key actions](docs/assets/screenshots/service-accounts.png)
+![Prompt Gate service accounts table with virtual key actions](docs/assets/screenshots/service-accounts.png)
 
-Non-human account management with activation status, scoped firewall mode,
-usage totals, and integration key actions.
+Non-human account management with activation status, usage totals, and
+integration key actions.
 
 ### User Management
 
@@ -152,12 +152,10 @@ usage totals, and integration key actions.
 Admin directory view for reviewing roles, active state, usage totals, and
 account-level actions.
 
-### Firewall
+### External policy
 
-![Prompt Gate firewall table with allow and deny rules](docs/assets/screenshots/firewall.png)
-
-Admin rule ordering for IPv4 and CIDR access decisions before proxy traffic is
-accepted.
+Proxy requests are authorized by an external OPA server. A deny-by-default
+Kubernetes example is available under `deploy/examples/opa`.
 
 ### Monitoring
 

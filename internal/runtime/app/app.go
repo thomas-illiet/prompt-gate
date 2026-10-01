@@ -10,7 +10,6 @@ import (
 
 	"promptgate/backend/internal/domain/auth"
 	"promptgate/backend/internal/domain/faq"
-	"promptgate/backend/internal/domain/firewall"
 	"promptgate/backend/internal/domain/groups"
 	"promptgate/backend/internal/domain/mcp"
 	"promptgate/backend/internal/domain/monitoring"
@@ -35,7 +34,6 @@ type App struct {
 	DB            *gorm.DB
 	Users         *users.Service
 	Tokens        *tokens.Service
-	Firewall      *firewall.Service
 	FAQ           *faq.Service
 	Groups        *groups.Service
 	Providers     *provider.Service
@@ -103,7 +101,6 @@ func newServices(ctx context.Context, cfg serviceConfig, apiCfg *config.APIConfi
 	tokenService := tokens.NewService(db, cfg.Secrets.JWTSecret)
 	userService.SetTokenRevoker(tokenService)
 	subscriptionService := subscriptions.NewService(db)
-	firewallService := firewall.NewService(db)
 	faqService := faq.NewService(db)
 	groupService := groups.NewService(db)
 	secretCipher, err := secrets.NewCipher(cfg.Secrets.SecretsKey)
@@ -153,7 +150,6 @@ func newServices(ctx context.Context, cfg serviceConfig, apiCfg *config.APIConfi
 	slog.Info("redis connection ready")
 	userService.SetNotifier(redisStore)
 	tokenService.SetNotifier(redisStore)
-	firewallService.SetNotifier(redisStore)
 	groupService.SetNotifier(redisStore)
 	providerService.SetNotifier(redisStore)
 	mcpService.SetNotifier(redisStore)
@@ -196,7 +192,6 @@ func newServices(ctx context.Context, cfg serviceConfig, apiCfg *config.APIConfi
 		DB:            db,
 		Users:         userService,
 		Tokens:        tokenService,
-		Firewall:      firewallService,
 		FAQ:           faqService,
 		Groups:        groupService,
 		Providers:     providerService,

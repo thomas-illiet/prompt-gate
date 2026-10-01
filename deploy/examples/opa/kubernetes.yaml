@@ -1,0 +1,103 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prompt-gate-opa-policy
+data:
+  policy.rego: |
+    package promptgate.proxy
+
+    default decision := {"allow": false, "reason": "default_deny"}
+
+    decision := {"allow": true, "reason": "administrator"} if {
+      input.identity.role == "admin"
+    }
+
+    decision := {"allow": true, "reason": "trusted_service"} if {
+      input.identity.role != "admin"
+      input.identity.type == "service"
+      input.identity.id == "replace-with-service-account-id"
+      net.cidr_contains("10.0.0.0/8", input.request.client_ip)
+      input.request.method == "POST"
+      allowed_path(input.request.path)
+    }
+
+    decision := {"allow": true, "reason": "trusted_user_route"} if {
+      input.identity.role == "user"
+      input.identity.type == "user"
+      net.cidr_contains("192.168.0.0/16", input.request.client_ip)
+      input.request.method == "POST"
+      allowed_path(input.request.path)
+    }
+
+    allowed_path(path) if { startswith(path, "/v1/chat/completions") }
+    allowed_path(path) if { startswith(path, "/v1/responses") }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prompt-gate-opa
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: prompt-gate-opa
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: prompt-gate-opa
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: opa
+          image: openpolicyagent/opa:1.21.0-static
+          args: ["run", "--server", "--addr=0.0.0.0:8181", "/policies"]
+          ports:
+            - name: http
+              containerPort: 8181
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+          volumeMounts:
+            - name: policy
+              mountPath: /policies
+              readOnly: true
+      volumes:
+        - name: policy
+          configMap:
+            name: prompt-gate-opa-policy
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prompt-gate-opa
+spec:
+  selector:
+    app.kubernetes.io/name: prompt-gate-opa
+  ports:
+    - name: http
+      port: 8181
+      targetPort: http
