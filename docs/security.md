@@ -99,6 +99,10 @@ After token authentication, the proxy sends OPA only stable identity IDs,
 role/type, virtual-key metadata, resolved client IP, method, path, and host.
 Tokens, personal profile fields, headers, and request bodies are never sent.
 OPA is the sole policy source and the supplied example denies by default.
+`PROMPTGATE_OPA_ENABLED=false` is an emergency fail-open switch for this policy
+stage. It must be time-bounded and operationally monitored because every
+authenticated request then bypasses OPA; group, quota, and provider controls
+still apply.
 
 The proxy normally uses the TCP remote address. In production, prefer
 `PROMPTGATE_PROXY_TRUSTED_PROXIES` with explicit ingress or reverse-proxy CIDRs

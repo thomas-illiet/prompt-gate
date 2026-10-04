@@ -22,11 +22,16 @@ Change the role to `user` and the IP to `203.0.113.4` to observe the default
 deny response. Configure Prompt Gate with:
 
 ```text
+PROMPTGATE_OPA_ENABLED=true
 PROMPTGATE_OPA_URL=http://prompt-gate-opa:8181
 PROMPTGATE_OPA_POLICY_PATH=promptgate/proxy/decision
 PROMPTGATE_OPA_TIMEOUT=2s
 PROMPTGATE_OPA_CACHE_TTL=10m
 ```
+
+For emergency recovery only, set `PROMPTGATE_OPA_ENABLED=false` and restart the
+proxy. This bypasses OPA authorization while leaving authentication, groups,
+quotas, and provider controls enabled.
 
 The example intentionally does not add OPA to the Prompt Gate Helm chart. OPA
 remains an independently operated dependency protected by the cluster network.

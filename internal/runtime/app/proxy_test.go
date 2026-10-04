@@ -45,7 +45,7 @@ func TestProxyHealth(t *testing.T) {
 		t.Fatalf("new OPA client: %v", err)
 	}
 	recorder := httptest.NewRecorder()
-	proxyHealth(client).ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/health", nil))
+	proxyHealth(true, client).ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/health", nil))
 
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", recorder.Code)
@@ -59,16 +59,25 @@ func TestProxyHealth(t *testing.T) {
 
 	status.Store(http.StatusServiceUnavailable)
 	recorder = httptest.NewRecorder()
-	proxyHealth(client).ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/health", nil))
+	proxyHealth(true, client).ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/health", nil))
 	if recorder.Code != http.StatusServiceUnavailable || recorder.Body.String() != `{"status":"degraded","dependency":"opa"}` {
 		t.Fatalf("unexpected degraded health: %d %q", recorder.Code, recorder.Body.String())
 	}
 
 	status.Store(http.StatusOK)
 	recorder = httptest.NewRecorder()
-	proxyHealth(client).ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/health", nil))
+	proxyHealth(true, client).ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/health", nil))
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("expected recovered health, got %d", recorder.Code)
+	}
+}
+
+func TestProxyHealthSkipsOPAWhenDisabled(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	proxyHealth(false, nil).ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/health", nil))
+
+	if recorder.Code != http.StatusOK || recorder.Body.String() != `{"status":"ok"}` {
+		t.Fatalf("unexpected disabled OPA health: %d %q", recorder.Code, recorder.Body.String())
 	}
 }
 

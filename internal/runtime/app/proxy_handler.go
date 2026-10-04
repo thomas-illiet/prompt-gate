@@ -28,11 +28,21 @@ func (p *ProxyRuntime) buildHandler(
 	debugRequestWriter *httpmiddleware.JSONLineWriter,
 ) http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /health", proxyHealth(opaClient))
+	mux.HandleFunc("GET /health", proxyHealth(cfg.OPAEnabled, opaClient))
 
 	clientIPOptions := clientip.Options{
 		TrustForwardHeaders: cfg.ProxyTrustForwardHeaders,
 		TrustedProxies:      cfg.ProxyTrustedProxies,
+	}
+	protectedHandler := groups.MiddlewareWithOptions(accessSnapshot, p.logger, groups.MiddlewareOptions{
+		MaxBufferedRequestBytes: cfg.ProxyMaxBufferedRequestBytes,
+	})(
+		subscriptions.Middleware(p.subscriptionStore, p.logger)(
+			auth.ActorMiddleware(proxyruntime.SessionContextMiddleware(p.manager)),
+		),
+	)
+	if cfg.OPAEnabled {
+		protectedHandler = policy.Middleware(policyEvaluator, p.logger)(protectedHandler)
 	}
 	proxyHandler := tokens.MiddlewareWithOptions(tokens.MiddlewareOptions{
 		TokenService: tokenService,
@@ -40,17 +50,7 @@ func (p *ProxyRuntime) buildHandler(
 		Cache:        authCache,
 		Logger:       p.logger,
 	})(
-		clientip.MiddlewareWithOptions(clientIPOptions)(
-			policy.Middleware(policyEvaluator, p.logger)(
-				groups.MiddlewareWithOptions(accessSnapshot, p.logger, groups.MiddlewareOptions{
-					MaxBufferedRequestBytes: cfg.ProxyMaxBufferedRequestBytes,
-				})(
-					subscriptions.Middleware(p.subscriptionStore, p.logger)(
-						auth.ActorMiddleware(proxyruntime.SessionContextMiddleware(p.manager)),
-					),
-				),
-			),
-		),
+		clientip.MiddlewareWithOptions(clientIPOptions)(protectedHandler),
 	)
 	if len(cfg.CORSAllowedOrigins) > 0 {
 		proxyHandler = httpmiddleware.CORS(cfg.CORSAllowedOrigins)(proxyHandler)
@@ -71,13 +71,20 @@ func (p *ProxyRuntime) buildHandler(
 	return httpmiddleware.SecurityHeaders()(mux)
 }
 
-func proxyHealth(opaClient *policy.Client) http.HandlerFunc {
+func proxyHealth(opaEnabled bool, opaClient *policy.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		if err := opaClient.Health(r.Context()); err != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			_, _ = w.Write([]byte(`{"status":"degraded","dependency":"opa"}`))
-			return
+		if opaEnabled {
+			if opaClient == nil {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				_, _ = w.Write([]byte(`{"status":"degraded","dependency":"opa"}`))
+				return
+			}
+			if err := opaClient.Health(r.Context()); err != nil {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				_, _ = w.Write([]byte(`{"status":"degraded","dependency":"opa"}`))
+				return
+			}
 		}
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"ok"}`))

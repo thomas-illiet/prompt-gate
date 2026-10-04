@@ -87,7 +87,6 @@ sequenceDiagram
     participant O as OIDC provider
     participant R as Redis
     participant D as PostgreSQL
-    participant O as External OPA
 
     B->>A: GET /auth/login
     A->>R: Store state, nonce, PKCE verifier
@@ -112,6 +111,7 @@ sequenceDiagram
     participant P as Proxy
     participant R as Redis
     participant D as PostgreSQL
+    participant O as External OPA
     participant W as Worker
     participant U as Provider or MCP
 

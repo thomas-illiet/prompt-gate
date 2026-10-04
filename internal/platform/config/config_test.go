@@ -66,6 +66,44 @@ func TestLoadProxyOTelDefaults(t *testing.T) {
 	}
 }
 
+func TestLoadProxyOPAEnabledByDefault(t *testing.T) {
+	setRequiredProxyEnv(t)
+	cfg, err := LoadProxy()
+	if err != nil {
+		t.Fatalf("load proxy config: %v", err)
+	}
+	if !cfg.OPAEnabled {
+		t.Fatal("expected OPA to be enabled by default")
+	}
+}
+
+func TestLoadProxyAllowsDisabledOPAWithoutConfiguration(t *testing.T) {
+	setRequiredProxyEnv(t)
+	t.Setenv("PROMPTGATE_OPA_ENABLED", "false")
+	t.Setenv("PROMPTGATE_OPA_URL", "")
+	t.Setenv("PROMPTGATE_OPA_POLICY_PATH", "")
+	t.Setenv("PROMPTGATE_OPA_TIMEOUT", "0s")
+	t.Setenv("PROMPTGATE_OPA_CACHE_TTL", "0s")
+
+	cfg, err := LoadProxy()
+	if err != nil {
+		t.Fatalf("load proxy with OPA disabled: %v", err)
+	}
+	if cfg.OPAEnabled {
+		t.Fatal("expected OPA to be disabled")
+	}
+}
+
+func TestLoadProxyRequiresOPAURLWhenEnabled(t *testing.T) {
+	setRequiredProxyEnv(t)
+	t.Setenv("PROMPTGATE_OPA_URL", "")
+
+	_, err := LoadProxy()
+	if err == nil || !strings.Contains(err.Error(), "PROMPTGATE_OPA_URL") {
+		t.Fatalf("expected enabled OPA to require its URL, got %v", err)
+	}
+}
+
 // TestLoadProxyOTelConfig verifies explicit Phoenix exporter settings.
 func TestLoadProxyOTelConfig(t *testing.T) {
 	setRequiredProxyEnv(t)

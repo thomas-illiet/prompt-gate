@@ -46,7 +46,8 @@ dotenv file.
 | `PROMPTGATE_PROXY_MAX_BUFFERED_RESPONSE_BYTES` | proxy | `16777216` | Maximum buffered upstream response size for inspected responses, in bytes. Must be greater than zero. |
 | `PROMPTGATE_PROXY_UPSTREAM_TIMEOUT` | proxy | `2m` | Complete upstream request timeout, including provider calls. Must be greater than zero. |
 | `PROMPTGATE_REDIS_CACHE_TTL` | API, proxy, worker, schedule | `5m` | TTL for Redis-backed cache entries and snapshots. |
-| `PROMPTGATE_OPA_URL` | proxy | required | Absolute HTTP(S) base URL of the external OPA server. |
+| `PROMPTGATE_OPA_ENABLED` | proxy | `true` | Enables external OPA authorization. Set to `false` only as an emergency bypass: authenticated requests then continue directly to groups, quotas, and providers, and OPA is excluded from `/health`. |
+| `PROMPTGATE_OPA_URL` | proxy | required when OPA is enabled | Absolute HTTP(S) base URL of the external OPA server. Ignored when OPA is disabled. |
 | `PROMPTGATE_OPA_POLICY_PATH` | proxy | `promptgate/proxy/decision` | OPA data API document returning `{allow, reason}`. |
 | `PROMPTGATE_OPA_TIMEOUT` | proxy | `2s` | Timeout for OPA decision and health requests. |
 | `PROMPTGATE_OPA_CACHE_TTL` | proxy | `10m` | Redis TTL for allow and deny decisions. |
@@ -157,6 +158,7 @@ PROMPTGATE_PROXY_MAX_BUFFERED_REQUEST_BYTES=8388608
 PROMPTGATE_PROXY_MAX_BUFFERED_RESPONSE_BYTES=16777216
 PROMPTGATE_PROXY_UPSTREAM_TIMEOUT=2m
 PROMPTGATE_REDIS_CACHE_TTL=5m
+PROMPTGATE_OPA_ENABLED=true
 PROMPTGATE_OPA_URL=http://prompt-gate-opa:8181
 PROMPTGATE_OPA_POLICY_PATH=promptgate/proxy/decision
 PROMPTGATE_OPA_TIMEOUT=2s

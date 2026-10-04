@@ -157,6 +157,7 @@ config:
   proxyDebugRequests: "false"
 
   redisCacheTtl: 5m
+  opaEnabled: true
   opaUrl: "http://prompt-gate-opa:8181"
   opaPolicyPath: promptgate/proxy/decision
   opaTimeout: 2s

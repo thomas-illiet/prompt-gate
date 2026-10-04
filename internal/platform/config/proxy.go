@@ -29,6 +29,7 @@ func LoadProxy() (ProxyConfig, error) {
 	v.SetDefault("proxy_max_buffered_request_bytes", proxylimits.DefaultMaxBufferedRequestBytes)
 	v.SetDefault("proxy_max_buffered_response_bytes", proxylimits.DefaultMaxBufferedResponseBytes)
 	v.SetDefault("proxy_upstream_timeout", proxylimits.DefaultUpstreamTimeout)
+	v.SetDefault("opa_enabled", true)
 	v.SetDefault("opa_policy_path", "promptgate/proxy/decision")
 	v.SetDefault("opa_timeout", "2s")
 	v.SetDefault("opa_cache_ttl", "10m")
@@ -80,6 +81,7 @@ func LoadProxy() (ProxyConfig, error) {
 			ProxyMaxBufferedRequestBytes:  v.GetInt64("proxy_max_buffered_request_bytes"),
 			ProxyMaxBufferedResponseBytes: v.GetInt64("proxy_max_buffered_response_bytes"),
 			ProxyUpstreamTimeout:          v.GetDuration("proxy_upstream_timeout"),
+			OPAEnabled:                    v.GetBool("opa_enabled"),
 			OPAURL:                        strings.TrimRight(strings.TrimSpace(v.GetString("opa_url")), "/"),
 			OPAPolicyPath:                 strings.Trim(strings.TrimSpace(v.GetString("opa_policy_path")), "/"),
 			OPATimeout:                    v.GetDuration("opa_timeout"),
@@ -138,22 +140,29 @@ func LoadProxy() (ProxyConfig, error) {
 	if cfg.ProxyUpstreamTimeout <= 0 {
 		return ProxyConfig{}, errors.New("PROMPTGATE_PROXY_UPSTREAM_TIMEOUT must be greater than zero")
 	}
-	if cfg.OPAURL == "" {
-		return ProxyConfig{}, errors.New("PROMPTGATE_OPA_URL is required")
+	if cfg.OPAEnabled {
+		if cfg.OPAURL == "" {
+			return ProxyConfig{}, errors.New("PROMPTGATE_OPA_URL is required when PROMPTGATE_OPA_ENABLED is true")
+		}
+		opaURL, err := url.Parse(cfg.OPAURL)
+		if err != nil || opaURL.Host == "" || (opaURL.Scheme != "https" && opaURL.Scheme != "http") {
+			return ProxyConfig{}, errors.New("PROMPTGATE_OPA_URL must be an absolute HTTP(S) URL")
+		}
+		if cfg.OPAPolicyPath == "" {
+			return ProxyConfig{}, errors.New("PROMPTGATE_OPA_POLICY_PATH must not be empty")
+		}
 	}
-	opaURL, err := url.Parse(cfg.OPAURL)
-	if err != nil || opaURL.Host == "" || (opaURL.Scheme != "https" && opaURL.Scheme != "http") {
-		return ProxyConfig{}, errors.New("PROMPTGATE_OPA_URL must be an absolute HTTP(S) URL")
-	}
-	if cfg.OPAPolicyPath == "" {
-		return ProxyConfig{}, errors.New("PROMPTGATE_OPA_POLICY_PATH must not be empty")
-	}
-	if err := validatePositiveDurations(
+	positiveDurations := []positiveDuration{
 		positiveDuration{"PROMPTGATE_REDIS_CACHE_TTL", cfg.RedisCacheTTL},
 		positiveDuration{"PROMPTGATE_PROXY_RELOAD_DEBOUNCE", cfg.ProxyReloadDebounce},
-		positiveDuration{"PROMPTGATE_OPA_TIMEOUT", cfg.OPATimeout},
-		positiveDuration{"PROMPTGATE_OPA_CACHE_TTL", cfg.OPACacheTTL},
-	); err != nil {
+	}
+	if cfg.OPAEnabled {
+		positiveDurations = append(positiveDurations,
+			positiveDuration{"PROMPTGATE_OPA_TIMEOUT", cfg.OPATimeout},
+			positiveDuration{"PROMPTGATE_OPA_CACHE_TTL", cfg.OPACacheTTL},
+		)
+	}
+	if err := validatePositiveDurations(positiveDurations...); err != nil {
 		return ProxyConfig{}, err
 	}
 	if len(cfg.CORSAllowedOrigins) == 0 && cfg.FrontendBaseURL != "" {

@@ -29,7 +29,12 @@ data:
   PROMPTGATE_PROXY_TRUSTED_PROXIES: {{ .Values.config.proxyTrustedProxies | quote }}
   PROMPTGATE_PROXY_DEBUG_REQUESTS: {{ .Values.config.proxyDebugRequests | quote }}
   PROMPTGATE_REDIS_CACHE_TTL: {{ .Values.config.redisCacheTtl | quote }}
+  PROMPTGATE_OPA_ENABLED: {{ .Values.config.opaEnabled | quote }}
+  {{- if .Values.config.opaEnabled }}
   PROMPTGATE_OPA_URL: {{ required "config.opaUrl is required" .Values.config.opaUrl | quote }}
+  {{- else }}
+  PROMPTGATE_OPA_URL: {{ .Values.config.opaUrl | quote }}
+  {{- end }}
   PROMPTGATE_OPA_POLICY_PATH: {{ .Values.config.opaPolicyPath | quote }}
   PROMPTGATE_OPA_TIMEOUT: {{ .Values.config.opaTimeout | quote }}
   PROMPTGATE_OPA_CACHE_TTL: {{ .Values.config.opaCacheTtl | quote }}

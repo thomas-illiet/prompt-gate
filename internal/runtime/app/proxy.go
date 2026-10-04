@@ -108,19 +108,25 @@ func NewProxy(ctx context.Context, cfg config.ProxyConfig, logger *slog.Logger, 
 	authCache := tokens.NewRedisAuthCache(redisStore, cfg.RedisCacheTTL, logger)
 	authCache.SyncVersion(ctx)
 	accessSnapshot := groups.NewSnapshotStore(groupService)
-	opaHTTPClient := &http.Client{Timeout: cfg.OPATimeout}
-	customOPAHTTPClient, err := platformhttp.NewWithCAFile(cfg.CAFile, cfg.OPATimeout)
-	if err != nil {
-		return nil, fmt.Errorf("initialize OPA CA HTTP client: %w", err)
+	var opaClient *policy.Client
+	var policyEvaluator *policy.Evaluator
+	if cfg.OPAEnabled {
+		opaHTTPClient := &http.Client{Timeout: cfg.OPATimeout}
+		customOPAHTTPClient, opaErr := platformhttp.NewWithCAFile(cfg.CAFile, cfg.OPATimeout)
+		if opaErr != nil {
+			return nil, fmt.Errorf("initialize OPA CA HTTP client: %w", opaErr)
+		}
+		if customOPAHTTPClient != nil {
+			opaHTTPClient = customOPAHTTPClient
+		}
+		opaClient, opaErr = policy.NewClient(cfg.OPAURL, cfg.OPAPolicyPath, opaHTTPClient)
+		if opaErr != nil {
+			return nil, fmt.Errorf("initialize OPA client: %w", opaErr)
+		}
+		policyEvaluator = policy.NewEvaluator(opaClient, redisStore, cfg.OPAPolicyPath, cfg.OPACacheTTL, logger)
+	} else {
+		logger.Warn("OPA authorization disabled; authenticated requests bypass external policy enforcement")
 	}
-	if customOPAHTTPClient != nil {
-		opaHTTPClient = customOPAHTTPClient
-	}
-	opaClient, err := policy.NewClient(cfg.OPAURL, cfg.OPAPolicyPath, opaHTTPClient)
-	if err != nil {
-		return nil, fmt.Errorf("initialize OPA client: %w", err)
-	}
-	policyEvaluator := policy.NewEvaluator(opaClient, redisStore, cfg.OPAPolicyPath, cfg.OPACacheTTL, logger)
 	manager, err := proxyruntime.NewManager(ctx, proxyruntime.Options{
 		Providers:                providerService,
 		MCP:                      mcpService,

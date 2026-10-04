@@ -99,6 +99,13 @@ before group, quota, and provider processing. Both allowed and denied decisions
 are cached in Redis. OPA failures return `503 policy_unavailable` on a cache
 miss; explicit policy denials return `403 policy_denied`.
 
+`PROMPTGATE_OPA_ENABLED` defaults to `true`. Setting it to `false` is an
+emergency access-release mechanism: the proxy does not initialize or call OPA,
+does not read its decision cache, and does not include OPA in `/health`.
+Authentication, groups, quotas, and provider controls remain active. Disabling
+OPA therefore fails open only for the external policy stage and emits a startup
+warning; restore it to `true` as soon as the incident is resolved.
+
 By default the proxy uses the TCP remote address. In production, prefer setting
 `PROMPTGATE_PROXY_TRUSTED_PROXIES` to the CIDRs of trusted ingress or reverse
 proxy hops. The proxy will then trust `X-Forwarded-For` and `X-Real-IP` only
@@ -250,8 +257,10 @@ PROMPTGATE_DATABASE_URL
 PROMPTGATE_REDIS_URL
 PROMPTGATE_JWT_SECRET
 PROMPTGATE_SECRETS_KEY
-PROMPTGATE_OPA_URL
 ```
+
+`PROMPTGATE_OPA_URL` is additionally required when
+`PROMPTGATE_OPA_ENABLED=true` (the default).
 
 At least one supported enabled provider must exist before the proxy can build
 its initial runtime bridge.

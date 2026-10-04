@@ -156,6 +156,8 @@ account-level actions.
 
 Proxy requests are authorized by an external OPA server. A deny-by-default
 Kubernetes example is available under `deploy/examples/opa`.
+OPA is enabled by default and can be bypassed during an access incident with
+`PROMPTGATE_OPA_ENABLED=false`; authentication, groups, and quotas remain active.
 
 ### Monitoring
 
