@@ -87,7 +87,7 @@ services:
       retries: 20
 
   keycloak:
-    image: quay.io/keycloak/keycloak:26.7.1
+    image: quay.io/keycloak/keycloak:26.8.0
     command:
       - start-dev
       - --import-realm
