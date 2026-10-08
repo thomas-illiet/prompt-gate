@@ -119,7 +119,8 @@ function openIPDialog(user: AdminUser) {
 }
 
 async function refreshIPAddresses() {
-  if (ipDialog.target.value) await adminUsers.loadIPAddresses(ipDialog.target.value.id)
+  if (ipDialog.target.value)
+    await adminUsers.loadIPAddresses(ipDialog.target.value.id)
 }
 
 async function updateIPPage(value: number) {
@@ -248,6 +249,19 @@ async function saveUserNote(note: string) {
       </v-col>
 
       <v-col cols="12">
+        <div class="admin-users-page__actions">
+          <v-btn
+            color="primary"
+            prepend-icon="mdi-download-outline"
+            variant="tonal"
+            :disabled="adminUsers.loading.value"
+            :loading="adminUsers.exporting.value"
+            @click="adminUsers.exportUsers"
+          >
+            Export CSV
+          </v-btn>
+        </div>
+
         <AdminUsersFilters
           :role="adminUsers.role.value"
           :search="adminUsers.search.value"
@@ -347,7 +361,9 @@ async function saveUserNote(note: string) {
     />
     <AdminAccountIPAddressesDialog
       v-model="ipDialog.isOpen.value"
-      :account-name="ipDialog.target.value ? displayUser(ipDialog.target.value) : 'User'"
+      :account-name="
+        ipDialog.target.value ? displayUser(ipDialog.target.value) : 'User'
+      "
       :items="adminUsers.ipAddresses.value"
       :loading="adminUsers.ipLoading.value"
       :page="adminUsers.ipPage.value"
@@ -384,3 +400,11 @@ async function saveUserNote(note: string) {
     />
   </v-container>
 </template>
+
+<style scoped>
+.admin-users-page__actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+</style>

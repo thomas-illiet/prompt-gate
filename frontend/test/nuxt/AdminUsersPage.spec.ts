@@ -34,6 +34,8 @@ const user: AdminUser = {
 function createAdminUsersMock() {
   return {
     deleteUser: vi.fn(),
+    exporting: shallowRef(false),
+    exportUsers: vi.fn(),
     groupLoading: shallowRef(false),
     groupOptions: shallowRef([]),
     ipAddresses: shallowRef([]),
@@ -173,6 +175,11 @@ function mountPage() {
         VAlert: { template: '<div><slot /></div>' },
         VCol: { template: '<div><slot /></div>' },
         VContainer: { template: '<main><slot /></main>' },
+        VBtn: {
+          emits: ['click'],
+          template:
+            '<button data-test="export-users" @click="$emit(\'click\')"><slot /></button>',
+        },
         VRow: { template: '<div><slot /></div>' },
       },
     },
@@ -202,6 +209,16 @@ describe('Admin users page usage statistics dialog', () => {
       'Ada Lovelace IP addresses',
     )
     expect(adminUsers.loadIPAddresses).toHaveBeenCalledWith(user.id)
+  })
+
+  it('exports users from the page action', async () => {
+    const adminUsers = createAdminUsersMock()
+    useAdminUsersMock.mockReturnValue(adminUsers)
+    const wrapper = mountPage()
+
+    await wrapper.get('[data-test="export-users"]').trigger('click')
+
+    expect(adminUsers.exportUsers).toHaveBeenCalledOnce()
   })
 
   it('mounts for the selected user and unmounts on every close', async () => {

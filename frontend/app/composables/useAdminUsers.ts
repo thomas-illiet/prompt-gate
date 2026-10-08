@@ -1,5 +1,8 @@
 import type { UserToken, UserTokenListResponse } from '~/types/user-service'
-import type { AccountIPAddress, AccountIPAddressListResponse } from '~/types/account-ips'
+import type {
+  AccountIPAddress,
+  AccountIPAddressListResponse,
+} from '~/types/account-ips'
 import type {
   AccessGroup,
   GroupListResponse,
@@ -27,6 +30,7 @@ import {
   withApiQuery,
 } from '~/utils/api-paths'
 import { toApiErrorMessage } from '~/utils/api-error'
+import { downloadUsersCsv } from '~/utils/users-csv'
 
 const ERROR_MESSAGES = {
   invalid_expiration: 'Expiration date must be in the future.',
@@ -58,6 +62,7 @@ export function useAdminUsers() {
   const role = shallowRef<UserRoleFilter>('all')
   const status = shallowRef<UserStatusFilter>('all')
   const saving = shallowRef(false)
+  const exporting = shallowRef(false)
   const selectedUser = shallowRef<AdminUser | null>(null)
   const tokens = shallowRef<UserToken[]>([])
   const tokenLoading = shallowRef(false)
@@ -131,6 +136,46 @@ export function useAdminUsers() {
     await queryList.reload()
   }
 
+  // exportUsers downloads every user matching the active filters and sort.
+  async function exportUsers() {
+    exporting.value = true
+
+    try {
+      const items: AdminUser[] = []
+      const exportPageSize = 100
+
+      for (let page = 1; ; page += 1) {
+        const params = new URLSearchParams({
+          page: page.toString(),
+          pageSize: exportPageSize.toString(),
+          sortBy: queryList.sortBy.value,
+          sortDir: queryList.sortDir.value,
+        })
+        const normalizedSearch = queryList.search.value.trim()
+        if (normalizedSearch) params.set('search', normalizedSearch)
+        if (role.value !== 'all') params.set('role', role.value)
+        if (status.value !== 'all') params.set('status', status.value)
+
+        const response = await apiFetch<UserListResponse>(
+          withApiQuery(adminUsersPath, params),
+        )
+        items.push(...response.items)
+        if (items.length >= response.total || response.items.length === 0) break
+      }
+
+      const date = new Date().toISOString().slice(0, 10)
+      downloadUsersCsv(items, `promptgate-users-${date}.csv`)
+      Notify.success(
+        `${items.length} user${items.length === 1 ? '' : 's'} exported.`,
+      )
+    } catch (error) {
+      Notify.error(toAdminUserErrorMessage(error))
+      throw error
+    } finally {
+      exporting.value = false
+    }
+  }
+
   // loadUser fetches one user for editing.
   async function loadUser(userId: string) {
     selectedUser.value = await apiFetch<AdminUser>(adminUserPath(userId))
@@ -187,8 +232,12 @@ export function useAdminUsers() {
     }
   }
 
-  function setIPPage(value: number) { ipPage.value = value }
-  function setIPPageSize(value: number) { ipPageSize.value = value }
+  function setIPPage(value: number) {
+    ipPage.value = value
+  }
+  function setIPPageSize(value: number) {
+    ipPageSize.value = value
+  }
   function setIPSort(sortBy: string, sortDir: 'asc' | 'desc') {
     ipSortBy.value = sortBy
     ipSortDir.value = sortDir
@@ -440,6 +489,8 @@ export function useAdminUsers() {
 
   return {
     deleteUser,
+    exporting,
+    exportUsers,
     assignUserSubscriptionPlan,
     listError: queryList.listError,
     groupLoading,

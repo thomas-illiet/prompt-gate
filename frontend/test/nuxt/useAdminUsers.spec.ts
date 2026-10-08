@@ -14,6 +14,15 @@ import type {
 import type { AccessGroup, GroupListResponse } from '../../app/types/groups'
 import type { AdminUser, UserListResponse } from '../../app/types/users'
 
+const { downloadUsersCsvMock } = vi.hoisted(() => ({
+  downloadUsersCsvMock: vi.fn(),
+}))
+
+vi.mock('../../app/utils/users-csv', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../app/utils/users-csv')>()),
+  downloadUsersCsv: downloadUsersCsvMock,
+}))
+
 const { apiFetch, useApiFetchMock, useRouteMock } = vi.hoisted(() => {
   const apiFetch = vi.fn()
   return {
@@ -117,6 +126,7 @@ describe('useAdminUsers', () => {
     apiFetch.mockReset()
     useApiFetchMock.mockClear()
     useRouteMock.mockClear()
+    downloadUsersCsvMock.mockReset()
     setActivePinia(createPinia())
   })
 
@@ -141,6 +151,33 @@ describe('useAdminUsers', () => {
       '/api/v1/admin/users?page=1&pageSize=10&sortBy=lastLoginAt&sortDir=desc',
     )
     expect(adminUsers.users.value).toEqual([])
+  })
+
+  it('exports all users matching the active filters across pages', async () => {
+    const secondUser = { ...user, id: 'user-id-2', email: 'grace@example.com' }
+    apiFetch
+      .mockResolvedValueOnce(userResponse([user]))
+      .mockResolvedValueOnce(userResponse([user], 2))
+      .mockResolvedValueOnce(userResponse([secondUser], 2))
+
+    const adminUsers = useAdminUsers()
+    await vi.waitFor(() => expect(adminUsers.loading.value).toBe(false))
+
+    await adminUsers.exportUsers()
+
+    expect(apiFetch).toHaveBeenNthCalledWith(
+      2,
+      '/api/v1/admin/users?page=1&pageSize=100&sortBy=lastLoginAt&sortDir=desc',
+    )
+    expect(apiFetch).toHaveBeenNthCalledWith(
+      3,
+      '/api/v1/admin/users?page=2&pageSize=100&sortBy=lastLoginAt&sortDir=desc',
+    )
+    expect(downloadUsersCsvMock).toHaveBeenCalledWith(
+      [user, secondUser],
+      expect.stringMatching(/^promptgate-users-\d{4}-\d{2}-\d{2}\.csv$/),
+    )
+    expect(adminUsers.exporting.value).toBe(false)
   })
 
   it('loads and revokes selected user tokens', async () => {
@@ -182,7 +219,12 @@ describe('useAdminUsers', () => {
     const addresses = [{ ip: '2001:db8::1', lastSeen: '2026-09-15T08:00:00Z' }]
     apiFetch
       .mockResolvedValueOnce(userResponse([user]))
-      .mockResolvedValueOnce({ items: addresses, page: 1, pageSize: 10, total: 1 })
+      .mockResolvedValueOnce({
+        items: addresses,
+        page: 1,
+        pageSize: 10,
+        total: 1,
+      })
     const adminUsers = useAdminUsers()
     await vi.waitFor(() => expect(adminUsers.loading.value).toBe(false))
     await adminUsers.loadIPAddresses(user.id)
