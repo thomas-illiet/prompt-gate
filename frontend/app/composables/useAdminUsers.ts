@@ -232,6 +232,23 @@ export function useAdminUsers() {
     }
   }
 
+  // clearIPAddresses removes the complete proxy IP history for one user.
+  async function clearIPAddresses(userId: string) {
+    await runApiMutation(
+      {
+        loading: saving,
+        successMessage: 'IP address history cleared.',
+        toErrorMessage: toAdminUserErrorMessage,
+      },
+      async () => {
+        await apiFetch(adminUserPath(userId, 'ips'), { method: 'DELETE' })
+        ipAddresses.value = []
+        ipTotal.value = 0
+        ipPage.value = 1
+      },
+    )
+  }
+
   function setIPPage(value: number) {
     ipPage.value = value
   }
@@ -488,6 +505,7 @@ export function useAdminUsers() {
   }
 
   return {
+    clearIPAddresses,
     deleteUser,
     exporting,
     exportUsers,

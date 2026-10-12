@@ -16,6 +16,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
+  clear: []
   refresh: []
   'update:page': [value: number]
   'update:page-size': [value: number]
@@ -32,7 +33,9 @@ const headers: DataTableHeader[] = [
 const subtitle = computed(() => {
   if (props.total === 0) return 'No proxy IP addresses recorded.'
   if (props.items.length === props.total) {
-    return props.total === 1 ? '1 IP address recorded.' : `${props.total} IP addresses recorded.`
+    return props.total === 1
+      ? '1 IP address recorded.'
+      : `${props.total} IP addresses recorded.`
   }
   return `Showing ${props.items.length} of ${props.total} IP addresses.`
 })
@@ -48,17 +51,39 @@ const subtitle = computed(() => {
     :title="`${props.accountName} IP addresses`"
   >
     <div class="admin-account-ips-dialog__toolbar">
-      <span class="admin-account-ips-dialog__heading">Proxy activity</span>
-      <v-btn
-        color="primary"
-        prepend-icon="mdi-refresh"
-        rounded="lg"
-        variant="tonal"
-        :loading="props.loading"
-        @click="emit('refresh')"
-      >
-        Refresh
-      </v-btn>
+      <div class="admin-account-ips-dialog__summary">
+        <span class="admin-account-ips-dialog__heading">Proxy activity</span>
+        <v-chip
+          color="success"
+          prepend-icon="mdi-sync"
+          size="small"
+          variant="tonal"
+        >
+          Auto-refresh every 10s
+        </v-chip>
+      </div>
+      <div class="admin-account-ips-dialog__actions">
+        <v-btn
+          color="error"
+          prepend-icon="mdi-delete-sweep-outline"
+          rounded="lg"
+          variant="text"
+          :disabled="props.loading || props.total === 0"
+          @click="emit('clear')"
+        >
+          Clear history
+        </v-btn>
+        <v-btn
+          color="primary"
+          prepend-icon="mdi-refresh"
+          rounded="lg"
+          variant="tonal"
+          :loading="props.loading"
+          @click="emit('refresh')"
+        >
+          Refresh
+        </v-btn>
+      </div>
     </div>
 
     <AppServerDataTable
@@ -112,6 +137,24 @@ const subtitle = computed(() => {
 
 .admin-account-ips-dialog__heading {
   font-weight: 600;
+}
+
+.admin-account-ips-dialog__actions,
+.admin-account-ips-dialog__summary {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+@media (max-width: 600px) {
+  .admin-account-ips-dialog__toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .admin-account-ips-dialog__actions {
+    justify-content: flex-end;
+  }
 }
 
 .admin-account-ips-dialog__ip {

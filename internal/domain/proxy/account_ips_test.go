@@ -62,6 +62,44 @@ func TestListAccountIPAddressesValidatesAccountTypeAndSort(t *testing.T) {
 	}
 }
 
+func TestClearAccountIPAddressesDeletesOnlyTargetAccount(t *testing.T) {
+	db, service := newProxyServiceTestDB(t)
+	ctx := context.Background()
+	targetID := "11111111-1111-1111-1111-111111111111"
+	otherID := "22222222-2222-2222-2222-222222222222"
+	for _, address := range []AccountIPAddress{
+		{UserID: targetID, IP: "192.0.2.1", LastSeen: time.Now().UTC()},
+		{UserID: otherID, IP: "192.0.2.2", LastSeen: time.Now().UTC()},
+	} {
+		if err := db.Create(&address).Error; err != nil {
+			t.Fatalf("seed address: %v", err)
+		}
+	}
+
+	if err := service.ClearAccountIPAddresses(ctx, targetID, auth.UserTypeUser); err != nil {
+		t.Fatalf("clear addresses: %v", err)
+	}
+	var targetCount int64
+	if err := db.Model(&AccountIPAddress{}).Where("user_id = ?", targetID).Count(&targetCount).Error; err != nil {
+		t.Fatalf("count target addresses: %v", err)
+	}
+	if targetCount != 0 {
+		t.Fatalf("expected target addresses cleared, got %d", targetCount)
+	}
+
+	var otherCount int64
+	if err := db.Model(&AccountIPAddress{}).Where("user_id = ?", otherID).Count(&otherCount).Error; err != nil {
+		t.Fatalf("count other addresses: %v", err)
+	}
+	if otherCount != 1 {
+		t.Fatalf("expected other account address preserved, got %d", otherCount)
+	}
+
+	if err := service.ClearAccountIPAddresses(ctx, targetID, auth.UserTypeService); !errors.Is(err, users.ErrUserNotFound) {
+		t.Fatalf("expected user not found for wrong account type, got %v", err)
+	}
+}
+
 func TestAccountIPAddressCascadesWithDeletedAccount(t *testing.T) {
 	db, _ := newProxyServiceTestDB(t)
 	record := AccountIPAddress{UserID: "11111111-1111-1111-1111-111111111111", IP: "192.0.2.1", LastSeen: time.Now().UTC()}

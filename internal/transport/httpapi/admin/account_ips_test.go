@@ -99,3 +99,26 @@ func TestHandleAdminListAccountIPAddressesMapsErrors(t *testing.T) {
 		t.Fatalf("expected user not found, got %d: %s", recorder.Code, recorder.Body.String())
 	}
 }
+
+func TestHandleAdminClearUserIPAddresses(t *testing.T) {
+	handler, db := newAccountIPsHandler(t)
+	userID := "11111111-1111-1111-1111-111111111111"
+	if err := db.Create(&proxy.AccountIPAddress{UserID: userID, IP: "192.0.2.10", LastSeen: time.Now().UTC()}).Error; err != nil {
+		t.Fatalf("seed address: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/admin/users/id/ips", nil)
+	req.SetPathValue("id", userID)
+	recorder := httptest.NewRecorder()
+	handler.HandleAdminClearUserIPAddresses(recorder, req)
+	if recorder.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d: %s", recorder.Code, recorder.Body.String())
+	}
+	var count int64
+	if err := db.Model(&proxy.AccountIPAddress{}).Where("user_id = ?", userID).Count(&count).Error; err != nil {
+		t.Fatalf("count addresses: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("expected cleared addresses, got %d", count)
+	}
+}

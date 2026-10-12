@@ -217,14 +217,12 @@ describe('useAdminUsers', () => {
 
   it('loads paged IP addresses for a user', async () => {
     const addresses = [{ ip: '2001:db8::1', lastSeen: '2026-09-15T08:00:00Z' }]
-    apiFetch
-      .mockResolvedValueOnce(userResponse([user]))
-      .mockResolvedValueOnce({
-        items: addresses,
-        page: 1,
-        pageSize: 10,
-        total: 1,
-      })
+    apiFetch.mockResolvedValueOnce(userResponse([user])).mockResolvedValueOnce({
+      items: addresses,
+      page: 1,
+      pageSize: 10,
+      total: 1,
+    })
     const adminUsers = useAdminUsers()
     await vi.waitFor(() => expect(adminUsers.loading.value).toBe(false))
     await adminUsers.loadIPAddresses(user.id)
@@ -233,6 +231,28 @@ describe('useAdminUsers', () => {
       `/api/v1/admin/users/${user.id}/ips?page=1&pageSize=10&sortBy=lastSeen&sortDir=desc`,
     )
     expect(adminUsers.ipAddresses.value).toEqual(addresses)
+  })
+
+  it('clears all IP addresses for a user', async () => {
+    apiFetch
+      .mockResolvedValueOnce(userResponse([user]))
+      .mockResolvedValueOnce(undefined)
+    const adminUsers = useAdminUsers()
+    await vi.waitFor(() => expect(adminUsers.loading.value).toBe(false))
+    adminUsers.ipAddresses.value = [
+      { ip: '192.0.2.1', lastSeen: '2026-09-15T08:00:00Z' },
+    ]
+    adminUsers.ipTotal.value = 1
+
+    await adminUsers.clearIPAddresses(user.id)
+
+    expect(apiFetch).toHaveBeenNthCalledWith(
+      2,
+      `/api/v1/admin/users/${user.id}/ips`,
+      { method: 'DELETE' },
+    )
+    expect(adminUsers.ipAddresses.value).toEqual([])
+    expect(adminUsers.ipTotal.value).toBe(0)
   })
 
   it('updates a selected user note and reloads users', async () => {

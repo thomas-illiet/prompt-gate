@@ -59,3 +59,21 @@ func (s *Service) ListAccountIPAddresses(ctx context.Context, userID string, use
 	}
 	return AccountIPAddressListResult{Items: items, Page: params.Page, PageSize: params.PageSize, Total: total}, nil
 }
+
+// ClearAccountIPAddresses removes every recorded client IP address for one account.
+func (s *Service) ClearAccountIPAddresses(ctx context.Context, userID string, userType auth.UserType) error {
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var account users.User
+		if err := tx.Select("id").Where("id = ? AND type = ?", userID, userType).Take(&account).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return users.ErrUserNotFound
+			}
+			return fmt.Errorf("find account for clearing IP addresses: %w", err)
+		}
+
+		if err := tx.Where("user_id = ?", userID).Delete(&AccountIPAddress{}).Error; err != nil {
+			return fmt.Errorf("clear account IP addresses: %w", err)
+		}
+		return nil
+	})
+}

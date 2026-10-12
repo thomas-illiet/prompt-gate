@@ -33,6 +33,7 @@ const user: AdminUser = {
 
 function createAdminUsersMock() {
   return {
+    clearIPAddresses: vi.fn(),
     deleteUser: vi.fn(),
     exporting: shallowRef(false),
     exportUsers: vi.fn(),

@@ -236,3 +236,16 @@ func (h *Handler) HandleAdminListUserIPAddresses(w http.ResponseWriter, r *http.
 	}
 	writeJSON(w, http.StatusOK, list)
 }
+
+// HandleAdminClearUserIPAddresses clears client IP addresses observed for a human user.
+func (h *Handler) HandleAdminClearUserIPAddresses(w http.ResponseWriter, r *http.Request) {
+	if err := h.proxy.ClearAccountIPAddresses(r.Context(), r.PathValue("id"), auth.UserTypeUser); err != nil {
+		if errors.Is(err, users.ErrUserNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "user_not_found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}

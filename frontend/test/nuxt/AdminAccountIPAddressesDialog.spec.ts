@@ -19,14 +19,24 @@ describe('AdminAccountIPAddressesDialog', () => {
       },
       global: {
         stubs: {
-          AppDialogCard: { template: '<section><slot /><slot name="actions" /></section>' },
-          AppDialogCloseButton: { template: '<button data-test="close" @click="$emit(\'click\')">Close</button>' },
+          AppDialogCard: {
+            template: '<section><slot /><slot name="actions" /></section>',
+          },
+          AppDialogCloseButton: {
+            template:
+              '<button data-test="close" @click="$emit(\'click\')">Close</button>',
+          },
           AppServerDataTable: {
             props: ['items'],
             emits: ['update:page', 'update:page-size', 'update:sort'],
-            template: '<div><button data-test="page" @click="$emit(\'update:page\', 2)" /><div v-for="item in items" :key="item.ip"><slot name="item.ip" :item="item" /><slot name="item.lastSeen" :item="item" /></div></div>',
+            template:
+              '<div><button data-test="page" @click="$emit(\'update:page\', 2)" /><div v-for="item in items" :key="item.ip"><slot name="item.ip" :item="item" /><slot name="item.lastSeen" :item="item" /></div></div>',
           },
-          VBtn: { template: '<button data-test="refresh" @click="$emit(\'click\')"><slot /></button>' },
+          VBtn: {
+            template:
+              "<button :data-test=\"$attrs['prepend-icon'] === 'mdi-refresh' ? 'refresh' : 'clear'\" @click=\"$emit('click')\"><slot /></button>",
+          },
+          VChip: { template: '<span><slot /></span>' },
         },
       },
     })
@@ -34,9 +44,11 @@ describe('AdminAccountIPAddressesDialog', () => {
     expect(wrapper.text()).toContain('2001:db8::1')
     expect(wrapper.text()).toContain('Sep 15, 2026')
     await wrapper.get('[data-test="refresh"]').trigger('click')
+    await wrapper.get('[data-test="clear"]').trigger('click')
     await wrapper.get('[data-test="page"]').trigger('click')
     await wrapper.get('[data-test="close"]').trigger('click')
     expect(wrapper.emitted('refresh')?.length).toBeGreaterThanOrEqual(1)
+    expect(wrapper.emitted('clear')?.length).toBeGreaterThanOrEqual(1)
     expect(wrapper.emitted('update:page')).toEqual([[2]])
     expect(wrapper.emitted('update:modelValue')).toEqual([[false]])
   })

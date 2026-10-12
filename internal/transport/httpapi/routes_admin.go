@@ -24,6 +24,7 @@ func adminUserRoutes(handler *admin.Handler) []routeDefinition {
 		{pattern: "GET /api/v1/admin/users/{id}", handler: handler.HandleAdminGetUser},
 		{pattern: "GET /api/v1/admin/users/{id}/statistics", handler: handler.HandleAdminUserStatistics},
 		{pattern: "GET /api/v1/admin/users/{id}/ips", handler: handler.HandleAdminListUserIPAddresses},
+		{pattern: "DELETE /api/v1/admin/users/{id}/ips", handler: handler.HandleAdminClearUserIPAddresses},
 		{pattern: "PATCH /api/v1/admin/users/{id}", handler: handler.HandleAdminUpdateUser},
 		{pattern: "PATCH /api/v1/admin/users/{id}/note", handler: handler.HandleAdminUpdateUserNote},
 		{pattern: "DELETE /api/v1/admin/users/{id}", handler: handler.HandleAdminDeleteUser},
