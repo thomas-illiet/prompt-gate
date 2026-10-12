@@ -6,10 +6,11 @@ import (
 	"net/http"
 
 	"promptgate/backend/internal/domain/auth"
+	"promptgate/backend/internal/domain/groups"
 	"promptgate/backend/internal/platform/clientip"
 )
 
-func Middleware(evaluator *Evaluator, logger *slog.Logger) func(http.Handler) http.Handler {
+func Middleware(evaluator *Evaluator, snapshot *groups.SnapshotStore, logger *slog.Logger) func(http.Handler) http.Handler {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -20,9 +21,14 @@ func Middleware(evaluator *Evaluator, logger *slog.Logger) func(http.Handler) ht
 				writeJSON(w, http.StatusInternalServerError, "missing_authenticated_user")
 				return
 			}
+			groupNames := []string{}
+			if snapshot != nil {
+				groupNames = snapshot.GroupNames(principal.User.ID)
+			}
 			input := Input{
 				Identity: IdentityInput{
 					ID: principal.User.ID, Type: string(principal.User.Type), Role: string(principal.User.Role),
+					Groups:       groupNames,
 					CredentialID: principal.CredentialID, CredentialName: principal.CredentialName,
 				},
 				Request: RequestInput{

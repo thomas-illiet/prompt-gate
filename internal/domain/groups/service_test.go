@@ -3,6 +3,7 @@ package groups
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 
@@ -124,6 +125,41 @@ func TestSnapshotRequiresModelRegexAndHonorsProviderScope(t *testing.T) {
 	}
 	if store.Allows(uuid.NewString(), openai.Name, "") {
 		t.Fatal("expected user without group to be denied")
+	}
+	if got := store.GroupNames(user.ID); !reflect.DeepEqual(got, []string{"engineering"}) {
+		t.Fatalf("unexpected technical group names: %#v", got)
+	}
+	if got := store.GroupNames(uuid.NewString()); got == nil || len(got) != 0 {
+		t.Fatalf("expected an empty group list for an unknown user, got %#v", got)
+	}
+}
+
+// TestSnapshotIncludesGroupsWithoutActiveProviders verifies OPA membership data is independent from access grants.
+func TestSnapshotIncludesGroupsWithoutActiveProviders(t *testing.T) {
+	service, db, user, openai, _ := newGroupTestService(t)
+	ctx := context.Background()
+	group, err := service.CreateGroup(ctx, CreateGroupInput{
+		Name: "dormant", DisplayName: "Dormant", ProviderIDs: []string{openai.ID.String()},
+	})
+	if err != nil {
+		t.Fatalf("create group: %v", err)
+	}
+	if _, err := service.ReplaceUserGroups(ctx, user.ID, []string{group.ID.String()}); err != nil {
+		t.Fatalf("replace user groups: %v", err)
+	}
+	if err := db.Model(&provider.Provider{}).Where("id = ?", openai.ID).Update("enabled", false).Error; err != nil {
+		t.Fatalf("disable provider: %v", err)
+	}
+
+	store := NewSnapshotStore(service)
+	if err := store.Refresh(ctx); err != nil {
+		t.Fatalf("refresh snapshot: %v", err)
+	}
+	if got := store.GroupNames(user.ID); !reflect.DeepEqual(got, []string{"dormant"}) {
+		t.Fatalf("expected group without active provider, got %#v", got)
+	}
+	if store.AllowsProvider(user.ID, openai.Name) {
+		t.Fatal("disabled provider must remain inaccessible")
 	}
 }
 

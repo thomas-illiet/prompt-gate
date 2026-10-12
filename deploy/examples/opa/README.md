@@ -15,7 +15,7 @@ Test an allowed administrator decision:
 ```sh
 curl -sS http://127.0.0.1:8181/v1/data/promptgate/proxy/decision \
   -H 'Content-Type: application/json' \
-  -d '{"input":{"identity":{"id":"admin-id","type":"user","role":"admin","credential_id":"key-id","credential_name":"local"},"request":{"client_ip":"203.0.113.4","method":"POST","path":"/v1/responses","host":"proxy.example.com"}}}'
+  -d '{"input":{"identity":{"id":"admin-id","type":"user","role":"admin","groups":["developers","platform"],"credential_id":"key-id","credential_name":"local"},"request":{"client_ip":"203.0.113.4","method":"POST","path":"/v1/responses","host":"proxy.example.com"}}}'
 ```
 
 Change the role to `user` and the IP to `203.0.113.4` to observe the default

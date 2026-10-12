@@ -27,6 +27,6 @@ test_unknown_identity_denied if {
 }
 
 sample_input(role, identity_type, id, ip, method, path) := {
-	"identity": {"id": id, "type": identity_type, "role": role, "credential_id": "key-id", "credential_name": "ci"},
+	"identity": {"id": id, "type": identity_type, "role": role, "groups": ["developers", "platform"], "credential_id": "key-id", "credential_name": "ci"},
 	"request": {"client_ip": ip, "method": method, "path": path, "host": "proxy.example.com"},
 }

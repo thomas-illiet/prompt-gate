@@ -20,11 +20,12 @@ var (
 const maxResponseBytes = 1 << 20
 
 type IdentityInput struct {
-	ID             string `json:"id"`
-	Type           string `json:"type"`
-	Role           string `json:"role"`
-	CredentialID   string `json:"credential_id"`
-	CredentialName string `json:"credential_name"`
+	ID             string   `json:"id"`
+	Type           string   `json:"type"`
+	Role           string   `json:"role"`
+	Groups         []string `json:"groups"`
+	CredentialID   string   `json:"credential_id"`
+	CredentialName string   `json:"credential_name"`
 }
 
 type RequestInput struct {

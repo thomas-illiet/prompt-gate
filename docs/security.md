@@ -96,7 +96,8 @@ underscores and have a maximum length of 64 characters.
 ## External OPA policy
 
 After token authentication, the proxy sends OPA only stable identity IDs,
-role/type, virtual-key metadata, resolved client IP, method, path, and host.
+role/type, sorted technical access-group names in `input.identity.groups`,
+virtual-key metadata, resolved client IP, method, path, and host.
 Tokens, personal profile fields, headers, and request bodies are never sent.
 OPA is the sole policy source and the supplied example denies by default.
 `PROMPTGATE_OPA_ENABLED=false` is an emergency fail-open switch for this policy

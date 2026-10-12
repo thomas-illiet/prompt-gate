@@ -42,7 +42,7 @@ func (p *ProxyRuntime) buildHandler(
 		),
 	)
 	if cfg.OPAEnabled {
-		protectedHandler = policy.Middleware(policyEvaluator, p.logger)(protectedHandler)
+		protectedHandler = policy.Middleware(policyEvaluator, accessSnapshot, p.logger)(protectedHandler)
 	}
 	proxyHandler := tokens.MiddlewareWithOptions(tokens.MiddlewareOptions{
 		TokenService: tokenService,

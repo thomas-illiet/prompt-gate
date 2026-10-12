@@ -2,10 +2,12 @@ package policy
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -13,6 +15,8 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	"promptgate/backend/internal/domain/auth"
+	"promptgate/backend/internal/domain/groups"
+	"promptgate/backend/internal/domain/provider"
 	"promptgate/backend/internal/platform/clientip"
 	"promptgate/backend/internal/platform/redisstore"
 )
@@ -27,7 +31,7 @@ func response(status int, body string, req *http.Request) *http.Response {
 
 func TestClientDecisionContract(t *testing.T) {
 	input := Input{
-		Identity: IdentityInput{ID: "user-id", Type: "user", Role: "admin", CredentialID: "key-id", CredentialName: "local"},
+		Identity: IdentityInput{ID: "user-id", Type: "user", Role: "admin", Groups: []string{"developers", "platform"}, CredentialID: "key-id", CredentialName: "local"},
 		Request:  RequestInput{ClientIP: "192.0.2.10", Method: http.MethodPost, Path: "/v1/responses", Host: "proxy.example.com"},
 	}
 	client, err := NewClient("http://opa:8181", "promptgate/proxy/decision", &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
@@ -41,7 +45,7 @@ func TestClientDecisionContract(t *testing.T) {
 		if readErr != nil {
 			t.Fatal(readErr)
 		}
-		if strings.Contains(string(payload), "prompt") || !strings.Contains(string(payload), `"credential_id":"key-id"`) {
+		if strings.Contains(string(payload), "prompt") || !strings.Contains(string(payload), `"groups":["developers","platform"]`) || !strings.Contains(string(payload), `"credential_id":"key-id"`) {
 			t.Fatalf("unexpected OPA payload: %s", payload)
 		}
 		return response(http.StatusOK, `{"result":{"allow":true,"reason":"administrator"}}`, req), nil
@@ -171,6 +175,72 @@ func TestCacheKeySeparatesInputsWithoutPlainIdentity(t *testing.T) {
 	}
 }
 
+func TestCacheKeySeparatesGroupMemberships(t *testing.T) {
+	input := Input{Identity: IdentityInput{ID: "user-id", Groups: []string{"developers"}}}
+	first, err := CacheKey("a/b", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input.Identity.Groups = []string{"developers", "platform"}
+	second, err := CacheKey("a/b", input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == second {
+		t.Fatal("expected group membership change to produce a new policy cache key")
+	}
+}
+
+func TestMiddlewareForwardsTechnicalGroupNames(t *testing.T) {
+	store := groups.NewSnapshotStore(nil)
+	if err := store.SetSnapshot(groups.Snapshot{
+		KnownProviders: []string{}, ProviderTypes: map[string]provider.ProviderType{}, Users: map[string]groups.UserAccess{},
+		UserGroups: map[string][]string{
+			"user-id":    {"platform", "developers", "platform"},
+			"service-id": {"automation"},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name string
+		user auth.UserProfile
+		want []string
+	}{
+		{name: "user", user: auth.UserProfile{ID: "user-id", Type: auth.UserTypeUser, Role: auth.RoleUser}, want: []string{"developers", "platform"}},
+		{name: "service", user: auth.UserProfile{ID: "service-id", Type: auth.UserTypeService, Role: auth.RoleUser}, want: []string{"automation"}},
+		{name: "admin without group", user: auth.UserProfile{ID: "admin-id", Type: auth.UserTypeUser, Role: auth.RoleAdmin}, want: []string{}},
+		{name: "unknown identity", user: auth.UserProfile{ID: "unknown-id", Type: auth.UserTypeUser, Role: auth.RoleUser}, want: []string{}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			client, _ := NewClient("http://opa:8181", "decision", &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+				var payload struct {
+					Input Input `json:"input"`
+				}
+				if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+					t.Fatal(err)
+				}
+				if !reflect.DeepEqual(payload.Input.Identity.Groups, tc.want) {
+					t.Fatalf("unexpected groups: got %#v want %#v", payload.Input.Identity.Groups, tc.want)
+				}
+				return response(http.StatusOK, `{"result":{"allow":true,"reason":"test"}}`, req), nil
+			})})
+			handler := Middleware(NewEvaluator(client, nil, "decision", 0, nil), store, nil)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusNoContent)
+			}))
+			req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+			ctx := auth.ContextWithPrincipal(req.Context(), auth.Principal{User: tc.user})
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, req.WithContext(ctx))
+			if recorder.Code != http.StatusNoContent {
+				t.Fatalf("unexpected status: %d", recorder.Code)
+			}
+		})
+	}
+}
+
 func TestMiddlewareMapsDenyAndUnavailable(t *testing.T) {
 	for _, tc := range []struct {
 		name, body, code string
@@ -184,7 +254,7 @@ func TestMiddlewareMapsDenyAndUnavailable(t *testing.T) {
 				return response(tc.status, tc.body, req), nil
 			})})
 			evaluator := NewEvaluator(client, nil, "decision", 0, nil)
-			handler := Middleware(evaluator, nil)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }))
+			handler := Middleware(evaluator, nil, nil)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }))
 			req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
 			ctx := auth.ContextWithPrincipal(req.Context(), auth.Principal{User: auth.UserProfile{ID: "user", Type: auth.UserTypeUser, Role: auth.RoleUser}, CredentialID: "key"})
 			ctx = clientip.ContextWithClientIP(ctx, "10.0.0.1")

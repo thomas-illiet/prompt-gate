@@ -32,6 +32,7 @@ type Snapshot struct {
 	KnownProviders []string                         `json:"knownProviders"`
 	ProviderTypes  map[string]provider.ProviderType `json:"providerTypes"`
 	Users          map[string]UserAccess            `json:"users"`
+	UserGroups     map[string][]string              `json:"userGroups"`
 }
 
 type compiledUserAccess struct {
@@ -53,6 +54,7 @@ type compiledSnapshot struct {
 	knownProviders map[string]struct{}
 	providerTypes  map[string]provider.ProviderType
 	users          map[string]compiledUserAccess
+	userGroups     map[string][]string
 }
 
 type SnapshotStore struct {
@@ -67,6 +69,7 @@ func NewSnapshotStore(service *Service) *SnapshotStore {
 		knownProviders: map[string]struct{}{},
 		providerTypes:  map[string]provider.ProviderType{},
 		users:          map[string]compiledUserAccess{},
+		userGroups:     map[string][]string{},
 	})
 	return store
 }
@@ -100,17 +103,25 @@ func (s *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 	}
 
 	users := map[string]UserAccess{}
+	userGroups := map[string][]string{}
 	for _, group := range records {
 		rule := groupAccessRule(group, knownProviderSet)
 		for _, member := range group.Members {
+			userGroups[member.ID] = append(userGroups[member.ID], group.Name)
 			users[member.ID] = appendUserAccessRule(users[member.ID], rule)
 		}
+	}
+	for userID, names := range userGroups {
+		names = uniqueStrings(names)
+		sort.Strings(names)
+		userGroups[userID] = names
 	}
 
 	return Snapshot{
 		KnownProviders: knownProviders,
 		ProviderTypes:  providerTypes,
 		Users:          users,
+		UserGroups:     userGroups,
 	}, nil
 }
 
@@ -169,6 +180,7 @@ func (s *SnapshotStore) Snapshot() Snapshot {
 			KnownProviders: []string{},
 			ProviderTypes:  map[string]provider.ProviderType{},
 			Users:          map[string]UserAccess{},
+			UserGroups:     map[string][]string{},
 		}
 	}
 	knownProviders := make([]string, 0, len(compiled.knownProviders))
@@ -215,11 +227,29 @@ func (s *SnapshotStore) Snapshot() Snapshot {
 			Rules:                 rules,
 		}
 	}
+	userGroups := make(map[string][]string, len(compiled.userGroups))
+	for userID, names := range compiled.userGroups {
+		userGroups[userID] = append([]string{}, names...)
+	}
 	return Snapshot{
 		KnownProviders: knownProviders,
 		ProviderTypes:  providerTypes,
 		Users:          users,
+		UserGroups:     userGroups,
 	}
+}
+
+// GroupNames returns a sorted copy of the technical access-group names assigned to a user.
+func (s *SnapshotStore) GroupNames(userID string) []string {
+	compiled, ok := s.value.Load().(compiledSnapshot)
+	if !ok {
+		return []string{}
+	}
+	names := compiled.userGroups[userID]
+	if len(names) == 0 {
+		return []string{}
+	}
+	return append([]string{}, names...)
 }
 
 // KnownProvider reports whether a provider exists in the current snapshot.
@@ -512,10 +542,17 @@ func compileSnapshot(snapshot Snapshot) (compiledSnapshot, error) {
 		}
 		users[userID] = compiledAccess
 	}
+	userGroups := make(map[string][]string, len(snapshot.UserGroups))
+	for userID, names := range snapshot.UserGroups {
+		names = uniqueStrings(names)
+		sort.Strings(names)
+		userGroups[userID] = names
+	}
 	return compiledSnapshot{
 		knownProviders: knownProviders,
 		providerTypes:  providerTypes,
 		users:          users,
+		userGroups:     userGroups,
 	}, nil
 }
 
