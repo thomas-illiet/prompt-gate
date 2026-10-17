@@ -28,6 +28,8 @@ const isOpen = defineModel<boolean>({ default: false })
 const headers: DataTableHeader[] = [
   { title: 'IP address', key: 'ip' },
   { title: 'Last seen', key: 'lastSeen' },
+  { title: 'Last OPA denial', key: 'lastDeniedAt', sortable: false },
+  { title: 'Reason', key: 'lastDeniedReason', sortable: false },
 ]
 
 const subtitle = computed(() => {
@@ -115,6 +117,12 @@ const subtitle = computed(() => {
       <template #item.lastSeen="{ item }">
         <span class="app-table-text">{{ formatDateTime(item.lastSeen) }}</span>
       </template>
+      <template #item.lastDeniedAt="{ item }">
+        <span class="app-table-text">{{ item.lastDeniedAt ? formatDateTime(item.lastDeniedAt) : '—' }}</span>
+      </template>
+      <template #item.lastDeniedReason="{ item }">
+        <span class="app-table-text admin-account-ips-dialog__reason">{{ item.lastDeniedReason || '—' }}</span>
+      </template>
     </AppServerDataTable>
 
     <template #actions>
@@ -160,5 +168,10 @@ const subtitle = computed(() => {
 .admin-account-ips-dialog__ip {
   color: rgb(var(--v-theme-primary));
   font-size: 0.875rem;
+}
+
+.admin-account-ips-dialog__reason {
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 </style>

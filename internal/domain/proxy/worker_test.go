@@ -28,6 +28,7 @@ func TestProcessUsageEventRejectsMissingPayloads(t *testing.T) {
 		{name: "interception ended", event: UsageEvent{Type: UsageEventInterceptionEnded}, want: "missing interception_ended payload"},
 		{name: "token usage", event: UsageEvent{Type: UsageEventTokenUsage}, want: "missing token_usage payload"},
 		{name: "tool usage", event: UsageEvent{Type: UsageEventToolUsage}, want: "missing tool_usage payload"},
+		{name: "policy denied", event: UsageEvent{Type: UsageEventPolicyDenied}, want: "missing policy_denied payload"},
 		{name: "unknown", event: UsageEvent{Type: UsageEventType("unknown")}, want: "unknown usage event type"},
 	}
 
@@ -155,6 +156,14 @@ func TestRedisRecorderBestEffortLogsRedisErrors(t *testing.T) {
 	}
 	if !strings.Contains(logs.String(), "level=ERROR") || !strings.Contains(logs.String(), "eventType=token_usage") {
 		t.Fatalf("expected error log for failed enqueue, got %q", logs.String())
+	}
+}
+
+func TestPolicyDenialReasonIsBoundedByCharacters(t *testing.T) {
+	reason := strings.Repeat("é", maxPolicyDenialReasonCharacters+1)
+	got := truncatePolicyDenialReason(reason)
+	if len([]rune(got)) != maxPolicyDenialReasonCharacters || !strings.HasSuffix(got, "é") {
+		t.Fatalf("unexpected truncated reason length: %d", len([]rune(got)))
 	}
 }
 

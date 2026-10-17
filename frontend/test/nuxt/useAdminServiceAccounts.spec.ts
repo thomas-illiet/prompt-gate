@@ -132,7 +132,14 @@ describe('useAdminServiceAccounts', () => {
   })
 
   it('loads paged IP addresses for a service account', async () => {
-    const addresses = [{ ip: '192.0.2.10', lastSeen: '2026-09-15T08:00:00Z' }]
+    const addresses = [
+      {
+        ip: '192.0.2.10',
+        lastSeen: '2026-09-15T08:00:00Z',
+        lastDeniedReason: null,
+        lastDeniedAt: null,
+      },
+    ]
     apiFetch
       .mockResolvedValueOnce(accountResponse([account]))
       .mockResolvedValueOnce({ items: addresses, page: 1, pageSize: 10, total: 1 })

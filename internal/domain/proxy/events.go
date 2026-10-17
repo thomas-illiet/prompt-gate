@@ -16,6 +16,7 @@ const (
 	UsageEventInterceptionEnded   UsageEventType = "interception_ended"
 	UsageEventTokenUsage          UsageEventType = "token_usage"
 	UsageEventToolUsage           UsageEventType = "tool_usage"
+	UsageEventPolicyDenied        UsageEventType = "policy_denied"
 )
 
 type UsageEvent struct {
@@ -26,6 +27,14 @@ type UsageEvent struct {
 	InterceptionEnded   *InterceptionEndedEvent   `json:"interceptionEnded,omitempty"`
 	TokenUsage          *TokenUsageEvent          `json:"tokenUsage,omitempty"`
 	ToolUsage           *ToolUsageEvent           `json:"toolUsage,omitempty"`
+	PolicyDenied        *PolicyDeniedEvent        `json:"policyDenied,omitempty"`
+}
+
+type PolicyDeniedEvent struct {
+	AccountID string    `json:"accountId"`
+	ClientIP  string    `json:"clientIp"`
+	Reason    string    `json:"reason"`
+	DeniedAt  time.Time `json:"deniedAt"`
 }
 
 type InterceptionStartedEvent struct {

@@ -1,16 +1,24 @@
 package policy
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"promptgate/backend/internal/domain/auth"
 	"promptgate/backend/internal/domain/groups"
 	"promptgate/backend/internal/platform/clientip"
 )
 
-func Middleware(evaluator *Evaluator, snapshot *groups.SnapshotStore, logger *slog.Logger) func(http.Handler) http.Handler {
+// DenialRecorder persists authenticated policy denials without coupling policy
+// evaluation to the proxy usage-event implementation.
+type DenialRecorder interface {
+	RecordPolicyDenial(ctx context.Context, accountID, clientIP, reason string, deniedAt time.Time) error
+}
+
+func Middleware(evaluator *Evaluator, snapshot *groups.SnapshotStore, denialRecorder DenialRecorder, logger *slog.Logger) func(http.Handler) http.Handler {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -43,6 +51,11 @@ func Middleware(evaluator *Evaluator, snapshot *groups.SnapshotStore, logger *sl
 			}
 			if !decision.Allow {
 				logger.Warn("request denied by policy", "reason", decision.Reason)
+				if denialRecorder != nil {
+					if err := denialRecorder.RecordPolicyDenial(r.Context(), principal.User.ID, input.Request.ClientIP, decision.Reason, time.Now().UTC()); err != nil {
+						logger.Error("failed to record policy denial", "error", err)
+					}
+				}
 				writeJSON(w, http.StatusForbidden, "policy_denied")
 				return
 			}

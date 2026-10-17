@@ -43,9 +43,39 @@ func processUsageEvent(tx *gorm.DB, event UsageEvent) error {
 		return processTokenUsage(tx, event.TokenUsage)
 	case UsageEventToolUsage:
 		return processToolUsage(tx, event.ToolUsage)
+	case UsageEventPolicyDenied:
+		return processPolicyDenied(tx, event.PolicyDenied)
 	default:
 		return fmt.Errorf("unknown usage event type %q", event.Type)
 	}
+}
+
+func processPolicyDenied(tx *gorm.DB, payload *PolicyDeniedEvent) error {
+	if payload == nil {
+		return errors.New("missing policy_denied payload")
+	}
+	ip := net.ParseIP(strings.TrimSpace(payload.ClientIP))
+	if ip == nil {
+		return fmt.Errorf("record policy denial: invalid IP %q", payload.ClientIP)
+	}
+	deniedAt := timestamp(payload.DeniedAt).UTC()
+	reason := truncatePolicyDenialReason(payload.Reason)
+	record := AccountIPAddress{
+		UserID: payload.AccountID, IP: ip.String(), LastSeen: deniedAt,
+		LastDeniedReason: &reason, LastDeniedAt: &deniedAt,
+	}
+	result := tx.Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "user_id"}, {Name: "ip"}},
+		DoUpdates: clause.Assignments(map[string]any{
+			"last_seen":          gorm.Expr("CASE WHEN excluded.last_seen > account_ip_addresses.last_seen THEN excluded.last_seen ELSE account_ip_addresses.last_seen END"),
+			"last_denied_reason": gorm.Expr("CASE WHEN account_ip_addresses.last_denied_at IS NULL OR excluded.last_denied_at > account_ip_addresses.last_denied_at THEN excluded.last_denied_reason ELSE account_ip_addresses.last_denied_reason END"),
+			"last_denied_at":     gorm.Expr("CASE WHEN account_ip_addresses.last_denied_at IS NULL OR excluded.last_denied_at > account_ip_addresses.last_denied_at THEN excluded.last_denied_at ELSE account_ip_addresses.last_denied_at END"),
+		}),
+	}).Create(&record)
+	if result.Error != nil {
+		return fmt.Errorf("record policy denial: %w", result.Error)
+	}
+	return nil
 }
 
 func processInterceptionStarted(tx *gorm.DB, payload *InterceptionStartedEvent) error {

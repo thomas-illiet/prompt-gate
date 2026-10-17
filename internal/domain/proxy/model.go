@@ -108,10 +108,12 @@ type ProcessedUsageEvent struct {
 
 // AccountIPAddress tracks the last time an account used one client IP through the proxy.
 type AccountIPAddress struct {
-	UserID   string      `gorm:"type:uuid;primaryKey" json:"-"`
-	User     *users.User `gorm:"foreignKey:UserID;references:ID;constraint:OnDelete:CASCADE" json:"-"`
-	IP       string      `gorm:"primaryKey;not null" json:"ip"`
-	LastSeen time.Time   `gorm:"not null;index" json:"lastSeen"`
+	UserID           string      `gorm:"type:uuid;primaryKey" json:"-"`
+	User             *users.User `gorm:"foreignKey:UserID;references:ID;constraint:OnDelete:CASCADE" json:"-"`
+	IP               string      `gorm:"primaryKey;not null" json:"ip"`
+	LastSeen         time.Time   `gorm:"not null;index" json:"lastSeen"`
+	LastDeniedReason *string     `gorm:"type:text" json:"lastDeniedReason"`
+	LastDeniedAt     *time.Time  `json:"lastDeniedAt"`
 }
 
 // AccountIPAddressListParams configures account IP pagination and sorting.

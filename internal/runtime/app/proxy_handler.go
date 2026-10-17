@@ -25,6 +25,7 @@ func (p *ProxyRuntime) buildHandler(
 	policyEvaluator *policy.Evaluator,
 	opaClient *policy.Client,
 	accessSnapshot *groups.SnapshotStore,
+	denialRecorder policy.DenialRecorder,
 	debugRequestWriter *httpmiddleware.JSONLineWriter,
 ) http.Handler {
 	mux := http.NewServeMux()
@@ -42,7 +43,7 @@ func (p *ProxyRuntime) buildHandler(
 		),
 	)
 	if cfg.OPAEnabled {
-		protectedHandler = policy.Middleware(policyEvaluator, accessSnapshot, p.logger)(protectedHandler)
+		protectedHandler = policy.Middleware(policyEvaluator, accessSnapshot, denialRecorder, p.logger)(protectedHandler)
 	}
 	proxyHandler := tokens.MiddlewareWithOptions(tokens.MiddlewareOptions{
 		TokenService: tokenService,

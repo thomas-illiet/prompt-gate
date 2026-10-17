@@ -25,6 +25,22 @@ type roundTripperFunc func(*http.Request) (*http.Response, error)
 
 func (fn roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) { return fn(req) }
 
+type recordedDenial struct {
+	accountID string
+	clientIP  string
+	reason    string
+	deniedAt  time.Time
+}
+
+type denialRecorder struct {
+	records []recordedDenial
+}
+
+func (r *denialRecorder) RecordPolicyDenial(_ context.Context, accountID, clientIP, reason string, deniedAt time.Time) error {
+	r.records = append(r.records, recordedDenial{accountID: accountID, clientIP: clientIP, reason: reason, deniedAt: deniedAt})
+	return nil
+}
+
 func response(status int, body string, req *http.Request) *http.Response {
 	return &http.Response{StatusCode: status, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header), Request: req}
 }
@@ -227,7 +243,7 @@ func TestMiddlewareForwardsTechnicalGroupNames(t *testing.T) {
 				}
 				return response(http.StatusOK, `{"result":{"allow":true,"reason":"test"}}`, req), nil
 			})})
-			handler := Middleware(NewEvaluator(client, nil, "decision", 0, nil), store, nil)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			handler := Middleware(NewEvaluator(client, nil, "decision", 0, nil), store, nil, nil)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusNoContent)
 			}))
 			req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
@@ -247,6 +263,7 @@ func TestMiddlewareMapsDenyAndUnavailable(t *testing.T) {
 		status, want     int
 	}{
 		{"deny", `{"result":{"allow":false,"reason":"default_deny"}}`, "policy_denied", http.StatusOK, http.StatusForbidden},
+		{"allow", `{"result":{"allow":true,"reason":"allowed"}}`, "", http.StatusOK, http.StatusNoContent},
 		{"unavailable", `{}`, "policy_unavailable", http.StatusOK, http.StatusServiceUnavailable},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -254,18 +271,58 @@ func TestMiddlewareMapsDenyAndUnavailable(t *testing.T) {
 				return response(tc.status, tc.body, req), nil
 			})})
 			evaluator := NewEvaluator(client, nil, "decision", 0, nil)
-			handler := Middleware(evaluator, nil, nil)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }))
+			denials := &denialRecorder{}
+			handler := Middleware(evaluator, nil, denials, nil)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }))
 			req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
 			ctx := auth.ContextWithPrincipal(req.Context(), auth.Principal{User: auth.UserProfile{ID: "user", Type: auth.UserTypeUser, Role: auth.RoleUser}, CredentialID: "key"})
 			ctx = clientip.ContextWithClientIP(ctx, "10.0.0.1")
 			recorder := httptest.NewRecorder()
 			handler.ServeHTTP(recorder, req.WithContext(ctx))
-			if recorder.Code != tc.want || !strings.Contains(recorder.Body.String(), tc.code) {
+			if recorder.Code != tc.want || (tc.code != "" && !strings.Contains(recorder.Body.String(), tc.code)) {
 				t.Fatalf("unexpected response: %d %s", recorder.Code, recorder.Body.String())
 			}
 			if strings.Contains(recorder.Body.String(), "default_deny") || strings.Contains(recorder.Body.String(), "key") {
 				t.Fatalf("policy response leaked internal details: %s", recorder.Body.String())
 			}
+			if tc.name == "deny" {
+				if len(denials.records) != 1 || denials.records[0].accountID != "user" || denials.records[0].clientIP != "10.0.0.1" || denials.records[0].reason != "default_deny" || denials.records[0].deniedAt.IsZero() {
+					t.Fatalf("unexpected denial record: %#v", denials.records)
+				}
+			} else if len(denials.records) != 0 {
+				t.Fatalf("unexpected denial record for %s policy: %#v", tc.name, denials.records)
+			}
 		})
+	}
+}
+
+func TestMiddlewareRecordsCachedDenials(t *testing.T) {
+	srv := miniredis.RunT(t)
+	store, err := redisstore.NewRequired(context.Background(), "redis://"+srv.Addr(), time.Minute, nil)
+	if err != nil {
+		t.Fatalf("new redis store: %v", err)
+	}
+	defer store.Close()
+
+	var calls atomic.Int32
+	client, _ := NewClient("http://opa:8181", "decision", &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		calls.Add(1)
+		return response(http.StatusOK, `{"result":{"allow":false,"reason":"cached_deny"}}`, req), nil
+	})})
+	denials := &denialRecorder{}
+	handler := Middleware(NewEvaluator(client, store, "decision", time.Minute, nil), nil, denials, nil)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	for range 2 {
+		req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+		ctx := auth.ContextWithPrincipal(req.Context(), auth.Principal{User: auth.UserProfile{ID: "user", Type: auth.UserTypeUser, Role: auth.RoleUser}})
+		ctx = clientip.ContextWithClientIP(ctx, "10.0.0.1")
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, req.WithContext(ctx))
+		if recorder.Code != http.StatusForbidden {
+			t.Fatalf("unexpected status: %d", recorder.Code)
+		}
+	}
+	if calls.Load() != 1 || len(denials.records) != 2 {
+		t.Fatalf("expected one OPA call and two denial records, calls=%d records=%#v", calls.Load(), denials.records)
 	}
 }

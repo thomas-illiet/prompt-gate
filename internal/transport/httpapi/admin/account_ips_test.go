@@ -45,8 +45,9 @@ func newAccountIPsHandler(t *testing.T) (*Handler, *gorm.DB) {
 func TestHandleAdminListAccountIPAddressesSeparatesAccountTypes(t *testing.T) {
 	handler, db := newAccountIPsHandler(t)
 	seen := time.Date(2026, 9, 15, 8, 0, 0, 0, time.UTC)
+	reason := "network_not_allowed"
 	for _, address := range []proxy.AccountIPAddress{
-		{UserID: "11111111-1111-1111-1111-111111111111", IP: "192.0.2.10", LastSeen: seen},
+		{UserID: "11111111-1111-1111-1111-111111111111", IP: "192.0.2.10", LastSeen: seen, LastDeniedReason: &reason, LastDeniedAt: &seen},
 		{UserID: "22222222-2222-2222-2222-222222222222", IP: "2001:db8::10", LastSeen: seen.Add(time.Minute)},
 	} {
 		if err := db.Create(&address).Error; err != nil {
@@ -70,12 +71,25 @@ func TestHandleAdminListAccountIPAddressesSeparatesAccountTypes(t *testing.T) {
 			if recorder.Code != http.StatusOK {
 				t.Fatalf("expected 200, got %d: %s", recorder.Code, recorder.Body.String())
 			}
+			if !strings.Contains(recorder.Body.String(), `"lastDeniedReason"`) || !strings.Contains(recorder.Body.String(), `"lastDeniedAt"`) {
+				t.Fatalf("expected denial fields in API response: %s", recorder.Body.String())
+			}
+			if test.name == "service" && (!strings.Contains(recorder.Body.String(), `"lastDeniedReason":null`) || !strings.Contains(recorder.Body.String(), `"lastDeniedAt":null`)) {
+				t.Fatalf("expected null denial fields for existing history: %s", recorder.Body.String())
+			}
 			var response proxy.AccountIPAddressListResult
 			if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
 				t.Fatalf("decode response: %v", err)
 			}
 			if response.Total != 1 || response.Items[0].IP != test.wantIP {
 				t.Fatalf("unexpected response: %#v", response)
+			}
+			if test.name == "user" {
+				if response.Items[0].LastDeniedReason == nil || *response.Items[0].LastDeniedReason != reason || response.Items[0].LastDeniedAt == nil {
+					t.Fatalf("expected denial fields: %#v", response.Items[0])
+				}
+			} else if response.Items[0].LastDeniedReason != nil || response.Items[0].LastDeniedAt != nil {
+				t.Fatalf("expected null denial fields: %#v", response.Items[0])
 			}
 		})
 	}

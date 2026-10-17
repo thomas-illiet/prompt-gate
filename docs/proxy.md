@@ -135,7 +135,9 @@ the worker processes an `interception_started` event, it upserts the
 `account_ip_addresses` row identified by the account and IP. `last_seen` only
 moves forward, including when Redis retries or delivers older events later.
 Requests rejected by authentication, OPA policy, group, or quota checks do not
-create interceptions and therefore do not update this table.
+create interceptions. Authenticated OPA denials still update the account IP
+history with the latest denial reason and timestamp for that account and IP.
+Allowed OPA decision reasons are not persisted.
 
 ## Phoenix tracing
 

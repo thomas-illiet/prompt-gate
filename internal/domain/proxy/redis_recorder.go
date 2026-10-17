@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"time"
+	"unicode/utf8"
 
 	"promptgate/backend/internal/platform/clientip"
 	"promptgate/backend/internal/platform/redisstore"
@@ -14,6 +15,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 )
+
+const maxPolicyDenialReasonCharacters = 2048
 
 type RedisRecorder struct {
 	store  *redisstore.Store
@@ -53,6 +56,26 @@ func (r *RedisRecorder) RecordInterception(ctx context.Context, req *aibrecorder
 		CredentialHint:        req.CredentialHint,
 	}
 	return r.enqueue(ctx, event)
+}
+
+// RecordPolicyDenial enqueues the latest authenticated OPA denial for an account IP.
+func (r *RedisRecorder) RecordPolicyDenial(ctx context.Context, accountID, clientIP, reason string, deniedAt time.Time) error {
+	event := newUsageEvent(UsageEventPolicyDenied)
+	event.PolicyDenied = &PolicyDeniedEvent{
+		AccountID: accountID,
+		ClientIP:  clientIP,
+		Reason:    truncatePolicyDenialReason(reason),
+		DeniedAt:  timestamp(deniedAt),
+	}
+	return r.enqueue(ctx, event)
+}
+
+func truncatePolicyDenialReason(reason string) string {
+	if utf8.RuneCountInString(reason) <= maxPolicyDenialReasonCharacters {
+		return reason
+	}
+	runes := []rune(reason)
+	return string(runes[:maxPolicyDenialReasonCharacters])
 }
 
 // RecordInterceptionEnded enqueues completion data for a proxied interaction.
@@ -175,6 +198,8 @@ func eventInterceptionID(event UsageEvent) string {
 		return event.TokenUsage.InterceptionID
 	case event.ToolUsage != nil:
 		return event.ToolUsage.InterceptionID
+	case event.PolicyDenied != nil:
+		return event.PolicyDenied.AccountID
 	default:
 		return ""
 	}

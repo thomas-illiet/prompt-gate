@@ -216,7 +216,14 @@ describe('useAdminUsers', () => {
   })
 
   it('loads paged IP addresses for a user', async () => {
-    const addresses = [{ ip: '2001:db8::1', lastSeen: '2026-09-15T08:00:00Z' }]
+    const addresses = [
+      {
+        ip: '2001:db8::1',
+        lastSeen: '2026-09-15T08:00:00Z',
+        lastDeniedReason: null,
+        lastDeniedAt: null,
+      },
+    ]
     apiFetch.mockResolvedValueOnce(userResponse([user])).mockResolvedValueOnce({
       items: addresses,
       page: 1,
@@ -240,7 +247,12 @@ describe('useAdminUsers', () => {
     const adminUsers = useAdminUsers()
     await vi.waitFor(() => expect(adminUsers.loading.value).toBe(false))
     adminUsers.ipAddresses.value = [
-      { ip: '192.0.2.1', lastSeen: '2026-09-15T08:00:00Z' },
+      {
+        ip: '192.0.2.1',
+        lastSeen: '2026-09-15T08:00:00Z',
+        lastDeniedReason: null,
+        lastDeniedAt: null,
+      },
     ]
     adminUsers.ipTotal.value = 1
 

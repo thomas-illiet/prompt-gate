@@ -90,7 +90,8 @@ func NewProxy(ctx context.Context, cfg config.ProxyConfig, logger *slog.Logger, 
 		return nil, fmt.Errorf("warm subscription snapshot: %w", err)
 	}
 
-	usageRecorder := localproxy.NewTelemetryRecorder(localproxy.NewRedisRecorder(redisStore, logger), cfg.OTel.CapturePrompts)
+	redisRecorder := localproxy.NewRedisRecorder(redisStore, logger)
+	usageRecorder := localproxy.NewTelemetryRecorder(redisRecorder, cfg.OTel.CapturePrompts)
 	usageRecorder.WithThinkingCapture(cfg.OTel.CaptureThinking)
 	if cfg.UsageCost.Enabled {
 		usageRecorder.WithEstimatedCosts(cfg.UsageCost.Input, cfg.UsageCost.Output, cfg.UsageCost.Embedding)
@@ -158,7 +159,7 @@ func NewProxy(ctx context.Context, cfg config.ProxyConfig, logger *slog.Logger, 
 		debugRequestWriter = httpmiddleware.NewJSONLineWriter(os.Stdout)
 		_ = debugRequestWriter.WriteStartupWarning()
 	}
-	runtime.Handler = runtime.buildHandler(cfg, tokenService, userService, authCache, policyEvaluator, opaClient, accessSnapshot, debugRequestWriter)
+	runtime.Handler = runtime.buildHandler(cfg, tokenService, userService, authCache, policyEvaluator, opaClient, accessSnapshot, redisRecorder, debugRequestWriter)
 	success = true
 	telemetryReady = true
 	return runtime, nil

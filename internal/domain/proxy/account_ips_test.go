@@ -49,6 +49,51 @@ func TestProcessInterceptionStartedUpsertsAccountIPAddressesMonotonically(t *tes
 	}
 }
 
+func TestProcessPolicyDeniedKeepsLatestReasonAndAllowedActivityPreservesIt(t *testing.T) {
+	db, service := newProxyServiceTestDB(t)
+	worker := NewWorker(db, nil, WorkerOptions{}, nil)
+	accountID := "11111111-1111-1111-1111-111111111111"
+	base := time.Date(2026, 10, 17, 8, 0, 0, 0, time.UTC)
+
+	denials := []struct {
+		id     string
+		reason string
+		at     time.Time
+	}{
+		{"deny-new", "network_not_allowed", base.Add(2 * time.Minute)},
+		{"deny-old", "older_reason", base},
+	}
+	for _, denial := range denials {
+		event := UsageEvent{EventID: denial.id, Type: UsageEventPolicyDenied, CreatedAt: denial.at,
+			PolicyDenied: &PolicyDeniedEvent{AccountID: accountID, ClientIP: "2001:0db8::5", Reason: denial.reason, DeniedAt: denial.at}}
+		if err := worker.ProcessUsageEvent(context.Background(), event, denial.id+"-redis"); err != nil {
+			t.Fatalf("process denial: %v", err)
+		}
+	}
+
+	allowedAt := base.Add(3 * time.Minute)
+	allowed := UsageEvent{EventID: "allowed", Type: UsageEventInterceptionStarted, CreatedAt: allowedAt,
+		InterceptionStarted: &InterceptionStartedEvent{ID: "a0000000-0000-0000-0000-000000000099", InitiatorID: accountID, Provider: "provider", ProviderType: "openai", Model: "model", ClientIP: "2001:db8::5", StartedAt: allowedAt, Metadata: "{}"}}
+	if err := worker.ProcessUsageEvent(context.Background(), allowed, "allowed-redis"); err != nil {
+		t.Fatalf("process allowed request: %v", err)
+	}
+
+	result, err := service.ListAccountIPAddresses(context.Background(), accountID, auth.UserTypeUser, AccountIPAddressListParams{Page: 1, PageSize: 10, SortBy: "lastSeen", SortDir: "desc"})
+	if err != nil {
+		t.Fatalf("list addresses: %v", err)
+	}
+	if len(result.Items) != 1 {
+		t.Fatalf("expected one normalized address, got %#v", result.Items)
+	}
+	item := result.Items[0]
+	if item.LastDeniedReason == nil || *item.LastDeniedReason != "network_not_allowed" || item.LastDeniedAt == nil || !item.LastDeniedAt.Equal(base.Add(2*time.Minute)) {
+		t.Fatalf("unexpected latest denial: %#v", item)
+	}
+	if !item.LastSeen.Equal(allowedAt) {
+		t.Fatalf("expected allowed activity to advance last seen, got %s", item.LastSeen)
+	}
+}
+
 func TestListAccountIPAddressesValidatesAccountTypeAndSort(t *testing.T) {
 	_, service := newProxyServiceTestDB(t)
 	ctx := context.Background()
