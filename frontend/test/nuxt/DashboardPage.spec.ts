@@ -6,190 +6,199 @@ import DashboardPage from '../../app/pages/dashboard.vue'
 
 const {
   authUser,
-  initializeMock,
-  refreshDashboardMock,
+  overviewReloadMock,
+  overviewState,
+  routeQuery,
   useAuthStoreMock,
-  useDashboardRefreshMock,
-  waitUntilReadyMock,
+  useDashboardOverviewMock,
 } = vi.hoisted(() => {
-  const authUser = {
-    value: null as null | { role: string },
+  const authUser = { value: null as null | { id: string; role: string } }
+  const overviewReloadMock = vi.fn()
+  const routeQuery: Record<string, string> = {}
+  const overviewState = {
+    data: { value: null as null | Record<string, unknown> },
+    error: { value: null as string | null },
+    loading: { value: false },
+    staleWarning: { value: null as string | null },
+    updatedAt: { value: '2026-10-22T10:00:00Z' as string | null },
   }
-  const initializeMock = vi.fn(async () => undefined)
-  const refreshDashboardMock = vi.fn()
-  const waitUntilReadyMock = vi.fn(async () => undefined)
 
   return {
     authUser,
-    initializeMock,
-    refreshDashboardMock,
+    overviewReloadMock,
+    overviewState,
+    routeQuery,
     useAuthStoreMock: vi.fn(() => ({
-      initialize: initializeMock,
-      waitUntilReady: waitUntilReadyMock,
+      initialize: vi.fn(async () => undefined),
       isAuthenticated: true,
+      isReady: true,
+      waitUntilReady: vi.fn(async () => undefined),
       get user() {
         return authUser.value
       },
     })),
-    useDashboardRefreshMock: vi.fn(() => ({
-      refresh: refreshDashboardMock,
-      version: { value: 0 },
+    useDashboardOverviewMock: vi.fn(() => ({
+      ...overviewState,
+      reload: overviewReloadMock,
     })),
-    waitUntilReadyMock,
   }
 })
 
 mockNuxtImport('useAuthStore', () => useAuthStoreMock)
-mockNuxtImport('useDashboardRefresh', () => useDashboardRefreshMock)
+mockNuxtImport('useDashboardOverview', () => useDashboardOverviewMock)
+mockNuxtImport('useRoute', () => () => ({ fullPath: '/dashboard', query: routeQuery }))
+
+function overviewData(requests = 4) {
+  return {
+    window: '7d',
+    startsAt: '2026-10-15T00:00:00Z',
+    endsAt: '2026-10-22T00:00:00Z',
+    totals: {
+      requests,
+      toolCalls: requests ? 1 : 0,
+      inputTokens: 10,
+      outputTokens: 10,
+      cacheReadInputTokens: 0,
+      cacheWriteInputTokens: 0,
+      completionInputTokens: 10,
+      completionOutputTokens: 10,
+      completionTokens: 20,
+      embeddingTokens: 0,
+      totalTokens: requests ? 20 : 0,
+    },
+    totalDurationMs: requests ? 500 : 0,
+    averageDurationMs: requests ? 125 : null,
+    daily: [],
+    costCoverage: { status: 'unavailable' },
+  }
+}
 
 function mountPage() {
   return mount(DashboardPage, {
     global: {
       stubs: {
-        DashboardActivityChart: {
-          props: ['scope', 'window'],
+        AppEmptyState: { template: '<div data-test="empty"><slot name="actions" /></div>' },
+        AppSectionCard: { template: '<section><slot /><slot name="actions" /></section>' },
+        DashboardAnnualActivity: {
+          props: ['refreshVersion'],
+          template: '<div data-test="annual" :data-refresh="refreshVersion" />',
+        },
+        DashboardBreakdownPanel: {
+          props: ['modelValue', 'scope', 'window', 'refreshVersion'],
+          emits: ['update:modelValue'],
           template:
-            '<div data-test="activity" :data-scope="scope" :data-window="window" />',
+            '<div data-test="breakdown" :data-scope="scope" :data-window="window" :data-tab="modelValue" />',
         },
-        DashboardAdoptionKpis: {
-          props: ['window'],
-          template: '<div data-test="adoption" :data-window="window" />',
-        },
-        DashboardDurationKpi: {
-          props: ['scope', 'window'],
+        DashboardCurrentState: {
+          props: ['scope', 'refreshVersion'],
           template:
-            '<div data-test="duration" :data-scope="scope" :data-window="window" />',
+            '<div data-test="current-state" :data-scope="scope" :data-refresh="refreshVersion" />',
         },
-        DashboardMessagesKpi: {
-          props: ['scope', 'window'],
-          template:
-            '<div data-test="messages" :data-scope="scope" :data-window="window" />',
-        },
+        DashboardPeriodKpis: { template: '<div data-test="kpis" />' },
         DashboardScopeSelect: {
           props: ['modelValue'],
           emits: ['update:modelValue'],
-          template: `
-            <button
-              data-test="scope-select"
-              @click="$emit('update:modelValue', 'global')"
-            >
-              {{ modelValue }}
-            </button>
-          `,
+          template:
+            '<button data-test="scope-select" @click="$emit(\'update:modelValue\', \'global\')">{{ modelValue }}</button>',
         },
         DashboardTimeRangeSelect: {
           props: ['modelValue'],
-          emits: ['update:modelValue'],
           template: '<div data-test="window-select">{{ modelValue }}</div>',
         },
-        DashboardTokensKpi: {
-          props: ['scope', 'window'],
-          template:
-            '<div data-test="tokens" :data-scope="scope" :data-window="window" />',
-        },
-        DashboardUsageCostKpi: {
-          props: ['scope', 'window'],
-          template:
-            '<div data-test="usage-cost" :data-scope="scope" :data-window="window" />',
-        },
-        DashboardTopIdentitiesChart: {
-          props: ['window'],
-          template: '<div data-test="top-identities" :data-window="window" />',
-        },
-        DashboardTopModelsChart: {
-          props: ['scope', 'window'],
-          template:
-            '<div data-test="top-models" :data-scope="scope" :data-window="window" />',
-        },
-        DashboardTopProviderNamesChart: true,
-        DashboardTopProviderTypesChart: true,
+        DashboardTrend: { template: '<div data-test="trend" />' },
+        VAlert: { template: '<div><slot /></div>' },
         VBtn: {
+          props: ['to'],
           emits: ['click'],
           template:
-            '<button data-test="dashboard-refresh" @click="$emit(\'click\')"><slot /></button>',
+            '<button data-test="button" :data-to="to || \'\'" @click="$emit(\'click\')"><slot /></button>',
         },
-        VCol: { template: '<div><slot /></div>' },
         VContainer: { template: '<div><slot /></div>' },
-        VRow: { template: '<div><slot /></div>' },
-        VTooltip: {
-          template:
-            '<span><slot name="activator" :props="{}" /><slot /></span>',
-        },
-      },
-      directives: {
-        tooltip: {},
+        VIcon: true,
       },
     },
   })
 }
 
 describe('DashboardPage', () => {
-  beforeEach(() => {
-    authUser.value = null
-    initializeMock.mockClear()
-    refreshDashboardMock.mockClear()
+  beforeEach(async () => {
+    authUser.value = { id: 'user-1', role: 'user' }
+    for (const key of Object.keys(routeQuery)) Reflect.deleteProperty(routeQuery, key)
+    await navigateTo('/dashboard')
+    overviewState.data.value = overviewData()
+    overviewState.error.value = null
+    overviewState.loading.value = false
+    overviewState.staleWarning.value = null
+    overviewReloadMock.mockClear()
     useAuthStoreMock.mockClear()
-    useDashboardRefreshMock.mockClear()
-    waitUntilReadyMock.mockClear()
+    useDashboardOverviewMock.mockClear()
   })
 
-  it('shows scope control for admins and defaults to my usage', () => {
-    authUser.value = { role: 'admin' }
-
+  it('shows an admin My usage view by default and switches to organization scope', async () => {
+    authUser.value = { id: 'admin-1', role: 'admin' }
     const wrapper = mountPage()
 
-    expect(wrapper.find('[data-test="scope-select"]').exists()).toBe(true)
+    expect(wrapper.get('h1').text()).toBe('My usage')
     expect(wrapper.get('[data-test="scope-select"]').text()).toBe('self')
-    expect(wrapper.get('[data-test="tokens"]').attributes('data-scope')).toBe(
-      'self',
-    )
-    expect(
-      wrapper.get('[data-test="usage-cost"]').attributes('data-scope'),
-    ).toBe('self')
-    expect(wrapper.find('[data-test="adoption"]').exists()).toBe(false)
-  })
-
-  it('shows global admin KPIs when admins select global scope', async () => {
-    authUser.value = { role: 'admin' }
-    const wrapper = mountPage()
+    expect(wrapper.get('[data-test="current-state"]').attributes('data-scope')).toBe('self')
 
     await wrapper.get('[data-test="scope-select"]').trigger('click')
 
-    expect(wrapper.get('[data-test="tokens"]').attributes('data-scope')).toBe(
-      'global',
+    expect(wrapper.get('h1').text()).toBe('Organization overview')
+    expect(wrapper.get('[data-test="current-state"]').attributes('data-scope')).toBe('global')
+    expect(wrapper.find('[data-test="annual"]').exists()).toBe(false)
+    await vi.waitFor(() =>
+      expect(useRouter().currentRoute.value.query.scope).toBe('global'),
     )
-    expect(
-      wrapper.get('[data-test="usage-cost"]').attributes('data-scope'),
-    ).toBe('global')
-    expect(wrapper.find('[data-test="adoption"]').exists()).toBe(true)
-    expect(wrapper.find('[data-test="top-identities"]').exists()).toBe(true)
   })
 
-  it('hides scope control and global KPIs for non-admin users', () => {
-    authUser.value = { role: 'user' }
+  it('forces non-admin users to self even when the URL requests global scope', async () => {
+    routeQuery.scope = 'global'
+    authUser.value = { id: 'user-1', role: 'user' }
 
     const wrapper = mountPage()
 
     expect(wrapper.find('[data-test="scope-select"]').exists()).toBe(false)
-    expect(wrapper.get('[data-test="tokens"]').attributes('data-scope')).toBe(
-      'self',
-    )
-    expect(
-      wrapper.get('[data-test="usage-cost"]').attributes('data-scope'),
-    ).toBe('self')
-    expect(wrapper.find('[data-test="adoption"]').exists()).toBe(false)
+    expect(wrapper.get('[data-test="current-state"]').attributes('data-scope')).toBe('self')
+    expect(wrapper.get('h1').text()).toBe('My usage')
   })
 
-  it('refreshes dashboard widgets from the header control', async () => {
-    authUser.value = { role: 'user' }
+  it('hydrates window, metric, and breakdown from the URL', async () => {
+    routeQuery.window = '30d'
+    routeQuery.metric = 'tokens'
+    routeQuery.breakdown = 'providers'
 
     const wrapper = mountPage()
-    const refreshButton = wrapper.get('[data-test="dashboard-refresh"]')
 
-    expect(refreshButton.text()).toContain('Refresh')
+    expect(wrapper.get('[data-test="window-select"]').text()).toBe('30d')
+    expect(wrapper.get('[data-test="breakdown"]').attributes('data-tab')).toBe('providers')
+    expect(useDashboardOverviewMock).toHaveBeenCalled()
+  })
 
-    await refreshButton.trigger('click')
+  it('refreshes the overview and every lazy dashboard area together', async () => {
+    const wrapper = mountPage()
+    const refresh = wrapper.findAll('[data-test="button"]').find((button) =>
+      button.text().includes('Refresh'),
+    )
+    expect(refresh).toBeDefined()
 
-    expect(refreshDashboardMock).toHaveBeenCalledTimes(1)
+    await refresh!.trigger('click')
+
+    expect(overviewReloadMock).toHaveBeenCalledTimes(1)
+    expect(wrapper.get('[data-test="current-state"]').attributes('data-refresh')).toBe('1')
+    expect(wrapper.get('[data-test="annual"]').attributes('data-refresh')).toBe('1')
+  })
+
+  it('sends limited users to the accessible FAQ from the single empty state', () => {
+    authUser.value = { id: 'limited-1', role: 'limited' }
+    overviewState.data.value = overviewData(0)
+
+    const wrapper = mountPage()
+
+    const action = wrapper.findAll('[data-test="button"]').find((button) =>
+      button.text().includes('Browse FAQ'),
+    )
+    expect(action?.attributes('data-to')).toBe('/faq')
+    expect(wrapper.findAll('[data-test="empty"]')).toHaveLength(1)
   })
 })

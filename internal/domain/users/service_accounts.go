@@ -3,6 +3,7 @@ package users
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"promptgate/backend/internal/domain/auth"
@@ -30,6 +31,15 @@ func (s *Service) ListServiceAccountsPaged(ctx context.Context, params ServiceAc
 	query := s.db.WithContext(ctx).Model(&User{}).Where("type = ?", auth.UserTypeService)
 	if userSortNeedsConsumption(params.SortBy) {
 		query = query.Joins(userTokenConsumptionJoin())
+	}
+	if search := strings.TrimSpace(strings.ToLower(params.Search)); search != "" {
+		like := "%" + search + "%"
+		query = query.Where(
+			"LOWER(users.name) LIKE ? OR LOWER(users.preferred_username) LIKE ? OR LOWER(CAST(users.id AS TEXT)) LIKE ?",
+			like,
+			like,
+			like,
+		)
 	}
 	var total int64
 	if err := query.Count(&total).Error; err != nil {

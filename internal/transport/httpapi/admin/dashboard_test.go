@@ -176,15 +176,113 @@ func TestHandleAdminDashboardAdoptionReturnsResult(t *testing.T) {
 	}
 }
 
-// TestHandleAdminDashboardRejectsInvalidWindow verifies handle admin dashboard rejects invalid window.
-func TestHandleAdminDashboardRejectsInvalidWindow(t *testing.T) {
-	handler, _ := newDashboardTestHandler(t)
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/dashboard/tokens?window=14d", nil)
-	recorder := httptest.NewRecorder()
+// TestHandleAdminDashboardOverviewReturnsUsageAndAdoption verifies the global
+// cockpit endpoint combines period usage, comparison, and adoption.
+func TestHandleAdminDashboardOverviewReturnsUsageAndAdoption(t *testing.T) {
+	handler, db := newDashboardTestHandler(t)
+	now := time.Now().UTC().Add(-time.Hour)
+	seedDashboardUsage(t, db, "11111111-1111-1111-1111-111111111111", "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", now, 10, 20)
+	seedDashboardUsage(t, db, "22222222-2222-2222-2222-222222222222", "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", now, 30, 40)
+	if err := db.Create(&tokenDomain.Token{
+		UserID:      "11111111-1111-1111-1111-111111111111",
+		Name:        "active",
+		TokenHash:   "overview-active-hash",
+		ExpiresAt:   time.Now().UTC().Add(time.Hour),
+		Description: "",
+	}).Error; err != nil {
+		t.Fatalf("seed token: %v", err)
+	}
 
-	handler.HandleAdminDashboardTokens(recorder, req)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/dashboard/overview?window=7d", nil)
+	recorder := httptest.NewRecorder()
+	handler.HandleAdminDashboardOverview(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", recorder.Code, recorder.Body.String())
+	}
+	var body proxy.DashboardOverviewResponse
+	if err := json.NewDecoder(recorder.Body).Decode(&body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if body.Totals.Requests != 2 || body.Totals.TotalTokens != 100 || body.Previous == nil {
+		t.Fatalf("unexpected global usage response: %#v", body)
+	}
+	if body.Adoption == nil || body.Adoption.ActiveUsers != 1 || body.Adoption.ActiveServiceAccounts != 1 || body.Adoption.ActiveVirtualKeys != 1 {
+		t.Fatalf("unexpected global adoption response: %#v", body.Adoption)
+	}
+	if body.CostCoverage == nil || body.CostCoverage.Status != proxy.CostCoverageComplete {
+		t.Fatalf("unexpected global cost coverage: %#v", body.CostCoverage)
+	}
+}
+
+// TestHandleAdminDashboardTopIdentitiesRanksByRequests verifies the query
+// metric changes the actual backend top-five ordering.
+func TestHandleAdminDashboardTopIdentitiesRanksByRequests(t *testing.T) {
+	handler, db := newDashboardTestHandler(t)
+	now := time.Now().UTC()
+	userID := "11111111-1111-1111-1111-111111111111"
+	serviceID := "22222222-2222-2222-2222-222222222222"
+	seedDashboardUsage(t, db, userID, "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1", now.Add(-time.Hour), 1, 1)
+	seedDashboardUsage(t, db, userID, "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa2", now.Add(-25*time.Hour), 1, 1)
+	seedDashboardUsage(t, db, serviceID, "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb1", now.Add(-2*time.Hour), 100, 100)
+
+	request := func(path string) proxy.DashboardBreakdownResponse {
+		t.Helper()
+		recorder := httptest.NewRecorder()
+		handler.HandleAdminDashboardTopIdentities(recorder, httptest.NewRequest(http.MethodGet, path, nil))
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d: %s", recorder.Code, recorder.Body.String())
+		}
+		var body proxy.DashboardBreakdownResponse
+		if err := json.NewDecoder(recorder.Body).Decode(&body); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		return body
+	}
+
+	byTokens := request("/api/v1/admin/dashboard/top-identities?window=7d")
+	if len(byTokens.Items) != 2 || byTokens.Items[0].Name != "Worker" {
+		t.Fatalf("expected default token ranking, got %#v", byTokens.Items)
+	}
+	byRequests := request("/api/v1/admin/dashboard/top-identities?window=7d&metric=requests")
+	if len(byRequests.Items) != 2 || byRequests.Items[0].Name != "One" || byRequests.Items[0].Requests != 2 {
+		t.Fatalf("expected request ranking, got %#v", byRequests.Items)
+	}
+}
+
+// TestHandleAdminDashboardBreakdownRejectsInvalidMetric verifies clients get a
+// stable, explicit 400 rather than an arbitrary fallback.
+func TestHandleAdminDashboardBreakdownRejectsInvalidMetric(t *testing.T) {
+	handler, _ := newDashboardTestHandler(t)
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/dashboard/top-models?metric=latency", nil)
+	handler.HandleAdminDashboardTopModels(recorder, req)
 
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", recorder.Code, recorder.Body.String())
+	}
+	var body map[string]string
+	if err := json.NewDecoder(recorder.Body).Decode(&body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if body["error"] != "invalid_dashboard_metric" {
+		t.Fatalf("unexpected error response: %#v", body)
+	}
+}
+
+// TestHandleAdminDashboardRejectsInvalidWindow verifies handle admin dashboard rejects invalid window.
+func TestHandleAdminDashboardRejectsInvalidWindow(t *testing.T) {
+	for _, window := range []string{"14d", "365d"} {
+		t.Run(window, func(t *testing.T) {
+			handler, _ := newDashboardTestHandler(t)
+			req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/dashboard/tokens?window="+window, nil)
+			recorder := httptest.NewRecorder()
+
+			handler.HandleAdminDashboardTokens(recorder, req)
+
+			if recorder.Code != http.StatusBadRequest {
+				t.Fatalf("expected 400, got %d: %s", recorder.Code, recorder.Body.String())
+			}
+		})
 	}
 }

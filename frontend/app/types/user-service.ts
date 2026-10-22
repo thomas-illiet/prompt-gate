@@ -1,6 +1,13 @@
 export type UsageDays = 7 | 30
 export type UsageWindow = '7d' | '30d' | 'all'
+export type ActivityWindow = UsageWindow | '365d'
 export type DashboardScope = 'self' | 'global'
+export type DashboardMetric = 'requests' | 'tokens' | 'cost'
+export type DashboardBreakdown =
+  | 'models'
+  | 'providers'
+  | 'provider-types'
+  | 'identities'
 
 export interface UserToken {
   id: string
@@ -79,6 +86,7 @@ export interface UsageWindowMeta {
 export interface DailyUsage {
   date: string
   requests: number
+  toolCalls?: number
   inputTokens: number
   outputTokens: number
   completionInputTokens: number
@@ -127,7 +135,8 @@ export interface DashboardDurationResponse extends UsageWindowMeta {
   totalDurationMs: number
 }
 
-export interface DashboardActivityResponse extends UsageWindowMeta {
+export interface DashboardActivityResponse extends Omit<UsageWindowMeta, 'window'> {
+  window: ActivityWindow
   daily: DailyUsage[]
 }
 
@@ -135,6 +144,38 @@ export interface DashboardOverviewResponse extends UsageWindowMeta {
   totals: UsageTotals
   totalDurationMs: number
   daily: DailyUsage[]
+}
+
+export interface DashboardCockpitOverviewResponse extends UsageWindowMeta {
+  totals: UsageTotals
+  totalDurationMs: number
+  averageDurationMs: number | null
+  daily: DailyUsage[]
+  previous?: DashboardPreviousPeriod | null
+  costCoverage?: DashboardCostCoverage
+  adoption?: DashboardAdoption
+}
+
+export interface DashboardPreviousPeriod {
+  startsAt: string
+  endsAt: string
+  totals: UsageTotals
+  totalDurationMs: number
+  averageDurationMs: number | null
+  daily: DailyUsage[]
+  costCoverage?: DashboardCostCoverage
+}
+
+export interface DashboardCostCoverage {
+  status: 'complete' | 'partial' | 'unavailable'
+  startsAt?: string | null
+  endsAt?: string | null
+}
+
+export interface DashboardAdoption {
+  activeUsers: number
+  activeServiceAccounts: number
+  activeVirtualKeys: number
 }
 
 export interface DashboardBreakdownResponse extends UsageWindowMeta {
@@ -145,6 +186,33 @@ export interface DashboardAdoptionResponse extends UsageWindowMeta {
   activeUsers: number
   activeServiceAccounts: number
   activeVirtualKeys: number
+}
+
+export type DashboardQuotaRiskStatus = 'warning' | 'critical'
+export type DashboardQuotaRiskWindow = '5h' | '7d'
+export type DashboardQuotaRiskAccountType = 'user' | 'service'
+
+export interface DashboardQuotaRiskItem {
+  accountId: string
+  accountType: DashboardQuotaRiskAccountType
+  displayName: string
+  planName: string
+  window: DashboardQuotaRiskWindow
+  usedTokens: number
+  quotaTokens: number
+  remainingTokens: number
+  percent: number
+  resetAt: string | null
+  syncedAt: string | null
+  status: DashboardQuotaRiskStatus
+}
+
+export interface DashboardQuotaRiskResponse {
+  generatedAt: string
+  projectionSyncedAt: string | null
+  atRiskCount: number
+  exhaustedCount: number
+  items: DashboardQuotaRiskItem[]
 }
 
 export type HelpProviderType = 'openai' | 'anthropic' | 'ollama'

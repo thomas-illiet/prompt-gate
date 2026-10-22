@@ -129,6 +129,7 @@ type AccountQuotaState struct {
 type ServiceAccountListParams struct {
 	Page     int
 	PageSize int
+	Search   string
 	SortBy   string
 	SortDir  string
 }
@@ -308,7 +309,8 @@ func (s *Service) ListUsers(ctx context.Context, params ListParams) (ListResult,
 	if search := strings.TrimSpace(strings.ToLower(params.Search)); search != "" {
 		like := "%" + search + "%"
 		query = query.Where(
-			"LOWER(name) LIKE ? OR LOWER(email) LIKE ? OR LOWER(preferred_username) LIKE ?",
+			"LOWER(name) LIKE ? OR LOWER(email) LIKE ? OR LOWER(preferred_username) LIKE ? OR LOWER(CAST(users.id AS TEXT)) LIKE ?",
+			like,
 			like,
 			like,
 			like,

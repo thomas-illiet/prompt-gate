@@ -25,6 +25,7 @@ func currentUserRoutes(srv *server) []routeDefinition {
 	return []routeDefinition{
 		{pattern: "GET /api/v1/me/usage", handler: srv.handleCurrentUserUsage},
 		{pattern: "GET /api/v1/me/quota", handler: srv.handleCurrentUserQuota},
+		{pattern: "GET /api/v1/me/dashboard/overview", handler: srv.handleCurrentUserDashboardOverview},
 		{pattern: "GET /api/v1/me/dashboard/tokens", handler: srv.handleCurrentUserDashboardTokens},
 		{pattern: "GET /api/v1/me/dashboard/messages", handler: srv.handleCurrentUserDashboardMessages},
 		{pattern: "GET /api/v1/me/dashboard/duration", handler: srv.handleCurrentUserDashboardDuration},

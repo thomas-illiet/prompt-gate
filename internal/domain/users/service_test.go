@@ -454,6 +454,56 @@ func TestListServiceAccountsIncludesHistoricalTokenConsumption(t *testing.T) {
 	}
 }
 
+// TestAccountListsSearchByTechnicalID verifies dashboard deep links can filter
+// both account kinds by their stable technical identifier.
+func TestAccountListsSearchByTechnicalID(t *testing.T) {
+	service := newTestService(t)
+	ctx := context.Background()
+
+	person, err := service.SyncUser(ctx, auth.Identity{
+		Sub:               "searchable-person",
+		PreferredUsername: "person",
+		Email:             "person@example.com",
+		Name:              "Searchable Person",
+	})
+	if err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+	account, err := service.CreateServiceAccount(ctx, ServiceAccountInput{
+		Identifier: "searchable-worker",
+		Name:       "Searchable Worker",
+		IsActive:   true,
+	})
+	if err != nil {
+		t.Fatalf("create service account: %v", err)
+	}
+
+	usersResult, err := service.ListUsers(ctx, ListParams{
+		Page:     1,
+		PageSize: 10,
+		Search:   person.ID,
+		Type:     auth.UserTypeUser,
+	})
+	if err != nil {
+		t.Fatalf("search users by id: %v", err)
+	}
+	if len(usersResult.Items) != 1 || usersResult.Items[0].ID != person.ID {
+		t.Fatalf("unexpected user search result: %#v", usersResult.Items)
+	}
+
+	accountsResult, err := service.ListServiceAccountsPaged(ctx, ServiceAccountListParams{
+		Page:     1,
+		PageSize: 10,
+		Search:   account.ID,
+	})
+	if err != nil {
+		t.Fatalf("search service accounts by id: %v", err)
+	}
+	if len(accountsResult.Items) != 1 || accountsResult.Items[0].ID != account.ID {
+		t.Fatalf("unexpected service account search result: %#v", accountsResult.Items)
+	}
+}
+
 // TestServiceAccountIdentifierValidationAndConflict verifies service account identifier validation and conflict.
 func TestServiceAccountIdentifierValidationAndConflict(t *testing.T) {
 	service := newTestService(t)

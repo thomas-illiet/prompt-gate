@@ -38,7 +38,7 @@ func (s *Service) resolveDashboardWindow(ctx context.Context, scope dashboardUsa
 	switch window {
 	case "":
 		window = UsageWindow30Days
-	case UsageWindow7Days, UsageWindow30Days, UsageWindowAll:
+	case UsageWindow7Days, UsageWindow30Days, UsageWindow365Days, UsageWindowAll:
 	default:
 		return usageRange{}, ErrInvalidUsageWindow
 	}
@@ -74,8 +74,11 @@ func (s *Service) resolveDashboardWindow(ctx context.Context, scope dashboardUsa
 	}
 
 	days := 30
-	if window == UsageWindow7Days {
+	switch window {
+	case UsageWindow7Days:
 		days = 7
+	case UsageWindow365Days:
+		days = 365
 	}
 	startsAt := dayStart(endsAt).AddDate(0, 0, -(days - 1))
 	return usageRange{
@@ -139,6 +142,12 @@ func breakdownByKey(values map[string]*UsageBreakdown, key, name string) *UsageB
 
 // sortedBreakdowns returns the highest-volume usage breakdowns.
 func sortedBreakdowns(values map[string]*UsageBreakdown, limit int) []UsageBreakdown {
+	return sortedBreakdownsByMetric(values, DashboardBreakdownTokens, limit)
+}
+
+// sortedBreakdownsByMetric ranks all non-empty breakdowns before applying the
+// response limit. Cost estimates must already be attached when sorting by cost.
+func sortedBreakdownsByMetric(values map[string]*UsageBreakdown, metric DashboardBreakdownMetric, limit int) []UsageBreakdown {
 	items := make([]UsageBreakdown, 0, len(values))
 	for _, value := range values {
 		if value.Requests == 0 && value.TotalTokens == 0 {
@@ -146,19 +155,44 @@ func sortedBreakdowns(values map[string]*UsageBreakdown, limit int) []UsageBreak
 		}
 		items = append(items, *value)
 	}
+	return sortBreakdownItems(items, metric, limit)
+}
+
+// sortBreakdownItems orders breakdowns deterministically for one metric.
+func sortBreakdownItems(items []UsageBreakdown, metric DashboardBreakdownMetric, limit int) []UsageBreakdown {
 	sort.Slice(items, func(i, j int) bool {
-		if items[i].TotalTokens == items[j].TotalTokens {
-			if items[i].Requests == items[j].Requests {
-				return items[i].Name < items[j].Name
-			}
+		left, right := breakdownMetricValue(items[i], metric), breakdownMetricValue(items[j], metric)
+		if left != right {
+			return left > right
+		}
+		if items[i].TotalTokens != items[j].TotalTokens {
+			return items[i].TotalTokens > items[j].TotalTokens
+		}
+		if items[i].Requests != items[j].Requests {
 			return items[i].Requests > items[j].Requests
 		}
-		return items[i].TotalTokens > items[j].TotalTokens
+		return items[i].Name < items[j].Name
 	})
-	if len(items) > limit {
+	if limit > 0 && len(items) > limit {
 		return items[:limit]
 	}
 	return items
+}
+
+func breakdownMetricValue(item UsageBreakdown, metric DashboardBreakdownMetric) float64 {
+	switch metric {
+	case DashboardBreakdownRequests:
+		return float64(item.Requests)
+	case DashboardBreakdownCost:
+		if item.EstimatedCost != nil {
+			return item.EstimatedCost.TotalUSD
+		}
+		return 0
+	case DashboardBreakdownTokens:
+		fallthrough
+	default:
+		return float64(item.TotalTokens)
+	}
 }
 
 // dateKey formats a timestamp as a UTC daily bucket key.

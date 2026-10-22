@@ -5,10 +5,30 @@ import "time"
 // UsageWindow selects a dashboard reporting window.
 type UsageWindow string
 
+// DashboardBreakdownMetric selects how dashboard breakdowns are ranked.
+type DashboardBreakdownMetric string
+
 const (
-	UsageWindow7Days  UsageWindow = "7d"
-	UsageWindow30Days UsageWindow = "30d"
-	UsageWindowAll    UsageWindow = "all"
+	UsageWindow7Days   UsageWindow = "7d"
+	UsageWindow30Days  UsageWindow = "30d"
+	UsageWindow365Days UsageWindow = "365d"
+	UsageWindowAll     UsageWindow = "all"
+)
+
+const (
+	DashboardBreakdownRequests DashboardBreakdownMetric = "requests"
+	DashboardBreakdownTokens   DashboardBreakdownMetric = "tokens"
+	DashboardBreakdownCost     DashboardBreakdownMetric = "cost"
+)
+
+// CostCoverageStatus describes whether raw usage can support the cost estimate
+// for the whole requested period.
+type CostCoverageStatus string
+
+const (
+	CostCoverageComplete    CostCoverageStatus = "complete"
+	CostCoveragePartial     CostCoverageStatus = "partial"
+	CostCoverageUnavailable CostCoverageStatus = "unavailable"
 )
 
 type CostRates struct {
@@ -48,6 +68,7 @@ type UsageTotals struct {
 type DailyUsage struct {
 	Date                   string         `json:"date"`
 	Requests               int64          `json:"requests"`
+	ToolCalls              int64          `json:"toolCalls"`
 	InputTokens            int64          `json:"inputTokens"`
 	OutputTokens           int64          `json:"outputTokens"`
 	CompletionInputTokens  int64          `json:"completionInputTokens"`
@@ -85,11 +106,33 @@ type UsageWindowMeta struct {
 	EndsAt   time.Time   `json:"endsAt"`
 }
 
+// CostCoverage exposes the bounds of raw usage used for a current-price
+// estimate. Bounds are omitted when no estimate can be produced.
+type CostCoverage struct {
+	Status   CostCoverageStatus `json:"status"`
+	StartsAt *time.Time         `json:"startsAt,omitempty"`
+	EndsAt   *time.Time         `json:"endsAt,omitempty"`
+}
+
+// DashboardOverviewPeriod is a comparable dashboard period.
+type DashboardOverviewPeriod struct {
+	UsageWindowMeta
+	Totals            UsageTotals   `json:"totals"`
+	TotalDurationMs   int64         `json:"totalDurationMs"`
+	AverageDurationMs *float64      `json:"averageDurationMs"`
+	Daily             []DailyUsage  `json:"daily"`
+	CostCoverage      *CostCoverage `json:"costCoverage,omitempty"`
+}
+
 type DashboardOverviewResponse struct {
 	UsageWindowMeta
-	Totals          UsageTotals  `json:"totals"`
-	TotalDurationMs int64        `json:"totalDurationMs"`
-	Daily           []DailyUsage `json:"daily"`
+	Totals            UsageTotals                `json:"totals"`
+	TotalDurationMs   int64                      `json:"totalDurationMs"`
+	AverageDurationMs *float64                   `json:"averageDurationMs"`
+	Daily             []DailyUsage               `json:"daily"`
+	CostCoverage      *CostCoverage              `json:"costCoverage,omitempty"`
+	Previous          *DashboardOverviewPeriod   `json:"previous,omitempty"`
+	Adoption          *DashboardAdoptionResponse `json:"adoption,omitempty"`
 }
 
 type DashboardTokensResponse struct {

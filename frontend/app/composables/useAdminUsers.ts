@@ -100,12 +100,21 @@ export function useAdminUsers() {
       apiFetch<UserListResponse>(`${adminUsersPath}?${queryString}`),
     initialSortBy: 'lastLoginAt',
     initialSortDir: 'desc',
+    initialSearch: routeQueryValue(route.query?.search),
     params: () => ({
       role: role.value !== 'all' ? role.value : undefined,
       status: status.value !== 'all' ? status.value : undefined,
     }),
     toErrorMessage: toAdminUserErrorMessage,
   })
+
+  watch(
+    () => route.query?.search,
+    (value) => {
+      const search = routeQueryValue(value)
+      if (search !== queryList.search.value) queryList.setSearch(search)
+    },
+  )
 
   // setSearch updates the user search filter.
   function setSearch(value: string) {
@@ -594,4 +603,8 @@ export function useAdminUsers() {
     users: queryList.items,
     revokeUserToken,
   }
+}
+
+function routeQueryValue(value: unknown) {
+  return Array.isArray(value) ? String(value[0] ?? '') : String(value ?? '')
 }

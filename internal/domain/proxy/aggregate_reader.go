@@ -23,6 +23,7 @@ func (s *Service) loadAggregatedUsage(ctx context.Context, scope dashboardUsageS
 		totalDurationMs += row.TotalDurationMs
 		if bucket := daily[dateKey(row.Day)]; bucket != nil {
 			bucket.Requests += row.Requests
+			bucket.ToolCalls += row.ToolCalls
 			bucket.InputTokens += row.InputTokens
 			bucket.OutputTokens += row.OutputTokens
 			bucket.CompletionInputTokens += row.CompletionInputTokens

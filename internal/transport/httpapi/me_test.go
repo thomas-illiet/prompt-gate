@@ -91,6 +91,71 @@ func TestParseUsageWindowRejectsInvalidWindow(t *testing.T) {
 	}
 }
 
+// TestParseDashboardBreakdownMetric verifies the public breakdown metric contract.
+func TestParseDashboardBreakdownMetric(t *testing.T) {
+	for _, test := range []struct {
+		path string
+		want proxy.DashboardBreakdownMetric
+	}{
+		{path: "/api/v1/me/dashboard/top-models", want: proxy.DashboardBreakdownTokens},
+		{path: "/api/v1/me/dashboard/top-models?metric=requests", want: proxy.DashboardBreakdownRequests},
+		{path: "/api/v1/me/dashboard/top-models?metric=tokens", want: proxy.DashboardBreakdownTokens},
+		{path: "/api/v1/me/dashboard/top-models?metric=cost", want: proxy.DashboardBreakdownCost},
+	} {
+		req := httptest.NewRequest(http.MethodGet, test.path, nil)
+		got, err := parseDashboardBreakdownMetric(req)
+		if err != nil || got != test.want {
+			t.Fatalf("parse %s: got %q want %q err=%v", test.path, got, test.want, err)
+		}
+	}
+	if _, err := parseDashboardBreakdownMetric(httptest.NewRequest(http.MethodGet, "/?metric=latency", nil)); err == nil {
+		t.Fatal("expected invalid dashboard metric")
+	}
+}
+
+// TestParseActivityUsageWindowAcceptsOnlyActivityAnnualWindow verifies 365d is
+// reserved for the annual activity endpoint.
+func TestParseActivityUsageWindowAcceptsOnlyActivityAnnualWindow(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/me/dashboard/activity?window=365d", nil)
+	window, err := parseActivityUsageWindow(req)
+	if err != nil || window != proxy.UsageWindow365Days {
+		t.Fatalf("parse annual activity window: got %q err=%v", window, err)
+	}
+	if _, err := parseUsageWindow(req); err == nil {
+		t.Fatal("expected generic dashboard parser to reject 365d")
+	}
+}
+
+// TestHandleCurrentUserDashboardOverviewReturnsComparison verifies the new
+// current-user endpoint is available to the shared limited/user boundary.
+func TestHandleCurrentUserDashboardOverviewReturnsComparison(t *testing.T) {
+	_, db := newHTTPGroupService(t)
+	if err := proxy.AutoMigrate(context.Background(), db); err != nil {
+		t.Fatalf("migrate proxy usage: %v", err)
+	}
+	profile := testUserProfile()
+	createHTTPUser(t, db, profile)
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/me/dashboard/overview?window=7d", nil)
+	req = req.WithContext(auth.ContextWithUser(context.Background(), profile))
+	recorder := httptest.NewRecorder()
+
+	server{proxyService: proxy.NewService(db)}.handleCurrentUserDashboardOverview(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", recorder.Code, recorder.Body.String())
+	}
+	var body proxy.DashboardOverviewResponse
+	if err := json.NewDecoder(recorder.Body).Decode(&body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if body.Window != proxy.UsageWindow7Days || body.Previous == nil || body.AverageDurationMs != nil {
+		t.Fatalf("unexpected overview response: %#v", body)
+	}
+	if body.CostCoverage == nil || body.CostCoverage.Status != proxy.CostCoverageComplete {
+		t.Fatalf("unexpected empty-period cost coverage: %#v", body.CostCoverage)
+	}
+}
+
 // TestHandleCurrentUserGroupsReturnsProfileSafeMemberships verifies handle current user groups returns profile safe memberships.
 func TestHandleCurrentUserGroupsReturnsProfileSafeMemberships(t *testing.T) {
 	groupService, db := newHTTPGroupService(t)

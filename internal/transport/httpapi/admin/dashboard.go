@@ -13,6 +13,13 @@ import (
 
 type adminDashboardLoader func(context.Context, proxy.UsageWindow, time.Time) (any, error)
 
+// HandleAdminDashboardOverview returns the organization cockpit overview.
+func (h *Handler) HandleAdminDashboardOverview(w http.ResponseWriter, r *http.Request) {
+	h.writeDashboardResponse(w, r, func(ctx context.Context, window proxy.UsageWindow, now time.Time) (any, error) {
+		return h.proxy.AdminDashboardOverview(ctx, window, now)
+	})
+}
+
 // HandleAdminDashboardTokens returns global token totals for one dashboard window.
 func (h *Handler) HandleAdminDashboardTokens(w http.ResponseWriter, r *http.Request) {
 	h.writeDashboardResponse(w, r, func(ctx context.Context, window proxy.UsageWindow, now time.Time) (any, error) {
@@ -43,22 +50,34 @@ func (h *Handler) HandleAdminDashboardActivity(w http.ResponseWriter, r *http.Re
 
 // HandleAdminDashboardTopModels returns global top model usage for one dashboard window.
 func (h *Handler) HandleAdminDashboardTopModels(w http.ResponseWriter, r *http.Request) {
+	metric, ok := dashboardBreakdownMetricRequest(w, r)
+	if !ok {
+		return
+	}
 	h.writeDashboardResponse(w, r, func(ctx context.Context, window proxy.UsageWindow, now time.Time) (any, error) {
-		return h.proxy.AdminDashboardTopModels(ctx, window, now)
+		return h.proxy.AdminDashboardTopModels(ctx, window, now, metric)
 	})
 }
 
 // HandleAdminDashboardTopProviderNames returns global top provider-name usage for one dashboard window.
 func (h *Handler) HandleAdminDashboardTopProviderNames(w http.ResponseWriter, r *http.Request) {
+	metric, ok := dashboardBreakdownMetricRequest(w, r)
+	if !ok {
+		return
+	}
 	h.writeDashboardResponse(w, r, func(ctx context.Context, window proxy.UsageWindow, now time.Time) (any, error) {
-		return h.proxy.AdminDashboardTopProviderNames(ctx, window, now)
+		return h.proxy.AdminDashboardTopProviderNames(ctx, window, now, metric)
 	})
 }
 
 // HandleAdminDashboardTopProviderTypes returns global top provider-type usage for one dashboard window.
 func (h *Handler) HandleAdminDashboardTopProviderTypes(w http.ResponseWriter, r *http.Request) {
+	metric, ok := dashboardBreakdownMetricRequest(w, r)
+	if !ok {
+		return
+	}
 	h.writeDashboardResponse(w, r, func(ctx context.Context, window proxy.UsageWindow, now time.Time) (any, error) {
-		return h.proxy.AdminDashboardTopProviderTypes(ctx, window, now)
+		return h.proxy.AdminDashboardTopProviderTypes(ctx, window, now, metric)
 	})
 }
 
@@ -69,10 +88,14 @@ func (h *Handler) HandleAdminDashboardAdoption(w http.ResponseWriter, r *http.Re
 	})
 }
 
-// HandleAdminDashboardTopIdentities returns top users and service accounts by global token volume.
+// HandleAdminDashboardTopIdentities returns top users and service accounts by the selected metric.
 func (h *Handler) HandleAdminDashboardTopIdentities(w http.ResponseWriter, r *http.Request) {
+	metric, ok := dashboardBreakdownMetricRequest(w, r)
+	if !ok {
+		return
+	}
 	h.writeDashboardResponse(w, r, func(ctx context.Context, window proxy.UsageWindow, now time.Time) (any, error) {
-		return h.proxy.AdminDashboardTopIdentities(ctx, window, now)
+		return h.proxy.AdminDashboardTopIdentities(ctx, window, now, metric)
 	})
 }
 
@@ -133,6 +156,29 @@ func parseDashboardWindow(r *http.Request) (proxy.UsageWindow, error) {
 	}
 }
 
+// dashboardBreakdownMetricRequest validates the optional breakdown ranking metric.
+func dashboardBreakdownMetricRequest(w http.ResponseWriter, r *http.Request) (proxy.DashboardBreakdownMetric, bool) {
+	metric, err := parseDashboardBreakdownMetric(r)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_dashboard_metric"})
+		return "", false
+	}
+	return metric, true
+}
+
+func parseDashboardBreakdownMetric(r *http.Request) (proxy.DashboardBreakdownMetric, error) {
+	metric := proxy.DashboardBreakdownMetric(strings.ToLower(strings.TrimSpace(r.URL.Query().Get("metric"))))
+	if metric == "" {
+		return proxy.DashboardBreakdownTokens, nil
+	}
+	switch metric {
+	case proxy.DashboardBreakdownRequests, proxy.DashboardBreakdownTokens, proxy.DashboardBreakdownCost:
+		return metric, nil
+	default:
+		return "", proxy.ErrInvalidDashboardMetric
+	}
+}
+
 // writeDashboardError writes a dashboard error response and reports whether an error was handled.
 func writeDashboardError(w http.ResponseWriter, err error) bool {
 	if err == nil {
@@ -140,6 +186,10 @@ func writeDashboardError(w http.ResponseWriter, err error) bool {
 	}
 	if errors.Is(err, proxy.ErrInvalidUsageWindow) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_usage_window"})
+		return true
+	}
+	if errors.Is(err, proxy.ErrInvalidDashboardMetric) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_dashboard_metric"})
 		return true
 	}
 	writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})

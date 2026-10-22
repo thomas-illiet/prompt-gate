@@ -1,6 +1,7 @@
 import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 import { FetchError } from 'ofetch'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { nextTick, shallowRef } from 'vue'
 
 import {
   buildProfileTokenUsageSummary,
@@ -81,7 +82,8 @@ describe('useProfileTokenUsage', () => {
     await vi.waitFor(() => expect(profileUsage.loading.value).toBe(false))
 
     expect(apiFetch).toHaveBeenCalledWith(
-      '/api/v1/me/dashboard/activity?window=all',
+      '/api/v1/me/dashboard/activity?window=365d',
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
     )
     expect(profileUsage.summary.value.days).toHaveLength(365)
     expect(profileUsage.summary.value.startsAt).toBe('2025-06-04')
@@ -112,9 +114,22 @@ describe('useProfileTokenUsage', () => {
     expect(summary.totalTokens).toBe(39)
   })
 
+  it('does not load annual activity before the section is expanded', async () => {
+    const enabled = shallowRef(false)
+    apiFetch.mockResolvedValueOnce(activityResponse([]))
+
+    const profileUsage = useProfileTokenUsage(enabled)
+    await nextTick()
+    expect(apiFetch).not.toHaveBeenCalled()
+
+    enabled.value = true
+    await vi.waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(1))
+    await vi.waitFor(() => expect(profileUsage.loading.value).toBe(false))
+  })
+
   it('maps API errors to readable messages', () => {
     expect(toProfileTokenUsageErrorMessage(apiError('invalid_usage_window'))).toBe(
-      'Usage window must be 7 days, 30 days, or all time.',
+      'Usage window must be 7 days, 30 days, 365 days, or all time.',
     )
   })
 })

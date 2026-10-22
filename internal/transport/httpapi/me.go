@@ -57,6 +57,21 @@ func (s server) handleCurrentUserDashboardTokens(w http.ResponseWriter, r *http.
 	writeJSON(w, http.StatusOK, response)
 }
 
+// handleCurrentUserDashboardOverview returns the cockpit overview for the
+// authenticated user, including a comparable previous period when available.
+func (s server) handleCurrentUserDashboardOverview(w http.ResponseWriter, r *http.Request) {
+	user, window, ok := s.currentUserDashboardRequest(w, r)
+	if !ok {
+		return
+	}
+
+	response, err := s.proxyService.CurrentUserDashboardOverview(r.Context(), user.ID, window, time.Now().UTC())
+	if writeDashboardError(w, err) {
+		return
+	}
+	writeJSON(w, http.StatusOK, response)
+}
+
 // handleCurrentUserDashboardMessages returns request/message totals for one dashboard window.
 func (s server) handleCurrentUserDashboardMessages(w http.ResponseWriter, r *http.Request) {
 	user, window, ok := s.currentUserDashboardRequest(w, r)
@@ -87,7 +102,7 @@ func (s server) handleCurrentUserDashboardDuration(w http.ResponseWriter, r *htt
 
 // handleCurrentUserDashboardActivity returns daily dashboard activity for one window.
 func (s server) handleCurrentUserDashboardActivity(w http.ResponseWriter, r *http.Request) {
-	user, window, ok := s.currentUserDashboardRequest(w, r)
+	user, window, ok := s.currentUserDashboardActivityRequest(w, r)
 	if !ok {
 		return
 	}
@@ -105,8 +120,12 @@ func (s server) handleCurrentUserDashboardTopModels(w http.ResponseWriter, r *ht
 	if !ok {
 		return
 	}
+	metric, ok := dashboardBreakdownMetricRequest(w, r)
+	if !ok {
+		return
+	}
 
-	response, err := s.proxyService.DashboardTopModels(r.Context(), user.ID, window, time.Now().UTC())
+	response, err := s.proxyService.DashboardTopModels(r.Context(), user.ID, window, time.Now().UTC(), metric)
 	if writeDashboardError(w, err) {
 		return
 	}
@@ -119,8 +138,12 @@ func (s server) handleCurrentUserDashboardTopProviderNames(w http.ResponseWriter
 	if !ok {
 		return
 	}
+	metric, ok := dashboardBreakdownMetricRequest(w, r)
+	if !ok {
+		return
+	}
 
-	response, err := s.proxyService.DashboardTopProviderNames(r.Context(), user.ID, window, time.Now().UTC())
+	response, err := s.proxyService.DashboardTopProviderNames(r.Context(), user.ID, window, time.Now().UTC(), metric)
 	if writeDashboardError(w, err) {
 		return
 	}
@@ -133,8 +156,12 @@ func (s server) handleCurrentUserDashboardTopProviderTypes(w http.ResponseWriter
 	if !ok {
 		return
 	}
+	metric, ok := dashboardBreakdownMetricRequest(w, r)
+	if !ok {
+		return
+	}
 
-	response, err := s.proxyService.DashboardTopProviderTypes(r.Context(), user.ID, window, time.Now().UTC())
+	response, err := s.proxyService.DashboardTopProviderTypes(r.Context(), user.ID, window, time.Now().UTC(), metric)
 	if writeDashboardError(w, err) {
 		return
 	}
@@ -228,6 +255,26 @@ func (s server) currentUserDashboardRequest(w http.ResponseWriter, r *http.Reque
 	return user, window, true
 }
 
+// currentUserDashboardActivityRequest accepts the annual window reserved for
+// the lazy-loaded personal activity section.
+func (s server) currentUserDashboardActivityRequest(w http.ResponseWriter, r *http.Request) (auth.UserProfile, proxy.UsageWindow, bool) {
+	user, ok := auth.UserFromContext(r.Context())
+	if !ok {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "missing user in context"})
+		return auth.UserProfile{}, "", false
+	}
+	window, err := parseActivityUsageWindow(r)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_usage_window"})
+		return auth.UserProfile{}, "", false
+	}
+	if s.proxyService == nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "proxy usage service unavailable"})
+		return auth.UserProfile{}, "", false
+	}
+	return user, window, true
+}
+
 // writeDashboardError writes a current-user dashboard error response and reports whether it handled an error.
 func writeDashboardError(w http.ResponseWriter, err error) bool {
 	if err == nil {
@@ -237,8 +284,35 @@ func writeDashboardError(w http.ResponseWriter, err error) bool {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_usage_window"})
 		return true
 	}
+	if errors.Is(err, proxy.ErrInvalidDashboardMetric) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_dashboard_metric"})
+		return true
+	}
 	writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	return true
+}
+
+// dashboardBreakdownMetricRequest validates the optional breakdown ranking metric.
+func dashboardBreakdownMetricRequest(w http.ResponseWriter, r *http.Request) (proxy.DashboardBreakdownMetric, bool) {
+	metric, err := parseDashboardBreakdownMetric(r)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_dashboard_metric"})
+		return "", false
+	}
+	return metric, true
+}
+
+func parseDashboardBreakdownMetric(r *http.Request) (proxy.DashboardBreakdownMetric, error) {
+	metric := proxy.DashboardBreakdownMetric(strings.ToLower(strings.TrimSpace(r.URL.Query().Get("metric"))))
+	if metric == "" {
+		return proxy.DashboardBreakdownTokens, nil
+	}
+	switch metric {
+	case proxy.DashboardBreakdownRequests, proxy.DashboardBreakdownTokens, proxy.DashboardBreakdownCost:
+		return metric, nil
+	default:
+		return "", proxy.ErrInvalidDashboardMetric
+	}
 }
 
 // parseUsageWindow reads the dashboard usage window from the query string.
@@ -268,6 +342,15 @@ func parseUsageWindow(r *http.Request) (proxy.UsageWindow, error) {
 	default:
 		return "", proxy.ErrInvalidUsageWindow
 	}
+}
+
+// parseActivityUsageWindow additionally accepts the bounded annual view.
+func parseActivityUsageWindow(r *http.Request) (proxy.UsageWindow, error) {
+	value := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("window")))
+	if proxy.UsageWindow(value) == proxy.UsageWindow365Days {
+		return proxy.UsageWindow365Days, nil
+	}
+	return parseUsageWindow(r)
 }
 
 // parseUsageDays reads the allowed usage window from the query string.

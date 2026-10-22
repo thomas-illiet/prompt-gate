@@ -54,8 +54,11 @@ func TestDashboardOverviewAggregatesScopedUsage(t *testing.T) {
 	if recent.TotalDurationMs != 90000 {
 		t.Fatalf("unexpected recent duration: %d", recent.TotalDurationMs)
 	}
+	if recent.AverageDurationMs == nil || *recent.AverageDurationMs != 90000 {
+		t.Fatalf("unexpected recent average duration: %#v", recent.AverageDurationMs)
+	}
 	recentDay := recent.Daily[len(recent.Daily)-2]
-	if recentDay.Date != "2026-01-29" || recentDay.Requests != 1 || recentDay.TotalTokens != 31 {
+	if recentDay.Date != "2026-01-29" || recentDay.Requests != 1 || recentDay.ToolCalls != 1 || recentDay.TotalTokens != 31 {
 		t.Fatalf("unexpected recent daily bucket: %#v", recentDay)
 	}
 	if recent.Totals.EstimatedCost == nil || recentDay.EstimatedCost == nil {
@@ -114,6 +117,173 @@ func TestDashboardOverviewAllTimeWithoutActivity(t *testing.T) {
 	}
 	if overview.Totals.Requests != 0 || overview.Totals.TotalTokens != 0 || overview.Totals.EstimatedCost != nil || overview.TotalDurationMs != 0 {
 		t.Fatalf("unexpected empty overview totals: %#v", overview)
+	}
+	if overview.AverageDurationMs != nil {
+		t.Fatalf("expected empty average duration to be null, got %#v", overview.AverageDurationMs)
+	}
+}
+
+// TestCurrentUserDashboardOverviewIncludesPreviousCalendarPeriod verifies that
+// 7-day windows compare against the preceding seven full calendar days.
+func TestCurrentUserDashboardOverviewIncludesPreviousCalendarPeriod(t *testing.T) {
+	db, service := newProxyServiceTestDB(t)
+	now := time.Date(2026, 1, 30, 15, 0, 0, 0, time.UTC)
+	userID := "11111111-1111-1111-1111-111111111111"
+	seedProxyInteraction(t, db, userID, "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "gpt-current", time.Date(2026, 1, 29, 9, 0, 0, 0, time.UTC), 10, 20)
+	seedProxyInteraction(t, db, userID, "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", "gpt-previous", time.Date(2026, 1, 20, 9, 0, 0, 0, time.UTC), 4, 6)
+	mustAggregateUsageKPIs(t, service)
+
+	overview, err := service.CurrentUserDashboardOverview(context.Background(), userID, UsageWindow7Days, now)
+	if err != nil {
+		t.Fatalf("current user dashboard overview: %v", err)
+	}
+	if overview.Totals.Requests != 1 || overview.Previous == nil || overview.Previous.Totals.Requests != 1 {
+		t.Fatalf("unexpected current/previous totals: %#v", overview)
+	}
+	if got, want := overview.Previous.StartsAt, time.Date(2026, 1, 17, 0, 0, 0, 0, time.UTC); !got.Equal(want) {
+		t.Fatalf("previous startsAt: got %s want %s", got, want)
+	}
+	if got, want := overview.Previous.EndsAt, time.Date(2026, 1, 23, 23, 59, 59, int(time.Second-time.Nanosecond), time.UTC); !got.Equal(want) {
+		t.Fatalf("previous endsAt: got %s want %s", got, want)
+	}
+	if overview.CostCoverage == nil || overview.CostCoverage.Status != CostCoverageComplete {
+		t.Fatalf("expected complete current cost coverage, got %#v", overview.CostCoverage)
+	}
+	if overview.Previous.CostCoverage == nil || overview.Previous.CostCoverage.Status != CostCoverageComplete {
+		t.Fatalf("expected complete previous cost coverage, got %#v", overview.Previous.CostCoverage)
+	}
+}
+
+// TestDashboardOverviewAverageUsesCompletedRequests verifies an in-flight
+// request cannot lower the completed-response duration average.
+func TestDashboardOverviewAverageUsesCompletedRequests(t *testing.T) {
+	db, service := newProxyServiceTestDB(t)
+	now := time.Date(2026, 1, 30, 15, 0, 0, 0, time.UTC)
+	userID := "11111111-1111-1111-1111-111111111111"
+	completedID := "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+	inFlightID := "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+	seedProxyInteraction(t, db, userID, completedID, "gpt-completed", now.Add(-2*time.Hour), 10, 20)
+	seedProxyInteraction(t, db, userID, inFlightID, "gpt-streaming", now.Add(-time.Hour), 10, 20)
+	if err := db.Model(&Interception{}).Where("id = ?", inFlightID).Update("ended_at", nil).Error; err != nil {
+		t.Fatalf("mark request in flight: %v", err)
+	}
+	mustAggregateUsageKPIs(t, service)
+
+	overview, err := service.CurrentUserDashboardOverview(context.Background(), userID, UsageWindow7Days, now)
+	if err != nil {
+		t.Fatalf("dashboard overview: %v", err)
+	}
+	if overview.Totals.Requests != 2 || overview.TotalDurationMs != 90000 {
+		t.Fatalf("unexpected duration totals: %#v", overview)
+	}
+	if overview.AverageDurationMs == nil || *overview.AverageDurationMs != 90000 {
+		t.Fatalf("expected completed-request average 90000ms, got %#v", overview.AverageDurationMs)
+	}
+}
+
+// TestCurrentUserDashboardOverviewOmitsComparisonForAllTime verifies all-time
+// usage has no arbitrary comparison period.
+func TestCurrentUserDashboardOverviewOmitsComparisonForAllTime(t *testing.T) {
+	_, service := newProxyServiceTestDB(t)
+	overview, err := service.CurrentUserDashboardOverview(context.Background(), "11111111-1111-1111-1111-111111111111", UsageWindowAll, time.Date(2026, 1, 30, 15, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("all-time overview: %v", err)
+	}
+	if overview.Previous != nil {
+		t.Fatalf("expected no all-time comparison, got %#v", overview.Previous)
+	}
+	if overview.AverageDurationMs != nil {
+		t.Fatalf("expected null average without requests, got %#v", overview.AverageDurationMs)
+	}
+}
+
+// TestDashboardOverviewCostCoverageDistinguishesPartialAndUnavailable verifies
+// retained raw usage never turns missing estimates into a displayed zero.
+func TestDashboardOverviewCostCoverageDistinguishesPartialAndUnavailable(t *testing.T) {
+	db, service := newProxyServiceTestDB(t)
+	now := time.Date(2026, 1, 30, 15, 0, 0, 0, time.UTC)
+	userID := "11111111-1111-1111-1111-111111111111"
+	oldID := "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+	recentID := "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+	seedProxyInteraction(t, db, userID, oldID, "gpt-old", time.Date(2025, 10, 1, 9, 0, 0, 0, time.UTC), 100, 200)
+	seedProxyInteraction(t, db, userID, recentID, "gpt-current", time.Date(2026, 1, 29, 9, 0, 0, 0, time.UTC), 10, 20)
+	mustAggregateUsageKPIs(t, service)
+	if err := db.Delete(&Interception{}, "id = ?", oldID).Error; err != nil {
+		t.Fatalf("remove expired raw usage: %v", err)
+	}
+
+	partial, err := service.CurrentUserDashboardOverview(context.Background(), userID, UsageWindowAll, now)
+	if err != nil {
+		t.Fatalf("partial overview: %v", err)
+	}
+	if partial.CostCoverage == nil || partial.CostCoverage.Status != CostCoveragePartial || partial.CostCoverage.StartsAt == nil {
+		t.Fatalf("expected partial cost coverage, got %#v", partial.CostCoverage)
+	}
+	if partial.Totals.EstimatedCost == nil || partial.Totals.EstimatedCost.TotalUSD == 0 {
+		t.Fatalf("expected retained partial estimate, got %#v", partial.Totals.EstimatedCost)
+	}
+
+	if err := db.Delete(&Interception{}, "id = ?", recentID).Error; err != nil {
+		t.Fatalf("remove all raw usage: %v", err)
+	}
+	unavailable, err := service.CurrentUserDashboardOverview(context.Background(), userID, UsageWindowAll, now)
+	if err != nil {
+		t.Fatalf("unavailable overview: %v", err)
+	}
+	if unavailable.CostCoverage == nil || unavailable.CostCoverage.Status != CostCoverageUnavailable {
+		t.Fatalf("expected unavailable cost coverage, got %#v", unavailable.CostCoverage)
+	}
+	if unavailable.Totals.EstimatedCost != nil {
+		t.Fatalf("unavailable estimate must be absent, got %#v", unavailable.Totals.EstimatedCost)
+	}
+}
+
+// TestDashboardOverviewDoesNotPriceRequestsWithoutUsage verifies missing token
+// telemetry is not presented as an exact zero-dollar estimate.
+func TestDashboardOverviewDoesNotPriceRequestsWithoutUsage(t *testing.T) {
+	db, service := newProxyServiceTestDB(t)
+	now := time.Date(2026, 1, 30, 15, 0, 0, 0, time.UTC)
+	userID := "11111111-1111-1111-1111-111111111111"
+	interceptionID := "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+	seedProxyInteraction(t, db, userID, interceptionID, "gpt-missing-usage", now.Add(-time.Hour), 10, 20)
+	if err := db.Where("interception_id = ?", interceptionID).Delete(&TokenUsage{}).Error; err != nil {
+		t.Fatalf("remove token telemetry: %v", err)
+	}
+	mustAggregateUsageKPIs(t, service)
+
+	overview, err := service.CurrentUserDashboardOverview(context.Background(), userID, UsageWindow7Days, now)
+	if err != nil {
+		t.Fatalf("dashboard overview: %v", err)
+	}
+	if overview.Totals.Requests != 1 || overview.Totals.TotalTokens != 0 {
+		t.Fatalf("unexpected request totals: %#v", overview.Totals)
+	}
+	if overview.CostCoverage == nil || overview.CostCoverage.Status != CostCoverageUnavailable {
+		t.Fatalf("expected unavailable cost coverage, got %#v", overview.CostCoverage)
+	}
+	if overview.Totals.EstimatedCost != nil {
+		t.Fatalf("missing token telemetry must not become a zero estimate: %#v", overview.Totals.EstimatedCost)
+	}
+}
+
+// TestDashboardActivityAcceptsAnnualWindow verifies the annual heatmap is
+// bounded to exactly 365 daily buckets.
+func TestDashboardActivityAcceptsAnnualWindow(t *testing.T) {
+	db, service := newProxyServiceTestDB(t)
+	now := time.Date(2026, 1, 30, 15, 0, 0, 0, time.UTC)
+	userID := "11111111-1111-1111-1111-111111111111"
+	seedProxyInteraction(t, db, userID, "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "gpt-5", time.Date(2025, 1, 31, 9, 0, 0, 0, time.UTC), 1, 1)
+	mustAggregateUsageKPIs(t, service)
+
+	activity, err := service.DashboardActivity(context.Background(), userID, UsageWindow365Days, now)
+	if err != nil {
+		t.Fatalf("annual dashboard activity: %v", err)
+	}
+	if activity.Window != UsageWindow365Days || len(activity.Daily) != 365 || activity.Daily[0].Date != "2025-01-31" {
+		t.Fatalf("unexpected annual activity bounds: %#v", activity)
+	}
+	if activity.Daily[0].Requests != 1 {
+		t.Fatalf("expected first annual day activity, got %#v", activity.Daily[0])
 	}
 }
 

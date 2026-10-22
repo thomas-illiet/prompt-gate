@@ -92,6 +92,17 @@ describe('ProfileTokenHeatmap', () => {
       '4',
     ])
     expect(cells[4]?.attributes('title')).toContain('100 tokens')
-    expect(cells[4]?.attributes('aria-label')).toContain('1 message')
+    expect(cells[4]?.attributes('aria-label')).toContain('1 API request')
+  })
+
+  it('exposes the horizontally scrollable heatmap as a keyboard region', () => {
+    const wrapper = mountHeatmap(profileDays('2026-01-01', () => 1, 7))
+    const scrollRegion = wrapper.get('.profile-token-heatmap__scroll')
+
+    expect(scrollRegion.attributes('role')).toBe('region')
+    expect(scrollRegion.attributes('tabindex')).toBe('0')
+    expect(scrollRegion.attributes('aria-label')).toBe(
+      'Annual token activity heatmap',
+    )
   })
 })

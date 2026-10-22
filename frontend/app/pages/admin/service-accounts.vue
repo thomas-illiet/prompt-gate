@@ -237,6 +237,25 @@ async function confirmToggleStatus() {
       </v-col>
 
       <v-col cols="12">
+        <AppFilterCard
+          class="mb-4"
+          title="Service account filter"
+          subtitle="Search by name, identifier, or account ID."
+        >
+          <v-text-field
+            :model-value="adminServiceAccounts.search.value"
+            aria-label="Search service accounts"
+            clearable
+            density="compact"
+            hide-details
+            label="Search service accounts"
+            placeholder="Name, identifier, or account ID"
+            prepend-inner-icon="mdi-magnify"
+            variant="outlined"
+            @update:model-value="adminServiceAccounts.setSearch(($event as string | null) ?? '')"
+          />
+        </AppFilterCard>
+
         <v-alert
           v-if="adminServiceAccounts.listError.value"
           type="warning"

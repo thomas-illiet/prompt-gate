@@ -5,88 +5,30 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import ProfilePage from '../../app/pages/profile.vue'
 import { useAuthStore } from '../../app/stores/auth'
-import type { ProfileTokenUsageSummary } from '../../app/composables/useProfileTokenUsage'
 
-const {
-  reloadProfileQuotaMock,
-  reloadProfileUsageMock,
-  useProfileGroupsMock,
-  useProfileQuotaMock,
-  useProfileTokenUsageMock,
-} = vi.hoisted(() => {
-  const reloadProfileQuotaMock = vi.fn()
-  const reloadProfileUsageMock = vi.fn()
-
-  return {
-    reloadProfileQuotaMock,
-    reloadProfileUsageMock,
-    useProfileGroupsMock: vi.fn(() => ({
-      error: { value: null },
-      groups: { value: [] },
-      loading: { value: false },
-    })),
-    useProfileQuotaMock: vi.fn(() => ({
-      error: { value: null },
-      loading: { value: false },
-      quota: { value: null },
-      reload: reloadProfileQuotaMock,
-    })),
-    useProfileTokenUsageMock: vi.fn(() => ({
-      error: { value: null },
-      loading: { value: false },
-      reload: reloadProfileUsageMock,
-      summary: {
-        value: {
-          activeDays: 1,
-          currentStreakDays: 1,
-          days: [],
-          endsAt: '2026-06-03',
-          longestStreakDays: 1,
-          maxTokens: 42,
-          peakDay: null,
-          startsAt: '2025-06-04',
-          totalTokens: 42,
-        } satisfies ProfileTokenUsageSummary,
-      },
-    })),
-  }
-})
+const { useProfileGroupsMock } = vi.hoisted(() => ({
+  useProfileGroupsMock: vi.fn(() => ({
+    error: { value: null },
+    groups: { value: [] },
+    loading: { value: false },
+  })),
+}))
 
 mockNuxtImport('useProfileGroups', () => useProfileGroupsMock)
-mockNuxtImport('useProfileQuota', () => useProfileQuotaMock)
-mockNuxtImport('useProfileTokenUsage', () => useProfileTokenUsageMock)
 
 function mountPage() {
   return mount(ProfilePage, {
     global: {
       stubs: {
         ProfileGroupsCard: {
+          props: ['groups', 'loading'],
           template: '<div data-test="groups-card" />',
         },
         ProfileIdentityCard: {
-          template: '<div data-test="identity-card" />',
+          props: ['roleLabel'],
+          template: '<div data-test="identity-card" :data-role="roleLabel" />',
         },
-        ProfileInfoCard: {
-          template: '<section><slot /></section>',
-        },
-        ProfileQuickActions: {
-          props: ['actions'],
-          emits: ['logout'],
-          template:
-            '<div data-test="quick-actions">{{ actions.map((action) => action.title).join(",") }}</div>',
-        },
-        ProfileQuotaSection: {
-          props: ['error', 'loading', 'quota'],
-          emits: ['retry'],
-          template:
-            '<div data-test="profile-quota-section" :data-loading="loading" @click="$emit(\'retry\')" />',
-        },
-        ProfileTokenUsageSection: {
-          props: ['error', 'loading', 'summary'],
-          emits: ['retry'],
-          template:
-            '<div data-test="profile-token-section" :data-loading="loading" @click="$emit(\'retry\')">{{ summary.totalTokens }}</div>',
-        },
+        ProfileInfoCard: { template: '<section><slot /></section>' },
         VAvatar: { template: '<span><slot /></span>' },
         VCol: { template: '<div><slot /></div>' },
         VContainer: { template: '<div><slot /></div>' },
@@ -111,38 +53,29 @@ describe('ProfilePage', () => {
       role: 'user',
       sub: 'oidc-subject',
     }
-
-    reloadProfileQuotaMock.mockClear()
-    reloadProfileUsageMock.mockClear()
     useProfileGroupsMock.mockClear()
-    useProfileQuotaMock.mockClear()
-    useProfileTokenUsageMock.mockClear()
   })
 
-  it('mounts the profile token usage section between existing profile cards', async () => {
+  it('keeps the profile focused on identity, groups, and technical access details', () => {
     const wrapper = mountPage()
 
     expect(wrapper.find('[data-test="identity-card"]').exists()).toBe(true)
-    expect(wrapper.find('[data-test="quick-actions"]').exists()).toBe(true)
-    expect(wrapper.find('[data-test="profile-quota-section"]').exists()).toBe(
-      true,
-    )
-    expect(wrapper.find('[data-test="profile-token-section"]').exists()).toBe(
-      true,
-    )
-    expect(wrapper.get('[data-test="profile-token-section"]').text()).toBe('42')
-
-    await wrapper.get('[data-test="profile-token-section"]').trigger('click')
-
-    expect(reloadProfileUsageMock).toHaveBeenCalledTimes(1)
+    expect(wrapper.find('[data-test="groups-card"]').exists()).toBe(true)
+    expect(wrapper.text()).toContain('User ID')
+    expect(wrapper.text()).toContain('OIDC subject')
+    expect(wrapper.text()).not.toContain('Subscription quota')
+    expect(wrapper.text()).not.toContain('Token activity')
+    expect(wrapper.find('[data-test="quick-actions"]').exists()).toBe(false)
   })
 
-  it('hides virtual keys and setup actions for limited users', () => {
+  it('preserves the limited role in the identity card', () => {
     const authStore = useAuthStore()
     authStore.user = { ...authStore.user!, role: 'limited' }
 
     const wrapper = mountPage()
 
-    expect(wrapper.get('[data-test="quick-actions"]').text()).toBe('Dashboard')
+    expect(wrapper.get('[data-test="identity-card"]').attributes('data-role')).toBe(
+      'Limited',
+    )
   })
 })

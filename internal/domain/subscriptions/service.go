@@ -344,6 +344,20 @@ func (s *Service) UpsertQuotaState(ctx context.Context, userID string, status Qu
 	}).Create(&state).Error
 }
 
+// PruneQuotaStates removes persisted quota projections for identities that are
+// no longer present in Redis' rolling seven-day active set. This prevents a
+// reset or superseded quota from remaining visible on the admin dashboard.
+func (s *Service) PruneQuotaStates(ctx context.Context, activeUserIDs []string) error {
+	query := s.db.WithContext(ctx).Where("user_id IS NOT NULL")
+	if len(activeUserIDs) > 0 {
+		query = query.Where("user_id NOT IN ?", activeUserIDs)
+	}
+	if err := query.Delete(&SubscriptionQuotaState{}).Error; err != nil {
+		return fmt.Errorf("prune subscription quota states: %w", err)
+	}
+	return nil
+}
+
 func (s *Service) findPlan(ctx context.Context, tx *gorm.DB, id string) (SubscriptionPlan, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {

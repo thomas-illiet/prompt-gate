@@ -11,8 +11,9 @@ import (
 )
 
 var (
-	ErrInvalidUsageWindow = errors.New("usage window must be 7 days, 30 days, or all time")
-	ErrInvalidSort        = errors.New("invalid_sort")
+	ErrInvalidUsageWindow     = errors.New("usage window must be 7 days, 30 days, or all time")
+	ErrInvalidSort            = errors.New("invalid_sort")
+	ErrInvalidDashboardMetric = errors.New("dashboard metric must be requests, tokens, or cost")
 )
 
 type Service struct {

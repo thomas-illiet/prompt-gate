@@ -23,12 +23,14 @@ vi.mock('../../app/utils/users-csv', async (importOriginal) => ({
   downloadUsersCsv: downloadUsersCsvMock,
 }))
 
-const { apiFetch, useApiFetchMock, useRouteMock } = vi.hoisted(() => {
+const { apiFetch, routeQuery, useApiFetchMock, useRouteMock } = vi.hoisted(() => {
   const apiFetch = vi.fn()
+  const routeQuery: Record<string, string> = {}
   return {
     apiFetch,
+    routeQuery,
     useApiFetchMock: vi.fn(() => apiFetch),
-    useRouteMock: vi.fn(() => ({ fullPath: '/admin/users' })),
+    useRouteMock: vi.fn(() => ({ fullPath: '/admin/users', query: routeQuery })),
   }
 })
 
@@ -126,8 +128,22 @@ describe('useAdminUsers', () => {
     apiFetch.mockReset()
     useApiFetchMock.mockClear()
     useRouteMock.mockClear()
+    for (const key of Object.keys(routeQuery)) Reflect.deleteProperty(routeQuery, key)
     downloadUsersCsvMock.mockReset()
     setActivePinia(createPinia())
+  })
+
+  it('initializes the list search from a quota-risk account link', async () => {
+    routeQuery.search = '00000000-0000-0000-0000-000000000001'
+    apiFetch.mockResolvedValueOnce(userResponse([user]))
+
+    const adminUsers = useAdminUsers()
+    await vi.waitFor(() => expect(adminUsers.loading.value).toBe(false))
+
+    expect(adminUsers.search.value).toBe(routeQuery.search)
+    expect(apiFetch.mock.calls[0]?.[0]).toContain(
+      `search=${routeQuery.search}`,
+    )
   })
 
   it('loads admin users on creation and supports reload', async () => {

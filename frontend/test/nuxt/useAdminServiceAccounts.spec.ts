@@ -17,15 +17,19 @@ import type {
   TokenResponse,
 } from '../../app/types/service-accounts'
 
-const { apiFetch, useApiFetchMock } = vi.hoisted(() => {
+const { apiFetch, routeQuery, useApiFetchMock, useRouteMock } = vi.hoisted(() => {
   const apiFetch = vi.fn()
+  const routeQuery: Record<string, string> = {}
   return {
     apiFetch,
+    routeQuery,
     useApiFetchMock: vi.fn(() => apiFetch),
+    useRouteMock: vi.fn(() => ({ query: routeQuery })),
   }
 })
 
 mockNuxtImport('useApiFetch', () => useApiFetchMock)
+mockNuxtImport('useRoute', () => useRouteMock)
 
 function apiError(code: string) {
   return Object.assign(Object.create(FetchError.prototype), {
@@ -102,7 +106,22 @@ describe('useAdminServiceAccounts', () => {
   beforeEach(() => {
     apiFetch.mockReset()
     useApiFetchMock.mockClear()
+    useRouteMock.mockClear()
+    for (const key of Object.keys(routeQuery)) Reflect.deleteProperty(routeQuery, key)
     setActivePinia(createPinia())
+  })
+
+  it('initializes search from a filtered quota-risk link', async () => {
+    routeQuery.search = account.id
+    apiFetch.mockResolvedValueOnce(accountResponse([account]))
+
+    const adminServiceAccounts = useAdminServiceAccounts()
+    await vi.waitFor(() =>
+      expect(adminServiceAccounts.loading.value).toBe(false),
+    )
+
+    expect(adminServiceAccounts.search.value).toBe(account.id)
+    expect(apiFetch.mock.calls[0]?.[0]).toContain(`search=${account.id}`)
   })
 
   it('loads service accounts on creation and supports reload', async () => {

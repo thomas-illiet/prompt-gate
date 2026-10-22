@@ -8,6 +8,7 @@ export type QueryListSortDir = 'asc' | 'desc'
 interface QueryListOptions<TItem> {
   debounceMs?: number
   fetch: (queryString: string) => Promise<QueryListResponse<TItem>>
+  initialSearch?: string
   initialSortBy?: string
   initialSortDir?: QueryListSortDir
   params?: () => Record<string, number | string | null | undefined>
@@ -23,8 +24,8 @@ export function useQueryList<TItem>(options: QueryListOptions<TItem>) {
   const total = shallowRef(0)
   const page = shallowRef(1)
   const pageSize = shallowRef(10)
-  const search = shallowRef('')
-  const debouncedSearch = shallowRef('')
+  const search = shallowRef(options.initialSearch ?? '')
+  const debouncedSearch = shallowRef(options.initialSearch ?? '')
   const sortBy = shallowRef(options.initialSortBy ?? 'createdAt')
   const sortDir = shallowRef<QueryListSortDir>(options.initialSortDir ?? 'desc')
   const loading = shallowRef(false)

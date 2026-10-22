@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
 
-import { Notify } from '~/stores/notification'
 import { appRoleColor, appRoleLabel, isBlockedUser } from '~/utils/auth'
 import { formatDateTime } from '~/utils/formatters'
 
@@ -13,8 +12,6 @@ definePageMeta({
 const authStore = useAuthStore()
 const { user } = storeToRefs(authStore)
 const profileGroups = useProfileGroups()
-const profileQuota = useProfileQuota()
-const profileTokenUsage = useProfileTokenUsage()
 
 const displayName = computed(
   () =>
@@ -61,41 +58,6 @@ const technicalDetails = computed(() => [
   },
 ])
 
-const quickActions = computed(() => {
-  const actions = [
-    {
-      icon: 'mdi-monitor-dashboard',
-      title: 'Dashboard',
-      to: '/dashboard',
-    },
-  ]
-
-  if (user.value?.role !== 'limited') {
-    actions.push(
-      {
-        icon: 'mdi-key-outline',
-        title: 'Virtual keys',
-        to: '/tokens',
-      },
-      {
-        icon: 'mdi-help-circle-outline',
-        title: 'Setup guide',
-        to: '/help',
-      },
-    )
-  }
-
-  return actions
-})
-
-// logout signs the current user out through the auth store.
-async function logout() {
-  try {
-    await authStore.logout('/login')
-  } catch (error) {
-    Notify.error(error)
-  }
-}
 </script>
 
 <template>
@@ -111,7 +73,7 @@ async function logout() {
     </div>
 
     <v-row>
-      <v-col cols="12" lg="8">
+      <v-col cols="12">
         <ProfileIdentityCard
           :display-email="displayEmail"
           :display-name="displayName"
@@ -122,28 +84,6 @@ async function logout() {
           :role-label="displayRole"
           :status-color="statusColor"
           :status-label="statusLabel"
-        />
-      </v-col>
-
-      <v-col cols="12" lg="4">
-        <ProfileQuickActions :actions="quickActions" @logout="logout" />
-      </v-col>
-
-      <v-col cols="12">
-        <ProfileQuotaSection
-          :error="profileQuota.error.value"
-          :loading="profileQuota.loading.value"
-          :quota="profileQuota.quota.value"
-          @retry="profileQuota.reload"
-        />
-      </v-col>
-
-      <v-col cols="12">
-        <ProfileTokenUsageSection
-          :error="profileTokenUsage.error.value"
-          :loading="profileTokenUsage.loading.value"
-          :summary="profileTokenUsage.summary.value"
-          @retry="profileTokenUsage.reload"
         />
       </v-col>
 

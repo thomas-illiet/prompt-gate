@@ -46,6 +46,7 @@ export function toAdminServiceAccountErrorMessage(error: unknown) {
 export function useAdminServiceAccounts() {
   const apiFetch = useApiFetch()
   const apiJson = useApiJson()
+  const route = useRoute()
 
   const tokens = shallowRef<TokenResponse[]>([])
   const tokenLoading = shallowRef(false)
@@ -72,8 +73,17 @@ export function useAdminServiceAccounts() {
       ),
     initialSortBy: 'createdAt',
     initialSortDir: 'desc',
+    initialSearch: routeQueryValue(route.query?.search),
     toErrorMessage: toAdminServiceAccountErrorMessage,
   })
+
+  watch(
+    () => route.query?.search,
+    (value) => {
+      const search = routeQueryValue(value)
+      if (search !== accountList.search.value) accountList.setSearch(search)
+    },
+  )
 
   const activeAccountsCount = computed(
     () => accountList.items.value.filter((account) => account.isActive).length,
@@ -398,9 +408,11 @@ export function useAdminServiceAccounts() {
     reload,
     revokeToken,
     saving,
+    search: accountList.search,
     selectedAccount,
     setPage: accountList.setPage,
     setPageSize: accountList.setPageSize,
+    setSearch: accountList.setSearch,
     setSort: accountList.setSort,
     setIPPage,
     setIPPageSize,
@@ -422,4 +434,8 @@ export function useAdminServiceAccounts() {
     updateAccountWithSubscription,
     updateAccountNote,
   }
+}
+
+function routeQueryValue(value: unknown) {
+  return Array.isArray(value) ? String(value[0] ?? '') : String(value ?? '')
 }

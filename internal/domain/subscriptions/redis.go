@@ -241,6 +241,9 @@ func (s *RedisStore) SyncQuotaStates(ctx context.Context, service *Service) (int
 		}
 		count++
 	}
+	if err := service.PruneQuotaStates(ctx, ids); err != nil {
+		return count, err
+	}
 	return count, nil
 }
 

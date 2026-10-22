@@ -14,6 +14,7 @@ const options: { title: string; value: DashboardScope }[] = [
     <span class="dashboard-scope-select__label">Scope</span>
     <v-select
       v-model="model"
+      aria-label="Dashboard scope"
       class="dashboard-scope-select__control"
       density="compact"
       variant="solo"

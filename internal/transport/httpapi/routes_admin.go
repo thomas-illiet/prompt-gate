@@ -38,6 +38,8 @@ func adminUserRoutes(handler *admin.Handler) []routeDefinition {
 
 func adminDashboardRoutes(handler *admin.Handler) []routeDefinition {
 	return []routeDefinition{
+		{pattern: "GET /api/v1/admin/dashboard/overview", handler: handler.HandleAdminDashboardOverview},
+		{pattern: "GET /api/v1/admin/dashboard/quota-risk", handler: handler.HandleAdminDashboardQuotaRisk},
 		{pattern: "GET /api/v1/admin/dashboard/tokens", handler: handler.HandleAdminDashboardTokens},
 		{pattern: "GET /api/v1/admin/dashboard/messages", handler: handler.HandleAdminDashboardMessages},
 		{pattern: "GET /api/v1/admin/dashboard/duration", handler: handler.HandleAdminDashboardDuration},

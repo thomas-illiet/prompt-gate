@@ -89,15 +89,15 @@ function activityLevel(day: ProfileTokenUsageDay) {
 function cellLabel(day: ProfileTokenUsageDay) {
   return `${formatDate(day.date)}: ${formatTokenCount(
     day.totalTokens,
-  )}, ${formatMessageCount(day.requests)}`
+  )}, ${formatRequestCount(day.requests)}`
 }
 
 function formatTokenCount(value: number) {
   return `${formatNumber(value)} ${value === 1 ? 'token' : 'tokens'}`
 }
 
-function formatMessageCount(value: number) {
-  return `${formatNumber(value)} ${value === 1 ? 'message' : 'messages'}`
+function formatRequestCount(value: number) {
+  return `${formatNumber(value)} ${value === 1 ? 'API request' : 'API requests'}`
 }
 
 function monthLabelForWeek(cells: HeatmapCell[], weekIndex: number) {
@@ -139,7 +139,12 @@ function parseDateKey(value: string | undefined) {
 
 <template>
   <div class="profile-token-heatmap" data-test="token-heatmap">
-    <div class="profile-token-heatmap__scroll">
+    <div
+      class="profile-token-heatmap__scroll"
+      role="region"
+      aria-label="Annual token activity heatmap"
+      tabindex="0"
+    >
       <div class="profile-token-heatmap__grid">
         <div class="profile-token-heatmap__month-spacer" aria-hidden="true" />
         <div
@@ -224,7 +229,7 @@ function parseDateKey(value: string | undefined) {
 
 .profile-token-heatmap__scroll {
   box-sizing: border-box;
-  overflow-x: clip;
+  overflow-x: auto;
   padding: 2px;
   width: 100%;
 }

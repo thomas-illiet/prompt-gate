@@ -44,6 +44,44 @@ func newServiceAccountsTestHandler(t *testing.T) (*Handler, *users.Service, *tok
 	return NewHandler(Dependencies{Users: userService, Tokens: tokenService}), userService, tokenService
 }
 
+// TestHandleAdminListServiceAccountsFiltersByTechnicalID verifies the search
+// query used by dashboard quota-risk links reaches the domain list filter.
+func TestHandleAdminListServiceAccountsFiltersByTechnicalID(t *testing.T) {
+	handler, userService, _ := newServiceAccountsTestHandler(t)
+	ctx := context.Background()
+
+	wanted, err := userService.CreateServiceAccount(ctx, users.ServiceAccountInput{
+		Identifier: "wanted-worker",
+		Name:       "Wanted Worker",
+		IsActive:   true,
+	})
+	if err != nil {
+		t.Fatalf("create wanted account: %v", err)
+	}
+	if _, err := userService.CreateServiceAccount(ctx, users.ServiceAccountInput{
+		Identifier: "other-worker",
+		Name:       "Other Worker",
+		IsActive:   true,
+	}); err != nil {
+		t.Fatalf("create other account: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/service-accounts?search="+wanted.ID, nil)
+	recorder := httptest.NewRecorder()
+	handler.HandleAdminListServiceAccounts(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", recorder.Code, recorder.Body.String())
+	}
+	var response users.ServiceAccountListResult
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Total != 1 || len(response.Items) != 1 || response.Items[0].ID != wanted.ID {
+		t.Fatalf("unexpected filtered response: %#v", response)
+	}
+}
+
 // TestHandleAdminCreateServiceAccountRejectsInvalidIdentifier verifies handle admin create service account rejects invalid identifier.
 func TestHandleAdminCreateServiceAccountRejectsInvalidIdentifier(t *testing.T) {
 	handler, _, _ := newServiceAccountsTestHandler(t)

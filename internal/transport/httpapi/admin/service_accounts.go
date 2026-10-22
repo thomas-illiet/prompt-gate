@@ -16,6 +16,7 @@ func (h *Handler) HandleAdminListServiceAccounts(w http.ResponseWriter, r *http.
 	list, err := h.users.ListServiceAccountsPaged(r.Context(), users.ServiceAccountListParams{
 		Page:     query.Page,
 		PageSize: query.PageSize,
+		Search:   r.URL.Query().Get("search"),
 		SortBy:   query.SortBy,
 		SortDir:  query.SortDir,
 	})

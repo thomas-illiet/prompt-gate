@@ -1,3 +1,6 @@
+import type { MaybeRefOrGetter } from 'vue'
+import { onScopeDispose, toValue, watch } from 'vue'
+
 import type { DailyUsage, DashboardActivityResponse } from '~/types/user-service'
 import { toApiErrorMessage } from '~/utils/api-error'
 
@@ -6,7 +9,8 @@ const DAY_MS = 24 * 60 * 60 * 1000
 const DATE_KEY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/
 
 const ERROR_MESSAGES = {
-  invalid_usage_window: 'Usage window must be 7 days, 30 days, or all time.',
+  invalid_usage_window:
+    'Usage window must be 7 days, 30 days, 365 days, or all time.',
 }
 
 export interface ProfileTokenUsageDay extends DailyUsage {
@@ -96,26 +100,48 @@ export function buildProfileTokenUsageSummary(
 }
 
 // useProfileTokenUsage loads the current user's profile token activity.
-export function useProfileTokenUsage() {
+export function useProfileTokenUsage(
+  enabled: MaybeRefOrGetter<boolean> = true,
+) {
   const apiFetch = useApiFetch()
 
   const activity = shallowRef<DashboardActivityResponse | null>(null)
   const loading = shallowRef(false)
   const error = shallowRef<string | null>(null)
   const summary = computed(() => buildProfileTokenUsageSummary(activity.value))
+  let controller: AbortController | null = null
+  let requestVersion = 0
 
   async function loadUsage() {
+    if (!toValue(enabled)) {
+      return
+    }
+
+    const version = ++requestVersion
+    controller?.abort()
+    controller = new AbortController()
     loading.value = true
     error.value = null
 
     try {
-      activity.value = await apiFetch<DashboardActivityResponse>(
-        '/api/v1/me/dashboard/activity?window=all',
+      const response = await apiFetch<DashboardActivityResponse>(
+        '/api/v1/me/dashboard/activity?window=365d',
+        { signal: controller.signal },
       )
+      if (version === requestVersion && toValue(enabled)) {
+        activity.value = response
+      }
     } catch (fetchError) {
-      error.value = toProfileTokenUsageErrorMessage(fetchError)
+      if (
+        version === requestVersion &&
+        !(fetchError instanceof Error && fetchError.name === 'AbortError')
+      ) {
+        error.value = toProfileTokenUsageErrorMessage(fetchError)
+      }
     } finally {
-      loading.value = false
+      if (version === requestVersion) {
+        loading.value = false
+      }
     }
   }
 
@@ -123,7 +149,24 @@ export function useProfileTokenUsage() {
     await loadUsage()
   }
 
-  void loadUsage()
+  watch(
+    () => toValue(enabled),
+    (isEnabled) => {
+      if (isEnabled && !activity.value) {
+        void loadUsage()
+      } else if (!isEnabled) {
+        requestVersion += 1
+        controller?.abort()
+        loading.value = false
+      }
+    },
+    { immediate: true },
+  )
+
+  onScopeDispose(() => {
+    requestVersion += 1
+    controller?.abort()
+  }, true)
 
   return {
     activity,
