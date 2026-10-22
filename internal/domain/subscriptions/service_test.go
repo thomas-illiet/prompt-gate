@@ -10,6 +10,7 @@ import (
 
 	"promptgate/backend/internal/domain/auth"
 	"promptgate/backend/internal/domain/users"
+	"promptgate/backend/internal/platform/configevents"
 	"promptgate/backend/internal/platform/redisstore"
 
 	"github.com/alicebob/miniredis/v2"
@@ -122,6 +123,191 @@ func TestQuotaRecorderIncrementsRedisUsage(t *testing.T) {
 	}
 	if status.Used5HTokens != 10 || status.Used7DTokens != 10 {
 		t.Fatalf("unexpected usage: %#v", status)
+	}
+}
+
+func TestWatchCatchesUpMissedUnlimitedToLimitedAssignment(t *testing.T) {
+	service, store, user := newSubscriptionTestStore(t)
+	ctx := context.Background()
+
+	unlimited, err := service.CreatePlan(ctx, PlanInput{Name: "Unlimited"})
+	if err != nil {
+		t.Fatalf("create unlimited plan: %v", err)
+	}
+	quota := int64(100)
+	limited, err := service.CreatePlan(ctx, PlanInput{
+		Name:          "Limited",
+		Quota5HTokens: &quota,
+		Quota7DTokens: &quota,
+	})
+	if err != nil {
+		t.Fatalf("create limited plan: %v", err)
+	}
+
+	unlimitedID := unlimited.ID
+	if _, err := service.AssignUserPlan(ctx, user.ID, &unlimitedID); err != nil {
+		t.Fatalf("assign unlimited plan: %v", err)
+	}
+	initial, err := store.CurrentQuota(ctx, user.ID, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("load initial quota: %v", err)
+	}
+	if initial.Plan == nil || initial.Plan.ID != unlimited.ID || initial.Quota5HTokens != nil {
+		t.Fatalf("expected cached unlimited plan, got %#v", initial)
+	}
+
+	// Publish the assignment change before Watch subscribes. Watch must catch
+	// up from Redis' version counter rather than depending solely on Pub/Sub.
+	service.SetNotifier(store.store)
+	limitedID := limited.ID
+	if _, err := service.AssignUserPlan(ctx, user.ID, &limitedID); err != nil {
+		t.Fatalf("assign limited plan: %v", err)
+	}
+
+	watchCtx, cancelWatch := context.WithCancel(ctx)
+	t.Cleanup(cancelWatch)
+	go store.Watch(watchCtx)
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		current, err := store.CurrentQuota(ctx, user.ID, time.Now().UTC())
+		if err != nil {
+			t.Fatalf("load refreshed quota: %v", err)
+		}
+		if current.Plan != nil && current.Plan.ID == limited.ID &&
+			current.Quota5HTokens != nil && *current.Quota5HTokens == quota &&
+			current.Quota7DTokens != nil && *current.Quota7DTokens == quota {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("limited plan was not observed after watcher catch-up: %#v", current)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func TestRefreshIfStaleUpdatesUnlimitedToLimitedAssignmentImmediately(t *testing.T) {
+	service, store, user := newSubscriptionTestStore(t)
+	ctx := context.Background()
+
+	unlimited, err := service.CreatePlan(ctx, PlanInput{Name: "Unlimited"})
+	if err != nil {
+		t.Fatalf("create unlimited plan: %v", err)
+	}
+	quota := int64(100)
+	limited, err := service.CreatePlan(ctx, PlanInput{
+		Name:          "Limited",
+		Quota5HTokens: &quota,
+		Quota7DTokens: &quota,
+	})
+	if err != nil {
+		t.Fatalf("create limited plan: %v", err)
+	}
+
+	unlimitedID := unlimited.ID
+	if _, err := service.AssignUserPlan(ctx, user.ID, &unlimitedID); err != nil {
+		t.Fatalf("assign unlimited plan: %v", err)
+	}
+	initial, err := store.CurrentQuota(ctx, user.ID, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("load initial quota: %v", err)
+	}
+	if initial.Plan == nil || initial.Plan.ID != unlimited.ID || initial.Quota5HTokens != nil {
+		t.Fatalf("expected cached unlimited plan, got %#v", initial)
+	}
+
+	service.SetNotifier(store.store)
+	limitedID := limited.ID
+	if _, err := service.AssignUserPlan(ctx, user.ID, &limitedID); err != nil {
+		t.Fatalf("assign limited plan: %v", err)
+	}
+	if err := store.RefreshIfStale(ctx); err != nil {
+		t.Fatalf("refresh stale subscription state: %v", err)
+	}
+
+	current, err := store.CurrentQuota(ctx, user.ID, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("load refreshed quota: %v", err)
+	}
+	if current.Plan == nil || current.Plan.ID != limited.ID ||
+		current.Quota5HTokens == nil || *current.Quota5HTokens != quota ||
+		current.Quota7DTokens == nil || *current.Quota7DTokens != quota {
+		t.Fatalf("expected limited plan after one refresh, got %#v", current)
+	}
+}
+
+func TestRefreshIfStaleAcceptsLowerRedisVersion(t *testing.T) {
+	service, store, user := newSubscriptionTestStore(t)
+	ctx := context.Background()
+
+	unlimited, err := service.CreatePlan(ctx, PlanInput{Name: "Unlimited"})
+	if err != nil {
+		t.Fatalf("create unlimited plan: %v", err)
+	}
+	quota := int64(100)
+	limited, err := service.CreatePlan(ctx, PlanInput{
+		Name:          "Limited",
+		Quota5HTokens: &quota,
+		Quota7DTokens: &quota,
+	})
+	if err != nil {
+		t.Fatalf("create limited plan: %v", err)
+	}
+
+	unlimitedID := unlimited.ID
+	if _, err := service.AssignUserPlan(ctx, user.ID, &unlimitedID); err != nil {
+		t.Fatalf("assign unlimited plan: %v", err)
+	}
+	if err := store.store.Client().Set(
+		ctx,
+		redisstore.VersionKey(configevents.DomainSubscriptions),
+		2,
+		0,
+	).Err(); err != nil {
+		t.Fatalf("seed redis subscription version: %v", err)
+	}
+	store.SyncVersion(ctx)
+	initial, err := store.CurrentQuota(ctx, user.ID, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("cache version 2 assignment: %v", err)
+	}
+	if initial.Plan == nil || initial.Plan.ID != unlimited.ID {
+		t.Fatalf("expected cached unlimited plan, got %#v", initial)
+	}
+
+	if err := store.store.Client().Set(
+		ctx,
+		redisstore.VersionKey(configevents.DomainSubscriptions),
+		8,
+		0,
+	).Err(); err != nil {
+		t.Fatalf("advance redis subscription version: %v", err)
+	}
+	store.SyncVersion(ctx)
+	limitedID := limited.ID
+	if _, err := service.AssignUserPlan(ctx, user.ID, &limitedID); err != nil {
+		t.Fatalf("assign limited plan: %v", err)
+	}
+
+	// Simulate Redis losing its version counter and reusing version 2, whose
+	// assignment cache still contains Unlimited.
+	if err := store.store.Client().Set(
+		ctx,
+		redisstore.VersionKey(configevents.DomainSubscriptions),
+		2,
+		0,
+	).Err(); err != nil {
+		t.Fatalf("reset redis subscription version: %v", err)
+	}
+	if err := store.RefreshIfStale(ctx); err != nil {
+		t.Fatalf("refresh lower subscription version: %v", err)
+	}
+	current, err := store.CurrentQuota(ctx, user.ID, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("load quota after version reset: %v", err)
+	}
+	if got := store.version.Load(); got != 2 || current.Plan == nil || current.Plan.ID != limited.ID {
+		t.Fatalf("expected limited plan at reset version 2, version=%d quota=%#v", got, current)
 	}
 }
 

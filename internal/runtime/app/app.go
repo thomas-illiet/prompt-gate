@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sync"
 
 	"gorm.io/gorm"
 
@@ -46,6 +47,8 @@ type App struct {
 	Sessions      *auth.SessionStore
 	Redis         *redisstore.Store
 	QuotaRedis    *subscriptions.RedisStore
+
+	subscriptionWatcherOnce sync.Once
 }
 
 type serviceConfig struct {
@@ -206,6 +209,18 @@ func newServices(ctx context.Context, cfg serviceConfig, apiCfg *config.APIConfi
 	return application, nil
 }
 
+// StartSubscriptionWatcher keeps the process-local subscription assignment
+// version and plan snapshot synchronized with configuration changes.
+func (a *App) StartSubscriptionWatcher(ctx context.Context) {
+	if a == nil || a.QuotaRedis == nil {
+		return
+	}
+	a.subscriptionWatcherOnce.Do(func() {
+		slog.Info("starting subscription config watcher")
+		go a.QuotaRedis.Watch(ctx)
+	})
+}
+
 // StartBackgroundJobs launches long-running goroutines tied to the context lifetime.
 func (a *App) StartBackgroundJobs(ctx context.Context) {
 	slog.Info("starting token cleanup goroutine", "interval", a.Schedule.TokenCleanupInterval)
@@ -217,6 +232,7 @@ func (a *App) StartBackgroundJobs(ctx context.Context) {
 	slog.Info("starting raw usage cleanup goroutine", "retention", a.Schedule.UsageRawRetention, "interval", a.Schedule.UsageRawCleanupInterval)
 	a.Proxy.StartRawUsageCleanup(ctx, a.Schedule.UsageRawRetention, a.Schedule.UsageRawCleanupInterval)
 	if a.Subscriptions != nil && a.QuotaRedis != nil {
+		a.StartSubscriptionWatcher(ctx)
 		slog.Info("starting subscription quota sync goroutine", "interval", a.Schedule.SubscriptionQuotaSyncInterval)
 		a.Subscriptions.StartQuotaStateSync(ctx, a.QuotaRedis, a.Schedule.SubscriptionQuotaSyncInterval)
 	}

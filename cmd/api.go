@@ -77,6 +77,7 @@ func runAPI() error {
 			logger.Warn("failed to close redis", "error", err)
 		}
 	}()
+	a.StartSubscriptionWatcher(ctx)
 
 	server := &http.Server{
 		Addr:              cfg.ListenAddress(),

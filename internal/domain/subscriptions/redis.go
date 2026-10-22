@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -41,12 +42,13 @@ return 1
 `)
 
 type RedisStore struct {
-	store    *redisstore.Store
-	service  *Service
-	ttl      time.Duration
-	logger   *slog.Logger
-	version  atomic.Int64
-	snapshot atomic.Value
+	store     *redisstore.Store
+	service   *Service
+	ttl       time.Duration
+	logger    *slog.Logger
+	version   atomic.Int64
+	snapshot  atomic.Value
+	refreshMu sync.Mutex
 }
 
 type quotaWindow struct {
@@ -81,11 +83,89 @@ func (s *RedisStore) SyncVersion(ctx context.Context) {
 		s.logger.Warn("subscription config version load failed", "error", err)
 		return
 	}
+	s.refreshMu.Lock()
+	defer s.refreshMu.Unlock()
 	s.version.Store(version)
 }
 
 func (s *RedisStore) SetVersion(version int64) {
+	s.refreshMu.Lock()
+	defer s.refreshMu.Unlock()
 	s.version.Store(version)
+}
+
+// RefreshIfStale synchronizes the process-local plan snapshot and assignment
+// version when Redis reports a different authoritative version. A mutex keeps
+// concurrent API reads and watcher events from completing refreshes out of
+// order. The version is checked again after warming so the method only returns
+// once the snapshot corresponds to a stable Redis version.
+func (s *RedisStore) RefreshIfStale(ctx context.Context) error {
+	if !s.Enabled() {
+		return nil
+	}
+
+	version, err := s.store.Version(ctx, configevents.DomainSubscriptions)
+	if err != nil {
+		return fmt.Errorf("load subscription config version: %w", err)
+	}
+	if version == s.version.Load() {
+		return nil
+	}
+
+	s.refreshMu.Lock()
+	defer s.refreshMu.Unlock()
+
+	version, err = s.store.Version(ctx, configevents.DomainSubscriptions)
+	if err != nil {
+		return fmt.Errorf("reload subscription config version: %w", err)
+	}
+	if version == s.version.Load() {
+		return nil
+	}
+	previousVersion := s.version.Load()
+
+	for {
+		if version < previousVersion {
+			if err := s.clearAssignmentVersion(ctx, version); err != nil {
+				return fmt.Errorf("clear reset subscription assignments: %w", err)
+			}
+		}
+		if err := s.warmSnapshotLocked(ctx); err != nil {
+			return fmt.Errorf("refresh subscription snapshot: %w", err)
+		}
+
+		latest, err := s.store.Version(ctx, configevents.DomainSubscriptions)
+		if err != nil {
+			return fmt.Errorf("verify subscription config version: %w", err)
+		}
+		if latest != version {
+			version = latest
+			continue
+		}
+		s.version.Store(version)
+		return nil
+	}
+}
+
+func (s *RedisStore) clearAssignmentVersion(ctx context.Context, version int64) error {
+	client := s.store.Client()
+	pattern := redisstore.SubscriptionAssignmentKey(version, "*")
+	var cursor uint64
+	for {
+		keys, next, err := client.Scan(ctx, cursor, pattern, 100).Result()
+		if err != nil {
+			return err
+		}
+		if len(keys) > 0 {
+			if err := client.Del(ctx, keys...).Err(); err != nil {
+				return err
+			}
+		}
+		cursor = next
+		if cursor == 0 {
+			return nil
+		}
+	}
 }
 
 func (s *RedisStore) Watch(ctx context.Context) {
@@ -93,6 +173,16 @@ func (s *RedisStore) Watch(ctx context.Context) {
 		return
 	}
 	events := s.store.Subscribe(ctx)
+	if ctx.Err() != nil {
+		return
+	}
+
+	// Subscribe is established synchronously. Refresh after that point so a
+	// mutation published between process startup and watcher startup cannot
+	// leave this process on a stale assignment version or plan snapshot.
+	if err := s.RefreshIfStale(ctx); err != nil {
+		s.logger.Warn("subscription snapshot catch-up failed", "error", err)
+	}
 	s.logger.Info("subscription quota watcher started")
 	for {
 		select {
@@ -105,8 +195,7 @@ func (s *RedisStore) Watch(ctx context.Context) {
 			if event.Domain != configevents.DomainSubscriptions {
 				continue
 			}
-			s.SetVersion(event.Version)
-			if err := s.WarmSnapshot(ctx); err != nil {
+			if err := s.RefreshIfStale(ctx); err != nil {
 				s.logger.Warn("subscription snapshot refresh failed", "version", event.Version, "error", err)
 			}
 		}
@@ -114,6 +203,12 @@ func (s *RedisStore) Watch(ctx context.Context) {
 }
 
 func (s *RedisStore) WarmSnapshot(ctx context.Context) error {
+	s.refreshMu.Lock()
+	defer s.refreshMu.Unlock()
+	return s.warmSnapshotLocked(ctx)
+}
+
+func (s *RedisStore) warmSnapshotLocked(ctx context.Context) error {
 	if !s.Enabled() || s.service == nil {
 		return nil
 	}
