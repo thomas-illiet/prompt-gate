@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  APP_ROLES,
+  appRoleLabel,
   hasRequiredRole,
   isAuthUser,
   isBlockedUser,
@@ -42,12 +44,21 @@ describe('isAuthUser', () => {
 
   it('accepts a complete authenticated session', () => {
     expect(isAuthUser(session)).toBe(true)
+    expect(isAuthUser({ ...session, role: 'limited' })).toBe(true)
   })
 
   it('rejects HTML and incomplete session payloads', () => {
     expect(isAuthUser('<!doctype html>')).toBe(false)
     expect(isAuthUser({ ...session, isActive: undefined })).toBe(false)
     expect(isAuthUser({ ...session, role: 'owner' })).toBe(false)
+    expect(isAuthUser({ ...session, role: 'manager' })).toBe(false)
+  })
+})
+
+describe('application roles', () => {
+  it('exposes Limited and removes Manager from selectable roles', () => {
+    expect(APP_ROLES).toEqual(['none', 'limited', 'user', 'admin'])
+    expect(appRoleLabel('limited')).toBe('Limited')
   })
 })
 
@@ -73,7 +84,7 @@ describe('access-state classification', () => {
   })
 
   it('distinguishes a valid session from insufficient route permissions', () => {
-    expect(hasRequiredRole(activeUser, ['user', 'manager'])).toBe(true)
+    expect(hasRequiredRole(activeUser, ['limited', 'user'])).toBe(true)
     expect(hasRequiredRole(activeUser, ['admin'])).toBe(false)
   })
 })

@@ -3,7 +3,7 @@ definePageMeta({
   icon: 'mdi-frequently-asked-questions',
   title: 'FAQ',
   drawerIndex: 5,
-  requiredRoles: ['user', 'manager', 'admin'],
+  requiredRoles: ['limited', 'user', 'admin'],
 })
 
 const faq = useFAQ()

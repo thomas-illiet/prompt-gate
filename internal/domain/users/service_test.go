@@ -172,7 +172,7 @@ func TestSyncUserMatchesPreferredUsernameAndPreservesManagedFields(t *testing.T)
 	}
 
 	updated, err := service.UpdateUser(ctx, created.ID, UpdateUserInput{
-		Role:     auth.RoleManager,
+		Role:     auth.RoleLimited,
 		IsActive: false,
 	})
 	if err != nil {
@@ -185,14 +185,14 @@ func TestSyncUserMatchesPreferredUsernameAndPreservesManagedFields(t *testing.T)
 		Sub:               "replacement-sub",
 		PreferredUsername: "promptgate-user",
 		Email:             "manager@example.com",
-		Name:              "PromptGate Manager",
+		Name:              "PromptGate Limited",
 	})
 	if err != nil {
 		t.Fatalf("re-sync user: %v", err)
 	}
 
-	if resynced.Role != auth.RoleManager {
-		t.Fatalf("expected manager role to be preserved, got %q", resynced.Role)
+	if resynced.Role != auth.RoleLimited {
+		t.Fatalf("expected limited role to be preserved, got %q", resynced.Role)
 	}
 
 	if resynced.IsActive {
@@ -203,7 +203,7 @@ func TestSyncUserMatchesPreferredUsernameAndPreservesManagedFields(t *testing.T)
 		t.Fatalf("expected preferred username to match the existing user, got ids %q and %q", created.ID, resynced.ID)
 	}
 
-	if resynced.Sub != "replacement-sub" || resynced.Email != "manager@example.com" || resynced.Name != "PromptGate Manager" || resynced.PreferredUsername != "promptgate-user" {
+	if resynced.Sub != "replacement-sub" || resynced.Email != "manager@example.com" || resynced.Name != "PromptGate Limited" || resynced.PreferredUsername != "promptgate-user" {
 		t.Fatalf("expected identity fields to be refreshed, got %#v", resynced)
 	}
 

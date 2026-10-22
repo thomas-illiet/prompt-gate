@@ -98,7 +98,7 @@ func TestRequireAdminAccessWithSession(t *testing.T) {
 		wantStatus int
 	}{
 		{name: "admin allowed", role: auth.RoleAdmin, wantStatus: http.StatusNoContent},
-		{name: "non admin forbidden", role: auth.RoleManager, wantStatus: http.StatusForbidden},
+		{name: "non admin forbidden", role: auth.RoleLimited, wantStatus: http.StatusForbidden},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			store := auth.NewSessionStore(nil, time.Hour)

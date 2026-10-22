@@ -5,7 +5,7 @@ definePageMeta({
   icon: 'mdi-monitor-dashboard',
   title: 'Dashboard',
   drawerIndex: 0,
-  requiredRoles: ['user', 'manager', 'admin'],
+  requiredRoles: ['limited', 'user', 'admin'],
 })
 
 const selectedWindow = shallowRef<UsageWindow>('7d')

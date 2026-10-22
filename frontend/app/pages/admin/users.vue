@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { UserToken } from '~/types/user-service'
+import type { UserToken, UserTokenPayload } from '~/types/user-service'
 import type { AdminUser } from '~/types/users'
 import AdminUserDeleteDialog from '~/components/AdminUsers/AdminUserDeleteDialog.vue'
 import AdminUserEditDialog from '~/components/AdminUsers/AdminUserEditDialog.vue'
@@ -8,6 +8,8 @@ import AdminUserTokensDialog from '~/components/AdminUsers/AdminUserTokensDialog
 import AdminUserUsageDialog from '~/components/AdminUsers/AdminUserUsageDialog.vue'
 import AdminAccountNoteDialog from '~/components/AdminAccounts/AdminAccountNoteDialog.vue'
 import AdminAccountIPAddressesDialog from '~/components/AdminAccounts/AdminAccountIPAddressesDialog.vue'
+import UserTokenCreatedDialog from '~/components/UserTokens/UserTokenCreatedDialog.vue'
+import { USER_TOKEN_MAX_LIFETIME_DAYS } from '~/utils/user-tokens'
 
 definePageMeta({
   requiredRoles: ['admin'],
@@ -22,6 +24,8 @@ const adminSubscriptions = useAdminSubscriptions()
 const editDialogOpen = shallowRef(false)
 const deleteDialogOpen = shallowRef(false)
 const tokenDialogOpen = shallowRef(false)
+const tokenCreateDialogOpen = shallowRef(false)
+const tokenCreatedDialogOpen = shallowRef(false)
 const groupsDialogOpen = shallowRef(false)
 const userToDelete = shallowRef<AdminUser | null>(null)
 const tokenUser = shallowRef<AdminUser | null>(null)
@@ -179,6 +183,17 @@ async function refreshTokens() {
   }
 
   await adminUsers.loadTokens(tokenUser.value.id)
+}
+
+// createUserToken creates a key for the selected user and reveals it once.
+async function createUserToken(payload: UserTokenPayload) {
+  if (!tokenUser.value) {
+    return
+  }
+
+  await adminUsers.createUserToken(tokenUser.value.id, payload)
+  tokenCreateDialogOpen.value = false
+  tokenCreatedDialogOpen.value = true
 }
 
 // updateTokenPage changes token pagination and reloads rows.
@@ -356,11 +371,22 @@ async function saveUserNote(note: string) {
       :tokens="adminUsers.tokens.value"
       :total="adminUsers.tokenTotal.value"
       :user="tokenUser"
+      @create="tokenCreateDialogOpen = true"
       @refresh="refreshTokens"
       @revoke="tokenRevokeDialog.open"
       @update:page="updateTokenPage"
       @update:page-size="updateTokenPageSize"
       @update:sort="updateTokenSort"
+    />
+    <AppTokenCreateDialog
+      v-model="tokenCreateDialogOpen"
+      :loading="adminUsers.saving.value"
+      :max-lifetime="USER_TOKEN_MAX_LIFETIME_DAYS"
+      @create="createUserToken"
+    />
+    <UserTokenCreatedDialog
+      v-model="tokenCreatedDialogOpen"
+      :created-token="adminUsers.createdToken.value"
     />
     <AdminUserGroupsDialog
       v-model="groupsDialogOpen"

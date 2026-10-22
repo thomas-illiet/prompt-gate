@@ -28,6 +28,7 @@ func adminUserRoutes(handler *admin.Handler) []routeDefinition {
 		{pattern: "PATCH /api/v1/admin/users/{id}/note", handler: handler.HandleAdminUpdateUserNote},
 		{pattern: "DELETE /api/v1/admin/users/{id}", handler: handler.HandleAdminDeleteUser},
 		{pattern: "GET /api/v1/admin/users/{id}/tokens", handler: handler.HandleAdminListUserTokens},
+		{pattern: "POST /api/v1/admin/users/{id}/tokens", handler: handler.HandleAdminCreateUserToken},
 		{pattern: "DELETE /api/v1/admin/users/{id}/tokens/{tokenId}", handler: handler.HandleAdminRevokeToken},
 		{pattern: "GET /api/v1/admin/users/{id}/groups", handler: handler.HandleAdminListUserGroups},
 		{pattern: "PUT /api/v1/admin/users/{id}/groups", handler: handler.HandleAdminReplaceUserGroups},

@@ -25,9 +25,10 @@ assets from `/` and falls back to the SPA shell for frontend routes.
 
 ## User Routes
 
-These routes require a valid browser session and active app access. The
-dashboard, usage, setup, and token routes require role `user`,
-`manager`, or `admin`.
+These routes require a valid browser session and active app access. Roles
+`limited`, `user`, and `admin` can access the personal dashboard, usage,
+quota, groups, profile, and FAQ routes. Setup, monitoring, and personal token
+routes require `user` or `admin`.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
@@ -67,9 +68,10 @@ tokens against the proxy.
 | `DELETE` | `/api/v1/tokens/{id}` | Revoke one current-user token. |
 
 Token names must be lowercase alphanumeric with dashes or underscores and have
-a maximum length of 64 characters. Requested token TTL must be between 1 and
-365 days. If omitted, the default TTL is 7 days for users and 30 days for
-managers or admins.
+a maximum length of 64 characters. Requested human-user token TTL must be
+between 1 and 30 days. If omitted, the default TTL is 7 days for `limited` and
+`user`, and 30 days for `admin`. Limited users cannot call these personal token
+routes; an administrator creates their token through the admin route below.
 
 ## Admin Routes
 
@@ -126,6 +128,7 @@ Admin dashboard token and activity responses follow the same optional
 | `PATCH` | `/api/v1/admin/users/{id}/note` | Update the private administration note. |
 | `DELETE` | `/api/v1/admin/users/{id}` | Delete one user. |
 | `GET` | `/api/v1/admin/users/{id}/tokens` | List a user's tokens. |
+| `POST` | `/api/v1/admin/users/{id}/tokens` | Create a user token and return its raw value once. |
 | `DELETE` | `/api/v1/admin/users/{id}/tokens/{tokenId}` | Revoke one user token. |
 | `GET` | `/api/v1/admin/users/{id}/groups` | List the user's access groups. |
 | `PUT` | `/api/v1/admin/users/{id}/groups` | Replace the user's access groups. |
@@ -133,6 +136,11 @@ Admin dashboard token and activity responses follow the same optional
 
 The first synced OIDC user is assigned role `admin`. Later users are created
 with role `none` until an admin grants access.
+
+Administrators may create a token for any human user, including an inactive
+user or one with role `none`. The token is stored but proxy authentication
+continues to reject it until the account is active and has a supported access
+role; normal expiration and revocation checks still apply.
 
 User statistics accept `window=7d`, `window=30d`, or `window=all`, defaulting
 to `30d` when omitted. The response contains `window`, `startsAt`, `endsAt`,

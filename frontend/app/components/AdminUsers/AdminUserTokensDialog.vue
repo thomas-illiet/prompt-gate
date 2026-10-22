@@ -25,6 +25,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
+  create: []
   refresh: []
   revoke: [token: UserToken]
   'update:page': [value: number]
@@ -110,16 +111,27 @@ function tokenStatusDisplayColor(token: UserToken) {
             </span>
           </div>
 
-          <v-btn
-            color="primary"
-            variant="tonal"
-            rounded="lg"
-            prepend-icon="mdi-refresh"
-            :loading="props.loading"
-            @click="emit('refresh')"
-          >
-            Refresh
-          </v-btn>
+          <div class="admin-user-tokens-dialog__actions">
+            <v-btn
+              color="primary"
+              rounded="lg"
+              prepend-icon="mdi-key-plus"
+              :disabled="props.saving"
+              @click="emit('create')"
+            >
+              Create key
+            </v-btn>
+            <v-btn
+              color="primary"
+              variant="tonal"
+              rounded="lg"
+              prepend-icon="mdi-refresh"
+              :loading="props.loading"
+              @click="emit('refresh')"
+            >
+              Refresh
+            </v-btn>
+          </div>
         </div>
 
         <AppServerDataTable
@@ -218,6 +230,12 @@ function tokenStatusDisplayColor(token: UserToken) {
 .admin-user-tokens-dialog__body {
   display: grid;
   gap: 16px;
+}
+
+.admin-user-tokens-dialog__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .admin-user-tokens-dialog__toolbar {

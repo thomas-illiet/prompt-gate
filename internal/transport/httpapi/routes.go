@@ -28,10 +28,17 @@ func sessionAccessMiddlewares(store *auth.SessionStore, cfg config.APIConfig) []
 	}
 }
 
+func limitedAccessMiddlewares(store *auth.SessionStore, cfg config.APIConfig) []middleware.Middleware {
+	return append(
+		sessionAccessMiddlewares(store, cfg),
+		middleware.RequireRoles(auth.RoleLimited, auth.RoleUser, auth.RoleAdmin),
+	)
+}
+
 func userAccessMiddlewares(store *auth.SessionStore, cfg config.APIConfig) []middleware.Middleware {
 	return append(
 		sessionAccessMiddlewares(store, cfg),
-		middleware.RequireRoles(auth.RoleUser, auth.RoleManager, auth.RoleAdmin),
+		middleware.RequireRoles(auth.RoleUser, auth.RoleAdmin),
 	)
 }
 

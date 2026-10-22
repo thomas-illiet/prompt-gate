@@ -2,7 +2,7 @@ import type { AppRole, AuthUser } from '~/types/auth'
 
 export const DEFAULT_AUTH_REDIRECT_PATH = '/dashboard'
 export const BLOCKED_ROUTE_PATH = '/access-denied'
-export const APP_ROLES: AppRole[] = ['none', 'user', 'manager', 'admin']
+export const APP_ROLES: AppRole[] = ['none', 'limited', 'user', 'admin']
 export const FRONTEND_ORIGIN_QUERY_PARAM = 'frontend_origin'
 
 // isAuthUser validates the minimum session shape before it reaches route guards.
@@ -146,8 +146,8 @@ export function appRoleLabel(role: AppRole) {
   switch (role) {
     case 'admin':
       return 'Admin'
-    case 'manager':
-      return 'Manager'
+    case 'limited':
+      return 'Limited'
     case 'user':
       return 'User'
     default:
@@ -160,7 +160,7 @@ export function appRoleColor(role: AppRole) {
   switch (role) {
     case 'admin':
       return 'error'
-    case 'manager':
+    case 'limited':
       return 'warning'
     case 'user':
       return 'primary'

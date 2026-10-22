@@ -10,7 +10,7 @@ definePageMeta({
   icon: 'mdi-help-circle-outline',
   title: 'Setup guide',
   drawerIndex: 4,
-  requiredRoles: ['user', 'manager', 'admin'],
+  requiredRoles: ['user', 'admin'],
 })
 
 const helpSetup = useHelpSetup()

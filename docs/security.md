@@ -33,12 +33,13 @@ Prompt Gate uses these application roles:
 | Role | Meaning |
 | --- | --- |
 | `none` | Authenticated identity exists but has no app access. |
+| `limited` | Can view personal usage, profile, and FAQ; API tokens are administered centrally. |
 | `user` | Can use user routes, issue own tokens, and use the proxy. |
-| `manager` | Has user-level access with manager token defaults. |
 | `admin` | Can access all admin routes. |
 
-Protected routes reject inactive users and users with role `none`. Admin routes
-require role `admin` unless a valid administration API key is used.
+Protected routes reject inactive users, users with role `none`, and unknown or
+legacy role values. Admin routes require role `admin` unless a valid
+administration API key is used.
 
 ## Administration API Key
 
@@ -80,7 +81,12 @@ Token validation checks:
 - revoked state
 - expiration state
 - active user or service account
-- role is one of `user`, `manager`, or `admin`
+- role is one of `limited`, `user`, or `admin`
+
+Before deploying a version that removes the legacy `manager` role, verify that
+no user retains it. Prompt Gate does not convert legacy `manager` rows; such a
+row is treated as an invalid role and grants no application or proxy access
+until an administrator assigns a supported role.
 
 Token revocation publishes an `auth` config event. The proxy responds by
 moving its Redis auth cache to a new version.

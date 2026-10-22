@@ -215,6 +215,39 @@ describe('useAdminUsers', () => {
     expect(adminUsers.tokens.value[0]?.revokedAt).toBe('2026-02-01T00:00:00Z')
   })
 
+  it('creates a selected user token and reloads token rows', async () => {
+    const created = { token: 'raw-secret', tokenInfo: token }
+    apiFetch
+      .mockResolvedValueOnce(userResponse([]))
+      .mockResolvedValueOnce(created)
+      .mockResolvedValueOnce(tokenResponse([token]))
+
+    const adminUsers = useAdminUsers()
+    await vi.waitFor(() => expect(adminUsers.loading.value).toBe(false))
+
+    await adminUsers.createUserToken(user.id, {
+      name: 'personal_cli',
+      description: 'CLI access',
+      expiresInDays: 30,
+    })
+
+    expect(apiFetch).toHaveBeenNthCalledWith(
+      2,
+      `/api/v1/admin/users/${user.id}/tokens`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'personal_cli',
+          description: 'CLI access',
+          expiresInDays: 30,
+        }),
+      },
+    )
+    expect(adminUsers.createdToken.value).toEqual(created)
+    expect(adminUsers.tokens.value).toEqual([token])
+  })
+
   it('loads paged IP addresses for a user', async () => {
     const addresses = [
       {

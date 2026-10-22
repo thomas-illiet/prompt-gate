@@ -26,6 +26,10 @@ func RequireAppAccess() Middleware {
 				writeAuthorizationFailure(w, http.StatusForbidden, "account_role_none")
 				return
 			}
+			if !user.Role.IsValid() {
+				writeAuthorizationFailure(w, http.StatusForbidden, "insufficient_role")
+				return
+			}
 
 			next.ServeHTTP(w, r)
 		})

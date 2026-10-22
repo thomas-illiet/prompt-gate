@@ -1,4 +1,4 @@
-export type AppRole = 'none' | 'user' | 'manager' | 'admin'
+export type AppRole = 'none' | 'limited' | 'user' | 'admin'
 
 export interface AuthUser {
   id: string

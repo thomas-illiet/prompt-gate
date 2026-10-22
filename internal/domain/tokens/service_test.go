@@ -177,6 +177,50 @@ func TestValidateTokenAcceptsActiveUserToken(t *testing.T) {
 	}
 }
 
+func TestValidateTokenAcceptsLimitedUserToken(t *testing.T) {
+	tokenService, userService, _, user := newTokenTestServices(t)
+	ctx := context.Background()
+	limited, err := userService.UpdateUser(ctx, user.ID, users.UpdateUserInput{
+		Role:     auth.RoleLimited,
+		IsActive: true,
+	})
+	if err != nil {
+		t.Fatalf("set limited role: %v", err)
+	}
+
+	profile, err := userService.UserByID(ctx, limited.ID)
+	if err != nil {
+		t.Fatalf("load limited profile: %v", err)
+	}
+	before := time.Now().UTC().Add(7 * 24 * time.Hour)
+	created, err := tokenService.CreateToken(ctx, profile, "limited_cli", "", nil)
+	if err != nil {
+		t.Fatalf("create limited token: %v", err)
+	}
+	after := time.Now().UTC().Add(7 * 24 * time.Hour)
+	if created.TokenInfo.ExpiresAt.Before(before) || created.TokenInfo.ExpiresAt.After(after) {
+		t.Fatalf("expected limited token expiration around 7 days, got %v", created.TokenInfo.ExpiresAt)
+	}
+	if _, err := tokenService.ValidateToken(ctx, created.Token, userService); err != nil {
+		t.Fatalf("validate limited token: %v", err)
+	}
+}
+
+func TestValidateTokenRejectsLegacyManagerRole(t *testing.T) {
+	tokenService, userService, db, user := newTokenTestServices(t)
+	ctx := context.Background()
+	created, err := tokenService.CreateToken(ctx, user, "legacy_manager", "", nil)
+	if err != nil {
+		t.Fatalf("create token: %v", err)
+	}
+	if err := db.Model(&users.User{}).Where("id = ?", user.ID).Update("role", "manager").Error; err != nil {
+		t.Fatalf("set legacy manager role: %v", err)
+	}
+	if _, err := tokenService.ValidateToken(ctx, created.Token, userService); !errors.Is(err, ErrInsufficientRole) {
+		t.Fatalf("expected insufficient role, got %v", err)
+	}
+}
+
 // TestCreateUserTokenAcceptsRequestedTTLWithin30Days verifies user tokens accept requested TTL within 30 days.
 func TestCreateUserTokenAcceptsRequestedTTLWithin30Days(t *testing.T) {
 	tokenService, _, _, user := newTokenTestServices(t)

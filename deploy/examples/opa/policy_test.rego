@@ -14,6 +14,10 @@ test_trusted_user_route_allowed if {
 	proxy.decision with input as sample_input("user", "user", "user-id", "192.168.4.2", "POST", "/v1/chat/completions") == {"allow": true, "reason": "trusted_user_route"}
 }
 
+test_limited_user_route_allowed if {
+	proxy.decision with input as sample_input("limited", "user", "limited-id", "192.168.4.2", "POST", "/v1/responses") == {"allow": true, "reason": "trusted_user_route"}
+}
+
 test_unknown_ip_denied if {
 	proxy.decision with input as sample_input("user", "user", "user-id", "203.0.113.4", "POST", "/v1/chat/completions") == {"allow": false, "reason": "default_deny"}
 }

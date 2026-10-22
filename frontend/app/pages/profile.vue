@@ -7,7 +7,7 @@ import { formatDateTime } from '~/utils/formatters'
 
 definePageMeta({
   title: 'Profile',
-  requiredRoles: ['user', 'manager', 'admin'],
+  requiredRoles: ['limited', 'user', 'admin'],
 })
 
 const authStore = useAuthStore()
@@ -61,23 +61,32 @@ const technicalDetails = computed(() => [
   },
 ])
 
-const quickActions = [
-  {
-    icon: 'mdi-monitor-dashboard',
-    title: 'Dashboard',
-    to: '/dashboard',
-  },
-  {
-    icon: 'mdi-key-outline',
-    title: 'Virtual keys',
-    to: '/tokens',
-  },
-  {
-    icon: 'mdi-help-circle-outline',
-    title: 'Setup guide',
-    to: '/help',
-  },
-]
+const quickActions = computed(() => {
+  const actions = [
+    {
+      icon: 'mdi-monitor-dashboard',
+      title: 'Dashboard',
+      to: '/dashboard',
+    },
+  ]
+
+  if (user.value?.role !== 'limited') {
+    actions.push(
+      {
+        icon: 'mdi-key-outline',
+        title: 'Virtual keys',
+        to: '/tokens',
+      },
+      {
+        icon: 'mdi-help-circle-outline',
+        title: 'Setup guide',
+        to: '/help',
+      },
+    )
+  }
+
+  return actions
+})
 
 // logout signs the current user out through the auth store.
 async function logout() {

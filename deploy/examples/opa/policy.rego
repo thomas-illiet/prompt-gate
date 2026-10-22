@@ -16,7 +16,7 @@ decision := {"allow": true, "reason": "trusted_service"} if {
 }
 
 decision := {"allow": true, "reason": "trusted_user_route"} if {
-	input.identity.role == "user"
+	input.identity.role in {"limited", "user"}
 	input.identity.type == "user"
 	net.cidr_contains("192.168.0.0/16", input.request.client_ip)
 	input.request.method == "POST"

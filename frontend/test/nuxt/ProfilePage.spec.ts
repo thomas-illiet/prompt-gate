@@ -70,8 +70,10 @@ function mountPage() {
           template: '<section><slot /></section>',
         },
         ProfileQuickActions: {
+          props: ['actions'],
           emits: ['logout'],
-          template: '<div data-test="quick-actions" />',
+          template:
+            '<div data-test="quick-actions">{{ actions.map((action) => action.title).join(",") }}</div>',
         },
         ProfileQuotaSection: {
           props: ['error', 'loading', 'quota'],
@@ -133,5 +135,14 @@ describe('ProfilePage', () => {
     await wrapper.get('[data-test="profile-token-section"]').trigger('click')
 
     expect(reloadProfileUsageMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('hides virtual keys and setup actions for limited users', () => {
+    const authStore = useAuthStore()
+    authStore.user = { ...authStore.user!, role: 'limited' }
+
+    const wrapper = mountPage()
+
+    expect(wrapper.get('[data-test="quick-actions"]').text()).toBe('Dashboard')
   })
 })

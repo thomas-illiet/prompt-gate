@@ -34,6 +34,8 @@ const user: AdminUser = {
 function createAdminUsersMock() {
   return {
     clearIPAddresses: vi.fn(),
+    createdToken: shallowRef(null),
+    createUserToken: vi.fn(),
     deleteUser: vi.fn(),
     exporting: shallowRef(false),
     exportUsers: vi.fn(),
@@ -100,7 +102,7 @@ const UsersTableStub = defineComponent({
       required: true,
     },
   },
-  emits: ['manageIps', 'usageStatistics'],
+  emits: ['manageIps', 'manageTokens', 'usageStatistics'],
   template: `
     <div>
       <button
@@ -114,6 +116,12 @@ const UsersTableStub = defineComponent({
         @click="$emit('usageStatistics', items[0])"
       >
         Usage statistics
+      </button>
+      <button
+        data-test="open-tokens"
+        @click="$emit('manageTokens', items[0])"
+      >
+        Virtual keys
       </button>
     </div>
   `,
@@ -158,6 +166,20 @@ const UsageDialogStub = defineComponent({
   `,
 })
 
+const UserTokensDialogStub = defineComponent({
+  props: ['modelValue'],
+  emits: ['create'],
+  template:
+    '<button v-if="modelValue" data-test="create-user-token" @click="$emit(\'create\')">Create key</button>',
+})
+
+const TokenCreateDialogStub = defineComponent({
+  props: ['modelValue'],
+  emits: ['create'],
+  template:
+    '<button v-if="modelValue" data-test="submit-user-token" @click="$emit(\'create\', { name: \'admin_created\', description: \'Managed\' })">Submit key</button>',
+})
+
 function mountPage() {
   return mount(AdminUsersPage, {
     global: {
@@ -169,10 +191,12 @@ function mountPage() {
         AdminUserGroupsDialog: true,
         AdminUsersFilters: true,
         AdminUsersTable: UsersTableStub,
-        AdminUserTokensDialog: true,
+        AdminUserTokensDialog: UserTokensDialogStub,
         AdminUserUsageDialog: UsageDialogStub,
         AppConfirmDialog: true,
         AppPageHero: true,
+        AppTokenCreateDialog: TokenCreateDialogStub,
+        UserTokenCreatedDialog: true,
         VAlert: { template: '<div><slot /></div>' },
         VCol: { template: '<div><slot /></div>' },
         VContainer: { template: '<main><slot /></main>' },
@@ -220,6 +244,23 @@ describe('Admin users page usage statistics dialog', () => {
     await wrapper.get('[data-test="export-users"]').trigger('click')
 
     expect(adminUsers.exportUsers).toHaveBeenCalledOnce()
+  })
+
+  it('creates a token for the user selected from the table', async () => {
+    const adminUsers = createAdminUsersMock()
+    useAdminUsersMock.mockReturnValue(adminUsers)
+    const wrapper = mountPage()
+
+    await wrapper.get('[data-test="open-tokens"]').trigger('click')
+    expect(adminUsers.loadTokens).toHaveBeenCalledWith(user.id)
+
+    await wrapper.get('[data-test="create-user-token"]').trigger('click')
+    await wrapper.get('[data-test="submit-user-token"]').trigger('click')
+
+    expect(adminUsers.createUserToken).toHaveBeenCalledWith(user.id, {
+      name: 'admin_created',
+      description: 'Managed',
+    })
   })
 
   it('mounts for the selected user and unmounts on every close', async () => {

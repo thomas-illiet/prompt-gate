@@ -47,6 +47,22 @@ func TestRequireAppAccess(t *testing.T) {
 			t.Fatalf("expected forbidden status, got %d", recorder.Code)
 		}
 	})
+
+	t.Run("blocks legacy manager role", func(t *testing.T) {
+		handler := RequireAppAccess()(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusNoContent)
+		}))
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req = req.WithContext(auth.ContextWithUser(req.Context(), auth.UserProfile{
+			Role:     auth.AppRole("manager"),
+			IsActive: true,
+		}))
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, req)
+		if recorder.Code != http.StatusForbidden {
+			t.Fatalf("expected forbidden status, got %d", recorder.Code)
+		}
+	})
 }
 
 // TestRequireRoles verifies role-specific middleware authorization.
@@ -55,17 +71,17 @@ func TestRequireRoles(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 
-	managerReq := httptest.NewRequest(http.MethodGet, "/", nil)
-	managerReq = managerReq.WithContext(auth.ContextWithUser(managerReq.Context(), auth.UserProfile{
-		Role:     auth.RoleManager,
+	limitedReq := httptest.NewRequest(http.MethodGet, "/", nil)
+	limitedReq = limitedReq.WithContext(auth.ContextWithUser(limitedReq.Context(), auth.UserProfile{
+		Role:     auth.RoleLimited,
 		IsActive: true,
 	}))
 
-	managerRecorder := httptest.NewRecorder()
-	handler.ServeHTTP(managerRecorder, managerReq)
+	limitedRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(limitedRecorder, limitedReq)
 
-	if managerRecorder.Code != http.StatusForbidden {
-		t.Fatalf("expected manager to be forbidden, got %d", managerRecorder.Code)
+	if limitedRecorder.Code != http.StatusForbidden {
+		t.Fatalf("expected limited to be forbidden, got %d", limitedRecorder.Code)
 	}
 
 	adminReq := httptest.NewRequest(http.MethodGet, "/", nil)

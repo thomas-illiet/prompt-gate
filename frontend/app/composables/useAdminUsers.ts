@@ -1,4 +1,9 @@
-import type { UserToken, UserTokenListResponse } from '~/types/user-service'
+import type {
+  CreatedUserToken,
+  UserToken,
+  UserTokenListResponse,
+  UserTokenPayload,
+} from '~/types/user-service'
 import type {
   AccountIPAddress,
   AccountIPAddressListResponse,
@@ -39,6 +44,8 @@ const ERROR_MESSAGES = {
   invalid_role: 'Selected role is invalid.',
   invalid_sort: 'Selected user sort is invalid.',
   invalid_subscription_assignment: 'Selected subscription plan is invalid.',
+  invalid_token_name: 'Use lowercase letters, numbers, dashes, or underscores.',
+  invalid_token_ttl: 'Virtual key lifetime must be between 1 and 30 days.',
   token_not_found: 'Virtual key no longer exists.',
   user_not_found: 'User no longer exists.',
 }
@@ -71,6 +78,7 @@ export function useAdminUsers() {
   const tokenSortBy = shallowRef('createdAt')
   const tokenSortDir = shallowRef<'asc' | 'desc'>('desc')
   const tokenTotal = shallowRef(0)
+  const createdToken = shallowRef<CreatedUserToken | null>(null)
   const ipAddresses = shallowRef<AccountIPAddress[]>([])
   const ipLoading = shallowRef(false)
   const ipPage = shallowRef(1)
@@ -481,6 +489,26 @@ export function useAdminUsers() {
     )
   }
 
+  // createUserToken creates a virtual key for any selected human user.
+  async function createUserToken(userId: string, payload: UserTokenPayload) {
+    return await runApiMutation(
+      {
+        loading: saving,
+        successMessage: 'Virtual key created.',
+        toErrorMessage: toAdminUserErrorMessage,
+      },
+      async () => {
+        createdToken.value = await apiJson<CreatedUserToken>(
+          adminUserPath(userId, 'tokens'),
+          payload,
+          { method: 'POST' },
+        )
+        await loadTokens(userId)
+        return createdToken.value
+      },
+    )
+  }
+
   // handleCurrentUserMutation redirects when the current user's access changes.
   async function handleCurrentUserMutation(userId: string) {
     if (authStore.user?.id !== userId) {
@@ -506,6 +534,8 @@ export function useAdminUsers() {
 
   return {
     clearIPAddresses,
+    createdToken,
+    createUserToken,
     deleteUser,
     exporting,
     exportUsers,

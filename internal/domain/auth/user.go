@@ -10,15 +10,15 @@ type AppRole string
 
 const (
 	RoleNone    AppRole = "none"
+	RoleLimited AppRole = "limited"
 	RoleUser    AppRole = "user"
-	RoleManager AppRole = "manager"
 	RoleAdmin   AppRole = "admin"
 )
 
 // IsValid reports whether the role is one of the defined AppRole constants.
 func (r AppRole) IsValid() bool {
 	switch r {
-	case RoleNone, RoleUser, RoleManager, RoleAdmin:
+	case RoleNone, RoleLimited, RoleUser, RoleAdmin:
 		return true
 	default:
 		return false

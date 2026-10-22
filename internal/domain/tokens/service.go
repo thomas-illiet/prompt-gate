@@ -91,7 +91,7 @@ type tokenClaims struct {
 
 // ttlForRole returns the default token lifetime for an app role.
 func ttlForRole(role auth.AppRole) time.Duration {
-	if role == auth.RoleManager || role == auth.RoleAdmin {
+	if role == auth.RoleAdmin {
 		return 30 * 24 * time.Hour
 	}
 	return 7 * 24 * time.Hour
@@ -232,7 +232,7 @@ func (s *Service) ValidatePrincipalWithExpiry(ctx context.Context, rawToken stri
 		return auth.Principal{}, time.Time{}, ErrAccountInactive
 	}
 	switch user.Role {
-	case auth.RoleUser, auth.RoleManager, auth.RoleAdmin:
+	case auth.RoleLimited, auth.RoleUser, auth.RoleAdmin:
 		return auth.Principal{User: user, CredentialID: record.ID, CredentialName: record.Name}, record.ExpiresAt, nil
 	default:
 		return auth.Principal{}, time.Time{}, ErrInsufficientRole

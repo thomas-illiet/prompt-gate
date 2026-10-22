@@ -7,11 +7,17 @@ func sessionRoutes() []routeDefinition {
 }
 
 func userRoutes(srv *server) []routeDefinition {
-	routes := make([]routeDefinition, 0, 17)
-	routes = append(routes, currentUserRoutes(srv)...)
+	routes := make([]routeDefinition, 0, 5)
 	routes = append(routes, userMonitoringRoutes(srv)...)
-	routes = append(routes, userFAQRoutes(srv)...)
 	routes = append(routes, userTokenRoutes(srv)...)
+	routes = append(routes, userHelpRoutes(srv)...)
+	return routes
+}
+
+func limitedRoutes(srv *server) []routeDefinition {
+	routes := make([]routeDefinition, 0, 12)
+	routes = append(routes, currentUserRoutes(srv)...)
+	routes = append(routes, userFAQRoutes(srv)...)
 	return routes
 }
 
@@ -19,7 +25,6 @@ func currentUserRoutes(srv *server) []routeDefinition {
 	return []routeDefinition{
 		{pattern: "GET /api/v1/me/usage", handler: srv.handleCurrentUserUsage},
 		{pattern: "GET /api/v1/me/quota", handler: srv.handleCurrentUserQuota},
-		{pattern: "GET /api/v1/me/help/setup", handler: srv.handleHelpSetup},
 		{pattern: "GET /api/v1/me/dashboard/tokens", handler: srv.handleCurrentUserDashboardTokens},
 		{pattern: "GET /api/v1/me/dashboard/messages", handler: srv.handleCurrentUserDashboardMessages},
 		{pattern: "GET /api/v1/me/dashboard/duration", handler: srv.handleCurrentUserDashboardDuration},
@@ -28,6 +33,12 @@ func currentUserRoutes(srv *server) []routeDefinition {
 		{pattern: "GET /api/v1/me/dashboard/top-provider-names", handler: srv.handleCurrentUserDashboardTopProviderNames},
 		{pattern: "GET /api/v1/me/dashboard/top-provider-types", handler: srv.handleCurrentUserDashboardTopProviderTypes},
 		{pattern: "GET /api/v1/me/groups", handler: srv.handleCurrentUserGroups},
+	}
+}
+
+func userHelpRoutes(srv *server) []routeDefinition {
+	return []routeDefinition{
+		{pattern: "GET /api/v1/me/help/setup", handler: srv.handleHelpSetup},
 	}
 }
 

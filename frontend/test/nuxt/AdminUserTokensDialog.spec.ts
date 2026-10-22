@@ -98,6 +98,17 @@ function mountDialog(tokens: UserToken[]) {
 }
 
 describe('AdminUserTokensDialog', () => {
+  it('emits create from the toolbar action', async () => {
+    const wrapper = mountDialog([])
+
+    await wrapper
+      .findAll('button')
+      .find((button) => button.text() === 'Create key')
+      ?.trigger('click')
+
+    expect(wrapper.emitted('create')).toEqual([[]])
+  })
+
   it('emits revoke for active tokens and disables inactive token actions', async () => {
     const wrapper = mountDialog([activeToken, revokedToken, expiredToken])
     const revokeButtons = wrapper

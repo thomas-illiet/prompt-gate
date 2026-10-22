@@ -10,7 +10,7 @@ definePageMeta({
   path: '/tokens',
   title: 'Virtual keys',
   drawerIndex: 2,
-  requiredRoles: ['user', 'manager', 'admin'],
+  requiredRoles: ['user', 'admin'],
 })
 
 const userTokens = useUserTokens()

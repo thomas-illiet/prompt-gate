@@ -20,11 +20,12 @@ func TestRouteInventoryIsCompleteAndUnique(t *testing.T) {
 	}{
 		{name: "public", routes: publicRoutes(srv), want: 5},
 		{name: "session", routes: sessionRoutes(), want: 1},
-		{name: "user", routes: userRoutes(srv), want: 16},
-		{name: "admin", routes: adminRoutes(adminHandler), want: 81},
+		{name: "limited", routes: limitedRoutes(srv), want: 11},
+		{name: "user", routes: userRoutes(srv), want: 5},
+		{name: "admin", routes: adminRoutes(adminHandler), want: 82},
 	}
 
-	seen := make(map[string]string, 103)
+	seen := make(map[string]string, 104)
 	for _, group := range groups {
 		if len(group.routes) != group.want {
 			t.Errorf("%s routes: got %d, want %d", group.name, len(group.routes), group.want)
@@ -44,8 +45,8 @@ func TestRouteInventoryIsCompleteAndUnique(t *testing.T) {
 		}
 	}
 
-	if len(seen) != 103 {
-		t.Errorf("route inventory: got %d routes, want 103", len(seen))
+	if len(seen) != 104 {
+		t.Errorf("route inventory: got %d routes, want 104", len(seen))
 	}
 	for _, removed := range []string{
 		"GET /api/v1/me/prompts",
@@ -80,6 +81,41 @@ func TestRemovedMCPRoutesReturnNotFound(t *testing.T) {
 		mux.ServeHTTP(recorder, httptest.NewRequest(request.method, request.path, nil))
 		if recorder.Code != http.StatusNotFound {
 			t.Errorf("%s %s: got %d, want %d", request.method, request.path, recorder.Code, http.StatusNotFound)
+		}
+	}
+}
+
+func TestLimitedRouteBoundary(t *testing.T) {
+	srv := &server{}
+	limited := make(map[string]bool)
+	for _, route := range limitedRoutes(srv) {
+		limited[route.pattern] = true
+	}
+	standard := make(map[string]bool)
+	for _, route := range userRoutes(srv) {
+		standard[route.pattern] = true
+	}
+
+	for _, allowed := range []string{
+		"GET /api/v1/me/usage",
+		"GET /api/v1/me/quota",
+		"GET /api/v1/me/groups",
+		"GET /api/v1/me/dashboard/tokens",
+		"GET /api/v1/faq",
+	} {
+		if !limited[allowed] {
+			t.Errorf("expected limited route %q", allowed)
+		}
+	}
+	for _, forbidden := range []string{
+		"GET /api/v1/me/help/setup",
+		"GET /api/v1/monitoring/status",
+		"GET /api/v1/tokens",
+		"POST /api/v1/tokens",
+		"DELETE /api/v1/tokens/{id}",
+	} {
+		if limited[forbidden] || !standard[forbidden] {
+			t.Errorf("expected standard-only route %q", forbidden)
 		}
 	}
 }

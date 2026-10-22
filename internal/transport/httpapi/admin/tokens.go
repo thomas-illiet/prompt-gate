@@ -4,7 +4,9 @@ import (
 	"errors"
 	"net/http"
 
+	"promptgate/backend/internal/domain/auth"
 	"promptgate/backend/internal/domain/tokens"
+	"promptgate/backend/internal/domain/users"
 )
 
 // HandleAdminListUserTokens returns all tokens for a given user (admin only).
@@ -27,6 +29,37 @@ func (h *Handler) HandleAdminListUserTokens(w http.ResponseWriter, r *http.Reque
 	}
 
 	writeJSON(w, http.StatusOK, result)
+}
+
+// HandleAdminCreateUserToken creates a token for any human user.
+func (h *Handler) HandleAdminCreateUserToken(w http.ResponseWriter, r *http.Request) {
+	userID := r.PathValue("id")
+	user, err := h.users.UserByID(r.Context(), userID)
+	if err != nil {
+		if errors.Is(err, users.ErrUserNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "user_not_found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	if user.Type != auth.UserTypeUser {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "user_not_found"})
+		return
+	}
+
+	var input tokens.CreateTokenRequest
+	if !decodeRequestBody(w, r, &input) {
+		return
+	}
+
+	created, err := h.tokens.CreateToken(r.Context(), user, input.Name, input.Description, input.ExpiresInDays)
+	if err != nil {
+		writeTokenCreationError(w, err)
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, created)
 }
 
 // HandleAdminRevokeToken revokes any token by ID regardless of owner (admin only).
