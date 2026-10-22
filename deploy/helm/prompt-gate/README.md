@@ -136,17 +136,39 @@ ServiceAccount.
 
 ## Real Client IP
 
-When Prompt Gate runs behind ingress-nginx, prefer explicit trusted proxy CIDRs
-over global forwarded-header trust:
+When Prompt Gate runs behind an ingress controller such as HAProxy or
+ingress-nginx, prefer explicit trusted proxy CIDRs over global forwarded-header
+trust. Do not copy a broad private range from an example: first identify the
+direct peer that reaches Prompt Gate.
 
 ```yaml
 config:
-  proxyTrustedProxies: "10.0.0.0/8,192.168.0.0/16"
+  proxyTrustForwardHeaders: "false"
+  proxyTrustedProxies: "<narrow-controller-or-node-cidr>"
+  proxyClientIpDebug: "true" # temporary
 ```
 
-The ingress controller must also preserve or forward the real client IP with
-settings appropriate to your load balancer, such as `externalTrafficPolicy`,
-`use-forwarded-headers`, `enable-real-ip`, and `proxy-real-ip-cidr`.
+Send one known external request and inspect the proxy's `client IP resolved`
+log. Match its `peer_ip` against controller pods and nodes:
+
+```bash
+kubectl get pods -A -o wide
+kubectl get nodes -o wide
+kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{" podCIDRs="}{.spec.podCIDRs}{"\n"}{end}'
+```
+
+If `peer_ip` is a controller pod address, use the narrow stable pod CIDR
+allocated to those controller pods. If it is a node or SNAT address, use the
+narrow corresponding node/network CIDR. Prefer dedicated controller address
+ranges; never trust all cluster-private addresses merely for convenience.
+After validation, set `proxyClientIpDebug` back to `"false"`.
+
+HAProxy must overwrite or sanitize client-supplied `X-Forwarded-For` before
+appending the real client address. When the trusted CIDR contains workloads
+other than the ingress controller, add a NetworkPolicy that permits access to
+the Prompt Gate proxy only from the HAProxy controller namespace/pods. The
+controller or its upstream load balancer must preserve the source IP; the exact
+HAProxy setting depends on that external topology.
 
 ## Argo CD Ordering
 

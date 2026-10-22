@@ -1,9 +1,12 @@
 package clientip
 
 import (
+	"bytes"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"strings"
 	"testing"
 )
 
@@ -150,6 +153,54 @@ func TestMiddlewareStoresResolvedClientIP(t *testing.T) {
 
 	if got != "198.51.100.7" {
 		t.Fatalf("expected context client IP, got %q", got)
+	}
+}
+
+// TestMiddlewareClientIPDebugLogsOnlyResolutionMetadata verifies diagnostics omit raw headers and request content.
+func TestMiddlewareClientIPDebugLogsOnlyResolutionMetadata(t *testing.T) {
+	var output bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&output, nil))
+	req := httptest.NewRequest(http.MethodPost, "/v1/chat?token=query-secret", strings.NewReader("body-secret"))
+	req.RemoteAddr = "10.1.2.3:1234"
+	req.Header.Set("X-Forwarded-For", "198.51.100.7, 10.9.8.7")
+	req.Header.Set("Authorization", "Bearer header-secret")
+
+	handler := MiddlewareWithOptions(Options{
+		TrustedProxies: []netip.Prefix{mustPrefix(t, "10.0.0.0/8")},
+		Debug:          true,
+		Logger:         logger,
+	})(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	handler.ServeHTTP(httptest.NewRecorder(), req)
+
+	logged := output.String()
+	for _, expected := range []string{`"peer_ip":"10.1.2.3"`, `"client_ip":"198.51.100.7"`, `"source":"x-forwarded-for"`, `"peer_trusted":true`} {
+		if !strings.Contains(logged, expected) {
+			t.Fatalf("expected diagnostic field %s in %s", expected, logged)
+		}
+	}
+	for _, secret := range []string{"10.9.8.7", "query-secret", "body-secret", "header-secret", "Authorization", "X-Forwarded-For"} {
+		if strings.Contains(logged, secret) {
+			t.Fatalf("diagnostic log exposed %q: %s", secret, logged)
+		}
+	}
+}
+
+// TestMiddlewareClientIPDebugDisabledByDefault verifies resolution emits no diagnostic unless opted in.
+func TestMiddlewareClientIPDebugDisabledByDefault(t *testing.T) {
+	var output bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&output, nil))
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "10.1.2.3:1234"
+	req.Header.Set("X-Forwarded-For", "198.51.100.7")
+
+	handler := MiddlewareWithOptions(Options{
+		TrustedProxies: []netip.Prefix{mustPrefix(t, "10.0.0.0/8")},
+		Logger:         logger,
+	})(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	handler.ServeHTTP(httptest.NewRecorder(), req)
+
+	if output.Len() != 0 {
+		t.Fatalf("expected no diagnostic log, got %s", output.String())
 	}
 }
 

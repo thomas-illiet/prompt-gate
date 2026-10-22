@@ -2,6 +2,7 @@ package clientip
 
 import (
 	"context"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/netip"
@@ -14,6 +15,15 @@ type contextKey struct{}
 type Options struct {
 	TrustForwardHeaders bool
 	TrustedProxies      []netip.Prefix
+	Debug               bool
+	Logger              *slog.Logger
+}
+
+type resolution struct {
+	clientIP    string
+	peerIP      string
+	source      string
+	peerTrusted bool
 }
 
 // Resolve extracts the client IP, optionally trusting forwarding headers.
@@ -23,32 +33,37 @@ func Resolve(r *http.Request, trustForwardHeaders bool) string {
 
 // ResolveWithOptions extracts the client IP using the configured proxy trust policy.
 func ResolveWithOptions(r *http.Request, options Options) string {
+	return resolveWithOptions(r, options).clientIP
+}
+
+func resolveWithOptions(r *http.Request, options Options) resolution {
 	remote := remoteAddrHost(r.RemoteAddr)
 	if options.TrustForwardHeaders {
 		if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
 			first, _, _ := strings.Cut(forwarded, ",")
-			if first = strings.TrimSpace(first); first != "" {
-				return first
+			if first = normalizedHeaderIP(first); first != "" {
+				return resolution{clientIP: first, peerIP: remote, source: "x-forwarded-for", peerTrusted: true}
 			}
 		}
-		if realIP := strings.TrimSpace(r.Header.Get("X-Real-IP")); realIP != "" {
-			return realIP
+		if realIP := normalizedHeaderIP(r.Header.Get("X-Real-IP")); realIP != "" {
+			return resolution{clientIP: realIP, peerIP: remote, source: "x-real-ip", peerTrusted: true}
 		}
-		return remote
+		return resolution{clientIP: remote, peerIP: remote, source: "remote", peerTrusted: true}
 	}
 
 	if len(options.TrustedProxies) > 0 {
-		if isTrustedProxy(remote, options.TrustedProxies) {
+		trusted := isTrustedProxy(remote, options.TrustedProxies)
+		if trusted {
 			if forwarded := trustedForwardedFor(r.Header.Get("X-Forwarded-For"), options.TrustedProxies); forwarded != "" {
-				return forwarded
+				return resolution{clientIP: forwarded, peerIP: remote, source: "x-forwarded-for", peerTrusted: true}
 			}
 			if realIP := normalizedHeaderIP(r.Header.Get("X-Real-IP")); realIP != "" {
-				return realIP
+				return resolution{clientIP: realIP, peerIP: remote, source: "x-real-ip", peerTrusted: true}
 			}
 		}
-		return remote
+		return resolution{clientIP: remote, peerIP: remote, source: "remote", peerTrusted: trusted}
 	}
-	return remote
+	return resolution{clientIP: remote, peerIP: remote, source: "remote", peerTrusted: false}
 }
 
 func remoteAddrHost(remoteAddr string) string {
@@ -129,7 +144,20 @@ func Middleware(trustForwardHeaders bool) func(http.Handler) http.Handler {
 func MiddlewareWithOptions(options Options) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ctx := ContextWithClientIP(r.Context(), ResolveWithOptions(r, options))
+			resolved := resolveWithOptions(r, options)
+			if options.Debug {
+				logger := options.Logger
+				if logger == nil {
+					logger = slog.Default()
+				}
+				logger.Info("client IP resolved",
+					"peer_ip", resolved.peerIP,
+					"client_ip", resolved.clientIP,
+					"source", resolved.source,
+					"peer_trusted", resolved.peerTrusted,
+				)
+			}
+			ctx := ContextWithClientIP(r.Context(), resolved.clientIP)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}

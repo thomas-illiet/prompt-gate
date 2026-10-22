@@ -23,6 +23,7 @@ func LoadProxy() (ProxyConfig, error) {
 	v.SetDefault("session_ttl", "8h")
 	v.SetDefault("proxy_trust_forward_headers", false)
 	v.SetDefault("proxy_trusted_proxies", "")
+	v.SetDefault("proxy_client_ip_debug", false)
 	v.SetDefault("proxy_debug_requests", false)
 	v.SetDefault("redis_cache_ttl", "5m")
 	v.SetDefault("proxy_reload_debounce", "250ms")
@@ -76,6 +77,7 @@ func LoadProxy() (ProxyConfig, error) {
 		ProxyRuntimeConfig: ProxyRuntimeConfig{
 			ProxyTrustForwardHeaders:      v.GetBool("proxy_trust_forward_headers"),
 			ProxyTrustedProxies:           trustedProxies,
+			ProxyClientIPDebug:            v.GetBool("proxy_client_ip_debug"),
 			ProxyDebugRequests:            v.GetBool("proxy_debug_requests"),
 			ProxyReloadDebounce:           v.GetDuration("proxy_reload_debounce"),
 			ProxyMaxBufferedRequestBytes:  v.GetInt64("proxy_max_buffered_request_bytes"),

@@ -152,6 +152,10 @@ config:
   # Prefer this over proxyTrustForwardHeaders in production.
   proxyTrustedProxies: ""
 
+  # Temporarily log only the peer IP, resolved client IP, resolution source,
+  # and trust decision. No forwarding headers or request content are logged.
+  proxyClientIpDebug: "false"
+
   # DANGER: writes credentials, prompts, and personal data to stdout in cleartext.
   # Enable only temporarily for diagnosis and never leave enabled in production.
   proxyDebugRequests: "false"

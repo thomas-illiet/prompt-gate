@@ -34,6 +34,8 @@ func (p *ProxyRuntime) buildHandler(
 	clientIPOptions := clientip.Options{
 		TrustForwardHeaders: cfg.ProxyTrustForwardHeaders,
 		TrustedProxies:      cfg.ProxyTrustedProxies,
+		Debug:               cfg.ProxyClientIPDebug,
+		Logger:              p.logger,
 	}
 	protectedHandler := groups.MiddlewareWithOptions(accessSnapshot, p.logger, groups.MiddlewareOptions{
 		MaxBufferedRequestBytes: cfg.ProxyMaxBufferedRequestBytes,

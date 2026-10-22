@@ -101,6 +101,12 @@ when the direct peer is in those CIDRs.
 global trust switch. Enable it only behind infrastructure that strips or
 rewrites untrusted forwarded headers.
 
+For short-lived diagnosis, set `PROMPTGATE_PROXY_CLIENT_IP_DEBUG=true`. Each
+request then produces a structured `client IP resolved` log with only
+`peer_ip`, `client_ip`, `source`, and `peer_trusted`. Raw forwarding headers,
+request headers, paths, query strings, and bodies are not included. Disable it
+after validating the trusted CIDR.
+
 ## Usage Recording
 
 The proxy recorder stores:

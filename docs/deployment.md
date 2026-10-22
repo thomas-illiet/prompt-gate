@@ -310,6 +310,16 @@ for your load balancer, ingress nodes, or upstream proxies. See the
 [source IP notes](https://kubernetes.github.io/ingress-nginx/user-guide/miscellaneous/#source-ip-address),
 and [externalTrafficPolicy FAQ](https://kubernetes.github.io/ingress-nginx/faq/#client-ipaddress-on-single-node-cluster).
 
+For HAProxy Ingress, ensure the controller overwrites or sanitizes inbound
+`X-Forwarded-For` before forwarding the client address. Temporarily enable
+`PROMPTGATE_PROXY_CLIENT_IP_DEBUG=true`, send a known external request, and use
+the structured `peer_ip` field to determine whether Prompt Gate sees an HAProxy
+pod IP, node IP, or SNAT address. Configure only the narrow stable CIDR that
+contains that peer in `PROMPTGATE_PROXY_TRUSTED_PROXIES`, keep
+`PROMPTGATE_PROXY_TRUST_FORWARD_HEADERS=false`, then disable the diagnostic.
+If the trusted CIDR is shared with other workloads, restrict the proxy Service
+with a NetworkPolicy selecting the HAProxy namespace and controller pods.
+
 ## Health Checks
 
 API:
