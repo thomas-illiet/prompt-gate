@@ -117,11 +117,10 @@ infrastructure that strips or rewrites untrusted forwarding headers.
 an AES-256-GCM cipher used for stored downstream secrets:
 
 - provider API keys
-- sensitive MCP header values
 
 Encrypted values use a versioned envelope with a random nonce. Keep the key
 stable across restarts and deployments. Rotating it requires a deliberate data
-migration because existing provider and MCP secrets must be decrypted and
+migration because existing provider secrets must be decrypted and
 re-encrypted.
 
 ## CORS

@@ -15,7 +15,7 @@ dotenv file.
 | `PROMPTGATE_DATABASE_URL` | API, proxy, worker, schedule, migrate | none | Yes | PostgreSQL connection string. Example: `postgres://postgres:postgres@localhost:5432/promptgate?sslmode=disable`. |
 | `PROMPTGATE_REDIS_URL` | API, proxy, worker, schedule | none | Yes | Redis connection URL. Example: `redis://localhost:6379/0`. |
 | `PROMPTGATE_JWT_SECRET` | API, proxy, schedule | none | Yes | Secret used for Prompt Gate API token signing and validation. Must be at least 32 characters. |
-| `PROMPTGATE_SECRETS_KEY` | API, proxy, schedule | none | Yes | Base64-encoded 32-byte key used for stored provider and MCP secrets. Keep stable across restarts and deployments. |
+| `PROMPTGATE_SECRETS_KEY` | API, proxy, schedule | none | Yes | Base64-encoded 32-byte key used for stored provider secrets. Keep stable across restarts and deployments. |
 | `PROMPTGATE_KEYCLOAK_ISSUER_URL` | API | none | API only | OIDC issuer URL. Example: `https://keycloak.example.com/realms/promptgate`. |
 | `PROMPTGATE_KEYCLOAK_JWKS_URL` | API | none | API only | JWKS URL used to validate OIDC access tokens. |
 | `PROMPTGATE_KEYCLOAK_CLIENT_ID` | API | none | API only | OIDC client ID used for browser login and ID token verification. |
@@ -51,7 +51,7 @@ dotenv file.
 | `PROMPTGATE_OPA_POLICY_PATH` | proxy | `promptgate/proxy/decision` | OPA data API document returning `{allow, reason}`. |
 | `PROMPTGATE_OPA_TIMEOUT` | proxy | `2s` | Timeout for OPA decision and health requests. |
 | `PROMPTGATE_OPA_CACHE_TTL` | proxy | `10m` | Redis TTL for allow and deny decisions. |
-| `PROMPTGATE_PROXY_RELOAD_DEBOUNCE` | API, proxy, schedule | `250ms` | Debounce duration for proxy provider and MCP reload notifications. |
+| `PROMPTGATE_PROXY_RELOAD_DEBOUNCE` | API, proxy, schedule | `250ms` | Debounce duration for proxy provider reload notifications. |
 | `PROMPTGATE_WORKER_BATCH_SIZE` | worker | `100` | Maximum Redis Stream events read per worker batch. |
 | `PROMPTGATE_WORKER_BLOCK_TIMEOUT` | worker | `5s` | Long-poll timeout for new Redis Stream events. |
 | `PROMPTGATE_WORKER_PENDING_IDLE_TIMEOUT` | worker | `30s` | Minimum idle time before a worker can reclaim pending usage events. |
@@ -207,9 +207,8 @@ PROMPTGATE_OTEL_INSECURE=false
   grants full access to every admin endpoint, including destructive actions.
   Keep it out of frontend code, browser storage, URLs, logs, and version
   control, and send it only over HTTPS.
-- `PROMPTGATE_SECRETS_KEY` protects stored downstream provider credentials and
-  sensitive MCP headers. Rotating it requires a deliberate secret migration
-  plan.
+- `PROMPTGATE_SECRETS_KEY` protects stored downstream provider credentials.
+  Rotating it requires a deliberate secret migration plan.
 - `PROMPTGATE_JWT_SECRET` must be shared by API, proxy, and scheduler
   processes so issued tokens can be validated and revoked consistently.
 - Dashboard usage cost fields are indicative estimates only. They are

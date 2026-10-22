@@ -4,7 +4,6 @@ import "context"
 
 const (
 	DomainProviders     = "providers"
-	DomainMCP           = "mcp"
 	DomainAuth          = "auth"
 	DomainGroups        = "groups"
 	DomainSubscriptions = "subscriptions"

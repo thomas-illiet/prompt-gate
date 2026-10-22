@@ -27,7 +27,7 @@ flowchart TD
     G -->|No| H["403 policy_denied or 503 policy_unavailable"]
     G -->|Yes| I["AIBridge actor middleware"]
     I --> J["Current proxy bridge"]
-    J --> K["Provider or MCP server"]
+    J --> K["Provider"]
     J --> L["Usage recorder"]
 ```
 
@@ -78,20 +78,6 @@ The setup helper returns these base URL patterns:
 Provider names must be lowercase DNS-like names such as `openai-main` or
 `local-ollama`.
 
-## MCP Routing
-
-Enabled MCP servers are loaded into an AIBridge MCP proxy manager. Each server
-has:
-
-- a unique lowercase name
-- a URL
-- optional headers
-- optional `allowPattern` and `denyPattern` regex filters
-- an enabled flag
-
-Sensitive header values are encrypted in PostgreSQL. When MCP initialization
-returns a warning, the proxy logs it and continues with the available tools.
-
 ## OPA policy behavior
 
 The proxy evaluates an external OPA decision after token authentication and
@@ -124,7 +110,7 @@ The proxy recorder stores:
 - provider name and provider type
 - model name
 - token usage, including cache read/write token counts
-- MCP tool usage and tool invocation errors
+- tool usage and invocation errors reported by providers
 - the normalized client IP and its most recent use per user or service account
 
 This data powers the current-user dashboard and user or service-account usage
@@ -223,7 +209,6 @@ The proxy uses Redis for:
 
 - API token auth cache keys
 - provider snapshots
-- MCP server snapshots
 - OPA allow and deny decisions
 - config version counters
 - config reload pub/sub
@@ -240,10 +225,9 @@ The proxy subscribes to `promptgate:config:events`.
 | Event domain | Proxy action |
 | --- | --- |
 | `providers` | Schedule a debounced bridge rebuild. |
-| `mcp` | Schedule a debounced bridge rebuild. |
 | `auth` | Update the auth cache version. |
 
-`PROMPTGATE_PROXY_RELOAD_DEBOUNCE` controls provider and MCP rebuild debounce
+`PROMPTGATE_PROXY_RELOAD_DEBOUNCE` controls provider rebuild debounce
 time. The proxy also listens for `SIGHUP` and runs a full runtime reload when
 the signal is received.
 

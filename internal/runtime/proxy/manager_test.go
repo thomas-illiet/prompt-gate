@@ -1,7 +1,9 @@
 package runtime
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -16,8 +18,10 @@ import (
 	"promptgate/backend/internal/domain/users"
 	"promptgate/backend/internal/platform/configevents"
 	"promptgate/backend/internal/platform/redisstore"
+	"promptgate/backend/internal/platform/secrets"
 
 	"github.com/alicebob/miniredis/v2"
+	coderbridge "github.com/coder/aibridge"
 	"github.com/glebarez/sqlite"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
@@ -66,6 +70,43 @@ func TestManagerShutsDownPreviousBridgeAfterSwap(t *testing.T) {
 	case <-previous.shutdown:
 	case <-time.After(time.Second):
 		t.Fatal("previous bridge was not shut down after swap")
+	}
+}
+
+// TestRebuildConstructsBridgeFromProvidersOnly verifies the retired MCP runtime is not part of bridge construction.
+func TestRebuildConstructsBridgeFromProvidersOnly(t *testing.T) {
+	ctx := context.Background()
+	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	cipher, err := secrets.NewCipher(base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{1}, 32)))
+	if err != nil {
+		t.Fatalf("new cipher: %v", err)
+	}
+	providerService := provider.NewService(db, cipher)
+	if err := providerService.AutoMigrate(ctx); err != nil {
+		t.Fatalf("migrate providers: %v", err)
+	}
+	if _, err := providerService.CreateProvider(ctx, provider.CreateProviderInput{
+		Name:    "openai",
+		Type:    provider.ProviderTypeOpenAI,
+		BaseURL: "https://api.openai.com/v1",
+		APIKey:  "test-key",
+		Enabled: true,
+	}); err != nil {
+		t.Fatalf("create provider: %v", err)
+	}
+
+	manager := &Manager{opts: Options{Providers: providerService, Logger: slog.Default()}}
+	manager.buildBridge = func(_ context.Context, providers []coderbridge.Provider) (managedBridge, error) {
+		if len(providers) != 1 {
+			t.Fatalf("providers: got %d, want 1", len(providers))
+		}
+		return &fakeManagedBridge{}, nil
+	}
+	if err := manager.Rebuild(ctx); err != nil {
+		t.Fatalf("rebuild bridge: %v", err)
 	}
 }
 

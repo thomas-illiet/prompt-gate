@@ -44,7 +44,7 @@ func (m *Manager) handleConfigEvent(ctx context.Context, domain string, version 
 			return
 		}
 		m.opts.Logger.Info("group access snapshot reloaded", "version", version)
-	case configevents.DomainProviders, configevents.DomainMCP:
+	case configevents.DomainProviders:
 		rescheduled := reload.Schedule()
 		message := "proxy bridge reload scheduled"
 		if rescheduled {

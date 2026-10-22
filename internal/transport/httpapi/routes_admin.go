@@ -11,7 +11,6 @@ func adminRoutes(handler *admin.Handler) []routeDefinition {
 	routes = append(routes, adminGroupRoutes(handler)...)
 	routes = append(routes, adminProviderRoutes(handler)...)
 	routes = append(routes, adminPricingRoutes(handler)...)
-	routes = append(routes, adminMCPRoutes(handler)...)
 	routes = append(routes, adminMonitoringRoutes(handler)...)
 	routes = append(routes, adminFAQRoutes(handler)...)
 	routes = append(routes, adminSetupGuideRoutes(handler)...)
@@ -111,16 +110,6 @@ func adminPricingRoutes(handler *admin.Handler) []routeDefinition {
 		{pattern: "PATCH /api/v1/admin/pricing/models/{id}", handler: handler.HandleAdminUpdateModelPrice},
 		{pattern: "DELETE /api/v1/admin/pricing/models/{id}", handler: handler.HandleAdminDeleteModelPrice},
 		{pattern: "GET /api/v1/admin/pricing/check", handler: handler.HandleAdminPricingConfigurationCheck},
-	}
-}
-
-func adminMCPRoutes(handler *admin.Handler) []routeDefinition {
-	return []routeDefinition{
-		{pattern: "GET /api/v1/admin/mcp/servers", handler: handler.HandleAdminListMCPServers},
-		{pattern: "POST /api/v1/admin/mcp/servers", handler: handler.HandleAdminCreateMCPServer},
-		{pattern: "GET /api/v1/admin/mcp/servers/{id}", handler: handler.HandleAdminGetMCPServer},
-		{pattern: "PATCH /api/v1/admin/mcp/servers/{id}", handler: handler.HandleAdminUpdateMCPServer},
-		{pattern: "DELETE /api/v1/admin/mcp/servers/{id}", handler: handler.HandleAdminDeleteMCPServer},
 	}
 }
 

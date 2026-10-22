@@ -4,7 +4,7 @@
 
 Prompt Gate is the Go service layer for Prompt Gate, a control plane
 for safely exposing LLM providers to teams. It combines browser login, role
-management, API token issuance, a provider-aware LLM proxy, MCP server routing,
+management, API token issuance, a provider-aware LLM proxy,
 external OPA policy checks, usage recording, and scheduled cleanup jobs.
 
 The product is designed as a small set of deployable processes built from one
@@ -110,7 +110,6 @@ flowchart LR
     Schedule --> Redis
     API --> OIDC["OIDC provider"]
     Proxy --> Providers["OpenAI, Anthropic, Ollama"]
-    Proxy --> MCP["MCP servers"]
 ```
 
 ## Screenshots

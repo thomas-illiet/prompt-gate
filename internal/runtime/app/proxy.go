@@ -12,7 +12,6 @@ import (
 	"go.opentelemetry.io/otel"
 
 	"promptgate/backend/internal/domain/groups"
-	localmcp "promptgate/backend/internal/domain/mcp"
 	"promptgate/backend/internal/domain/policy"
 	localprovider "promptgate/backend/internal/domain/provider"
 	localproxy "promptgate/backend/internal/domain/proxy"
@@ -83,7 +82,6 @@ func NewProxy(ctx context.Context, cfg config.ProxyConfig, logger *slog.Logger, 
 	groupService := groups.NewService(db)
 	subscriptionService := subscriptions.NewService(db)
 	providerService := localprovider.NewService(db, secretCipher)
-	mcpService := localmcp.NewService(db, secretCipher)
 	subscriptionStore := subscriptions.NewRedisStore(redisStore, subscriptionService, cfg.RedisCacheTTL, logger)
 	subscriptionStore.SyncVersion(ctx)
 	if err := subscriptionStore.WarmSnapshot(ctx); err != nil {
@@ -130,7 +128,6 @@ func NewProxy(ctx context.Context, cfg config.ProxyConfig, logger *slog.Logger, 
 	}
 	manager, err := proxyruntime.NewManager(ctx, proxyruntime.Options{
 		Providers:                providerService,
-		MCP:                      mcpService,
 		Recorder:                 recorder,
 		AccessSnapshot:           accessSnapshot,
 		AuthCache:                authCache,

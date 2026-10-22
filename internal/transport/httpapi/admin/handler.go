@@ -8,7 +8,6 @@ import (
 
 	"promptgate/backend/internal/domain/faq"
 	"promptgate/backend/internal/domain/groups"
-	"promptgate/backend/internal/domain/mcp"
 	"promptgate/backend/internal/domain/monitoring"
 	"promptgate/backend/internal/domain/pricing"
 	"promptgate/backend/internal/domain/provider"
@@ -26,7 +25,6 @@ type Handler struct {
 	faq           *faq.Service
 	groups        *groups.Service
 	providers     *provider.Service
-	mcp           *mcp.Service
 	monitoring    *monitoring.Service
 	pricing       *pricing.Service
 	proxy         *proxy.Service
@@ -56,7 +54,6 @@ type Dependencies struct {
 	FAQ           *faq.Service
 	Groups        *groups.Service
 	Providers     *provider.Service
-	MCP           *mcp.Service
 	Monitoring    *monitoring.Service
 	Pricing       *pricing.Service
 	Proxy         *proxy.Service
@@ -72,7 +69,6 @@ func NewHandler(deps Dependencies) *Handler {
 		faq:           deps.FAQ,
 		groups:        deps.Groups,
 		providers:     deps.Providers,
-		mcp:           deps.MCP,
 		monitoring:    deps.Monitoring,
 		pricing:       deps.Pricing,
 		proxy:         deps.Proxy,

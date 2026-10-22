@@ -10,7 +10,7 @@ used by the repository.
 | --- | --- |
 | [Architecture](architecture.md) | Understanding the API, proxy, scheduler, data stores, and hot-reload flow. |
 | [API reference](api.md) | Finding route groups, authentication requirements, and admin capabilities. |
-| [Proxy runtime](proxy.md) | Configuring and operating the LLM proxy, provider routing, MCP, OPA authorization, and usage recorder. |
+| [Proxy runtime](proxy.md) | Configuring and operating the LLM proxy, provider routing, OPA authorization, and usage recorder. |
 | [Scheduler](scheduler.md) | Running background jobs for token cleanup and access expiration. |
 | [Security model](security.md) | Reviewing OIDC, sessions, API tokens, roles, OPA behavior, CORS, and secret storage. |
 | [Development guide](development.md) | Running the stack locally, testing, migrations, and common Make targets. |

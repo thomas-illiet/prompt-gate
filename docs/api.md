@@ -212,19 +212,6 @@ admin and setup views.
 | `DELETE` | `/api/v1/admin/pricing/models/{id}` | Delete one model-specific price. |
 | `GET` | `/api/v1/admin/pricing/check` | Report missing model prices for enabled providers. |
 
-### MCP Servers
-
-| Method | Path | Purpose |
-| --- | --- | --- |
-| `GET` | `/api/v1/admin/mcp/servers` | List MCP server definitions. |
-| `POST` | `/api/v1/admin/mcp/servers` | Create an MCP server. |
-| `GET` | `/api/v1/admin/mcp/servers/{id}` | Get one MCP server. |
-| `PATCH` | `/api/v1/admin/mcp/servers/{id}` | Update MCP metadata, URL, headers, filters, or enabled state. |
-| `DELETE` | `/api/v1/admin/mcp/servers/{id}` | Delete an MCP server. |
-
-Sensitive MCP headers are encrypted before storage. `allowPattern` and
-`denyPattern` are validated as regular expressions before they are saved.
-
 ### Monitoring
 
 | Method | Path | Purpose |

@@ -21,10 +21,10 @@ func TestRouteInventoryIsCompleteAndUnique(t *testing.T) {
 		{name: "public", routes: publicRoutes(srv), want: 5},
 		{name: "session", routes: sessionRoutes(), want: 1},
 		{name: "user", routes: userRoutes(srv), want: 16},
-		{name: "admin", routes: adminRoutes(adminHandler), want: 86},
+		{name: "admin", routes: adminRoutes(adminHandler), want: 81},
 	}
 
-	seen := make(map[string]string, 108)
+	seen := make(map[string]string, 103)
 	for _, group := range groups {
 		if len(group.routes) != group.want {
 			t.Errorf("%s routes: got %d, want %d", group.name, len(group.routes), group.want)
@@ -44,12 +44,42 @@ func TestRouteInventoryIsCompleteAndUnique(t *testing.T) {
 		}
 	}
 
-	if len(seen) != 108 {
-		t.Errorf("route inventory: got %d routes, want 108", len(seen))
+	if len(seen) != 103 {
+		t.Errorf("route inventory: got %d routes, want 103", len(seen))
 	}
-	for _, removed := range []string{"GET /api/v1/me/prompts", "GET /api/v1/admin/prompts"} {
+	for _, removed := range []string{
+		"GET /api/v1/me/prompts",
+		"GET /api/v1/admin/prompts",
+		"GET /api/v1/admin/mcp/servers",
+		"POST /api/v1/admin/mcp/servers",
+		"GET /api/v1/admin/mcp/servers/{id}",
+		"PATCH /api/v1/admin/mcp/servers/{id}",
+		"DELETE /api/v1/admin/mcp/servers/{id}",
+	} {
 		if _, exists := seen[removed]; exists {
 			t.Errorf("removed route %q is still registered", removed)
+		}
+	}
+}
+
+func TestRemovedMCPRoutesReturnNotFound(t *testing.T) {
+	mux := http.NewServeMux()
+	registerRoutes(mux, adminRoutes(admin.NewHandler(admin.Dependencies{})))
+
+	for _, request := range []struct {
+		method string
+		path   string
+	}{
+		{method: http.MethodGet, path: "/api/v1/admin/mcp/servers"},
+		{method: http.MethodPost, path: "/api/v1/admin/mcp/servers"},
+		{method: http.MethodGet, path: "/api/v1/admin/mcp/servers/server-id"},
+		{method: http.MethodPatch, path: "/api/v1/admin/mcp/servers/server-id"},
+		{method: http.MethodDelete, path: "/api/v1/admin/mcp/servers/server-id"},
+	} {
+		recorder := httptest.NewRecorder()
+		mux.ServeHTTP(recorder, httptest.NewRequest(request.method, request.path, nil))
+		if recorder.Code != http.StatusNotFound {
+			t.Errorf("%s %s: got %d, want %d", request.method, request.path, recorder.Code, http.StatusNotFound)
 		}
 	}
 }

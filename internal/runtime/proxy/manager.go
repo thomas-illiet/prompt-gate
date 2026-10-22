@@ -13,7 +13,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"promptgate/backend/internal/domain/groups"
-	localmcp "promptgate/backend/internal/domain/mcp"
 	localprovider "promptgate/backend/internal/domain/provider"
 	"promptgate/backend/internal/domain/tokens"
 	"promptgate/backend/internal/platform/configevents"
@@ -22,7 +21,6 @@ import (
 
 type Options struct {
 	Providers                *localprovider.Service
-	MCP                      *localmcp.Service
 	Recorder                 aibrecorder.Recorder
 	AccessSnapshot           *groups.SnapshotStore
 	AuthCache                tokens.AuthCache
@@ -82,7 +80,7 @@ func (m *Manager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	entry.bridge.ServeHTTP(w, r)
 }
 
-// Rebuild reconstructs the bridge from the latest provider and MCP config.
+// Rebuild reconstructs the bridge from the latest provider config.
 func (m *Manager) Rebuild(ctx context.Context) error {
 	providers, err := m.buildProviders(ctx)
 	if err != nil {
@@ -91,15 +89,11 @@ func (m *Manager) Rebuild(ctx context.Context) error {
 	if len(providers) == 0 {
 		return fmt.Errorf("no supported enabled providers configured")
 	}
-	mcpProxy, err := m.buildMCPProxy(ctx)
-	if err != nil {
-		return err
-	}
 	builder := m.buildBridge
 	if builder == nil {
 		builder = m.newBridge
 	}
-	bridge, err := builder(ctx, providers, mcpProxy)
+	bridge, err := builder(ctx, providers)
 	if err != nil {
 		return fmt.Errorf("create request bridge: %w", err)
 	}

@@ -69,7 +69,7 @@ reference.
 6. Start the proxy with `/app/promptgate proxy`.
 7. Start one or more workers with `/app/promptgate worker`.
 8. Start the scheduler with `/app/promptgate schedule`.
-9. Configure provider, MCP, users, service accounts, tokens, and the external OPA policy
+9. Configure providers, users, service accounts, tokens, and the external OPA policy
    through the admin API or frontend.
 
 ## Container Examples
@@ -336,7 +336,7 @@ Returns `200 OK` with `{"status":"ok"}` when the proxy process is serving.
   resolved image digest.
 - Store all secrets in a secret manager.
 - Keep `PROMPTGATE_SECRETS_KEY` stable across deployments unless you are
-  intentionally rotating encrypted provider and MCP secrets.
+  intentionally rotating encrypted provider secrets.
 - Run exactly one scheduler replica unless you add external job locking.
 - Ensure at least one supported enabled provider exists before starting proxy
   replicas.

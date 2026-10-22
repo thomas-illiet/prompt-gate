@@ -9,7 +9,6 @@ import (
 
 	"promptgate/backend/internal/domain/faq"
 	"promptgate/backend/internal/domain/groups"
-	"promptgate/backend/internal/domain/mcp"
 	"promptgate/backend/internal/domain/monitoring"
 	"promptgate/backend/internal/domain/pricing"
 	"promptgate/backend/internal/domain/provider"
@@ -62,11 +61,6 @@ func Run(ctx context.Context, db *gorm.DB) error {
 		return fmt.Errorf("migrate groups: %w", err)
 	}
 
-	slog.Info("running database migrations", "models", "mcp")
-	if err := db.WithContext(ctx).AutoMigrate(&mcp.MCPServer{}); err != nil {
-		return fmt.Errorf("migrate mcp: %w", err)
-	}
-
 	slog.Info("running database migrations", "models", "monitoring")
 	if err := db.WithContext(ctx).AutoMigrate(&monitoring.MonitoringService{}); err != nil {
 		return fmt.Errorf("migrate monitoring: %w", err)
@@ -82,8 +76,20 @@ func Run(ctx context.Context, db *gorm.DB) error {
 	if err := removeLegacyFirewall(ctx, db); err != nil {
 		return fmt.Errorf("remove legacy firewall schema: %w", err)
 	}
+	if err := removeLegacyMCP(ctx, db); err != nil {
+		return fmt.Errorf("remove legacy mcp schema: %w", err)
+	}
 
 	slog.Info("database migrations completed")
+	return nil
+}
+
+// removeLegacyMCP removes persisted configuration for the retired MCP feature.
+func removeLegacyMCP(ctx context.Context, db *gorm.DB) error {
+	migrator := db.WithContext(ctx).Migrator()
+	if migrator.HasTable("mcp_servers") {
+		return migrator.DropTable("mcp_servers")
+	}
 	return nil
 }
 

@@ -70,7 +70,7 @@ No. When enabled, cost estimates are calculated from recorded token counts and t
 
 ## 18. What information does Prompt Gate record for a request?
 
-Prompt Gate records the identity that initiated the request, provider, model, timestamps, duration, token usage, and MCP tool usage. Prompt contents are not recorded. This data powers dashboards and administration statistics.
+Prompt Gate records the identity that initiated the request, provider, model, timestamps, duration, token usage, and tool usage reported by the provider. Prompt contents are not recorded. This data powers dashboards and administration statistics.
 
 ## 19. Is my Prompt Gate key sent to the AI provider?
 
@@ -88,30 +88,26 @@ Prompt Gate sends a minimal identity and request context to an external OPA serv
 
 `policy_denied` means OPA explicitly refused the request. `policy_unavailable` means no valid decision could be obtained from either Redis or OPA. The policy reason is retained in server observability but is intentionally not returned to the client.
 
-## 23. What is MCP in Prompt Gate?
+## 23. Do I need to restart my client when a provider or rule changes?
 
-MCP makes external tools available to AI clients through the proxy. Administrators configure MCP servers, their headers, and, when needed, filters that allow or deny specific tools.
+Usually not. Prompt Gate dynamically reloads providers and authentication state. OPA policy changes take effect after an existing cached decision expires, at most 10 minutes with the default configuration.
 
-## 24. Do I need to restart my client when a provider or rule changes?
-
-Usually not. Prompt Gate dynamically reloads providers, MCP servers, and authentication state. OPA policy changes take effect after an existing cached decision expires, at most 10 minutes with the default configuration.
-
-## 25. How can I tell whether a service is unavailable or degraded?
+## 24. How can I tell whether a service is unavailable or degraded?
 
 The monitoring view displays the current state of monitored services, their latest latency, and any degradation. An incident banner may also notify users about an ongoing issue.
 
-## 26. What can an administrator manage in Prompt Gate?
+## 25. What can an administrator manage in Prompt Gate?
 
-An administrator can manage users, roles, access expiration dates, service accounts, keys, providers, MCP servers, access groups, subscription plans, quotas, setup guides, FAQ entries, and monitored services. OPA policies are operated independently. Administrators can also access global usage statistics.
+An administrator can manage users, roles, access expiration dates, service accounts, keys, providers, access groups, subscription plans, quotas, setup guides, FAQ entries, and monitored services. OPA policies are operated independently. Administrators can also access global usage statistics.
 
-## 27. How are provider and MCP server secrets protected?
+## 26. How are provider secrets protected?
 
-Provider API keys and sensitive MCP header values are encrypted before they are stored in PostgreSQL. Their protection also depends on organizational practices such as using a secret manager, enforcing HTTPS, controlling administrator access, and carefully rotating encryption keys.
+Provider API keys are encrypted before they are stored in PostgreSQL. Their protection also depends on organizational practices such as using a secret manager, enforcing HTTPS, controlling administrator access, and carefully rotating encryption keys.
 
-## 28. What should I do if a model request fails?
+## 27. What should I do if a model request fails?
 
 First, verify that your key is active and that neither its expiration nor your quota has been exceeded. Then confirm the URL, provider, and model you are using, and check the service status. If the problem continues, send the administrator the request time, provider, model, error code, and any request identifier, but never share your virtual key.
 
-## 29. Where can I find additional help?
+## 28. Where can I find additional help?
 
 Start with the setup page for examples tailored to the available providers, then review your profile, access groups, quotas, and monitoring status. Contact your organization's Prompt Gate administrator to request changes to permissions, subscription plans, OPA policy, or providers.

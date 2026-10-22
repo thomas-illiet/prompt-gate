@@ -11,7 +11,6 @@ import (
 	"promptgate/backend/internal/domain/auth"
 	"promptgate/backend/internal/domain/faq"
 	"promptgate/backend/internal/domain/groups"
-	"promptgate/backend/internal/domain/mcp"
 	"promptgate/backend/internal/domain/monitoring"
 	"promptgate/backend/internal/domain/pricing"
 	"promptgate/backend/internal/domain/provider"
@@ -37,7 +36,6 @@ type App struct {
 	FAQ           *faq.Service
 	Groups        *groups.Service
 	Providers     *provider.Service
-	MCP           *mcp.Service
 	Monitoring    *monitoring.Service
 	Pricing       *pricing.Service
 	Proxy         *proxy.Service
@@ -109,7 +107,6 @@ func newServices(ctx context.Context, cfg serviceConfig, apiCfg *config.APIConfi
 	}
 	providerService := provider.NewService(db, secretCipher)
 	pricingService := pricing.NewService(db, providerService)
-	mcpService := mcp.NewService(db, secretCipher)
 	monitoringService := monitoring.NewService(db)
 	setupGuideService := setupguide.NewService(db)
 	caHTTPClient, err := platformhttp.NewWithCAFile(cfg.TLS.CAFile, 0)
@@ -152,7 +149,6 @@ func newServices(ctx context.Context, cfg serviceConfig, apiCfg *config.APIConfi
 	tokenService.SetNotifier(redisStore)
 	groupService.SetNotifier(redisStore)
 	providerService.SetNotifier(redisStore)
-	mcpService.SetNotifier(redisStore)
 	subscriptionService.SetNotifier(redisStore)
 	quotaRedis := subscriptions.NewRedisStore(redisStore, subscriptionService, cfg.Redis.RedisCacheTTL, slog.Default())
 	quotaRedis.SyncVersion(ctx)
@@ -195,7 +191,6 @@ func newServices(ctx context.Context, cfg serviceConfig, apiCfg *config.APIConfi
 		FAQ:           faqService,
 		Groups:        groupService,
 		Providers:     providerService,
-		MCP:           mcpService,
 		Monitoring:    monitoringService,
 		Pricing:       pricingService,
 		Proxy:         proxyService,
