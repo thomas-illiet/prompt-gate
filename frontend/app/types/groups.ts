@@ -37,6 +37,11 @@ export interface AccessGroup {
   updatedAt: string
 }
 
+export interface AdminGroupListItem extends AccessGroup {
+  inputTokens: number
+  outputTokens: number
+}
+
 export interface ProfileGroupSummary {
   id: string
   name: string
@@ -45,7 +50,7 @@ export interface ProfileGroupSummary {
 }
 
 export interface GroupListResponse {
-  items: AccessGroup[]
+  items: AdminGroupListItem[]
   page: number
   pageSize: number
   total: number

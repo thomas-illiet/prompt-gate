@@ -1,5 +1,6 @@
 import type {
   AccessGroup,
+  AdminGroupListItem,
   CreateGroupPayload,
   GroupListResponse,
   GroupMemberSummary,
@@ -69,7 +70,7 @@ export function useAdminGroups() {
     }
   }
 
-  const queryList = useQueryList<AccessGroup>({
+  const queryList = useQueryList<AdminGroupListItem>({
     fetch: (queryString) =>
       apiFetch<GroupListResponse>(`/api/v1/admin/groups?${queryString}`),
     initialSortBy: 'name',

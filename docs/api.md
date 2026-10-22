@@ -188,7 +188,7 @@ statistics. Unknown service accounts and human-user IDs both return
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `GET` | `/api/v1/admin/groups` | List access groups. |
+| `GET` | `/api/v1/admin/groups` | List access groups, including durable all-time input and output token totals for current members. |
 | `POST` | `/api/v1/admin/groups` | Create an access group. |
 | `POST` | `/api/v1/admin/groups/model-patterns/validate` | Validate model allow and deny patterns. |
 | `GET` | `/api/v1/admin/groups/{id}` | Get one access group. |
@@ -204,6 +204,15 @@ members when the request is made. Usage from before a current member joined is
 included, while usage from removed members is excluded. Because an identity can
 belong to multiple groups, statistics from different groups can overlap and are
 not additive. Unknown groups return `404 {"error":"group_not_found"}`.
+
+Each item returned by the group list also exposes `inputTokens` and
+`outputTokens`. These are durable all-time totals from the current human and
+service-account members, including inactive accounts. Cache-read and
+cache-write token fields are not included. Empty groups return zero. The list
+supports `sortBy=inputTokens` and `sortBy=outputTokens`; sorting is applied
+before pagination. As with group statistics, usage before a current member
+joined is included, removed members are excluded, and totals can overlap
+between groups.
 
 ### Providers
 

@@ -83,6 +83,12 @@ func (s *Service) ListGroupsPaged(ctx context.Context, params ListParams) (ListR
 	if err := query.Count(&total).Error; err != nil {
 		return ListResult{}, fmt.Errorf("count groups: %w", err)
 	}
+	if groupSortNeedsUsage(params.SortBy) {
+		query = query.Joins(
+			"LEFT JOIN (?) AS group_usage ON group_usage.group_id = access_groups.id",
+			groupUsageTotalsQuery(s.db.WithContext(ctx)),
+		)
+	}
 
 	var records []Group
 	var err error
@@ -100,9 +106,19 @@ func (s *Service) ListGroupsPaged(ctx context.Context, params ListParams) (ListR
 		return ListResult{}, fmt.Errorf("list groups: %w", err)
 	}
 
-	items := make([]GroupResponse, len(records))
+	usageTotals, err := s.groupUsageTotals(ctx, records)
+	if err != nil {
+		return ListResult{}, err
+	}
+
+	items := make([]GroupListItemResponse, len(records))
 	for i := range records {
-		items[i] = records[i].toResponse()
+		totals := usageTotals[records[i].ID]
+		items[i] = GroupListItemResponse{
+			GroupResponse: records[i].toResponse(),
+			InputTokens:   totals.InputTokens,
+			OutputTokens:  totals.OutputTokens,
+		}
 	}
 	return ListResult{
 		Items:    items,
@@ -110,6 +126,68 @@ func (s *Service) ListGroupsPaged(ctx context.Context, params ListParams) (ListR
 		PageSize: params.PageSize,
 		Total:    total,
 	}, nil
+}
+
+type groupUsageTotals struct {
+	GroupID      uuid.UUID `gorm:"column:group_id"`
+	InputTokens  int64     `gorm:"column:input_tokens"`
+	OutputTokens int64     `gorm:"column:output_tokens"`
+}
+
+// groupSortNeedsUsage reports whether sorting requires the durable usage join.
+func groupSortNeedsUsage(sortBy string) bool {
+	return sortBy == "inputTokens" || sortBy == "outputTokens"
+}
+
+// groupUsageTotalsQuery aggregates durable all-time token totals once per
+// group from the current membership set. Cache token columns are deliberately
+// excluded from these totals.
+func groupUsageTotalsQuery(db *gorm.DB) *gorm.DB {
+	memberUsage := db.
+		Table("proxy_daily_usage_kpis").
+		Select(`initiator_id,
+			COALESCE(SUM(input_tokens), 0) AS input_tokens,
+			COALESCE(SUM(output_tokens), 0) AS output_tokens`).
+		Group("initiator_id")
+
+	return db.
+		Table("access_group_members").
+		Select(`access_group_members.group_id AS group_id,
+			COALESCE(SUM(member_usage.input_tokens), 0) AS input_tokens,
+			COALESCE(SUM(member_usage.output_tokens), 0) AS output_tokens`).
+		Joins("LEFT JOIN (?) AS member_usage ON member_usage.initiator_id = access_group_members.user_id", memberUsage).
+		Group("access_group_members.group_id")
+}
+
+// groupUsageTotals loads durable token totals for one page of groups in a
+// single grouped query.
+func (s *Service) groupUsageTotals(ctx context.Context, records []Group) (map[uuid.UUID]groupUsageTotals, error) {
+	result := make(map[uuid.UUID]groupUsageTotals, len(records))
+	if len(records) == 0 {
+		return result, nil
+	}
+
+	groupIDs := make([]uuid.UUID, len(records))
+	for i := range records {
+		groupIDs[i] = records[i].ID
+	}
+
+	var rows []groupUsageTotals
+	if err := s.db.WithContext(ctx).
+		Table("access_group_members").
+		Select(`access_group_members.group_id AS group_id,
+			COALESCE(SUM(proxy_daily_usage_kpis.input_tokens), 0) AS input_tokens,
+			COALESCE(SUM(proxy_daily_usage_kpis.output_tokens), 0) AS output_tokens`).
+		Joins("LEFT JOIN proxy_daily_usage_kpis ON proxy_daily_usage_kpis.initiator_id = access_group_members.user_id").
+		Where("access_group_members.group_id IN ?", groupIDs).
+		Group("access_group_members.group_id").
+		Scan(&rows).Error; err != nil {
+		return nil, fmt.Errorf("load group usage totals: %w", err)
+	}
+	for _, row := range rows {
+		result[row.GroupID] = row
+	}
+	return result, nil
 }
 
 // GetGroup returns one access group by ID.
@@ -535,6 +613,8 @@ func applyGroupSort(query *gorm.DB, sortBy, sortDir string) (*gorm.DB, error) {
 		"memberCount":       "(SELECT COUNT(*) FROM access_group_members WHERE access_group_members.group_id = access_groups.id)",
 		"createdAt":         "access_groups.created_at",
 		"updatedAt":         "access_groups.updated_at",
+		"inputTokens":       "COALESCE(group_usage.input_tokens, 0)",
+		"outputTokens":      "COALESCE(group_usage.output_tokens, 0)",
 	}
 	column, ok := columns[sortBy]
 	if !ok {

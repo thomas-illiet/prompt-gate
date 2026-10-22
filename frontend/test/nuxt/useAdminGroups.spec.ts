@@ -9,6 +9,7 @@ import {
 } from '../../app/composables/useAdminGroups'
 import type {
   AccessGroup,
+  AdminGroupListItem,
   GroupListResponse,
   GroupModelPatternValidationResponse,
 } from '../../app/types/groups'
@@ -31,7 +32,7 @@ function apiError(code: string) {
   }) as FetchError
 }
 
-const group: AccessGroup = {
+const group: AdminGroupListItem = {
   id: 'group-id',
   name: 'engineering',
   displayName: 'Engineering',
@@ -43,11 +44,13 @@ const group: AccessGroup = {
   providerCount: 0,
   modelPatternCount: 1,
   memberCount: 0,
+  inputTokens: 1234,
+  outputTokens: 5678,
   createdAt: '2026-01-01T00:00:00Z',
   updatedAt: '2026-01-01T00:00:00Z',
 }
 
-function groupResponse(items: AccessGroup[]): GroupListResponse {
+function groupResponse(items: AdminGroupListItem[]): GroupListResponse {
   return {
     items,
     page: 1,
@@ -128,10 +131,15 @@ describe('useAdminGroups', () => {
       displayName: 'Platform',
       excludedModelPatterns: ['^bge'],
     }
+    const updatedListGroup: AdminGroupListItem = {
+      ...updatedGroup,
+      inputTokens: group.inputTokens,
+      outputTokens: group.outputTokens,
+    }
     apiFetch
       .mockResolvedValueOnce(groupResponse([group]))
       .mockResolvedValueOnce(updatedGroup)
-      .mockResolvedValueOnce(groupResponse([updatedGroup]))
+      .mockResolvedValueOnce(groupResponse([updatedListGroup]))
 
     const adminGroups = useAdminGroups()
     await vi.waitFor(() => expect(adminGroups.loading.value).toBe(false))

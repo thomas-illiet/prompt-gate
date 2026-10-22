@@ -11,7 +11,10 @@ import type {
   UserToken,
   UserTokenListResponse,
 } from '../../app/types/user-service'
-import type { AccessGroup, GroupListResponse } from '../../app/types/groups'
+import type {
+  AdminGroupListItem,
+  GroupListResponse,
+} from '../../app/types/groups'
 import type { AdminUser, UserListResponse } from '../../app/types/users'
 
 const { downloadUsersCsvMock } = vi.hoisted(() => ({
@@ -71,7 +74,7 @@ const token: UserToken = {
   createdAt: '2026-01-01T00:00:00Z',
 }
 
-const group: AccessGroup = {
+const group: AdminGroupListItem = {
   id: 'group-id',
   name: 'engineering',
   displayName: 'Engineering',
@@ -83,6 +86,8 @@ const group: AccessGroup = {
   providerCount: 0,
   modelPatternCount: 1,
   memberCount: 0,
+  inputTokens: 0,
+  outputTokens: 0,
   createdAt: '2026-01-01T00:00:00Z',
   updatedAt: '2026-01-01T00:00:00Z',
 }
@@ -112,7 +117,7 @@ function tokenResponse(
 }
 
 function groupResponse(
-  items: AccessGroup[],
+  items: AdminGroupListItem[],
   total = items.length,
 ): GroupListResponse {
   return {

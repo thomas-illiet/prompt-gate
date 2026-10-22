@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import type { DataTableHeader } from 'vuetify'
 
-import type { AccessGroup } from '~/types/groups'
+import type { AdminGroupListItem } from '~/types/groups'
 import type { AppRowAction } from '~/types/row-actions'
 import { formatNumber } from '~/utils/formatters'
 import { appTableCenteredColumn } from '~/utils/table'
 
 const props = defineProps<{
-  items: AccessGroup[]
+  items: AdminGroupListItem[]
   loading: boolean
   page: number
   pageSize: number
@@ -18,11 +18,11 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   create: []
-  delete: [group: AccessGroup]
-  edit: [group: AccessGroup]
-  manageMembers: [group: AccessGroup]
+  delete: [group: AdminGroupListItem]
+  edit: [group: AdminGroupListItem]
+  manageMembers: [group: AdminGroupListItem]
   refresh: []
-  usageStatistics: [group: AccessGroup]
+  usageStatistics: [group: AdminGroupListItem]
   'update:page': [value: number]
   'update:page-size': [value: number]
   'update:sort': [sortBy: string, sortDir: 'asc' | 'desc']
@@ -43,13 +43,21 @@ const headers: DataTableHeader[] = [
     key: 'memberCount',
   }),
   appTableCenteredColumn({
+    title: 'Total input tokens',
+    key: 'inputTokens',
+  }),
+  appTableCenteredColumn({
+    title: 'Total output tokens',
+    key: 'outputTokens',
+  }),
+  appTableCenteredColumn({
     title: 'Actions',
     key: 'actions',
     sortable: false,
   }),
 ]
 
-const rowActions: AppRowAction<AccessGroup>[] = [
+const rowActions: AppRowAction<AdminGroupListItem>[] = [
   {
     icon: 'mdi-pencil-outline',
     key: 'edit',
@@ -86,7 +94,7 @@ const summaryLabel = computed(() => {
     : `${props.total} access groups configured.`
 })
 
-function displayName(group: AccessGroup) {
+function displayName(group: AdminGroupListItem) {
   return group.displayName || group.name
 }
 </script>
@@ -165,6 +173,14 @@ function displayName(group: AccessGroup) {
 
       <template #item.memberCount="{ item }">
         <span class="app-table-text">{{ formatNumber(item.memberCount) }}</span>
+      </template>
+
+      <template #item.inputTokens="{ item }">
+        <span class="app-table-text">{{ formatNumber(item.inputTokens) }}</span>
+      </template>
+
+      <template #item.outputTokens="{ item }">
+        <span class="app-table-text">{{ formatNumber(item.outputTokens) }}</span>
       </template>
 
       <template #item.actions="{ item }">

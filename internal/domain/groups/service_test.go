@@ -21,6 +21,21 @@ type recordingNotifier struct {
 	domains []string
 }
 
+type groupUsageKPIFixture struct {
+	Day                   time.Time `gorm:"type:date;not null;uniqueIndex:idx_group_usage_kpi_fixture"`
+	InitiatorID           string    `gorm:"type:uuid;not null;uniqueIndex:idx_group_usage_kpi_fixture"`
+	InputTokens           int64     `gorm:"not null;default:0"`
+	OutputTokens          int64     `gorm:"not null;default:0"`
+	CacheReadInputTokens  int64     `gorm:"not null;default:0"`
+	CacheWriteInputTokens int64     `gorm:"not null;default:0"`
+}
+
+// TableName uses the production durable usage table without importing the
+// proxy domain, which depends on runtime group snapshots.
+func (groupUsageKPIFixture) TableName() string {
+	return "proxy_daily_usage_kpis"
+}
+
 // Notify records the notification domain for assertions.
 func (r *recordingNotifier) Notify(_ context.Context, domain string) {
 	r.domains = append(r.domains, domain)
@@ -33,7 +48,7 @@ func newGroupTestService(t *testing.T) (*Service, *gorm.DB, users.User, provider
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}
-	if err := db.AutoMigrate(&users.User{}, &provider.Provider{}); err != nil {
+	if err := db.AutoMigrate(&users.User{}, &provider.Provider{}, &groupUsageKPIFixture{}); err != nil {
 		t.Fatalf("migrate dependencies: %v", err)
 	}
 	service := NewService(db)
@@ -79,6 +94,31 @@ func newGroupTestService(t *testing.T) (*Service, *gorm.DB, users.User, provider
 		t.Fatalf("create anthropic provider: %v", err)
 	}
 	return service, db, user, openai, anthropic
+}
+
+// createGroupUsageKPI stores durable daily token totals for one identity.
+func createGroupUsageKPI(
+	t *testing.T,
+	db *gorm.DB,
+	initiatorID string,
+	day time.Time,
+	inputTokens int64,
+	outputTokens int64,
+	cacheReadInputTokens int64,
+	cacheWriteInputTokens int64,
+) {
+	t.Helper()
+	row := groupUsageKPIFixture{
+		Day:                   day,
+		InitiatorID:           initiatorID,
+		InputTokens:           inputTokens,
+		OutputTokens:          outputTokens,
+		CacheReadInputTokens:  cacheReadInputTokens,
+		CacheWriteInputTokens: cacheWriteInputTokens,
+	}
+	if err := db.Create(&row).Error; err != nil {
+		t.Fatalf("create durable usage KPI: %v", err)
+	}
 }
 
 // TestSnapshotRequiresModelRegexAndHonorsProviderScope verifies snapshot requires model regex and honors provider scope.
@@ -564,6 +604,180 @@ func TestListGroupsPagedSortsByComputedCounts(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("list groups sorted by member count: %v", err)
+	}
+}
+
+// TestListGroupsPagedIncludesCurrentMemberUsageTotals verifies list totals use
+// durable all-time KPIs for the current human and service-account membership.
+func TestListGroupsPagedIncludesCurrentMemberUsageTotals(t *testing.T) {
+	service, db, human, openai, _ := newGroupTestService(t)
+	ctx := context.Background()
+	serviceAccount := users.User{
+		ID:                uuid.NewString(),
+		ExternalSub:       "service-usage-sub",
+		PreferredUsername: "usage-automation",
+		Name:              "Usage Automation",
+		Type:              auth.UserTypeService,
+		Role:              auth.RoleUser,
+		IsActive:          false,
+		LastLoginAt:       time.Now().UTC(),
+	}
+	outsider := users.User{
+		ID:                uuid.NewString(),
+		ExternalSub:       "outsider-usage-sub",
+		Email:             "outsider-usage@example.com",
+		PreferredUsername: "outsider-usage",
+		Name:              "Outsider Usage",
+		Type:              auth.UserTypeUser,
+		Role:              auth.RoleUser,
+		IsActive:          true,
+		LastLoginAt:       time.Now().UTC(),
+	}
+	if err := db.Create(&serviceAccount).Error; err != nil {
+		t.Fatalf("create inactive service account: %v", err)
+	}
+	if err := db.Create(&outsider).Error; err != nil {
+		t.Fatalf("create outsider: %v", err)
+	}
+
+	primary, err := service.CreateGroup(ctx, CreateGroupInput{
+		Name: "primary-usage", DisplayName: "Primary Usage", ProviderIDs: []string{openai.ID.String()},
+	})
+	if err != nil {
+		t.Fatalf("create primary group: %v", err)
+	}
+	overlap, err := service.CreateGroup(ctx, CreateGroupInput{
+		Name: "overlap-usage", DisplayName: "Overlap Usage", ProviderIDs: []string{openai.ID.String()},
+	})
+	if err != nil {
+		t.Fatalf("create overlap group: %v", err)
+	}
+	empty, err := service.CreateGroup(ctx, CreateGroupInput{
+		Name: "empty-usage", DisplayName: "Empty Usage", ProviderIDs: []string{openai.ID.String()},
+	})
+	if err != nil {
+		t.Fatalf("create empty group: %v", err)
+	}
+
+	// Usage predates membership to assert that list totals follow the current
+	// cohort rather than membership creation timestamps.
+	day := time.Date(2026, time.October, 20, 0, 0, 0, 0, time.UTC)
+	createGroupUsageKPI(t, db, human.ID, day, 10, 4, 100, 200)
+	createGroupUsageKPI(t, db, human.ID, day.AddDate(0, 0, 1), 5, 2, 300, 400)
+	createGroupUsageKPI(t, db, serviceAccount.ID, day, 7, 3, 500, 600)
+	createGroupUsageKPI(t, db, outsider.ID, day, 1_000, 2_000, 0, 0)
+
+	if _, err := service.ReplaceUserGroups(ctx, human.ID, []string{primary.ID.String(), overlap.ID.String()}); err != nil {
+		t.Fatalf("assign human groups: %v", err)
+	}
+	if _, err := service.ReplaceUserGroups(ctx, serviceAccount.ID, []string{primary.ID.String()}); err != nil {
+		t.Fatalf("assign service-account group: %v", err)
+	}
+
+	result, err := service.ListGroupsPaged(ctx, ListParams{Page: 1, PageSize: 10, SortBy: "name", SortDir: "asc"})
+	if err != nil {
+		t.Fatalf("list groups with usage totals: %v", err)
+	}
+	items := make(map[uuid.UUID]GroupListItemResponse, len(result.Items))
+	for _, item := range result.Items {
+		items[item.ID] = item
+	}
+	if got := items[primary.ID]; got.InputTokens != 22 || got.OutputTokens != 9 {
+		t.Fatalf("expected human and inactive service totals 22/9 without cache or outsider usage, got %#v", got)
+	}
+	if got := items[overlap.ID]; got.InputTokens != 15 || got.OutputTokens != 6 {
+		t.Fatalf("expected overlapping human totals 15/6, got %#v", got)
+	}
+	if got := items[empty.ID]; got.InputTokens != 0 || got.OutputTokens != 0 {
+		t.Fatalf("expected empty group totals 0/0, got %#v", got)
+	}
+
+	if _, err := service.ReplaceUserGroups(ctx, serviceAccount.ID, nil); err != nil {
+		t.Fatalf("remove service-account group: %v", err)
+	}
+	result, err = service.ListGroupsPaged(ctx, ListParams{Page: 1, PageSize: 10, SortBy: "name", SortDir: "asc"})
+	if err != nil {
+		t.Fatalf("list groups after member removal: %v", err)
+	}
+	for _, item := range result.Items {
+		if item.ID == primary.ID && (item.InputTokens != 15 || item.OutputTokens != 6) {
+			t.Fatalf("expected removed member usage to be excluded, got %#v", item)
+		}
+	}
+}
+
+// TestListGroupsPagedSortsUsageBeforePagination verifies durable token sorting
+// is performed by the database before offset and limit are applied.
+func TestListGroupsPagedSortsUsageBeforePagination(t *testing.T) {
+	service, db, firstUser, openai, _ := newGroupTestService(t)
+	ctx := context.Background()
+	usersByName := map[string]users.User{"low-usage": firstUser}
+	for _, name := range []string{"medium-usage", "high-usage"} {
+		user := users.User{
+			ID:                uuid.NewString(),
+			ExternalSub:       name + "-sub",
+			Email:             name + "@example.com",
+			PreferredUsername: name,
+			Name:              name,
+			Type:              auth.UserTypeUser,
+			Role:              auth.RoleUser,
+			IsActive:          true,
+			LastLoginAt:       time.Now().UTC(),
+		}
+		if err := db.Create(&user).Error; err != nil {
+			t.Fatalf("create %s user: %v", name, err)
+		}
+		usersByName[name] = user
+	}
+
+	type usageFixture struct {
+		name         string
+		inputTokens  int64
+		outputTokens int64
+	}
+	fixtures := []usageFixture{
+		{name: "low-usage", inputTokens: 10, outputTokens: 90},
+		{name: "medium-usage", inputTokens: 20, outputTokens: 50},
+		{name: "high-usage", inputTokens: 30, outputTokens: 10},
+	}
+	groupsByName := make(map[string]GroupResponse, len(fixtures))
+	day := time.Date(2026, time.October, 21, 0, 0, 0, 0, time.UTC)
+	for _, fixture := range fixtures {
+		group, err := service.CreateGroup(ctx, CreateGroupInput{
+			Name: fixture.name, DisplayName: fixture.name, ProviderIDs: []string{openai.ID.String()},
+		})
+		if err != nil {
+			t.Fatalf("create %s group: %v", fixture.name, err)
+		}
+		groupsByName[fixture.name] = group
+		member := usersByName[fixture.name]
+		if _, err := service.ReplaceUserGroups(ctx, member.ID, []string{group.ID.String()}); err != nil {
+			t.Fatalf("assign %s group: %v", fixture.name, err)
+		}
+		createGroupUsageKPI(t, db, member.ID, day, fixture.inputTokens, fixture.outputTokens, 0, 0)
+	}
+
+	result, err := service.ListGroupsPaged(ctx, ListParams{
+		Page: 2, PageSize: 1, SortBy: "inputTokens", SortDir: "desc",
+	})
+	if err != nil {
+		t.Fatalf("sort input tokens before pagination: %v", err)
+	}
+	if result.Total != 3 || len(result.Items) != 1 || result.Items[0].ID != groupsByName["medium-usage"].ID {
+		t.Fatalf("unexpected paginated input-token order: %#v", result)
+	}
+	if result.Items[0].InputTokens != 20 || result.Items[0].OutputTokens != 50 {
+		t.Fatalf("unexpected medium group totals: %#v", result.Items[0])
+	}
+
+	result, err = service.ListGroupsPaged(ctx, ListParams{
+		Page: 1, PageSize: 2, SortBy: "outputTokens", SortDir: "asc",
+	})
+	if err != nil {
+		t.Fatalf("sort output tokens before pagination: %v", err)
+	}
+	if len(result.Items) != 2 || result.Items[0].ID != groupsByName["high-usage"].ID || result.Items[1].ID != groupsByName["medium-usage"].ID {
+		t.Fatalf("unexpected output-token order: %#v", result.Items)
 	}
 }
 

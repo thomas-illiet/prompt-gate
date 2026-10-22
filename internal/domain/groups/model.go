@@ -148,6 +148,14 @@ type GroupResponse struct {
 	UpdatedAt             time.Time         `json:"updatedAt"`
 }
 
+// GroupListItemResponse extends the regular group representation with durable
+// all-time token totals for the group's current members.
+type GroupListItemResponse struct {
+	GroupResponse
+	InputTokens  int64 `json:"inputTokens"`
+	OutputTokens int64 `json:"outputTokens"`
+}
+
 type ProfileGroupResponse struct {
 	ID          uuid.UUID `json:"id"`
 	Name        string    `json:"name"`
@@ -164,10 +172,10 @@ type ListParams struct {
 }
 
 type ListResult struct {
-	Items    []GroupResponse `json:"items"`
-	Page     int             `json:"page"`
-	PageSize int             `json:"pageSize"`
-	Total    int64           `json:"total"`
+	Items    []GroupListItemResponse `json:"items"`
+	Page     int                     `json:"page"`
+	PageSize int                     `json:"pageSize"`
+	Total    int64                   `json:"total"`
 }
 
 type CreateGroupInput struct {
