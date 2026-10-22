@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import AdminGroupDialog from '~/components/AdminGroups/AdminGroupDialog.vue'
 import AdminGroupMembersDialog from '~/components/AdminGroups/AdminGroupMembersDialog.vue'
+import AdminGroupUsageDialog from '~/components/AdminGroups/AdminGroupUsageDialog.vue'
 import AdminGroupsFilters from '~/components/AdminGroups/AdminGroupsFilters.vue'
 import AdminGroupsTable from '~/components/AdminGroups/AdminGroupsTable.vue'
 import type {
@@ -22,11 +23,19 @@ const adminGroups = useAdminGroups()
 const groupDialogOpen = shallowRef(false)
 const membersDialogOpen = shallowRef(false)
 const deleteDialog = useTargetDialog<AccessGroup>()
+const usageDialog = useTargetDialog<AccessGroup>()
 
 const totalLabel = computed(() => {
   const total = adminGroups.total.value
   return total === 1 ? '1 configured' : `${total} configured`
 })
+
+// updateUsageDialogOpen clears the selected group when the usage dialog closes.
+function updateUsageDialogOpen(isOpen: boolean) {
+  if (!isOpen) {
+    usageDialog.close()
+  }
+}
 
 async function openCreateDialog() {
   adminGroups.selectedGroup.value = null
@@ -158,6 +167,7 @@ async function confirmDelete() {
           @edit="openEditDialog"
           @manage-members="openMembersDialog"
           @refresh="adminGroups.reload"
+          @usage-statistics="usageDialog.open"
           @update:page="adminGroups.setPage"
           @update:page-size="adminGroups.setPageSize"
           @update:sort="adminGroups.setSort"
@@ -187,6 +197,13 @@ async function confirmDelete() {
       @add="addMember"
       @refresh="refreshMembers"
       @remove="removeMember"
+    />
+
+    <AdminGroupUsageDialog
+      v-if="usageDialog.target.value"
+      :group="usageDialog.target.value"
+      :model-value="usageDialog.isOpen.value"
+      @update:model-value="updateUsageDialogOpen"
     />
 
     <AppConfirmDialog

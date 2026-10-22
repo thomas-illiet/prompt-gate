@@ -2,7 +2,7 @@ import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import { defineComponent } from 'vue'
 
-import AdminUserUsageOverview from '../../app/components/AdminUsers/AdminUserUsageOverview.vue'
+import AdminAccountUsageOverview from '../../app/components/AdminAccounts/AdminAccountUsageOverview.vue'
 import type {
   DailyUsage,
   DashboardOverviewResponse,
@@ -73,12 +73,17 @@ const KpiStub = defineComponent({
 
 function mountOverview(options?: {
   data?: DashboardOverviewResponse | null
+  emptyUsageText?: string
   error?: string | null
   loading?: boolean
 }) {
-  return mount(AdminUserUsageOverview, {
+  return mount(AdminAccountUsageOverview, {
     props: {
+      costCaption: 'Service account usage estimate',
       data: options?.data === undefined ? response : options.data,
+      emptyUsageText:
+        options?.emptyUsageText ??
+        'This service account has no usage in the selected window.',
       error: options?.error ?? null,
       loading: options?.loading ?? false,
     },
@@ -92,8 +97,7 @@ function mountOverview(options?: {
         DashboardKpiCard: KpiStub,
         DashboardUsageLineChart: {
           props: ['daily'],
-          template:
-            '<div data-test="usage-chart" :data-days="daily.length" />',
+          template: '<div data-test="usage-chart" :data-days="daily.length" />',
         },
         VAlert: { template: '<aside><slot /></aside>' },
         VBtn: {
@@ -107,7 +111,7 @@ function mountOverview(options?: {
   })
 }
 
-describe('AdminUserUsageOverview', () => {
+describe('AdminAccountUsageOverview', () => {
   it('renders only the four compact usage KPIs and daily activity', () => {
     const wrapper = mountOverview()
     const kpis = wrapper.findAll('[data-test="kpi"]')
@@ -125,9 +129,10 @@ describe('AdminUserUsageOverview', () => {
       '3',
       '4500',
     ])
-    expect(wrapper.get('[data-test="usage-chart"]').attributes('data-days')).toBe(
-      '1',
-    )
+    expect(
+      wrapper.get('[data-test="usage-chart"]').attributes('data-days'),
+    ).toBe('1')
+    expect(wrapper.text()).toContain('Service account usage estimate')
     expect(wrapper.text()).not.toContain('Adoption')
     expect(wrapper.text()).not.toContain('Rankings')
     expect(wrapper.text()).not.toContain('Prompts')
@@ -148,10 +153,10 @@ describe('AdminUserUsageOverview', () => {
   it('shows a retryable initial error without empty metric content', async () => {
     const wrapper = mountOverview({
       data: null,
-      error: 'This user no longer exists.',
+      error: 'This service account no longer exists.',
     })
 
-    expect(wrapper.text()).toContain('This user no longer exists.')
+    expect(wrapper.text()).toContain('This service account no longer exists.')
     expect(wrapper.findAll('[data-test="kpi"]')).toHaveLength(0)
 
     await wrapper.get('[data-test="retry"]').trigger('click')
@@ -159,7 +164,7 @@ describe('AdminUserUsageOverview', () => {
     expect(wrapper.emitted('retry')).toHaveLength(1)
   })
 
-  it('recognizes zero-filled daily buckets as an empty usage window', () => {
+  it('uses the caller-provided empty state for zero-filled windows', () => {
     const emptyDay: DailyUsage = {
       ...day,
       requests: 0,
@@ -171,7 +176,10 @@ describe('AdminUserUsageOverview', () => {
       embeddingTokens: 0,
       totalTokens: 0,
     }
+    const emptyUsageText =
+      'This service account has no usage in the selected window.'
     const wrapper = mountOverview({
+      emptyUsageText,
       data: {
         ...response,
         totals: {
@@ -195,9 +203,10 @@ describe('AdminUserUsageOverview', () => {
       },
     })
 
-    expect(wrapper.get('[data-test="empty"]').text()).toContain('No usage yet')
+    expect(wrapper.get('[data-test="empty"]').text()).toContain(emptyUsageText)
     expect(wrapper.find('[data-test="usage-chart"]').exists()).toBe(false)
     expect(wrapper.find('[data-test="activity-chip"]').exists()).toBe(false)
     expect(wrapper.findAll('[data-test="kpi"]')).toHaveLength(4)
+    expect(wrapper.text()).toContain('Cost estimate unavailable')
   })
 })

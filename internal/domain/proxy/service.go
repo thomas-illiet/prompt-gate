@@ -84,25 +84,51 @@ const (
 )
 
 type dashboardUsageScope struct {
-	userID string
+	global       bool
+	initiatorIDs []string
 }
 
 // currentUserDashboardScope creates a dashboard scope limited to one user.
 func currentUserDashboardScope(userID string) dashboardUsageScope {
-	return dashboardUsageScope{userID: strings.TrimSpace(userID)}
+	return identitiesDashboardScope([]string{userID})
+}
+
+// identitiesDashboardScope creates a dashboard scope limited to a normalized,
+// de-duplicated set of identities. An empty set intentionally matches no usage.
+func identitiesDashboardScope(initiatorIDs []string) dashboardUsageScope {
+	normalized := make([]string, 0, len(initiatorIDs))
+	seen := make(map[string]struct{}, len(initiatorIDs))
+	for _, initiatorID := range initiatorIDs {
+		initiatorID = strings.TrimSpace(initiatorID)
+		if initiatorID == "" {
+			continue
+		}
+		if _, exists := seen[initiatorID]; exists {
+			continue
+		}
+		seen[initiatorID] = struct{}{}
+		normalized = append(normalized, initiatorID)
+	}
+	return dashboardUsageScope{initiatorIDs: normalized}
 }
 
 // globalDashboardScope creates a dashboard scope across all identities.
 func globalDashboardScope() dashboardUsageScope {
-	return dashboardUsageScope{}
+	return dashboardUsageScope{global: true}
 }
 
-// applyInitiatorFilter restricts a query to the scoped user when needed.
+// applyInitiatorFilter restricts a query to the scoped identities when needed.
 func (scope dashboardUsageScope) applyInitiatorFilter(query *gorm.DB, column string) *gorm.DB {
-	if scope.userID == "" {
+	if scope.global {
 		return query
 	}
-	return query.Where(column+" = ?", scope.userID)
+	if len(scope.initiatorIDs) == 0 {
+		return query.Where("1 = 0")
+	}
+	if len(scope.initiatorIDs) == 1 {
+		return query.Where(column+" = ?", scope.initiatorIDs[0])
+	}
+	return query.Where(column+" IN ?", scope.initiatorIDs)
 }
 
 // NewService creates a proxy usage service.

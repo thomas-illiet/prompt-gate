@@ -13,7 +13,9 @@ import type { UsageWindow } from '~/types/user-service'
 import { toApiErrorMessage } from '~/utils/api-error'
 
 const ERROR_MESSAGES = {
+  group_not_found: 'This group no longer exists.',
   invalid_usage_window: 'Usage window must be 7 days, 30 days, or all time.',
+  service_account_not_found: 'This service account no longer exists.',
   user_not_found: 'This user no longer exists.',
 }
 const DASHBOARD_REFRESH_KEY: InjectionKey<Ref<number>> = Symbol(

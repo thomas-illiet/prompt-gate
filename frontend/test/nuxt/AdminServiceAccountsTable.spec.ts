@@ -77,7 +77,9 @@ function mountTable() {
 describe('AdminServiceAccountsTable', () => {
   it('exposes an IP addresses row action', async () => {
     const wrapper = mountTable()
-    expect(wrapper.get('[data-test="row-action-manageIps"]').text()).toBe('IP addresses')
+    expect(wrapper.get('[data-test="row-action-manageIps"]').text()).toBe(
+      'IP addresses',
+    )
     await wrapper.get('[data-test="row-action-manageIps"]').trigger('click')
     expect(wrapper.emitted('manageIps')).toEqual([[account]])
   })
@@ -90,5 +92,19 @@ describe('AdminServiceAccountsTable', () => {
     await wrapper.get('[data-test="row-action-notes"]').trigger('click')
 
     expect(wrapper.emitted('notes')).toEqual([[account]])
+  })
+
+  it('emits the selected service account from the usage-statistics action', async () => {
+    const wrapper = mountTable()
+
+    expect(wrapper.get('[data-test="row-action-usageStatistics"]').text()).toBe(
+      'Usage statistics',
+    )
+
+    await wrapper
+      .get('[data-test="row-action-usageStatistics"]')
+      .trigger('click')
+
+    expect(wrapper.emitted('usageStatistics')).toEqual([[account]])
   })
 })

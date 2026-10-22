@@ -155,6 +155,7 @@ return `404 {"error":"user_not_found"}`.
 | `GET` | `/api/v1/admin/service-accounts` | List service accounts. |
 | `POST` | `/api/v1/admin/service-accounts` | Create a service account. |
 | `GET` | `/api/v1/admin/service-accounts/{id}` | Get one service account. |
+| `GET` | `/api/v1/admin/service-accounts/{id}/statistics` | Get aggregated usage totals, duration, and daily activity for one service account. |
 | `PATCH` | `/api/v1/admin/service-accounts/{id}` | Update identifier, name, or active state. |
 | `PATCH` | `/api/v1/admin/service-accounts/{id}/note` | Update the private administration note. |
 | `DELETE` | `/api/v1/admin/service-accounts/{id}` | Delete one service account. |
@@ -166,6 +167,11 @@ return `404 {"error":"user_not_found"}`.
 
 Service account identifiers must be lowercase alphanumeric with dashes or
 underscores and have a maximum length of 64 characters.
+
+Service-account statistics accept `window=7d`, `window=30d`, or `window=all`,
+defaulting to `30d` when omitted. The response has the same shape as user
+statistics. Unknown service accounts and human-user IDs both return
+`404 {"error":"service_account_not_found"}`.
 
 ### Subscriptions
 
@@ -186,10 +192,18 @@ underscores and have a maximum length of 64 characters.
 | `POST` | `/api/v1/admin/groups` | Create an access group. |
 | `POST` | `/api/v1/admin/groups/model-patterns/validate` | Validate model allow and deny patterns. |
 | `GET` | `/api/v1/admin/groups/{id}` | Get one access group. |
+| `GET` | `/api/v1/admin/groups/{id}/statistics` | Get aggregated usage totals, duration, and daily activity for the group's current members. |
 | `PATCH` | `/api/v1/admin/groups/{id}` | Update group metadata, providers, and model patterns. |
 | `DELETE` | `/api/v1/admin/groups/{id}` | Delete an access group. |
 | `PUT` | `/api/v1/admin/groups/{id}/members/{userId}` | Add a group member. |
 | `DELETE` | `/api/v1/admin/groups/{id}/members/{userId}` | Remove a group member. |
+
+Group statistics accept `window=7d`, `window=30d`, or `window=all`, defaulting
+to `30d` when omitted. They aggregate users and service accounts that are
+members when the request is made. Usage from before a current member joined is
+included, while usage from removed members is excluded. Because an identity can
+belong to multiple groups, statistics from different groups can overlap and are
+not additive. Unknown groups return `404 {"error":"group_not_found"}`.
 
 ### Providers
 

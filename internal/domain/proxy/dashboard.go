@@ -68,9 +68,19 @@ func (s *Service) UsageSummary(ctx context.Context, userID string, days int, now
 	return summary, nil
 }
 
-// DashboardOverview returns usage totals, duration, and daily activity for one user.
+// DashboardOverview returns usage totals, duration, and daily activity for one identity.
 func (s *Service) DashboardOverview(ctx context.Context, userID string, window UsageWindow, now time.Time) (DashboardOverviewResponse, error) {
-	scope := currentUserDashboardScope(userID)
+	return s.dashboardOverview(ctx, currentUserDashboardScope(userID), window, now)
+}
+
+// DashboardOverviewForIdentities returns usage totals, duration, and daily
+// activity aggregated across a selected set of users and service accounts.
+func (s *Service) DashboardOverviewForIdentities(ctx context.Context, initiatorIDs []string, window UsageWindow, now time.Time) (DashboardOverviewResponse, error) {
+	return s.dashboardOverview(ctx, identitiesDashboardScope(initiatorIDs), window, now)
+}
+
+// dashboardOverview builds an overview without comparison for one usage scope.
+func (s *Service) dashboardOverview(ctx context.Context, scope dashboardUsageScope, window UsageWindow, now time.Time) (DashboardOverviewResponse, error) {
 	resolved, err := s.resolveDashboardWindow(ctx, scope, window, now)
 	if err != nil {
 		return DashboardOverviewResponse{}, err

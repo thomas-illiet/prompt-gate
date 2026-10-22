@@ -8,6 +8,7 @@ import type {
 import AdminServiceAccountDialog from '~/components/AdminServiceAccounts/AdminServiceAccountDialog.vue'
 import AdminServiceAccountTokenCreatedDialog from '~/components/AdminServiceAccounts/AdminServiceAccountTokenCreatedDialog.vue'
 import AdminServiceAccountTokensDialog from '~/components/AdminServiceAccounts/AdminServiceAccountTokensDialog.vue'
+import AdminServiceAccountUsageDialog from '~/components/AdminServiceAccounts/AdminServiceAccountUsageDialog.vue'
 import AdminAccountNoteDialog from '~/components/AdminAccounts/AdminAccountNoteDialog.vue'
 import AdminAccountIPAddressesDialog from '~/components/AdminAccounts/AdminAccountIPAddressesDialog.vue'
 
@@ -28,6 +29,7 @@ const createdTokenDialogOpen = shallowRef(false)
 const deleteDialog = useTargetDialog<ServiceAccount>()
 const noteDialog = useTargetDialog<ServiceAccount>()
 const statusDialog = useTargetDialog<ServiceAccount>()
+const usageDialog = useTargetDialog<ServiceAccount>()
 const ipDialog = useTargetDialog<ServiceAccount>()
 const tokenAccount = shallowRef<ServiceAccount | null>(null)
 const showRevokedTokens = shallowRef(false)
@@ -45,6 +47,13 @@ const totalLabel = computed(() => {
   const active = adminServiceAccounts.activeAccountsCount.value
   return total === 1 ? `${active}/1 active` : `${active}/${total} active`
 })
+
+// updateUsageDialogOpen clears the selected account when the usage dialog closes.
+function updateUsageDialogOpen(isOpen: boolean) {
+  if (!isOpen) {
+    usageDialog.close()
+  }
+}
 
 // openCreateDialog prepares a blank service account form.
 function openCreateDialog() {
@@ -98,7 +107,8 @@ function openIPDialog(account: ServiceAccount) {
 }
 
 async function refreshIPAddresses() {
-  if (ipDialog.target.value) await adminServiceAccounts.loadIPAddresses(ipDialog.target.value.id)
+  if (ipDialog.target.value)
+    await adminServiceAccounts.loadIPAddresses(ipDialog.target.value.id)
 }
 
 async function updateIPPage(value: number) {
@@ -252,7 +262,9 @@ async function confirmToggleStatus() {
             placeholder="Name, identifier, or account ID"
             prepend-inner-icon="mdi-magnify"
             variant="outlined"
-            @update:model-value="adminServiceAccounts.setSearch(($event as string | null) ?? '')"
+            @update:model-value="
+              adminServiceAccounts.setSearch(($event as string | null) ?? '')
+            "
           />
         </AppFilterCard>
 
@@ -282,6 +294,7 @@ async function confirmToggleStatus() {
           @notes="noteDialog.open"
           @refresh="adminServiceAccounts.reload"
           @toggle-status="statusDialog.open"
+          @usage-statistics="usageDialog.open"
           @update:page="adminServiceAccounts.setPage"
           @update:page-size="adminServiceAccounts.setPageSize"
           @update:sort="adminServiceAccounts.setSort"
@@ -330,6 +343,13 @@ async function confirmToggleStatus() {
     <AdminServiceAccountTokenCreatedDialog
       v-model="createdTokenDialogOpen"
       :created-token="adminServiceAccounts.createdToken.value"
+    />
+
+    <AdminServiceAccountUsageDialog
+      v-if="usageDialog.target.value"
+      :account="usageDialog.target.value"
+      :model-value="usageDialog.isOpen.value"
+      @update:model-value="updateUsageDialogOpen"
     />
 
     <AdminAccountNoteDialog

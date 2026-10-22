@@ -25,6 +25,7 @@ const emit = defineEmits<{
   notes: [account: ServiceAccount]
   refresh: []
   toggleStatus: [account: ServiceAccount]
+  usageStatistics: [account: ServiceAccount]
   'update:page': [value: number]
   'update:page-size': [value: number]
   'update:sort': [sortBy: string, sortDir: 'asc' | 'desc']
@@ -85,6 +86,12 @@ const rowActions: AppRowAction<ServiceAccount>[] = [
     key: 'edit',
     onSelect: (account) => emit('edit', account),
     title: 'Edit account',
+  },
+  {
+    icon: 'mdi-chart-box-outline',
+    key: 'usageStatistics',
+    onSelect: (account) => emit('usageStatistics', account),
+    title: 'Usage statistics',
   },
   {
     icon: 'mdi-note-edit-outline',
@@ -193,12 +200,7 @@ function planColor(account: ServiceAccount) {
 
       <template #item.subscriptionPlan="{ item }">
         <div class="app-table-center">
-          <v-chip
-            size="small"
-            label
-            variant="tonal"
-            :color="planColor(item)"
-          >
+          <v-chip size="small" label variant="tonal" :color="planColor(item)">
             {{ planLabel(item) }}
             <span class="service-accounts-table__chip-caption">
               {{ planCaption(item) }}

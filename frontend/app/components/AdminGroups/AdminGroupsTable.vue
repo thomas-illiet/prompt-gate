@@ -22,6 +22,7 @@ const emit = defineEmits<{
   edit: [group: AccessGroup]
   manageMembers: [group: AccessGroup]
   refresh: []
+  usageStatistics: [group: AccessGroup]
   'update:page': [value: number]
   'update:page-size': [value: number]
   'update:sort': [sortBy: string, sortDir: 'asc' | 'desc']
@@ -60,6 +61,12 @@ const rowActions: AppRowAction<AccessGroup>[] = [
     key: 'members',
     onSelect: (group) => emit('manageMembers', group),
     title: 'Manage members',
+  },
+  {
+    icon: 'mdi-chart-box-outline',
+    key: 'usageStatistics',
+    onSelect: (group) => emit('usageStatistics', group),
+    title: 'Usage statistics',
   },
   {
     color: 'error',

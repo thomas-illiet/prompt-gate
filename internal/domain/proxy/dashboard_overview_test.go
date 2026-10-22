@@ -100,6 +100,75 @@ func TestDashboardOverviewAggregatesScopedUsage(t *testing.T) {
 	}
 }
 
+// TestDashboardOverviewForIdentitiesAggregatesUniqueSelection verifies a
+// multi-identity scope sums every selected identity once.
+func TestDashboardOverviewForIdentitiesAggregatesUniqueSelection(t *testing.T) {
+	db, service := newProxyServiceTestDB(t)
+	now := time.Date(2026, 1, 30, 15, 0, 0, 0, time.UTC)
+	firstUserID := "11111111-1111-1111-1111-111111111111"
+	secondUserID := "22222222-2222-2222-2222-222222222222"
+	at := now.Add(-time.Hour)
+	seedProxyInteraction(t, db, firstUserID, "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "gpt-5", at, 10, 20)
+	seedProxyInteraction(t, db, secondUserID, "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", "gpt-5", at, 30, 40)
+	mustAggregateUsageKPIs(t, service)
+
+	overview, err := service.DashboardOverviewForIdentities(
+		context.Background(),
+		[]string{firstUserID, " " + secondUserID + " ", firstUserID, ""},
+		UsageWindow7Days,
+		now,
+	)
+	if err != nil {
+		t.Fatalf("dashboard overview for identities: %v", err)
+	}
+	if overview.Totals.Requests != 2 || overview.Totals.TotalTokens != 114 {
+		t.Fatalf("unexpected selected identity totals: %#v", overview.Totals)
+	}
+	if overview.TotalDurationMs != 180000 {
+		t.Fatalf("unexpected selected identity duration: %d", overview.TotalDurationMs)
+	}
+	if len(overview.Daily) != 7 || overview.Daily[6].Requests != 2 {
+		t.Fatalf("unexpected selected identity activity: %#v", overview.Daily)
+	}
+}
+
+// TestDashboardOverviewForIdentitiesEmptySelectionNeverUsesGlobalScope verifies
+// an empty group-like selection cannot expose organization-wide usage.
+func TestDashboardOverviewForIdentitiesEmptySelectionNeverUsesGlobalScope(t *testing.T) {
+	db, service := newProxyServiceTestDB(t)
+	now := time.Date(2026, 1, 30, 15, 0, 0, 0, time.UTC)
+	seedProxyInteraction(
+		t,
+		db,
+		"11111111-1111-1111-1111-111111111111",
+		"aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+		"gpt-5",
+		now.Add(-time.Hour),
+		10,
+		20,
+	)
+	mustAggregateUsageKPIs(t, service)
+
+	recent, err := service.DashboardOverviewForIdentities(context.Background(), nil, UsageWindow7Days, now)
+	if err != nil {
+		t.Fatalf("empty selected identity overview: %v", err)
+	}
+	if recent.Totals.Requests != 0 || recent.Totals.TotalTokens != 0 || recent.TotalDurationMs != 0 {
+		t.Fatalf("empty selection leaked global usage: %#v", recent)
+	}
+	if len(recent.Daily) != 7 {
+		t.Fatalf("expected seven empty daily buckets, got %d", len(recent.Daily))
+	}
+
+	allTime, err := service.DashboardOverviewForIdentities(context.Background(), []string{"", " "}, UsageWindowAll, now)
+	if err != nil {
+		t.Fatalf("empty all-time selected identity overview: %v", err)
+	}
+	if !allTime.StartsAt.Equal(now) || !allTime.EndsAt.Equal(now) || len(allTime.Daily) != 0 {
+		t.Fatalf("unexpected empty all-time range: %#v", allTime)
+	}
+}
+
 // TestDashboardOverviewAllTimeWithoutActivity verifies empty all-time usage stays a successful empty response.
 func TestDashboardOverviewAllTimeWithoutActivity(t *testing.T) {
 	_, service := newProxyServiceTestDB(t)

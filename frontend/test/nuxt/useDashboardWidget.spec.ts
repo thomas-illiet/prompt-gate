@@ -157,7 +157,9 @@ describe('useDashboardWidget', () => {
     })
 
     const wrapper = mount(ProbeParent)
-    await vi.waitFor(() => expect(holder.widget.data.value?.totalTokens).toBe(7))
+    await vi.waitFor(() =>
+      expect(holder.widget.data.value?.totalTokens).toBe(7),
+    )
 
     holder.refresh()
 
@@ -167,11 +169,17 @@ describe('useDashboardWidget', () => {
         '/api/v1/me/dashboard/tokens?window=7d',
       ),
     )
-    await vi.waitFor(() => expect(holder.widget.data.value?.totalTokens).toBe(8))
+    await vi.waitFor(() =>
+      expect(holder.widget.data.value?.totalTokens).toBe(8),
+    )
     wrapper.unmount()
   })
 
   it('maps dashboard widget API errors to readable messages', () => {
+    expect(toDashboardWidgetErrorMessage(apiError('group_not_found'))).toBe(
+      'This group no longer exists.',
+    )
+
     expect(
       toDashboardWidgetErrorMessage(apiError('invalid_usage_window')),
     ).toBe('Usage window must be 7 days, 30 days, or all time.')
@@ -179,5 +187,9 @@ describe('useDashboardWidget', () => {
     expect(toDashboardWidgetErrorMessage(apiError('user_not_found'))).toBe(
       'This user no longer exists.',
     )
+
+    expect(
+      toDashboardWidgetErrorMessage(apiError('service_account_not_found')),
+    ).toBe('This service account no longer exists.')
   })
 })
