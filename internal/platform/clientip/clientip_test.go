@@ -110,6 +110,21 @@ func TestResolveWithOptionsReadsForwardedForRightToLeft(t *testing.T) {
 	}
 }
 
+// TestResolveWithOptionsRejectsMalformedForwardedForChain verifies invalid hops stop trust traversal.
+func TestResolveWithOptionsRejectsMalformedForwardedForChain(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "10.1.2.3:1234"
+	req.Header.Set("X-Forwarded-For", "198.51.100.66, not-an-ip, 10.9.8.7")
+	req.Header.Set("X-Real-IP", "203.0.113.9")
+
+	got := ResolveWithOptions(req, Options{
+		TrustedProxies: []netip.Prefix{mustPrefix(t, "10.0.0.0/8")},
+	})
+	if got != "10.1.2.3" {
+		t.Fatalf("expected malformed chain to fall back to remote addr, got %q", got)
+	}
+}
+
 // TestResolveWithOptionsUsesTrustedRealIPFallback verifies X-Real-IP fallback with trusted peers.
 func TestResolveWithOptionsUsesTrustedRealIPFallback(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/", nil)

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-const theme = useTheme()
+const theme = useVTheme()
 provide(
   THEME_KEY,
   computed(() => (theme.current.value.dark ? 'dark' : undefined)),

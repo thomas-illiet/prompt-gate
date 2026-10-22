@@ -31,7 +31,7 @@ func (w *JSONLineWriter) WriteStartupWarning() error {
 	})
 }
 
-// DebugRequests logs complete incoming proxy requests while leaving the consumed body stream unchanged.
+// DebugRequests logs request metadata and body bytes consumed by downstream handlers.
 func (w *JSONLineWriter) DebugRequests(maxBodyBytes int64) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
@@ -51,12 +51,7 @@ func (w *JSONLineWriter) DebugRequests(maxBodyBytes int64) Middleware {
 				body = &mirroredReadCloser{Reader: io.TeeReader(body, capture), Closer: body}
 				request.Body = body
 			}
-			defer func() {
-				if body != nil {
-					_, _ = io.Copy(io.Discard, body)
-				}
-				_ = w.writeRequest(info, capture)
-			}()
+			defer func() { _ = w.writeRequest(info, capture) }()
 
 			next.ServeHTTP(response, request)
 		})

@@ -49,6 +49,7 @@ export default defineNuxtConfig({
   vueuse: { ssrHandlers: true },
   vuetify: {
     moduleOptions: {
+      prefixComposables: true,
       ssrClientHints: {
         viewportSize: true,
         prefersColorScheme: true,

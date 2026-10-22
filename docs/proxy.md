@@ -40,7 +40,8 @@ Set `PROMPTGATE_PROXY_DEBUG_REQUESTS=true` only for short-lived diagnostics. The
 proxy then emits one JSON line to stdout for every incoming proxy request,
 independently of `PROMPTGATE_LOG_LEVEL`. Each event contains the timestamp,
 `DEBUG` level, event type, method, scheme, host, path, raw query, protocol,
-remote address, every incoming header value, and the request body. JSON objects
+remote address, every incoming header value, and the request body bytes consumed
+by the proxy. It does not drain an unread body solely for logging. JSON objects
 and arrays are logged as structured JSON; other payloads are logged as raw
 strings.
 

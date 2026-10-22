@@ -9,7 +9,7 @@ const authStore = useAuthStore()
 const { user } = storeToRefs(authStore)
 const drawerState = useState('drawer', () => true)
 
-const { mobile, lgAndUp, width } = useDisplay()
+const { mobile, lgAndUp, width } = useVDisplay()
 const drawer = computed({
   get() {
     return drawerState.value || !mobile.value

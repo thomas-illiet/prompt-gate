@@ -63,19 +63,41 @@ func TestDebugRequestsLogsJSONBodyAndOriginalRequestMetadata(t *testing.T) {
 	}
 }
 
-func TestDebugRequestsDrainsUnreadBodyAndTruncatesOnlyTheDump(t *testing.T) {
+func TestDebugRequestsDoesNotDrainUnreadBody(t *testing.T) {
 	var output bytes.Buffer
+	body := &countingReadCloser{Reader: strings.NewReader("not-json-and-long")}
 	handler := NewJSONLineWriter(&output).DebugRequests(5)(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
 		response.WriteHeader(http.StatusUnauthorized)
 	}))
 
-	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "http://proxy.example/rejected", strings.NewReader("not-json-and-long")))
+	request := httptest.NewRequest(http.MethodPost, "http://proxy.example/rejected", nil)
+	request.Body = body
+	handler.ServeHTTP(httptest.NewRecorder(), request)
 
 	event := decodeDebugEvent(t, output.Bytes())
-	if event["body"] != "not-j" || event["body_truncated"] != true {
-		t.Fatalf("unexpected bounded dump: %#v", event)
+	if body.read != 0 {
+		t.Fatalf("middleware drained %d unread body bytes", body.read)
+	}
+	if event["body"] != "" {
+		t.Fatalf("expected only handler-consumed bytes to be logged: %#v", event)
+	}
+	if _, present := event["body_truncated"]; present {
+		t.Fatal("unread bytes must not be reported as captured truncation")
 	}
 }
+
+type countingReadCloser struct {
+	io.Reader
+	read int
+}
+
+func (body *countingReadCloser) Read(buffer []byte) (int, error) {
+	count, err := body.Reader.Read(buffer)
+	body.read += count
+	return count, err
+}
+
+func (*countingReadCloser) Close() error { return nil }
 
 func TestDebugRequestsKeepsInvalidJSONAsRawString(t *testing.T) {
 	var output bytes.Buffer

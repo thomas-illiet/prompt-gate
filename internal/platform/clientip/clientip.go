@@ -54,8 +54,14 @@ func resolveWithOptions(r *http.Request, options Options) resolution {
 	if len(options.TrustedProxies) > 0 {
 		trusted := isTrustedProxy(remote, options.TrustedProxies)
 		if trusted {
-			if forwarded := trustedForwardedFor(r.Header.Get("X-Forwarded-For"), options.TrustedProxies); forwarded != "" {
-				return resolution{clientIP: forwarded, peerIP: remote, source: "x-forwarded-for", peerTrusted: true}
+			if header := r.Header.Get("X-Forwarded-For"); header != "" {
+				forwarded, valid := trustedForwardedFor(header, options.TrustedProxies)
+				if !valid {
+					return resolution{clientIP: remote, peerIP: remote, source: "remote", peerTrusted: true}
+				}
+				if forwarded != "" {
+					return resolution{clientIP: forwarded, peerIP: remote, source: "x-forwarded-for", peerTrusted: true}
+				}
 			}
 			if realIP := normalizedHeaderIP(r.Header.Get("X-Real-IP")); realIP != "" {
 				return resolution{clientIP: realIP, peerIP: remote, source: "x-real-ip", peerTrusted: true}
@@ -74,19 +80,19 @@ func remoteAddrHost(remoteAddr string) string {
 	return remoteAddr
 }
 
-func trustedForwardedFor(value string, trustedProxies []netip.Prefix) string {
+func trustedForwardedFor(value string, trustedProxies []netip.Prefix) (string, bool) {
 	parts := strings.Split(value, ",")
 	for i := len(parts) - 1; i >= 0; i-- {
 		addr := parseAddr(parts[i])
 		if !addr.IsValid() {
-			continue
+			return "", false
 		}
 		if isTrustedAddr(addr, trustedProxies) {
 			continue
 		}
-		return addr.String()
+		return addr.String(), true
 	}
-	return ""
+	return "", true
 }
 
 func normalizedHeaderIP(value string) string {
