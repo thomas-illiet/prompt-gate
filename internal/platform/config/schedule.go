@@ -19,6 +19,7 @@ func LoadSchedule() (ScheduleConfig, error) {
 	v.SetDefault("usage_raw_retention", "2160h")
 	v.SetDefault("usage_raw_cleanup_interval", "1h")
 	v.SetDefault("subscription_quota_sync_interval", "5m")
+	v.SetDefault("quota_reset_distribution_interval", "1h")
 
 	cfg := ScheduleConfig{
 		LogConfig:         loadLogConfig(v),
@@ -27,11 +28,12 @@ func LoadSchedule() (ScheduleConfig, error) {
 		RedisConfig:       loadRedisConfig(v),
 		SecretsConfig:     loadSecretsConfig(v),
 		ScheduleIntervals: ScheduleIntervals{
-			TokenCleanupInterval:          v.GetDuration("token_cleanup_interval"),
-			UserAccessExpirationInterval:  v.GetDuration("user_access_expiration_interval"),
-			UsageRawRetention:             v.GetDuration("usage_raw_retention"),
-			UsageRawCleanupInterval:       v.GetDuration("usage_raw_cleanup_interval"),
-			SubscriptionQuotaSyncInterval: v.GetDuration("subscription_quota_sync_interval"),
+			TokenCleanupInterval:           v.GetDuration("token_cleanup_interval"),
+			UserAccessExpirationInterval:   v.GetDuration("user_access_expiration_interval"),
+			UsageRawRetention:              v.GetDuration("usage_raw_retention"),
+			UsageRawCleanupInterval:        v.GetDuration("usage_raw_cleanup_interval"),
+			SubscriptionQuotaSyncInterval:  v.GetDuration("subscription_quota_sync_interval"),
+			QuotaResetDistributionInterval: v.GetDuration("quota_reset_distribution_interval"),
 		},
 		ProxyRuntimeConfig: ProxyRuntimeConfig{
 			ProxyReloadDebounce: v.GetDuration("proxy_reload_debounce"),
@@ -64,6 +66,9 @@ func LoadSchedule() (ScheduleConfig, error) {
 	}
 	if cfg.SubscriptionQuotaSyncInterval <= 0 {
 		return ScheduleConfig{}, errors.New("PROMPTGATE_SUBSCRIPTION_QUOTA_SYNC_INTERVAL must be greater than zero")
+	}
+	if cfg.QuotaResetDistributionInterval <= 0 {
+		return ScheduleConfig{}, errors.New("PROMPTGATE_QUOTA_RESET_DISTRIBUTION_INTERVAL must be greater than zero")
 	}
 	if err := validatePositiveDurations(
 		positiveDuration{"PROMPTGATE_TOKEN_CLEANUP_INTERVAL", cfg.TokenCleanupInterval},

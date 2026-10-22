@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"promptgate/backend/internal/domain/auth"
+	"promptgate/backend/internal/domain/proxy"
 	"promptgate/backend/internal/domain/users"
 
 	"github.com/glebarez/sqlite"
@@ -35,9 +36,123 @@ func newUsersTestHandler(t *testing.T) (*Handler, *users.Service) {
 	if err := service.AutoMigrate(context.Background()); err != nil {
 		t.Fatalf("auto-migrate users table: %v", err)
 	}
+	if err := db.AutoMigrate(&proxy.ProxyDailyUsageKPI{}); err != nil {
+		t.Fatalf("auto-migrate proxy daily usage table: %v", err)
+	}
 	createAdminUsersUsageTables(t, db)
 
 	return NewHandler(Dependencies{Users: service}), service
+}
+
+// TestHandleAdminCreateUserPrecreatesPendingOIDCAccount verifies the UID-only creation contract.
+func TestHandleAdminCreateUserPrecreatesPendingOIDCAccount(t *testing.T) {
+	handler, service := newUsersTestHandler(t)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/admin/users",
+		bytes.NewBufferString(`{"preferredUsername":"  ExactCaseUID  "}`),
+	)
+	recorder := httptest.NewRecorder()
+
+	handler.HandleAdminCreateUser(recorder, req)
+
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", recorder.Code, recorder.Body.String())
+	}
+	var response users.AdminUser
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.PreferredUsername != "ExactCaseUID" {
+		t.Fatalf("expected trimmed case-sensitive UID, got %q", response.PreferredUsername)
+	}
+	if response.Sub != nil || response.LastLoginAt != nil {
+		t.Fatalf("expected pending SSO fields to be null, got sub=%v lastLoginAt=%v", response.Sub, response.LastLoginAt)
+	}
+	if response.Role != auth.RoleNone || !response.IsActive {
+		t.Fatalf("expected active role-none account, got role=%q active=%t", response.Role, response.IsActive)
+	}
+	if response.ActiveInLast30Days {
+		t.Fatal("expected a newly pre-created account to have no recent platform activity")
+	}
+
+	persisted, err := service.GetUser(context.Background(), response.ID)
+	if err != nil {
+		t.Fatalf("get pre-created user: %v", err)
+	}
+	if persisted.PreferredUsername != response.PreferredUsername {
+		t.Fatalf("expected persisted UID %q, got %q", response.PreferredUsername, persisted.PreferredUsername)
+	}
+}
+
+// TestHandleAdminCreateUserRejectsInvalidRequests verifies strict body decoding and UID validation.
+func TestHandleAdminCreateUserRejectsInvalidRequests(t *testing.T) {
+	tests := []struct {
+		name      string
+		body      string
+		wantError string
+	}{
+		{name: "malformed JSON", body: `{`, wantError: "invalid_request_body"},
+		{name: "unknown field", body: `{"preferredUsername":"alice","role":"admin"}`, wantError: "invalid_request_body"},
+		{name: "trailing JSON", body: `{"preferredUsername":"alice"}{}`, wantError: "invalid_request_body"},
+		{name: "empty UID", body: `{"preferredUsername":"   "}`, wantError: "invalid_preferred_username"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			handler, _ := newUsersTestHandler(t)
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/users", bytes.NewBufferString(test.body))
+			recorder := httptest.NewRecorder()
+
+			handler.HandleAdminCreateUser(recorder, req)
+
+			if recorder.Code != http.StatusBadRequest {
+				t.Fatalf("expected 400, got %d: %s", recorder.Code, recorder.Body.String())
+			}
+			var payload map[string]string
+			if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+				t.Fatalf("decode error response: %v", err)
+			}
+			if payload["error"] != test.wantError {
+				t.Fatalf("expected error %q, got %q", test.wantError, payload["error"])
+			}
+		})
+	}
+}
+
+// TestHandleAdminCreateUserReportsHumanUIDConflict verifies duplicate human UIDs map to a stable conflict.
+func TestHandleAdminCreateUserReportsHumanUIDConflict(t *testing.T) {
+	handler, _ := newUsersTestHandler(t)
+	body := `{"preferredUsername":"ExactCaseUID"}`
+
+	first := httptest.NewRecorder()
+	handler.HandleAdminCreateUser(first, httptest.NewRequest(http.MethodPost, "/api/v1/admin/users", bytes.NewBufferString(body)))
+	if first.Code != http.StatusCreated {
+		t.Fatalf("expected first create 201, got %d: %s", first.Code, first.Body.String())
+	}
+
+	duplicate := httptest.NewRecorder()
+	handler.HandleAdminCreateUser(duplicate, httptest.NewRequest(http.MethodPost, "/api/v1/admin/users", bytes.NewBufferString(body)))
+	if duplicate.Code != http.StatusConflict {
+		t.Fatalf("expected duplicate create 409, got %d: %s", duplicate.Code, duplicate.Body.String())
+	}
+	var payload map[string]string
+	if err := json.Unmarshal(duplicate.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode conflict response: %v", err)
+	}
+	if payload["error"] != "preferred_username_conflict" {
+		t.Fatalf("expected preferred_username_conflict, got %q", payload["error"])
+	}
+
+	differentCase := httptest.NewRecorder()
+	handler.HandleAdminCreateUser(
+		differentCase,
+		httptest.NewRequest(http.MethodPost, "/api/v1/admin/users", bytes.NewBufferString(`{"preferredUsername":"exactcaseuid"}`)),
+	)
+	if differentCase.Code != http.StatusCreated {
+		t.Fatalf("expected case-distinct UID create 201, got %d: %s", differentCase.Code, differentCase.Body.String())
+	}
 }
 
 // createAdminUsersUsageTables creates admin users usage tables.
@@ -54,6 +169,12 @@ func createAdminUsersUsageTables(t *testing.T, db *gorm.DB) {
 			interception_id text NOT NULL,
 			input_tokens integer NOT NULL DEFAULT 0,
 			output_tokens integer NOT NULL DEFAULT 0
+		)`,
+		`CREATE TABLE IF NOT EXISTS proxy_daily_usage_kpis (
+			day date NOT NULL,
+			initiator_id text NOT NULL,
+			requests integer NOT NULL DEFAULT 0,
+			PRIMARY KEY (day, initiator_id)
 		)`,
 	}
 	for _, statement := range statements {

@@ -255,14 +255,14 @@ func newManagerGroupService(t *testing.T) (*groups.Service, string) {
 	userID := uuid.NewString()
 	if err := db.Create(&users.User{
 		ID:                userID,
-		ExternalSub:       "oidc-sub",
+		ExternalSub:       testPointer("oidc-sub"),
 		Email:             "user@example.com",
 		PreferredUsername: "user",
 		Name:              "User",
 		Type:              auth.UserTypeUser,
 		Role:              auth.RoleUser,
 		IsActive:          true,
-		LastLoginAt:       time.Now().UTC(),
+		LastLoginAt:       testPointer(time.Now().UTC()),
 	}).Error; err != nil {
 		t.Fatalf("create user: %v", err)
 	}

@@ -22,7 +22,7 @@ import (
 // Run applies all database schema migrations in dependency order.
 func Run(ctx context.Context, db *gorm.DB) error {
 	slog.Info("running database migrations", "models", "users")
-	if err := db.WithContext(ctx).AutoMigrate(&users.User{}); err != nil {
+	if err := users.NewService(db).AutoMigrate(ctx); err != nil {
 		return fmt.Errorf("migrate users: %w", err)
 	}
 

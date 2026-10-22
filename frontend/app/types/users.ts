@@ -4,7 +4,11 @@ import type {
   AccountSubscriptionPlan,
 } from '~/types/subscriptions'
 
-export interface AdminUser extends AuthUser {
+export interface AdminUser extends Omit<AuthUser, 'lastLoginAt' | 'sub'> {
+  sub: string | null
+  lastLoginAt: string | null
+  activeInLast30Days: boolean
+  quotaResetCredits: number
   subscriptionPlanId?: string | null
   subscriptionPlan?: AccountSubscriptionPlan
   effectiveSubscriptionPlan?: AccountSubscriptionPlan
@@ -15,6 +19,10 @@ export interface AdminUser extends AuthUser {
   expiresAt: string | null
   createdAt: string
   updatedAt: string
+}
+
+export interface CreateUserPayload {
+  preferredUsername: string
 }
 
 export interface UserListResponse {

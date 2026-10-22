@@ -160,6 +160,22 @@ func TestLoadApiDefaultSessionTTL(t *testing.T) {
 	if cfg.SessionTTL != 8*time.Hour {
 		t.Fatalf("expected default session ttl 8h, got %s", cfg.SessionTTL)
 	}
+	if cfg.QuotaResetDistributionInterval != time.Hour {
+		t.Fatalf("expected default quota reset distribution interval 1h, got %s", cfg.QuotaResetDistributionInterval)
+	}
+}
+
+func TestLoadApiQuotaResetDistributionIntervalOverride(t *testing.T) {
+	setRequiredAPIEnv(t)
+	t.Setenv("PROMPTGATE_QUOTA_RESET_DISTRIBUTION_INTERVAL", "45m")
+
+	cfg, err := LoadApi()
+	if err != nil {
+		t.Fatalf("load api config: %v", err)
+	}
+	if cfg.QuotaResetDistributionInterval != 45*time.Minute {
+		t.Fatalf("expected quota reset distribution interval 45m, got %s", cfg.QuotaResetDistributionInterval)
+	}
 }
 
 // TestLoadApiCustomSessionTTL verifies load API custom session TTL.
@@ -434,7 +450,7 @@ func TestLoadScheduleReadsCAFile(t *testing.T) {
 	}
 }
 
-// TestLoadScheduleUsageRawCleanupDefaults verifies load schedule raw usage cleanup defaults.
+// TestLoadScheduleUsageRawCleanupDefaults verifies load schedule maintenance defaults.
 func TestLoadScheduleUsageRawCleanupDefaults(t *testing.T) {
 	setRequiredScheduleEnv(t)
 
@@ -447,6 +463,24 @@ func TestLoadScheduleUsageRawCleanupDefaults(t *testing.T) {
 	}
 	if cfg.UsageRawCleanupInterval != time.Hour {
 		t.Fatalf("expected raw usage cleanup interval 1h, got %s", cfg.UsageRawCleanupInterval)
+	}
+	if cfg.QuotaResetDistributionInterval != time.Hour {
+		t.Fatalf("expected quota reset distribution interval 1h, got %s", cfg.QuotaResetDistributionInterval)
+	}
+}
+
+// TestLoadScheduleQuotaResetDistributionIntervalOverride verifies operators can
+// tune how quickly the scheduler grants credits to newly eligible accounts.
+func TestLoadScheduleQuotaResetDistributionIntervalOverride(t *testing.T) {
+	setRequiredScheduleEnv(t)
+	t.Setenv("PROMPTGATE_QUOTA_RESET_DISTRIBUTION_INTERVAL", "30m")
+
+	cfg, err := LoadSchedule()
+	if err != nil {
+		t.Fatalf("load schedule config: %v", err)
+	}
+	if cfg.QuotaResetDistributionInterval != 30*time.Minute {
+		t.Fatalf("expected quota reset distribution interval 30m, got %s", cfg.QuotaResetDistributionInterval)
 	}
 }
 
@@ -612,6 +646,15 @@ func TestRuntimeConfigsRejectNonPositiveDurations(t *testing.T) {
 			name:    "schedule token cleanup interval",
 			prepare: setRequiredScheduleEnv,
 			envName: "PROMPTGATE_TOKEN_CLEANUP_INTERVAL",
+			load: func() error {
+				_, err := LoadSchedule()
+				return err
+			},
+		},
+		{
+			name:    "schedule quota reset distribution interval",
+			prepare: setRequiredScheduleEnv,
+			envName: "PROMPTGATE_QUOTA_RESET_DISTRIBUTION_INTERVAL",
 			load: func() error {
 				_, err := LoadSchedule()
 				return err

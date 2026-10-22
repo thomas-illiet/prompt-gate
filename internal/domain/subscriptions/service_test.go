@@ -335,14 +335,14 @@ func TestListPlansPagedIncludesAssignmentCounts(t *testing.T) {
 
 	serviceAccount := users.User{
 		ID:                "22222222-2222-2222-2222-222222222222",
-		ExternalSub:       "service-worker",
+		ExternalSub:       testPointer("service-worker"),
 		Email:             "worker@example.com",
 		PreferredUsername: "worker",
 		Name:              "Worker",
 		Type:              auth.UserTypeService,
 		Role:              auth.RoleUser,
 		IsActive:          true,
-		LastLoginAt:       time.Now().UTC(),
+		LastLoginAt:       testPointer(time.Now().UTC()),
 	}
 	if err := service.db.Create(&serviceAccount).Error; err != nil {
 		t.Fatalf("create service account: %v", err)
@@ -353,14 +353,14 @@ func TestListPlansPagedIncludesAssignmentCounts(t *testing.T) {
 
 	freeUser := users.User{
 		ID:                "33333333-3333-3333-3333-333333333333",
-		ExternalSub:       "free-user-sub",
+		ExternalSub:       testPointer("free-user-sub"),
 		Email:             "free@example.com",
 		PreferredUsername: "free",
 		Name:              "Free User",
 		Type:              auth.UserTypeUser,
 		Role:              auth.RoleUser,
 		IsActive:          true,
-		LastLoginAt:       time.Now().UTC(),
+		LastLoginAt:       testPointer(time.Now().UTC()),
 	}
 	if err := service.db.Create(&freeUser).Error; err != nil {
 		t.Fatalf("create free user: %v", err)
@@ -372,14 +372,14 @@ func TestListPlansPagedIncludesAssignmentCounts(t *testing.T) {
 
 	inheritedServiceAccount := users.User{
 		ID:                "44444444-4444-4444-4444-444444444444",
-		ExternalSub:       "inherited-worker",
+		ExternalSub:       testPointer("inherited-worker"),
 		Email:             "inherited@example.com",
 		PreferredUsername: "inherited",
 		Name:              "Inherited Worker",
 		Type:              auth.UserTypeService,
 		Role:              auth.RoleUser,
 		IsActive:          true,
-		LastLoginAt:       time.Now().UTC(),
+		LastLoginAt:       testPointer(time.Now().UTC()),
 	}
 	if err := service.db.Create(&inheritedServiceAccount).Error; err != nil {
 		t.Fatalf("create inherited service account: %v", err)
@@ -463,14 +463,14 @@ func TestAssignmentsReturnCompleteAccountProjections(t *testing.T) {
 
 	account := users.User{
 		ID:                "55555555-5555-5555-5555-555555555555",
-		ExternalSub:       "service-complete",
+		ExternalSub:       testPointer("service-complete"),
 		PreferredUsername: "complete-worker",
 		Name:              "Complete Worker",
 		Type:              auth.UserTypeService,
 		Role:              auth.RoleUser,
 		Note:              "keep service metadata",
 		IsActive:          true,
-		LastLoginAt:       time.Now().UTC(),
+		LastLoginAt:       testPointer(time.Now().UTC()),
 	}
 	if err := service.db.Create(&account).Error; err != nil {
 		t.Fatalf("create service account: %v", err)
@@ -503,14 +503,14 @@ func newSubscriptionTestStore(t *testing.T) (*Service, *RedisStore, users.User) 
 	createSubscriptionUsageTables(t, db)
 	user := users.User{
 		ID:                "11111111-1111-1111-1111-111111111111",
-		ExternalSub:       "sub",
+		ExternalSub:       testPointer("sub"),
 		Email:             "user@example.com",
 		PreferredUsername: "user",
 		Name:              "User",
 		Type:              auth.UserTypeUser,
 		Role:              auth.RoleUser,
 		IsActive:          true,
-		LastLoginAt:       time.Now().UTC(),
+		LastLoginAt:       testPointer(time.Now().UTC()),
 	}
 	if err := db.Create(&user).Error; err != nil {
 		t.Fatalf("create user: %v", err)
@@ -537,6 +537,12 @@ func createSubscriptionUsageTables(t *testing.T, db *gorm.DB) {
 			interception_id text NOT NULL,
 			input_tokens integer NOT NULL DEFAULT 0,
 			output_tokens integer NOT NULL DEFAULT 0
+		)`,
+		`CREATE TABLE proxy_daily_usage_kpis (
+			day date NOT NULL,
+			initiator_id text NOT NULL,
+			requests integer NOT NULL DEFAULT 0,
+			PRIMARY KEY (day, initiator_id)
 		)`,
 	} {
 		if err := db.Exec(statement).Error; err != nil {

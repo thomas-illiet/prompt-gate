@@ -1,9 +1,13 @@
 package httpapi
 
-import "promptgate/backend/internal/transport/httpapi/admin"
+import (
+	"net/http"
 
-func adminRoutes(handler *admin.Handler) []routeDefinition {
-	routes := make([]routeDefinition, 0, 105)
+	"promptgate/backend/internal/transport/httpapi/admin"
+)
+
+func adminRoutes(handler *admin.Handler, openAPIHandler http.HandlerFunc) []routeDefinition {
+	routes := make([]routeDefinition, 0, 89)
 	routes = append(routes, adminUserRoutes(handler)...)
 	routes = append(routes, adminDashboardRoutes(handler)...)
 	routes = append(routes, adminServiceAccountRoutes(handler)...)
@@ -14,12 +18,20 @@ func adminRoutes(handler *admin.Handler) []routeDefinition {
 	routes = append(routes, adminMonitoringRoutes(handler)...)
 	routes = append(routes, adminFAQRoutes(handler)...)
 	routes = append(routes, adminSetupGuideRoutes(handler)...)
+	routes = append(routes, adminDocumentationRoutes(openAPIHandler)...)
 	return routes
+}
+
+func adminDocumentationRoutes(openAPIHandler http.HandlerFunc) []routeDefinition {
+	return []routeDefinition{
+		{pattern: "GET /api/v1/admin/openapi.json", handler: openAPIHandler},
+	}
 }
 
 func adminUserRoutes(handler *admin.Handler) []routeDefinition {
 	return []routeDefinition{
 		{pattern: "GET /api/v1/admin/users", handler: handler.HandleAdminListUsers},
+		{pattern: "POST /api/v1/admin/users", handler: handler.HandleAdminCreateUser},
 		{pattern: "GET /api/v1/admin/users/{id}", handler: handler.HandleAdminGetUser},
 		{pattern: "GET /api/v1/admin/users/{id}/statistics", handler: handler.HandleAdminUserStatistics},
 		{pattern: "GET /api/v1/admin/users/{id}/ips", handler: handler.HandleAdminListUserIPAddresses},
@@ -33,6 +45,7 @@ func adminUserRoutes(handler *admin.Handler) []routeDefinition {
 		{pattern: "GET /api/v1/admin/users/{id}/groups", handler: handler.HandleAdminListUserGroups},
 		{pattern: "PUT /api/v1/admin/users/{id}/groups", handler: handler.HandleAdminReplaceUserGroups},
 		{pattern: "PUT /api/v1/admin/users/{id}/subscription-plan", handler: handler.HandleAdminAssignUserSubscriptionPlan},
+		{pattern: "POST /api/v1/admin/users/{id}/quota-resets", handler: handler.HandleAdminGrantQuotaReset},
 	}
 }
 

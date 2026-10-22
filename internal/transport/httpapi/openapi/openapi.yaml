@@ -1,0 +1,3373 @@
+openapi: 3.0.3
+info:
+  title: Prompt Gate Control API
+  version: 1.0.0
+  description: |
+    Administrative and self-service API for Prompt Gate. Browser clients
+    authenticate with the current HTTP-only session cookie.
+servers:
+  - url: __PROMPTGATE_BACKEND_BASE_URL__
+security:
+  - sessionCookie: []
+tags:
+  - name: Current account
+    description: Current account profile, quota, groups, and usage.
+  - name: Dashboard
+    description: Personal and organization usage dashboards.
+  - name: Tokens
+    description: Prompt Gate virtual-key lifecycle.
+  - name: Users
+    description: Human user administration.
+  - name: Service accounts
+    description: Service-account administration.
+  - name: Groups
+    description: Access groups, memberships, and model policies.
+  - name: Subscriptions
+    description: Subscription plans, assignments, and quota state.
+  - name: Providers
+    description: Upstream LLM provider configuration and model discovery.
+  - name: Pricing
+    description: Usage-cost pricing configuration.
+  - name: Monitoring
+    description: User-visible status and administrator-managed HTTP checks.
+  - name: FAQ
+    description: Published and administrator-managed frequently asked questions.
+  - name: Guides
+    description: Provider setup help and administrator-managed setup guides.
+  - name: Documentation
+    description: Runtime OpenAPI document.
+paths:
+  /api/v1/me:
+    get:
+      tags: [Current account]
+      operationId: getCurrentUser
+      summary: Get the current account profile
+      security:
+        - sessionCookie: []
+      responses:
+        '200': { $ref: '#/components/responses/UserProfileResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/me/usage:
+    get:
+      tags: [Current account]
+      operationId: getCurrentUserUsage
+      summary: Get the current user's usage summary
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/UsageDays'
+      responses:
+        '200': { $ref: '#/components/responses/UsageSummaryResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/me/quota:
+    get:
+      tags: [Current account]
+      operationId: getCurrentUserQuota
+      summary: Get the current account quota state
+      security:
+        - sessionCookie: []
+      responses:
+        '200': { $ref: '#/components/responses/QuotaStatusResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/me/quota-resets:
+    get:
+      tags: [Current account]
+      operationId: getCurrentUserQuotaResets
+      summary: Get the current account quota-reset wallet
+      security:
+        - sessionCookie: []
+      responses:
+        '200': { $ref: '#/components/responses/QuotaResetSummaryResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/me/quota-resets/use:
+    post:
+      tags: [Current account]
+      operationId: useCurrentUserQuotaReset
+      summary: Spend one credit and clear both live quota windows
+      description: Clears the rolling 5-hour and 7-day quota windows without deleting usage analytics.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200': { $ref: '#/components/responses/QuotaResetUseResponse' }
+        '202': { $ref: '#/components/responses/QuotaResetUseResponse' }
+        '400': { $ref: '#/components/responses/QuotaResetBadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/QuotaResetConflict' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/me/quota-resets/history:
+    get:
+      tags: [Current account]
+      operationId: listCurrentUserQuotaResetHistory
+      summary: List applied quota-reset wallet events
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/QuotaResetPageSize'
+      responses:
+        '200': { $ref: '#/components/responses/QuotaResetHistoryResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/me/groups:
+    get:
+      tags: [Current account]
+      operationId: listCurrentUserGroups
+      summary: List the current user's access groups
+      security:
+        - sessionCookie: []
+      responses:
+        '200': { $ref: '#/components/responses/ProfileGroupsResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/me/help/setup:
+    get:
+      tags: [Guides]
+      operationId: getCurrentUserSetupHelp
+      summary: Get provider and client setup help
+      security:
+        - sessionCookie: []
+      responses:
+        '200': { $ref: '#/components/responses/HelpSetupResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/me/dashboard/overview:
+    get:
+      tags: [Dashboard]
+      operationId: getCurrentUserDashboardOverview
+      summary: Get the current user's dashboard overview
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/UsageWindow'
+        - $ref: '#/components/parameters/LegacyUsageDays'
+      responses:
+        '200': { $ref: '#/components/responses/DashboardOverviewResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/me/dashboard/tokens:
+    get:
+      tags: [Dashboard]
+      operationId: getCurrentUserDashboardTokens
+      summary: Get the current user's token totals
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/UsageWindow'
+        - $ref: '#/components/parameters/LegacyUsageDays'
+      responses:
+        '200': { $ref: '#/components/responses/DashboardTokensResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/me/dashboard/messages:
+    get:
+      tags: [Dashboard]
+      operationId: getCurrentUserDashboardMessages
+      summary: Get the current user's message total
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/UsageWindow'
+        - $ref: '#/components/parameters/LegacyUsageDays'
+      responses:
+        '200': { $ref: '#/components/responses/DashboardMessagesResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/me/dashboard/duration:
+    get:
+      tags: [Dashboard]
+      operationId: getCurrentUserDashboardDuration
+      summary: Get the current user's request duration total
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/UsageWindow'
+        - $ref: '#/components/parameters/LegacyUsageDays'
+      responses:
+        '200': { $ref: '#/components/responses/DashboardDurationResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/me/dashboard/activity:
+    get:
+      tags: [Dashboard]
+      operationId: getCurrentUserDashboardActivity
+      summary: Get the current user's daily activity
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/ActivityUsageWindow'
+        - $ref: '#/components/parameters/LegacyUsageDays'
+      responses:
+        '200': { $ref: '#/components/responses/DashboardActivityResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/me/dashboard/top-models:
+    get:
+      tags: [Dashboard]
+      operationId: getCurrentUserDashboardTopModels
+      summary: Get the current user's top models
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/UsageWindow'
+        - $ref: '#/components/parameters/LegacyUsageDays'
+        - $ref: '#/components/parameters/BreakdownMetric'
+      responses:
+        '200': { $ref: '#/components/responses/DashboardBreakdownResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/me/dashboard/top-provider-names:
+    get:
+      tags: [Dashboard]
+      operationId: getCurrentUserDashboardTopProviderNames
+      summary: Get the current user's top provider names
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/UsageWindow'
+        - $ref: '#/components/parameters/LegacyUsageDays'
+        - $ref: '#/components/parameters/BreakdownMetric'
+      responses:
+        '200': { $ref: '#/components/responses/DashboardBreakdownResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/me/dashboard/top-provider-types:
+    get:
+      tags: [Dashboard]
+      operationId: getCurrentUserDashboardTopProviderTypes
+      summary: Get the current user's top provider types
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/UsageWindow'
+        - $ref: '#/components/parameters/LegacyUsageDays'
+        - $ref: '#/components/parameters/BreakdownMetric'
+      responses:
+        '200': { $ref: '#/components/responses/DashboardBreakdownResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/monitoring/status:
+    get:
+      tags: [Monitoring]
+      operationId: getMonitoringStatus
+      summary: Get user-visible service status
+      security:
+        - sessionCookie: []
+      responses:
+        '200': { $ref: '#/components/responses/MonitoringStatusResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/faq:
+    get:
+      tags: [FAQ]
+      operationId: listPublishedFaqs
+      summary: List published FAQ entries
+      security:
+        - sessionCookie: []
+      responses:
+        '200': { $ref: '#/components/responses/PublicFAQListResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/tokens:
+    get:
+      tags: [Tokens]
+      operationId: listCurrentUserTokens
+      summary: List the current user's virtual keys
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Search'
+        - $ref: '#/components/parameters/TokenStatus'
+        - $ref: '#/components/parameters/SortBy'
+        - $ref: '#/components/parameters/SortDir'
+      responses:
+        '200': { $ref: '#/components/responses/TokenListResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        default: { $ref: '#/components/responses/InternalError' }
+    post:
+      tags: [Tokens]
+      operationId: createCurrentUserToken
+      summary: Create a virtual key for the current user
+      security:
+        - sessionCookie: []
+      requestBody:
+        $ref: '#/components/requestBodies/CreateToken'
+      responses:
+        '201': { $ref: '#/components/responses/CreateTokenResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/tokens/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    delete:
+      tags: [Tokens]
+      operationId: revokeCurrentUserToken
+      summary: Revoke one of the current user's virtual keys
+      security:
+        - sessionCookie: []
+      responses:
+        '204': { $ref: '#/components/responses/NoContent' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/openapi.json:
+    get:
+      tags: [Documentation]
+      operationId: getAdminOpenAPIDocument
+      summary: Get the runtime OpenAPI document
+      responses:
+        '200': { $ref: '#/components/responses/OpenAPIDocumentResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/users:
+    get:
+      tags: [Users]
+      operationId: listAdminUsers
+      summary: List human users
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Search'
+        - $ref: '#/components/parameters/UserRole'
+        - $ref: '#/components/parameters/AccountStatus'
+        - $ref: '#/components/parameters/SortBy'
+        - $ref: '#/components/parameters/SortDir'
+      responses:
+        '200': { $ref: '#/components/responses/AdminUserListResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        default: { $ref: '#/components/responses/InternalError' }
+    post:
+      tags: [Users]
+      operationId: createAdminUser
+      summary: Pre-create a human user from an OIDC preferred username
+      description: >-
+        Creates the local account before its first SSO login. The exact,
+        case-sensitive preferred_username claim links the OIDC identity later
+        without replacing application-managed access. An empty UID returns
+        invalid_preferred_username and an existing human UID returns
+        preferred_username_conflict.
+      requestBody:
+        $ref: '#/components/requestBodies/CreateUser'
+      responses:
+        '201': { $ref: '#/components/responses/AdminUserResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/users/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      tags: [Users]
+      operationId: getAdminUser
+      summary: Get one human user
+      responses:
+        '200': { $ref: '#/components/responses/AdminUserResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/InternalError' }
+    patch:
+      tags: [Users]
+      operationId: updateAdminUser
+      summary: Update a human user's access
+      requestBody:
+        $ref: '#/components/requestBodies/UpdateUser'
+      responses:
+        '200': { $ref: '#/components/responses/AdminUserResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/InternalError' }
+    delete:
+      tags: [Users]
+      operationId: deleteAdminUser
+      summary: Delete a human user
+      responses:
+        '204': { $ref: '#/components/responses/NoContent' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/users/{id}/statistics:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      tags: [Users]
+      operationId: getAdminUserStatistics
+      summary: Get usage statistics for a human user
+      parameters:
+        - $ref: '#/components/parameters/UsageWindow'
+        - $ref: '#/components/parameters/LegacyUsageDays'
+      responses:
+        '200': { $ref: '#/components/responses/DashboardOverviewResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/users/{id}/ips:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      tags: [Users]
+      operationId: listAdminUserIPAddresses
+      summary: List observed client IP addresses for a human user
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/SortBy'
+        - $ref: '#/components/parameters/SortDir'
+      responses:
+        '200': { $ref: '#/components/responses/AccountIPAddressListResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/InternalError' }
+    delete:
+      tags: [Users]
+      operationId: clearAdminUserIPAddresses
+      summary: Clear observed client IP addresses for a human user
+      responses:
+        '204': { $ref: '#/components/responses/NoContent' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/users/{id}/note:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    patch:
+      tags: [Users]
+      operationId: updateAdminUserNote
+      summary: Update the private note for a human user
+      requestBody:
+        $ref: '#/components/requestBodies/UpdateAccountNote'
+      responses:
+        '200': { $ref: '#/components/responses/AdminUserResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/users/{id}/tokens:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      tags: [Tokens]
+      operationId: listAdminUserTokens
+      summary: List virtual keys for a human user
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/SortBy'
+        - $ref: '#/components/parameters/SortDir'
+      responses:
+        '200': { $ref: '#/components/responses/TokenListResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        default: { $ref: '#/components/responses/InternalError' }
+    post:
+      tags: [Tokens]
+      operationId: createAdminUserToken
+      summary: Create a virtual key for a human user
+      requestBody:
+        $ref: '#/components/requestBodies/CreateToken'
+      responses:
+        '201': { $ref: '#/components/responses/CreateTokenResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/users/{id}/tokens/{tokenId}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+      - $ref: '#/components/parameters/TokenID'
+    delete:
+      tags: [Tokens]
+      operationId: revokeAdminUserToken
+      summary: Revoke a human user's virtual key
+      responses:
+        '204': { $ref: '#/components/responses/NoContent' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/users/{id}/groups:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      tags: [Groups]
+      operationId: listAdminUserGroups
+      summary: List access groups assigned to a human user
+      responses:
+        '200': { $ref: '#/components/responses/GroupListArrayResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/InternalError' }
+    put:
+      tags: [Groups]
+      operationId: replaceAdminUserGroups
+      summary: Replace access groups assigned to a human user
+      requestBody:
+        $ref: '#/components/requestBodies/ReplaceUserGroups'
+      responses:
+        '200': { $ref: '#/components/responses/GroupListArrayResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/users/{id}/subscription-plan:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    put:
+      tags: [Subscriptions]
+      operationId: assignAdminUserSubscriptionPlan
+      summary: Assign or clear a human user's subscription plan
+      requestBody:
+        $ref: '#/components/requestBodies/AssignSubscriptionPlan'
+      responses:
+        '200': { $ref: '#/components/responses/AdminUserResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/users/{id}/quota-resets:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    post:
+      tags: [Users]
+      operationId: grantAdminUserQuotaReset
+      summary: Offer one quota-reset credit to a human account
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200': { $ref: '#/components/responses/QuotaResetSummaryResponse' }
+        '400': { $ref: '#/components/responses/QuotaResetBadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/QuotaResetConflict' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/dashboard/overview:
+    get:
+      tags: [Dashboard]
+      operationId: getAdminDashboardOverview
+      summary: Get the organization dashboard overview
+      parameters:
+        - $ref: '#/components/parameters/UsageWindow'
+        - $ref: '#/components/parameters/LegacyUsageDays'
+      responses:
+        '200': { $ref: '#/components/responses/DashboardOverviewResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/dashboard/quota-risk:
+    get:
+      tags: [Dashboard]
+      operationId: getAdminDashboardQuotaRisk
+      summary: Get accounts approaching finite quota limits
+      responses:
+        '200': { $ref: '#/components/responses/DashboardQuotaRiskResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/dashboard/tokens:
+    get:
+      tags: [Dashboard]
+      operationId: getAdminDashboardTokens
+      summary: Get organization token totals
+      parameters:
+        - $ref: '#/components/parameters/UsageWindow'
+        - $ref: '#/components/parameters/LegacyUsageDays'
+      responses:
+        '200': { $ref: '#/components/responses/DashboardTokensResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/dashboard/messages:
+    get:
+      tags: [Dashboard]
+      operationId: getAdminDashboardMessages
+      summary: Get the organization message total
+      parameters:
+        - $ref: '#/components/parameters/UsageWindow'
+        - $ref: '#/components/parameters/LegacyUsageDays'
+      responses:
+        '200': { $ref: '#/components/responses/DashboardMessagesResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/dashboard/duration:
+    get:
+      tags: [Dashboard]
+      operationId: getAdminDashboardDuration
+      summary: Get organization request duration totals
+      parameters:
+        - $ref: '#/components/parameters/UsageWindow'
+        - $ref: '#/components/parameters/LegacyUsageDays'
+      responses:
+        '200': { $ref: '#/components/responses/DashboardDurationResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/dashboard/activity:
+    get:
+      tags: [Dashboard]
+      operationId: getAdminDashboardActivity
+      summary: Get organization daily activity
+      parameters:
+        - $ref: '#/components/parameters/UsageWindow'
+        - $ref: '#/components/parameters/LegacyUsageDays'
+      responses:
+        '200': { $ref: '#/components/responses/DashboardActivityResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/dashboard/top-models:
+    get:
+      tags: [Dashboard]
+      operationId: getAdminDashboardTopModels
+      summary: Get organization top models
+      parameters:
+        - $ref: '#/components/parameters/UsageWindow'
+        - $ref: '#/components/parameters/LegacyUsageDays'
+        - $ref: '#/components/parameters/BreakdownMetric'
+      responses:
+        '200': { $ref: '#/components/responses/DashboardBreakdownResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/dashboard/top-provider-names:
+    get:
+      tags: [Dashboard]
+      operationId: getAdminDashboardTopProviderNames
+      summary: Get organization top provider names
+      parameters:
+        - $ref: '#/components/parameters/UsageWindow'
+        - $ref: '#/components/parameters/LegacyUsageDays'
+        - $ref: '#/components/parameters/BreakdownMetric'
+      responses:
+        '200': { $ref: '#/components/responses/DashboardBreakdownResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/dashboard/top-provider-types:
+    get:
+      tags: [Dashboard]
+      operationId: getAdminDashboardTopProviderTypes
+      summary: Get organization top provider types
+      parameters:
+        - $ref: '#/components/parameters/UsageWindow'
+        - $ref: '#/components/parameters/LegacyUsageDays'
+        - $ref: '#/components/parameters/BreakdownMetric'
+      responses:
+        '200': { $ref: '#/components/responses/DashboardBreakdownResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/dashboard/adoption:
+    get:
+      tags: [Dashboard]
+      operationId: getAdminDashboardAdoption
+      summary: Get organization adoption counts
+      parameters:
+        - $ref: '#/components/parameters/UsageWindow'
+        - $ref: '#/components/parameters/LegacyUsageDays'
+      responses:
+        '200': { $ref: '#/components/responses/DashboardAdoptionResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/dashboard/top-identities:
+    get:
+      tags: [Dashboard]
+      operationId: getAdminDashboardTopIdentities
+      summary: Get top users and service accounts
+      parameters:
+        - $ref: '#/components/parameters/UsageWindow'
+        - $ref: '#/components/parameters/LegacyUsageDays'
+        - $ref: '#/components/parameters/BreakdownMetric'
+      responses:
+        '200': { $ref: '#/components/responses/DashboardBreakdownResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/service-accounts:
+    get:
+      tags: [Service accounts]
+      operationId: listAdminServiceAccounts
+      summary: List service accounts
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Search'
+        - $ref: '#/components/parameters/SortBy'
+        - $ref: '#/components/parameters/SortDir'
+      responses:
+        '200': { $ref: '#/components/responses/ServiceAccountListResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        default: { $ref: '#/components/responses/InternalError' }
+    post:
+      tags: [Service accounts]
+      operationId: createAdminServiceAccount
+      summary: Create a service account
+      requestBody:
+        $ref: '#/components/requestBodies/ServiceAccount'
+      responses:
+        '201': { $ref: '#/components/responses/ServiceAccountResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/service-accounts/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      tags: [Service accounts]
+      operationId: getAdminServiceAccount
+      summary: Get one service account
+      responses:
+        '200': { $ref: '#/components/responses/ServiceAccountResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/InternalError' }
+    patch:
+      tags: [Service accounts]
+      operationId: updateAdminServiceAccount
+      summary: Update a service account
+      requestBody:
+        $ref: '#/components/requestBodies/ServiceAccount'
+      responses:
+        '200': { $ref: '#/components/responses/ServiceAccountResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        default: { $ref: '#/components/responses/InternalError' }
+    delete:
+      tags: [Service accounts]
+      operationId: deleteAdminServiceAccount
+      summary: Delete a service account
+      responses:
+        '204': { $ref: '#/components/responses/NoContent' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/service-accounts/{id}/statistics:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      tags: [Service accounts]
+      operationId: getAdminServiceAccountStatistics
+      summary: Get usage statistics for a service account
+      parameters:
+        - $ref: '#/components/parameters/UsageWindow'
+        - $ref: '#/components/parameters/LegacyUsageDays'
+      responses:
+        '200': { $ref: '#/components/responses/DashboardOverviewResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/service-accounts/{id}/note:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    patch:
+      tags: [Service accounts]
+      operationId: updateAdminServiceAccountNote
+      summary: Update the private note for a service account
+      requestBody:
+        $ref: '#/components/requestBodies/UpdateAccountNote'
+      responses:
+        '200': { $ref: '#/components/responses/ServiceAccountResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/service-accounts/{id}/ips:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      tags: [Service accounts]
+      operationId: listAdminServiceAccountIPAddresses
+      summary: List observed client IP addresses for a service account
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/SortBy'
+        - $ref: '#/components/parameters/SortDir'
+      responses:
+        '200': { $ref: '#/components/responses/AccountIPAddressListResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/service-accounts/{id}/tokens:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      tags: [Tokens]
+      operationId: listAdminServiceAccountTokens
+      summary: List virtual keys for a service account
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/SortBy'
+        - $ref: '#/components/parameters/SortDir'
+        - $ref: '#/components/parameters/IncludeRevoked'
+      responses:
+        '200': { $ref: '#/components/responses/TokenListResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/InternalError' }
+    post:
+      tags: [Tokens]
+      operationId: createAdminServiceAccountToken
+      summary: Create a virtual key for a service account
+      requestBody:
+        $ref: '#/components/requestBodies/CreateToken'
+      responses:
+        '201': { $ref: '#/components/responses/CreateTokenResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/service-accounts/{id}/tokens/{tokenId}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+      - $ref: '#/components/parameters/TokenID'
+    delete:
+      tags: [Tokens]
+      operationId: revokeAdminServiceAccountToken
+      summary: Revoke a service account's virtual key
+      responses:
+        '204': { $ref: '#/components/responses/NoContent' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/service-accounts/{id}/subscription-plan:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    put:
+      tags: [Subscriptions]
+      operationId: assignAdminServiceAccountSubscriptionPlan
+      summary: Assign or clear a service account's subscription plan
+      requestBody:
+        $ref: '#/components/requestBodies/AssignSubscriptionPlan'
+      responses:
+        '200': { $ref: '#/components/responses/ServiceAccountResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/subscriptions:
+    get:
+      tags: [Subscriptions]
+      operationId: listAdminSubscriptionPlans
+      summary: List subscription plans
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/SortBy'
+        - $ref: '#/components/parameters/SortDir'
+      responses:
+        '200': { $ref: '#/components/responses/SubscriptionPlanListResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        default: { $ref: '#/components/responses/InternalError' }
+    post:
+      tags: [Subscriptions]
+      operationId: createAdminSubscriptionPlan
+      summary: Create a subscription plan
+      requestBody:
+        $ref: '#/components/requestBodies/SubscriptionPlan'
+      responses:
+        '201': { $ref: '#/components/responses/SubscriptionPlanResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/subscriptions/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      tags: [Subscriptions]
+      operationId: getAdminSubscriptionPlan
+      summary: Get one subscription plan
+      responses:
+        '200': { $ref: '#/components/responses/SubscriptionPlanResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/InternalError' }
+    patch:
+      tags: [Subscriptions]
+      operationId: updateAdminSubscriptionPlan
+      summary: Update a subscription plan
+      requestBody:
+        $ref: '#/components/requestBodies/SubscriptionPlan'
+      responses:
+        '200': { $ref: '#/components/responses/SubscriptionPlanResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/InternalError' }
+    delete:
+      tags: [Subscriptions]
+      operationId: deleteAdminSubscriptionPlan
+      summary: Delete an unassigned subscription plan
+      responses:
+        '204': { $ref: '#/components/responses/NoContent' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/subscriptions/{id}/default:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    put:
+      tags: [Subscriptions]
+      operationId: setAdminDefaultSubscriptionPlan
+      summary: Set the default subscription plan
+      responses:
+        '200': { $ref: '#/components/responses/SubscriptionPlanResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/groups:
+    get:
+      tags: [Groups]
+      operationId: listAdminGroups
+      summary: List access groups
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Search'
+        - $ref: '#/components/parameters/SortBy'
+        - $ref: '#/components/parameters/SortDir'
+      responses:
+        '200': { $ref: '#/components/responses/GroupListResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        default: { $ref: '#/components/responses/InternalError' }
+    post:
+      tags: [Groups]
+      operationId: createAdminGroup
+      summary: Create an access group
+      requestBody:
+        $ref: '#/components/requestBodies/CreateGroup'
+      responses:
+        '201': { $ref: '#/components/responses/GroupResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/groups/model-patterns/validate:
+    post:
+      tags: [Groups]
+      operationId: validateAdminGroupModelPatterns
+      summary: Preview model pattern matches
+      requestBody:
+        $ref: '#/components/requestBodies/ValidateModelPatterns'
+      responses:
+        '200': { $ref: '#/components/responses/ModelPatternValidationResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/groups/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      tags: [Groups]
+      operationId: getAdminGroup
+      summary: Get one access group
+      responses:
+        '200': { $ref: '#/components/responses/GroupResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/InternalError' }
+    patch:
+      tags: [Groups]
+      operationId: updateAdminGroup
+      summary: Update an access group
+      requestBody:
+        $ref: '#/components/requestBodies/UpdateGroup'
+      responses:
+        '200': { $ref: '#/components/responses/GroupResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        default: { $ref: '#/components/responses/InternalError' }
+    delete:
+      tags: [Groups]
+      operationId: deleteAdminGroup
+      summary: Delete an access group
+      responses:
+        '204': { $ref: '#/components/responses/NoContent' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/groups/{id}/statistics:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      tags: [Groups]
+      operationId: getAdminGroupStatistics
+      summary: Get usage statistics for an access group
+      parameters:
+        - $ref: '#/components/parameters/UsageWindow'
+        - $ref: '#/components/parameters/LegacyUsageDays'
+      responses:
+        '200': { $ref: '#/components/responses/DashboardOverviewResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/groups/{id}/members/{userId}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+      - $ref: '#/components/parameters/UserID'
+    put:
+      tags: [Groups]
+      operationId: addAdminGroupMember
+      summary: Add a user to an access group
+      responses:
+        '204': { $ref: '#/components/responses/NoContent' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/InternalError' }
+    delete:
+      tags: [Groups]
+      operationId: removeAdminGroupMember
+      summary: Remove a user from an access group
+      responses:
+        '204': { $ref: '#/components/responses/NoContent' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/providers:
+    get:
+      tags: [Providers]
+      operationId: listAdminProviders
+      summary: List LLM providers
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/SortBy'
+        - $ref: '#/components/parameters/SortDir'
+      responses:
+        '200': { $ref: '#/components/responses/ProviderListResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        default: { $ref: '#/components/responses/InternalError' }
+    post:
+      tags: [Providers]
+      operationId: createAdminProvider
+      summary: Create an LLM provider
+      requestBody:
+        $ref: '#/components/requestBodies/CreateProvider'
+      responses:
+        '201': { $ref: '#/components/responses/ProviderResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/providers/model-catalog:
+    get:
+      tags: [Providers]
+      operationId: getAdminProviderModelCatalog
+      summary: Discover models from selected providers
+      parameters:
+        - $ref: '#/components/parameters/ProviderID'
+        - $ref: '#/components/parameters/ProviderIDs'
+      responses:
+        '200': { $ref: '#/components/responses/ModelCatalogResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/providers/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      tags: [Providers]
+      operationId: getAdminProvider
+      summary: Get one LLM provider
+      responses:
+        '200': { $ref: '#/components/responses/ProviderResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/InternalError' }
+    patch:
+      tags: [Providers]
+      operationId: updateAdminProvider
+      summary: Update an LLM provider
+      requestBody:
+        $ref: '#/components/requestBodies/UpdateProvider'
+      responses:
+        '200': { $ref: '#/components/responses/ProviderResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        default: { $ref: '#/components/responses/InternalError' }
+    delete:
+      tags: [Providers]
+      operationId: deleteAdminProvider
+      summary: Delete an LLM provider
+      responses:
+        '204': { $ref: '#/components/responses/NoContent' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/pricing:
+    get:
+      tags: [Pricing]
+      operationId: getAdminPricing
+      summary: Get the complete pricing configuration
+      responses:
+        '200': { $ref: '#/components/responses/PricingConfigResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        default: { $ref: '#/components/responses/InternalError' }
+    put:
+      tags: [Pricing]
+      operationId: replaceAdminPricing
+      summary: Replace the complete pricing configuration
+      requestBody:
+        $ref: '#/components/requestBodies/PricingConfig'
+      responses:
+        '200': { $ref: '#/components/responses/PricingConfigResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/pricing/fallback:
+    patch:
+      tags: [Pricing]
+      operationId: updateAdminPricingFallback
+      summary: Update fallback token prices
+      requestBody:
+        $ref: '#/components/requestBodies/PriceRates'
+      responses:
+        '200': { $ref: '#/components/responses/PriceRatesResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/pricing/models:
+    post:
+      tags: [Pricing]
+      operationId: createAdminModelPrice
+      summary: Create a model-specific price
+      requestBody:
+        $ref: '#/components/requestBodies/ModelPrice'
+      responses:
+        '201': { $ref: '#/components/responses/ModelPriceResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/pricing/models/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      tags: [Pricing]
+      operationId: getAdminModelPrice
+      summary: Get one model-specific price
+      responses:
+        '200': { $ref: '#/components/responses/ModelPriceResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/InternalError' }
+    patch:
+      tags: [Pricing]
+      operationId: updateAdminModelPrice
+      summary: Update a model-specific price
+      requestBody:
+        $ref: '#/components/requestBodies/ModelPrice'
+      responses:
+        '200': { $ref: '#/components/responses/ModelPriceResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        default: { $ref: '#/components/responses/InternalError' }
+    delete:
+      tags: [Pricing]
+      operationId: deleteAdminModelPrice
+      summary: Delete a model-specific price
+      responses:
+        '204': { $ref: '#/components/responses/NoContent' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/pricing/check:
+    get:
+      tags: [Pricing]
+      operationId: checkAdminPricingConfiguration
+      summary: Check pricing coverage for enabled providers
+      responses:
+        '200': { $ref: '#/components/responses/PricingCheckResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/monitoring/services:
+    get:
+      tags: [Monitoring]
+      operationId: listAdminMonitoringServices
+      summary: List HTTP monitoring services
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/SortBy'
+        - $ref: '#/components/parameters/SortDir'
+      responses:
+        '200': { $ref: '#/components/responses/MonitoringServiceListResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        default: { $ref: '#/components/responses/InternalError' }
+    post:
+      tags: [Monitoring]
+      operationId: createAdminMonitoringService
+      summary: Create an HTTP monitoring service
+      requestBody:
+        $ref: '#/components/requestBodies/CreateMonitoringService'
+      responses:
+        '201': { $ref: '#/components/responses/MonitoringServiceResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/monitoring/services/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      tags: [Monitoring]
+      operationId: getAdminMonitoringService
+      summary: Get one HTTP monitoring service
+      responses:
+        '200': { $ref: '#/components/responses/MonitoringServiceResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/InternalError' }
+    patch:
+      tags: [Monitoring]
+      operationId: updateAdminMonitoringService
+      summary: Update an HTTP monitoring service
+      requestBody:
+        $ref: '#/components/requestBodies/UpdateMonitoringService'
+      responses:
+        '200': { $ref: '#/components/responses/MonitoringServiceResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        default: { $ref: '#/components/responses/InternalError' }
+    delete:
+      tags: [Monitoring]
+      operationId: deleteAdminMonitoringService
+      summary: Delete an HTTP monitoring service
+      responses:
+        '204': { $ref: '#/components/responses/NoContent' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/monitoring/services/{id}/check:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    post:
+      tags: [Monitoring]
+      operationId: checkAdminMonitoringService
+      summary: Run an immediate HTTP monitoring check
+      responses:
+        '200': { $ref: '#/components/responses/MonitoringServiceResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/faqs:
+    get:
+      tags: [FAQ]
+      operationId: listAdminFaqs
+      summary: List all FAQ entries
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/SortBy'
+        - $ref: '#/components/parameters/SortDir'
+      responses:
+        '200': { $ref: '#/components/responses/FAQListResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        default: { $ref: '#/components/responses/InternalError' }
+    post:
+      tags: [FAQ]
+      operationId: createAdminFaq
+      summary: Create an FAQ entry
+      requestBody:
+        $ref: '#/components/requestBodies/CreateFAQ'
+      responses:
+        '201': { $ref: '#/components/responses/FAQResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/faqs/preview:
+    post:
+      tags: [FAQ]
+      operationId: previewAdminFaqMarkdown
+      summary: Render and sanitize FAQ Markdown
+      requestBody:
+        $ref: '#/components/requestBodies/PreviewFAQ'
+      responses:
+        '200': { $ref: '#/components/responses/FAQPreviewResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/faqs/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      tags: [FAQ]
+      operationId: getAdminFaq
+      summary: Get one FAQ entry
+      responses:
+        '200': { $ref: '#/components/responses/FAQResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/InternalError' }
+    patch:
+      tags: [FAQ]
+      operationId: updateAdminFaq
+      summary: Update an FAQ entry
+      requestBody:
+        $ref: '#/components/requestBodies/UpdateFAQ'
+      responses:
+        '200': { $ref: '#/components/responses/FAQResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/InternalError' }
+    delete:
+      tags: [FAQ]
+      operationId: deleteAdminFaq
+      summary: Delete an FAQ entry
+      responses:
+        '204': { $ref: '#/components/responses/NoContent' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/faqs/{id}/position:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    patch:
+      tags: [FAQ]
+      operationId: moveAdminFaq
+      summary: Move an FAQ entry to a new position
+      requestBody:
+        $ref: '#/components/requestBodies/MoveFAQ'
+      responses:
+        '200': { $ref: '#/components/responses/FAQResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/setup-guides:
+    get:
+      tags: [Guides]
+      operationId: listAdminSetupGuides
+      summary: List setup guides
+      responses:
+        '200': { $ref: '#/components/responses/SetupGuideListResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        default: { $ref: '#/components/responses/InternalError' }
+    post:
+      tags: [Guides]
+      operationId: createAdminSetupGuide
+      summary: Create a setup guide
+      requestBody:
+        $ref: '#/components/requestBodies/SetupGuide'
+      responses:
+        '201': { $ref: '#/components/responses/SetupGuideResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/setup-guides/validate:
+    post:
+      tags: [Guides]
+      operationId: validateAdminSetupGuideTemplate
+      summary: Validate a setup guide template
+      requestBody:
+        $ref: '#/components/requestBodies/ValidateSetupGuide'
+      responses:
+        '200': { $ref: '#/components/responses/SetupGuideValidationResponse' }
+        '400': { $ref: '#/components/responses/SetupGuideValidationResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/setup-guides/reorder:
+    put:
+      tags: [Guides]
+      operationId: reorderAdminSetupGuides
+      summary: Replace the ordering of all setup guides
+      requestBody:
+        $ref: '#/components/requestBodies/ReorderSetupGuides'
+      responses:
+        '200': { $ref: '#/components/responses/SetupGuideListResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/setup-guides/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      tags: [Guides]
+      operationId: getAdminSetupGuide
+      summary: Get one setup guide
+      responses:
+        '200': { $ref: '#/components/responses/SetupGuideResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/InternalError' }
+    patch:
+      tags: [Guides]
+      operationId: updateAdminSetupGuide
+      summary: Update a setup guide
+      requestBody:
+        $ref: '#/components/requestBodies/SetupGuide'
+      responses:
+        '200': { $ref: '#/components/responses/SetupGuideResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        default: { $ref: '#/components/responses/InternalError' }
+    delete:
+      tags: [Guides]
+      operationId: deleteAdminSetupGuide
+      summary: Delete a setup guide
+      responses:
+        '204': { $ref: '#/components/responses/NoContent' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/InternalError' }
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: __PROMPTGATE_SESSION_COOKIE_NAME__
+      description: Current HTTP-only Prompt Gate browser session cookie.
+  parameters:
+    ID:
+      name: id
+      in: path
+      required: true
+      description: Resource UUID.
+      schema:
+        type: string
+        format: uuid
+    TokenID:
+      name: tokenId
+      in: path
+      required: true
+      description: Virtual-key UUID.
+      schema:
+        type: string
+        format: uuid
+    UserID:
+      name: userId
+      in: path
+      required: true
+      description: Account UUID.
+      schema:
+        type: string
+        format: uuid
+    Page:
+      name: page
+      in: query
+      description: One-based result page.
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    PageSize:
+      name: pageSize
+      in: query
+      description: Maximum number of items per page.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 10
+    QuotaResetPageSize:
+      name: pageSize
+      in: query
+      description: Maximum number of quota-reset events per page.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Caller-generated key reused when retrying the same mutation.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 512
+    Search:
+      name: search
+      in: query
+      description: Case-insensitive free-text search.
+      schema:
+        type: string
+    SortBy:
+      name: sortBy
+      in: query
+      description: Resource-specific sort field.
+      schema:
+        type: string
+    SortDir:
+      name: sortDir
+      in: query
+      description: Sort direction.
+      schema:
+        type: string
+        enum: [asc, desc]
+    UserRole:
+      name: role
+      in: query
+      description: Filter human users by application role.
+      schema:
+        $ref: '#/components/schemas/AppRole'
+    AccountStatus:
+      name: status
+      in: query
+      description: Filter accounts by active state.
+      schema:
+        type: string
+        enum: [active, inactive]
+    TokenStatus:
+      name: status
+      in: query
+      description: Filter virtual keys by lifecycle status.
+      schema:
+        type: string
+        enum: [active, expired, revoked]
+    IncludeRevoked:
+      name: includeRevoked
+      in: query
+      description: Include revoked virtual keys.
+      schema:
+        type: boolean
+        default: false
+    UsageDays:
+      name: days
+      in: query
+      description: Usage-summary period in days.
+      schema:
+        type: integer
+        enum: [7, 30]
+        default: 30
+    LegacyUsageDays:
+      name: days
+      in: query
+      description: Legacy alias for a 7-day or 30-day dashboard window. Omit when window is set.
+      schema:
+        type: integer
+        enum: [7, 30]
+    UsageWindow:
+      name: window
+      in: query
+      description: Dashboard reporting window.
+      schema:
+        type: string
+        enum: [7d, 30d, all]
+        default: 30d
+    ActivityUsageWindow:
+      name: window
+      in: query
+      description: Personal activity reporting window.
+      schema:
+        type: string
+        enum: [7d, 30d, 365d, all]
+        default: 30d
+    BreakdownMetric:
+      name: metric
+      in: query
+      description: Metric used to rank dashboard breakdown items.
+      schema:
+        type: string
+        enum: [requests, tokens, cost]
+        default: tokens
+    ProviderID:
+      name: providerId
+      in: query
+      description: Provider UUID. May be repeated.
+      schema:
+        type: array
+        items:
+          type: string
+          format: uuid
+      style: form
+      explode: true
+    ProviderIDs:
+      name: providerIds
+      in: query
+      description: Comma-separated provider UUIDs. May also be repeated.
+      schema:
+        type: array
+        items:
+          type: string
+          format: uuid
+      style: form
+      explode: false
+  requestBodies:
+    CreateToken:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CreateTokenRequest'
+    CreateUser:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CreateUserRequest'
+    UpdateUser:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UpdateUserRequest'
+    UpdateAccountNote:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UpdateAccountNoteRequest'
+    ReplaceUserGroups:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ReplaceUserGroupsRequest'
+    AssignSubscriptionPlan:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/AssignSubscriptionPlanRequest'
+    ServiceAccount:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ServiceAccountRequest'
+    SubscriptionPlan:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SubscriptionPlanRequest'
+    CreateGroup:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CreateGroupRequest'
+    UpdateGroup:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UpdateGroupRequest'
+    ValidateModelPatterns:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidateModelPatternsRequest'
+    CreateProvider:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CreateProviderRequest'
+    UpdateProvider:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UpdateProviderRequest'
+    PricingConfig:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PricingConfigRequest'
+    PriceRates:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PriceRates'
+    ModelPrice:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ModelPriceRequest'
+    CreateMonitoringService:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CreateMonitoringServiceRequest'
+    UpdateMonitoringService:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UpdateMonitoringServiceRequest'
+    CreateFAQ:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/CreateFAQRequest'
+    UpdateFAQ:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/UpdateFAQRequest'
+    MoveFAQ:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/MoveFAQRequest'
+    PreviewFAQ:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/PreviewFAQRequest'
+    SetupGuide:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SetupGuideRequest'
+    ValidateSetupGuide:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ValidateSetupGuideRequest'
+    ReorderSetupGuides:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ReorderSetupGuidesRequest'
+  responses:
+    BadRequest:
+      description: The request parameters or JSON body are invalid.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized:
+      description: The browser session is missing or invalid.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: The authenticated account cannot perform this operation.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: The requested resource does not exist.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Conflict:
+      description: The request conflicts with an existing resource or assignment.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    QuotaResetBadRequest:
+      description: The required idempotency key is missing or invalid.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/QuotaResetBadRequestError' }
+    QuotaResetConflict:
+      description: The requested quota-reset operation cannot be applied in the current state.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/QuotaResetConflictError' }
+    InternalError:
+      description: The server could not complete the operation.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NoContent:
+      description: The operation completed successfully and has no response body.
+    OpenAPIDocumentResponse:
+      description: Runtime OpenAPI 3.0 document.
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
+    UserProfileResponse:
+      description: Current account profile.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/UserProfile' }
+    UsageSummaryResponse:
+      description: Usage summary for the selected period.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/UsageSummary' }
+    QuotaStatusResponse:
+      description: Current subscription quota state.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/QuotaStatus' }
+    QuotaResetSummaryResponse:
+      description: Current quota-reset wallet summary.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/QuotaResetSummary' }
+    QuotaResetUseResponse:
+      description: Quota reset state, updated wallet, and current live quota.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/QuotaResetUseResult' }
+    QuotaResetHistoryResponse:
+      description: Paginated applied quota-reset wallet events.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/QuotaResetHistory' }
+    ProfileGroupsResponse:
+      description: Access groups assigned to the current user.
+      content:
+        application/json:
+          schema:
+            type: array
+            items: { $ref: '#/components/schemas/ProfileGroup' }
+    HelpSetupResponse:
+      description: Provider endpoints, available models, and active setup guides.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/HelpSetup' }
+    DashboardOverviewResponse:
+      description: Dashboard overview for the selected window.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/DashboardOverview' }
+    DashboardTokensResponse:
+      description: Token totals for the selected window.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/DashboardTokens' }
+    DashboardMessagesResponse:
+      description: Message total for the selected window.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/DashboardMessages' }
+    DashboardDurationResponse:
+      description: Request duration total for the selected window.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/DashboardDuration' }
+    DashboardActivityResponse:
+      description: Daily activity for the selected window.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/DashboardActivity' }
+    DashboardBreakdownResponse:
+      description: Ranked dashboard breakdown for the selected window.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/DashboardBreakdown' }
+    DashboardAdoptionResponse:
+      description: Account and virtual-key adoption counts.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/DashboardAdoption' }
+    DashboardQuotaRiskResponse:
+      description: Accounts approaching or exceeding finite quota limits.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/DashboardQuotaRisk' }
+    MonitoringStatusResponse:
+      description: Current user-visible monitoring state.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/MonitoringStatus' }
+    PublicFAQListResponse:
+      description: Published FAQ entries.
+      content:
+        application/json:
+          schema:
+            type: array
+            items: { $ref: '#/components/schemas/PublicFAQ' }
+    TokenListResponse:
+      description: Paginated virtual keys.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/TokenList' }
+    CreateTokenResponse:
+      description: The created virtual key. The raw token is returned only once.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/CreateTokenResponse' }
+    AdminUserListResponse:
+      description: Paginated human users.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/AdminUserList' }
+    AdminUserResponse:
+      description: Human user administration record.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/AdminUser' }
+    AccountIPAddressListResponse:
+      description: Paginated observed client IP addresses.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/AccountIPAddressList' }
+    ServiceAccountListResponse:
+      description: Paginated service accounts.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ServiceAccountList' }
+    ServiceAccountResponse:
+      description: Service-account administration record.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ServiceAccount' }
+    SubscriptionPlanListResponse:
+      description: Paginated subscription plans.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/SubscriptionPlanList' }
+    SubscriptionPlanResponse:
+      description: Subscription plan.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/SubscriptionPlan' }
+    GroupListResponse:
+      description: Paginated access groups with all-time token totals.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/GroupList' }
+    GroupListArrayResponse:
+      description: Access groups assigned to an account.
+      content:
+        application/json:
+          schema:
+            type: array
+            items: { $ref: '#/components/schemas/Group' }
+    GroupResponse:
+      description: Access group.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Group' }
+    ModelPatternValidationResponse:
+      description: Model-pattern match preview.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ModelPatternValidation' }
+    ProviderListResponse:
+      description: Paginated LLM providers.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ProviderList' }
+    ProviderResponse:
+      description: LLM provider configuration without secret material.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Provider' }
+    ModelCatalogResponse:
+      description: Best-effort upstream model catalog.
+      content:
+        application/json:
+          schema:
+            type: array
+            items: { $ref: '#/components/schemas/ModelCatalogProvider' }
+    PricingConfigResponse:
+      description: Complete pricing configuration.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/PricingConfig' }
+    PriceRatesResponse:
+      description: Fallback token price rates.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/PriceRates' }
+    ModelPriceResponse:
+      description: Model-specific token price.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ModelPrice' }
+    PricingCheckResponse:
+      description: Pricing coverage check for enabled provider models.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/PricingCheck' }
+    MonitoringServiceListResponse:
+      description: Paginated HTTP monitoring services.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/MonitoringServiceList' }
+    MonitoringServiceResponse:
+      description: HTTP monitoring service and latest result.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/MonitoringService' }
+    FAQListResponse:
+      description: Paginated FAQ entries.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/FAQList' }
+    FAQResponse:
+      description: FAQ entry including source Markdown and sanitized HTML.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/FAQ' }
+    FAQPreviewResponse:
+      description: Sanitized FAQ HTML preview.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/FAQPreview' }
+    SetupGuideListResponse:
+      description: Setup guides in display order.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/SetupGuideList' }
+    SetupGuideResponse:
+      description: Setup guide.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/SetupGuide' }
+    SetupGuideValidationResponse:
+      description: Setup guide template validation result.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/SetupGuideValidation' }
+  schemas:
+    Error:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: string
+          description: Stable machine-readable error code or diagnostic message.
+    QuotaResetBadRequestError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: string
+          enum: [missing_idempotency_key]
+    QuotaResetConflictError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: string
+          enum:
+            - quota_reset_credit_unavailable
+            - quota_reset_not_applicable
+            - quota_reset_balance_full
+            - quota_reset_pending
+    AppRole:
+      type: string
+      enum: [none, limited, user, admin]
+    UserType:
+      type: string
+      enum: [user, service]
+    UserProfile:
+      type: object
+      additionalProperties: false
+      required: [id, sub, preferredUsername, email, name, type, role, isActive, lastLoginAt]
+      properties:
+        id: { type: string, format: uuid }
+        sub: { type: string }
+        preferredUsername: { type: string }
+        email: { type: string }
+        name: { type: string }
+        type: { $ref: '#/components/schemas/UserType' }
+        role: { $ref: '#/components/schemas/AppRole' }
+        isActive: { type: boolean }
+        lastLoginAt: { type: string, format: date-time }
+    AccountSubscriptionPlan:
+      type: object
+      additionalProperties: false
+      required: [id, name, description, quota5hTokens, quota7dTokens, isDefault]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string }
+        quota5hTokens: { type: integer, format: int64, nullable: true, minimum: 0 }
+        quota7dTokens: { type: integer, format: int64, nullable: true, minimum: 0 }
+        isDefault: { type: boolean }
+    AccountQuotaState:
+      type: object
+      additionalProperties: false
+      required: [hasSubscription, planId, planName, used5hTokens, quota5hTokens, reset5hAt, used7dTokens, quota7dTokens, reset7dAt, syncedAt]
+      properties:
+        hasSubscription: { type: boolean }
+        planId: { type: string, format: uuid, nullable: true }
+        planName: { type: string }
+        used5hTokens: { type: integer, format: int64, minimum: 0 }
+        quota5hTokens: { type: integer, format: int64, nullable: true, minimum: 0 }
+        reset5hAt: { type: string, format: date-time, nullable: true }
+        used7dTokens: { type: integer, format: int64, minimum: 0 }
+        quota7dTokens: { type: integer, format: int64, nullable: true, minimum: 0 }
+        reset7dAt: { type: string, format: date-time, nullable: true }
+        syncedAt: { type: string, format: date-time, nullable: true }
+    AdminUser:
+      type: object
+      additionalProperties: false
+      required: [id, sub, preferredUsername, email, name, type, role, subscriptionPlanId, quotaResetCredits, note, isActive, activeInLast30Days, inputTokens, outputTokens, expiresAt, lastLoginAt, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        sub: { type: string, nullable: true }
+        preferredUsername: { type: string }
+        email: { type: string }
+        name: { type: string }
+        type: { $ref: '#/components/schemas/UserType' }
+        role: { $ref: '#/components/schemas/AppRole' }
+        subscriptionPlanId: { type: string, format: uuid, nullable: true }
+        subscriptionPlan:
+          allOf:
+            - $ref: '#/components/schemas/AccountSubscriptionPlan'
+          nullable: true
+        effectiveSubscriptionPlan:
+          allOf:
+            - $ref: '#/components/schemas/AccountSubscriptionPlan'
+          nullable: true
+        quotaState:
+          allOf:
+            - $ref: '#/components/schemas/AccountQuotaState'
+          nullable: true
+        quotaResetCredits: { type: integer, minimum: 0, maximum: 2 }
+        note: { type: string }
+        isActive: { type: boolean }
+        activeInLast30Days:
+          type: boolean
+          description: Whether at least one proxy request was recorded from today through 29 days ago, using UTC calendar days.
+        inputTokens: { type: integer, format: int64, minimum: 0 }
+        outputTokens: { type: integer, format: int64, minimum: 0 }
+        expiresAt: { type: string, format: date-time, nullable: true }
+        lastLoginAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    AdminUserList:
+      type: object
+      additionalProperties: false
+      required: [items, page, pageSize, total]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/AdminUser' }
+        page: { type: integer, minimum: 1 }
+        pageSize: { type: integer, minimum: 1, maximum: 100 }
+        total: { type: integer, format: int64, minimum: 0 }
+    UpdateUserRequest:
+      type: object
+      additionalProperties: false
+      required: [role, isActive]
+      properties:
+        role: { $ref: '#/components/schemas/AppRole' }
+        isActive: { type: boolean }
+        expiresAt: { type: string, format: date-time, nullable: true }
+    CreateUserRequest:
+      type: object
+      additionalProperties: false
+      required: [preferredUsername]
+      properties:
+        preferredUsername:
+          type: string
+          description: Exact, case-sensitive OIDC preferred_username claim. Surrounding whitespace is ignored.
+    UpdateAccountNoteRequest:
+      type: object
+      additionalProperties: false
+      required: [note]
+      properties:
+        note: { type: string, maxLength: 2000 }
+    ServiceAccount:
+      type: object
+      additionalProperties: false
+      required: [id, identifier, name, role, subscriptionPlanId, note, isActive, inputTokens, outputTokens, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        identifier: { type: string }
+        name: { type: string }
+        role: { $ref: '#/components/schemas/AppRole' }
+        subscriptionPlanId: { type: string, format: uuid, nullable: true }
+        subscriptionPlan:
+          allOf:
+            - $ref: '#/components/schemas/AccountSubscriptionPlan'
+          nullable: true
+        effectiveSubscriptionPlan:
+          allOf:
+            - $ref: '#/components/schemas/AccountSubscriptionPlan'
+          nullable: true
+        quotaState:
+          allOf:
+            - $ref: '#/components/schemas/AccountQuotaState'
+          nullable: true
+        note: { type: string }
+        isActive: { type: boolean }
+        inputTokens: { type: integer, format: int64, minimum: 0 }
+        outputTokens: { type: integer, format: int64, minimum: 0 }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    ServiceAccountRequest:
+      type: object
+      additionalProperties: false
+      required: [identifier, name, isActive]
+      properties:
+        identifier:
+          type: string
+          pattern: '^[a-z0-9_-]{1,64}$'
+        name: { type: string, minLength: 1 }
+        isActive: { type: boolean }
+    ServiceAccountList:
+      type: object
+      additionalProperties: false
+      required: [items, page, pageSize, total]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/ServiceAccount' }
+        page: { type: integer, minimum: 1 }
+        pageSize: { type: integer, minimum: 1, maximum: 100 }
+        total: { type: integer, format: int64, minimum: 0 }
+    CreateTokenRequest:
+      type: object
+      additionalProperties: false
+      required: [name, description]
+      properties:
+        name:
+          type: string
+          pattern: '^[a-z0-9_-]{1,64}$'
+        description: { type: string }
+        expiresInDays:
+          type: integer
+          minimum: 1
+          maximum: 365
+          description: Human-user keys are limited to 30 days; service-account keys to 365 days.
+    Token:
+      type: object
+      additionalProperties: false
+      required: [id, userId, name, description, expiresAt, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string }
+        expiresAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+        revokedAt: { type: string, format: date-time, nullable: true }
+        expiredAt: { type: string, format: date-time, nullable: true }
+    CreateTokenResponse:
+      type: object
+      additionalProperties: false
+      required: [token, tokenInfo]
+      properties:
+        token:
+          type: string
+          readOnly: true
+          description: Raw bearer token, returned only at creation time.
+        tokenInfo: { $ref: '#/components/schemas/Token' }
+    TokenList:
+      type: object
+      additionalProperties: false
+      required: [items, page, pageSize, total]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Token' }
+        page: { type: integer, minimum: 1 }
+        pageSize: { type: integer, minimum: 1, maximum: 100 }
+        total: { type: integer, format: int64, minimum: 0 }
+    CostRates:
+      type: object
+      additionalProperties: false
+      required: [inputUsdPer1MTokens, outputUsdPer1MTokens, embeddingUsdPer1MTokens]
+      properties:
+        inputUsdPer1MTokens: { type: number, format: double, minimum: 0 }
+        outputUsdPer1MTokens: { type: number, format: double, minimum: 0 }
+        embeddingUsdPer1MTokens: { type: number, format: double, minimum: 0 }
+    EstimatedCost:
+      type: object
+      additionalProperties: false
+      required: [inputUsd, outputUsd, embeddingUsd, totalUsd, rates]
+      properties:
+        inputUsd: { type: number, format: double, minimum: 0 }
+        outputUsd: { type: number, format: double, minimum: 0 }
+        embeddingUsd: { type: number, format: double, minimum: 0 }
+        totalUsd: { type: number, format: double, minimum: 0 }
+        rates: { $ref: '#/components/schemas/CostRates' }
+    UsageTotals:
+      type: object
+      additionalProperties: false
+      required: [requests, toolCalls, inputTokens, outputTokens, cacheReadInputTokens, cacheWriteInputTokens, completionInputTokens, completionOutputTokens, completionTokens, embeddingTokens, totalTokens]
+      properties:
+        requests: { type: integer, format: int64, minimum: 0 }
+        toolCalls: { type: integer, format: int64, minimum: 0 }
+        inputTokens: { type: integer, format: int64, minimum: 0 }
+        outputTokens: { type: integer, format: int64, minimum: 0 }
+        cacheReadInputTokens: { type: integer, format: int64, minimum: 0 }
+        cacheWriteInputTokens: { type: integer, format: int64, minimum: 0 }
+        completionInputTokens: { type: integer, format: int64, minimum: 0 }
+        completionOutputTokens: { type: integer, format: int64, minimum: 0 }
+        completionTokens: { type: integer, format: int64, minimum: 0 }
+        embeddingTokens: { type: integer, format: int64, minimum: 0 }
+        totalTokens: { type: integer, format: int64, minimum: 0 }
+        estimatedCost: { $ref: '#/components/schemas/EstimatedCost' }
+    DailyUsage:
+      type: object
+      additionalProperties: false
+      required: [date, requests, toolCalls, inputTokens, outputTokens, completionInputTokens, completionOutputTokens, completionTokens, embeddingTokens, totalTokens]
+      properties:
+        date: { type: string, format: date }
+        requests: { type: integer, format: int64, minimum: 0 }
+        toolCalls: { type: integer, format: int64, minimum: 0 }
+        inputTokens: { type: integer, format: int64, minimum: 0 }
+        outputTokens: { type: integer, format: int64, minimum: 0 }
+        completionInputTokens: { type: integer, format: int64, minimum: 0 }
+        completionOutputTokens: { type: integer, format: int64, minimum: 0 }
+        completionTokens: { type: integer, format: int64, minimum: 0 }
+        embeddingTokens: { type: integer, format: int64, minimum: 0 }
+        totalTokens: { type: integer, format: int64, minimum: 0 }
+        estimatedCost: { $ref: '#/components/schemas/EstimatedCost' }
+    UsageBreakdown:
+      type: object
+      additionalProperties: false
+      required: [name, requests, totalTokens]
+      properties:
+        name: { type: string }
+        requests: { type: integer, format: int64, minimum: 0 }
+        totalTokens: { type: integer, format: int64, minimum: 0 }
+        estimatedCost: { $ref: '#/components/schemas/EstimatedCost' }
+    UsageSummary:
+      type: object
+      additionalProperties: false
+      required: [days, startsAt, endsAt, totals, daily, topModels, topProviders]
+      properties:
+        days: { type: integer, enum: [7, 30] }
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        totals: { $ref: '#/components/schemas/UsageTotals' }
+        daily:
+          type: array
+          items: { $ref: '#/components/schemas/DailyUsage' }
+        topModels:
+          type: array
+          items: { $ref: '#/components/schemas/UsageBreakdown' }
+        topProviders:
+          type: array
+          items: { $ref: '#/components/schemas/UsageBreakdown' }
+    UsageWindowMeta:
+      type: object
+      additionalProperties: false
+      required: [window, startsAt, endsAt]
+      properties:
+        window:
+          type: string
+          enum: [7d, 30d, 365d, all]
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+    CostCoverage:
+      type: object
+      additionalProperties: false
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [complete, partial, unavailable]
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+    DashboardOverviewPeriod:
+      type: object
+      additionalProperties: false
+      required: [window, startsAt, endsAt, totals, totalDurationMs, averageDurationMs, daily]
+      properties:
+        window:
+          type: string
+          enum: [7d, 30d, 365d, all]
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        totals: { $ref: '#/components/schemas/UsageTotals' }
+        totalDurationMs: { type: integer, format: int64, minimum: 0 }
+        averageDurationMs: { type: number, format: double, nullable: true, minimum: 0 }
+        daily:
+          type: array
+          items: { $ref: '#/components/schemas/DailyUsage' }
+        costCoverage: { $ref: '#/components/schemas/CostCoverage' }
+    DashboardOverview:
+      type: object
+      additionalProperties: false
+      required: [window, startsAt, endsAt, totals, totalDurationMs, averageDurationMs, daily]
+      properties:
+        window:
+          type: string
+          enum: [7d, 30d, 365d, all]
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        totals: { $ref: '#/components/schemas/UsageTotals' }
+        totalDurationMs: { type: integer, format: int64, minimum: 0 }
+        averageDurationMs: { type: number, format: double, nullable: true, minimum: 0 }
+        daily:
+          type: array
+          items: { $ref: '#/components/schemas/DailyUsage' }
+        costCoverage: { $ref: '#/components/schemas/CostCoverage' }
+        previous: { $ref: '#/components/schemas/DashboardOverviewPeriod' }
+        adoption: { $ref: '#/components/schemas/DashboardAdoption' }
+    DashboardTokens:
+      type: object
+      additionalProperties: false
+      required: [window, startsAt, endsAt, inputTokens, outputTokens, cacheReadInputTokens, cacheWriteInputTokens, completionInputTokens, completionOutputTokens, completionTokens, embeddingTokens, totalTokens]
+      properties:
+        window:
+          type: string
+          enum: [7d, 30d, 365d, all]
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        inputTokens: { type: integer, format: int64, minimum: 0 }
+        outputTokens: { type: integer, format: int64, minimum: 0 }
+        cacheReadInputTokens: { type: integer, format: int64, minimum: 0 }
+        cacheWriteInputTokens: { type: integer, format: int64, minimum: 0 }
+        completionInputTokens: { type: integer, format: int64, minimum: 0 }
+        completionOutputTokens: { type: integer, format: int64, minimum: 0 }
+        completionTokens: { type: integer, format: int64, minimum: 0 }
+        embeddingTokens: { type: integer, format: int64, minimum: 0 }
+        totalTokens: { type: integer, format: int64, minimum: 0 }
+        estimatedCost: { $ref: '#/components/schemas/EstimatedCost' }
+    DashboardMessages:
+      type: object
+      additionalProperties: false
+      required: [window, startsAt, endsAt, messages]
+      properties:
+        window:
+          type: string
+          enum: [7d, 30d, 365d, all]
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        messages: { type: integer, format: int64, minimum: 0 }
+    DashboardDuration:
+      type: object
+      additionalProperties: false
+      required: [window, startsAt, endsAt, totalDurationMs]
+      properties:
+        window:
+          type: string
+          enum: [7d, 30d, 365d, all]
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        totalDurationMs: { type: integer, format: int64, minimum: 0 }
+    DashboardActivity:
+      type: object
+      additionalProperties: false
+      required: [window, startsAt, endsAt, daily]
+      properties:
+        window:
+          type: string
+          enum: [7d, 30d, 365d, all]
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        daily:
+          type: array
+          items: { $ref: '#/components/schemas/DailyUsage' }
+    DashboardBreakdown:
+      type: object
+      additionalProperties: false
+      required: [window, startsAt, endsAt, items]
+      properties:
+        window:
+          type: string
+          enum: [7d, 30d, 365d, all]
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/UsageBreakdown' }
+    DashboardAdoption:
+      type: object
+      additionalProperties: false
+      required: [window, startsAt, endsAt, activeUsers, activeServiceAccounts, activeVirtualKeys]
+      properties:
+        window:
+          type: string
+          enum: [7d, 30d, 365d, all]
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        activeUsers: { type: integer, format: int64, minimum: 0 }
+        activeServiceAccounts: { type: integer, format: int64, minimum: 0 }
+        activeVirtualKeys: { type: integer, format: int64, minimum: 0 }
+    DashboardQuotaRisk:
+      type: object
+      additionalProperties: false
+      required: [generatedAt, projectionSyncedAt, atRiskCount, exhaustedCount, items]
+      properties:
+        generatedAt: { type: string, format: date-time }
+        projectionSyncedAt: { type: string, format: date-time, nullable: true }
+        atRiskCount: { type: integer, minimum: 0 }
+        exhaustedCount: { type: integer, minimum: 0 }
+        items:
+          type: array
+          maxItems: 5
+          items: { $ref: '#/components/schemas/QuotaRiskItem' }
+    QuotaRiskItem:
+      type: object
+      additionalProperties: false
+      required: [accountId, accountType, displayName, planName, window, usedTokens, quotaTokens, remainingTokens, percent, resetAt, syncedAt, status]
+      properties:
+        accountId: { type: string, format: uuid }
+        accountType: { $ref: '#/components/schemas/UserType' }
+        displayName: { type: string }
+        planName: { type: string }
+        window: { type: string, enum: [5h, 7d] }
+        usedTokens: { type: integer, format: int64, minimum: 0 }
+        quotaTokens: { type: integer, format: int64, minimum: 1 }
+        remainingTokens: { type: integer, format: int64, minimum: 0 }
+        percent: { type: number, format: double, minimum: 0 }
+        resetAt: { type: string, format: date-time, nullable: true }
+        syncedAt: { type: string, format: date-time }
+        status: { type: string, enum: [warning, critical] }
+    SubscriptionPlan:
+      type: object
+      additionalProperties: false
+      required: [id, name, description, quota5hTokens, quota7dTokens, isDefault, assignedUsersCount, assignedServiceAccountsCount, assignedDirectAccountsCount, assignedIndirectAccountsCount, assignedAccountsCount, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        description: { type: string }
+        quota5hTokens: { type: integer, format: int64, nullable: true, minimum: 0 }
+        quota7dTokens: { type: integer, format: int64, nullable: true, minimum: 0 }
+        isDefault: { type: boolean }
+        assignedUsersCount: { type: integer, format: int64, minimum: 0 }
+        assignedServiceAccountsCount: { type: integer, format: int64, minimum: 0 }
+        assignedDirectAccountsCount: { type: integer, format: int64, minimum: 0 }
+        assignedIndirectAccountsCount: { type: integer, format: int64, minimum: 0 }
+        assignedAccountsCount: { type: integer, format: int64, minimum: 0 }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    SubscriptionPlanRequest:
+      type: object
+      additionalProperties: false
+      required: [name, description, quota5hTokens, quota7dTokens, isDefault]
+      properties:
+        name: { type: string, minLength: 1 }
+        description: { type: string }
+        quota5hTokens: { type: integer, format: int64, nullable: true, minimum: 0 }
+        quota7dTokens: { type: integer, format: int64, nullable: true, minimum: 0 }
+        isDefault: { type: boolean }
+    AssignSubscriptionPlanRequest:
+      type: object
+      additionalProperties: false
+      required: [planId]
+      properties:
+        planId: { type: string, format: uuid, nullable: true }
+    SubscriptionPlanList:
+      type: object
+      additionalProperties: false
+      required: [items, page, pageSize, total]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/SubscriptionPlan' }
+        page: { type: integer, minimum: 1 }
+        pageSize: { type: integer, minimum: 1, maximum: 100 }
+        total: { type: integer, format: int64, minimum: 0 }
+    QuotaStatus:
+      type: object
+      additionalProperties: false
+      required: [hasSubscription, used5hTokens, quota5hTokens, remaining5hTokens, reset5hAt, used7dTokens, quota7dTokens, remaining7dTokens, reset7dAt]
+      properties:
+        hasSubscription: { type: boolean }
+        plan:
+          allOf:
+            - $ref: '#/components/schemas/SubscriptionPlan'
+          nullable: true
+        used5hTokens: { type: integer, format: int64, minimum: 0 }
+        quota5hTokens: { type: integer, format: int64, nullable: true, minimum: 0 }
+        remaining5hTokens: { type: integer, format: int64, nullable: true, minimum: 0 }
+        reset5hAt: { type: string, format: date-time, nullable: true }
+        used7dTokens: { type: integer, format: int64, minimum: 0 }
+        quota7dTokens: { type: integer, format: int64, nullable: true, minimum: 0 }
+        remaining7dTokens: { type: integer, format: int64, nullable: true, minimum: 0 }
+        reset7dAt: { type: string, format: date-time, nullable: true }
+        syncedAt: { type: string, format: date-time, nullable: true }
+    QuotaResetSummary:
+      type: object
+      additionalProperties: false
+      required: [available, maximum, hasResettableQuota, pendingReset]
+      properties:
+        available: { type: integer, minimum: 0, maximum: 2 }
+        maximum: { type: integer, enum: [2] }
+        hasResettableQuota: { type: boolean }
+        pendingReset: { type: boolean }
+    QuotaResetEventType:
+      type: string
+      enum: [monthly_grant, admin_grant, quota_reset_used]
+    QuotaResetHistoryItem:
+      type: object
+      additionalProperties: false
+      required: [id, type, delta, balanceAfter, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        type: { $ref: '#/components/schemas/QuotaResetEventType' }
+        delta: { type: integer, minimum: -1, maximum: 1 }
+        balanceAfter: { type: integer, minimum: 0, maximum: 2 }
+        createdAt: { type: string, format: date-time }
+    QuotaResetHistory:
+      type: object
+      additionalProperties: false
+      required: [items, page, pageSize, total]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/QuotaResetHistoryItem' }
+        page: { type: integer, minimum: 1 }
+        pageSize: { type: integer, minimum: 1, maximum: 100 }
+        total: { type: integer, format: int64, minimum: 0 }
+    QuotaResetUseResult:
+      type: object
+      additionalProperties: false
+      required: [status, summary, quota]
+      properties:
+        status:
+          type: string
+          enum: [pending, applied]
+        summary: { $ref: '#/components/schemas/QuotaResetSummary' }
+        quota: { $ref: '#/components/schemas/QuotaStatus' }
+    ProfileGroup:
+      type: object
+      additionalProperties: false
+      required: [id, name, displayName, description]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        displayName: { type: string }
+        description: { type: string }
+    ProviderSummary:
+      type: object
+      additionalProperties: false
+      required: [id, name, displayName, type, enabled]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        displayName: { type: string }
+        type: { $ref: '#/components/schemas/ProviderType' }
+        enabled: { type: boolean }
+    MemberSummary:
+      type: object
+      additionalProperties: false
+      required: [id, preferredUsername, email, name, type, role, isActive]
+      properties:
+        id: { type: string, format: uuid }
+        preferredUsername: { type: string }
+        email: { type: string }
+        name: { type: string }
+        type: { $ref: '#/components/schemas/UserType' }
+        role: { $ref: '#/components/schemas/AppRole' }
+        isActive: { type: boolean }
+    Group:
+      type: object
+      additionalProperties: false
+      required: [id, name, displayName, description, providers, modelPatterns, excludedModelPatterns, members, providerCount, modelPatternCount, memberCount, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        displayName: { type: string }
+        description: { type: string }
+        providers:
+          type: array
+          items: { $ref: '#/components/schemas/ProviderSummary' }
+        modelPatterns:
+          type: array
+          items: { type: string }
+        excludedModelPatterns:
+          type: array
+          items: { type: string }
+        members:
+          type: array
+          items: { $ref: '#/components/schemas/MemberSummary' }
+        providerCount: { type: integer, minimum: 0 }
+        modelPatternCount: { type: integer, minimum: 0 }
+        memberCount: { type: integer, minimum: 0 }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    GroupListItem:
+      type: object
+      additionalProperties: false
+      required: [id, name, displayName, description, providers, modelPatterns, excludedModelPatterns, members, providerCount, modelPatternCount, memberCount, createdAt, updatedAt, inputTokens, outputTokens]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        displayName: { type: string }
+        description: { type: string }
+        providers:
+          type: array
+          items: { $ref: '#/components/schemas/ProviderSummary' }
+        modelPatterns:
+          type: array
+          items: { type: string }
+        excludedModelPatterns:
+          type: array
+          items: { type: string }
+        members:
+          type: array
+          items: { $ref: '#/components/schemas/MemberSummary' }
+        providerCount: { type: integer, minimum: 0 }
+        modelPatternCount: { type: integer, minimum: 0 }
+        memberCount: { type: integer, minimum: 0 }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        inputTokens: { type: integer, format: int64, minimum: 0 }
+        outputTokens: { type: integer, format: int64, minimum: 0 }
+    GroupList:
+      type: object
+      additionalProperties: false
+      required: [items, page, pageSize, total]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/GroupListItem' }
+        page: { type: integer, minimum: 1 }
+        pageSize: { type: integer, minimum: 1, maximum: 100 }
+        total: { type: integer, format: int64, minimum: 0 }
+    CreateGroupRequest:
+      type: object
+      additionalProperties: false
+      required: [name, displayName, description, providerIds, modelPatterns, excludedModelPatterns]
+      properties:
+        name: { type: string, minLength: 1 }
+        displayName: { type: string, minLength: 1 }
+        description: { type: string }
+        providerIds:
+          type: array
+          items: { type: string, format: uuid }
+        modelPatterns:
+          type: array
+          items: { type: string }
+        excludedModelPatterns:
+          type: array
+          items: { type: string }
+    UpdateGroupRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          description: Decoded for compatibility but ignored because group names are immutable.
+        displayName: { type: string }
+        description: { type: string }
+        providerIds:
+          type: array
+          items: { type: string, format: uuid }
+        modelPatterns:
+          type: array
+          items: { type: string }
+        excludedModelPatterns:
+          type: array
+          items: { type: string }
+    ReplaceUserGroupsRequest:
+      type: object
+      additionalProperties: false
+      required: [groupIds]
+      properties:
+        groupIds:
+          type: array
+          uniqueItems: true
+          items: { type: string, format: uuid }
+    ValidateModelPatternsRequest:
+      type: object
+      additionalProperties: false
+      required: [providerIds, modelPatterns, excludedModelPatterns]
+      properties:
+        providerIds:
+          type: array
+          items: { type: string, format: uuid }
+        modelPatterns:
+          type: array
+          items: { type: string }
+        excludedModelPatterns:
+          type: array
+          items: { type: string }
+    ModelPatternProviderValidation:
+      type: object
+      additionalProperties: false
+      required: [id, name, displayName, availableModelCount, matchedModelCount, matchedModels]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        displayName: { type: string }
+        availableModelCount: { type: integer, minimum: 0 }
+        matchedModelCount: { type: integer, minimum: 0 }
+        matchedModels:
+          type: array
+          items: { type: string }
+        modelsError: { type: string }
+    ModelPatternValidation:
+      type: object
+      additionalProperties: false
+      required: [matchedModelCount, matchedModels, providerResults, unavailableProviderCount]
+      properties:
+        matchedModelCount: { type: integer, minimum: 0 }
+        matchedModels:
+          type: array
+          items: { type: string }
+        providerResults:
+          type: array
+          items: { $ref: '#/components/schemas/ModelPatternProviderValidation' }
+        unavailableProviderCount: { type: integer, minimum: 0 }
+    ProviderType:
+      type: string
+      enum: [openai, anthropic, ollama]
+    ProviderConfig:
+      type: object
+      additionalProperties: true
+    Provider:
+      type: object
+      additionalProperties: false
+      required: [id, name, displayName, type, baseUrl, hasApiKey, config, enabled, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        displayName: { type: string }
+        type: { $ref: '#/components/schemas/ProviderType' }
+        baseUrl: { type: string, format: uri }
+        hasApiKey: { type: boolean }
+        config: { $ref: '#/components/schemas/ProviderConfig' }
+        enabled: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    CreateProviderRequest:
+      type: object
+      additionalProperties: false
+      required: [name, displayName, type, baseUrl, apiKey, config, enabled]
+      properties:
+        name:
+          type: string
+          pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$'
+        displayName: { type: string }
+        type: { $ref: '#/components/schemas/ProviderType' }
+        baseUrl: { type: string, format: uri }
+        apiKey: { type: string, writeOnly: true }
+        config: { $ref: '#/components/schemas/ProviderConfig' }
+        enabled: { type: boolean }
+    UpdateProviderRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        displayName: { type: string }
+        type: { $ref: '#/components/schemas/ProviderType' }
+        baseUrl: { type: string, format: uri }
+        apiKey: { type: string, writeOnly: true }
+        config: { $ref: '#/components/schemas/ProviderConfig' }
+        enabled: { type: boolean }
+    ProviderList:
+      type: object
+      additionalProperties: false
+      required: [items, page, pageSize, total]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Provider' }
+        page: { type: integer, minimum: 1 }
+        pageSize: { type: integer, minimum: 1, maximum: 100 }
+        total: { type: integer, format: int64, minimum: 0 }
+    ModelCatalogProvider:
+      type: object
+      additionalProperties: false
+      required: [id, name, displayName, models]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        displayName: { type: string }
+        models:
+          type: array
+          items: { type: string }
+        modelsError: { type: string }
+    HelpSetupProvider:
+      type: object
+      additionalProperties: false
+      required: [name, displayName, type, routePrefix, models]
+      properties:
+        name: { type: string }
+        displayName: { type: string }
+        type: { $ref: '#/components/schemas/ProviderType' }
+        routePrefix: { type: string }
+        openaiBaseUrl: { type: string, format: uri }
+        anthropicBaseUrl: { type: string, format: uri }
+        models:
+          type: array
+          items: { type: string }
+        modelsError: { type: string }
+    HelpSetup:
+      type: object
+      additionalProperties: false
+      required: [proxyBaseUrl, providers, guides]
+      properties:
+        proxyBaseUrl: { type: string, format: uri }
+        providers:
+          type: array
+          items: { $ref: '#/components/schemas/HelpSetupProvider' }
+        guides:
+          type: array
+          items: { $ref: '#/components/schemas/SetupGuide' }
+    AccountIPAddress:
+      type: object
+      additionalProperties: false
+      required: [ip, lastSeen, lastDeniedReason, lastDeniedAt]
+      properties:
+        ip: { type: string }
+        lastSeen: { type: string, format: date-time }
+        lastDeniedReason: { type: string, nullable: true }
+        lastDeniedAt: { type: string, format: date-time, nullable: true }
+    AccountIPAddressList:
+      type: object
+      additionalProperties: false
+      required: [items, page, pageSize, total]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/AccountIPAddress' }
+        page: { type: integer, minimum: 1 }
+        pageSize: { type: integer, minimum: 1, maximum: 100 }
+        total: { type: integer, format: int64, minimum: 0 }
+    PriceRates:
+      type: object
+      additionalProperties: false
+      required: [input, output]
+      properties:
+        input: { type: number, format: double, minimum: 0 }
+        output: { type: number, format: double, minimum: 0 }
+    ModelPrice:
+      type: object
+      additionalProperties: false
+      required: [providerName, model, input, output]
+      properties:
+        id: { type: string, format: uuid }
+        providerName: { type: string }
+        model: { type: string }
+        input: { type: number, format: double, minimum: 0 }
+        output: { type: number, format: double, minimum: 0 }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    ModelPriceRequest:
+      type: object
+      additionalProperties: false
+      required: [providerName, model, input, output]
+      properties:
+        providerName: { type: string }
+        model: { type: string }
+        input: { type: number, format: double, minimum: 0 }
+        output: { type: number, format: double, minimum: 0 }
+    PricingConfig:
+      type: object
+      additionalProperties: false
+      required: [fallback, models]
+      properties:
+        fallback: { $ref: '#/components/schemas/PriceRates' }
+        models:
+          type: array
+          items: { $ref: '#/components/schemas/ModelPrice' }
+    PricingConfigRequest:
+      type: object
+      additionalProperties: false
+      required: [fallback, models]
+      properties:
+        fallback: { $ref: '#/components/schemas/PriceRates' }
+        models:
+          type: array
+          items: { $ref: '#/components/schemas/ModelPriceRequest' }
+    MissingModelPrice:
+      type: object
+      additionalProperties: false
+      required: [providerName, model]
+      properties:
+        providerName: { type: string }
+        model: { type: string }
+    ProviderModelError:
+      type: object
+      additionalProperties: false
+      required: [providerName, message]
+      properties:
+        providerName: { type: string }
+        message: { type: string }
+    PricingCheck:
+      type: object
+      additionalProperties: false
+      required: [configured, missingPrices, providerErrors, checkedAt]
+      properties:
+        configured: { type: boolean }
+        missingPrices:
+          type: array
+          items: { $ref: '#/components/schemas/MissingModelPrice' }
+        providerErrors:
+          type: array
+          items: { $ref: '#/components/schemas/ProviderModelError' }
+        checkedAt: { type: string, format: date-time }
+    MonitoringState:
+      type: string
+      enum: [ok, degraded]
+    MonitoringService:
+      type: object
+      additionalProperties: false
+      required: [id, name, displayName, url, expectedStatusCode, intervalSeconds, enabled, status, lastCheckedAt, lastStatusCode, lastError, lastLatencyMs, consecutiveFailures, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        displayName: { type: string }
+        url: { type: string, format: uri }
+        expectedStatusCode: { type: integer, minimum: 100, maximum: 599 }
+        intervalSeconds: { type: integer, minimum: 30, maximum: 86400 }
+        enabled: { type: boolean }
+        status: { $ref: '#/components/schemas/MonitoringState' }
+        lastCheckedAt: { type: string, format: date-time, nullable: true }
+        lastStatusCode: { type: integer, nullable: true, minimum: 100, maximum: 599 }
+        lastError: { type: string }
+        lastLatencyMs: { type: integer, format: int64, minimum: 0 }
+        consecutiveFailures: { type: integer, minimum: 0 }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    CreateMonitoringServiceRequest:
+      type: object
+      additionalProperties: false
+      required: [name, displayName, url, enabled]
+      properties:
+        name:
+          type: string
+          pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$'
+        displayName: { type: string }
+        url: { type: string, format: uri }
+        expectedStatusCode: { type: integer, minimum: 100, maximum: 599, default: 200 }
+        intervalSeconds: { type: integer, minimum: 30, maximum: 86400, default: 60 }
+        enabled: { type: boolean }
+    UpdateMonitoringServiceRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$'
+        displayName: { type: string }
+        url: { type: string, format: uri }
+        expectedStatusCode: { type: integer, minimum: 100, maximum: 599 }
+        intervalSeconds: { type: integer, minimum: 30, maximum: 86400 }
+        enabled: { type: boolean }
+    MonitoringServiceList:
+      type: object
+      additionalProperties: false
+      required: [items, page, pageSize, total]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/MonitoringService' }
+        page: { type: integer, minimum: 1 }
+        pageSize: { type: integer, minimum: 1, maximum: 100 }
+        total: { type: integer, format: int64, minimum: 0 }
+    MonitoringStatusService:
+      type: object
+      additionalProperties: false
+      required: [id, name, displayName, status, lastCheckedAt, lastStatusCode, lastError, lastLatencyMs]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        displayName: { type: string }
+        status: { $ref: '#/components/schemas/MonitoringState' }
+        lastCheckedAt: { type: string, format: date-time, nullable: true }
+        lastStatusCode: { type: integer, nullable: true, minimum: 100, maximum: 599 }
+        lastError: { type: string }
+        lastLatencyMs: { type: integer, format: int64, minimum: 0 }
+    MonitoringStatus:
+      type: object
+      additionalProperties: false
+      required: [status, services]
+      properties:
+        status: { $ref: '#/components/schemas/MonitoringState' }
+        services:
+          type: array
+          items: { $ref: '#/components/schemas/MonitoringStatusService' }
+    FAQ:
+      type: object
+      additionalProperties: false
+      required: [id, question, answer, renderedHtml, position, published, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        question: { type: string, maxLength: 300 }
+        answer: { type: string, description: Source Markdown. }
+        renderedHtml: { type: string, description: Sanitized HTML. }
+        position: { type: integer, minimum: 0 }
+        published: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    PublicFAQ:
+      type: object
+      additionalProperties: false
+      required: [id, question, renderedHtml, position]
+      properties:
+        id: { type: string, format: uuid }
+        question: { type: string }
+        renderedHtml: { type: string }
+        position: { type: integer, minimum: 0 }
+    CreateFAQRequest:
+      type: object
+      additionalProperties: false
+      required: [question, answer, published]
+      properties:
+        question: { type: string, minLength: 1, maxLength: 300 }
+        answer: { type: string, minLength: 1 }
+        published: { type: boolean }
+    UpdateFAQRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        question: { type: string, minLength: 1, maxLength: 300 }
+        answer: { type: string, minLength: 1 }
+        published: { type: boolean }
+    MoveFAQRequest:
+      type: object
+      additionalProperties: false
+      required: [position]
+      properties:
+        position: { type: integer, minimum: 0 }
+    PreviewFAQRequest:
+      type: object
+      additionalProperties: false
+      required: [markdown]
+      properties:
+        markdown: { type: string }
+    FAQPreview:
+      type: object
+      additionalProperties: false
+      required: [renderedHtml]
+      properties:
+        renderedHtml: { type: string }
+    FAQList:
+      type: object
+      additionalProperties: false
+      required: [items, page, pageSize, total]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/FAQ' }
+        page: { type: integer, minimum: 1 }
+        pageSize: { type: integer, minimum: 1, maximum: 100 }
+        total: { type: integer, format: int64, minimum: 0 }
+    SetupGuide:
+      type: object
+      additionalProperties: false
+      required: [id, identifier, title, subtitle, icon, compatibility, modelMode, filePaths, template, enabled, position, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        identifier: { type: string }
+        title: { type: string }
+        subtitle: { type: string }
+        icon: { type: string }
+        compatibility:
+          type: string
+          enum: [openai, anthropic, both]
+        modelMode:
+          type: string
+          enum: [single, all, none]
+        filePaths:
+          type: array
+          items: { type: string }
+        template: { type: string }
+        enabled: { type: boolean }
+        position: { type: integer, minimum: 0 }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    SetupGuideRequest:
+      type: object
+      additionalProperties: false
+      required: [identifier, title, subtitle, icon, compatibility, modelMode, filePaths, template, enabled, position]
+      properties:
+        identifier:
+          type: string
+          pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$'
+        title: { type: string, minLength: 1 }
+        subtitle: { type: string }
+        icon:
+          type: string
+          pattern: '^mdi-[a-z0-9-]+$'
+        compatibility:
+          type: string
+          enum: [openai, anthropic, both]
+        modelMode:
+          type: string
+          enum: [single, all, none]
+        filePaths:
+          type: array
+          items: { type: string }
+        template: { type: string, minLength: 1 }
+        enabled: { type: boolean }
+        position: { type: integer, minimum: 0 }
+    ValidateSetupGuideRequest:
+      type: object
+      additionalProperties: false
+      required: [template]
+      properties:
+        template: { type: string }
+    SetupGuideValidation:
+      type: object
+      additionalProperties: false
+      required: [valid]
+      properties:
+        valid: { type: boolean }
+        error: { type: string }
+    ReorderSetupGuidesRequest:
+      type: object
+      additionalProperties: false
+      required: [ids]
+      properties:
+        ids:
+          type: array
+          uniqueItems: true
+          items: { type: string, format: uuid }
+    SetupGuideList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/SetupGuide' }

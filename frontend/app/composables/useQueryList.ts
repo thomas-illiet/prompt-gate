@@ -16,6 +16,10 @@ interface QueryListOptions<TItem> {
   toErrorMessage: (error: unknown) => string
 }
 
+interface QueryListReloadOptions {
+  throwOnError?: boolean
+}
+
 // useQueryList manages debounced search, pagination, sorting, and stale requests.
 export function useQueryList<TItem>(options: QueryListOptions<TItem>) {
   const debounceMs = options.debounceMs ?? 120
@@ -34,7 +38,10 @@ export function useQueryList<TItem>(options: QueryListOptions<TItem>) {
   let debounceTimer: ReturnType<typeof setTimeout> | null = null
   let requestVersion = 0
 
-  async function waitForMinimumLoading(startedAt: number, minLoadingMs: number) {
+  async function waitForMinimumLoading(
+    startedAt: number,
+    minLoadingMs: number,
+  ) {
     const remainingMs = minLoadingMs - (Date.now() - startedAt)
     if (remainingMs > 0) {
       await new Promise<void>((resolve) => setTimeout(resolve, remainingMs))
@@ -79,7 +86,7 @@ export function useQueryList<TItem>(options: QueryListOptions<TItem>) {
   )
 
   // fetchList loads the current query and ignores stale responses.
-  async function fetchList(minLoadingMs = 0) {
+  async function fetchList(minLoadingMs = 0, throwOnError = false) {
     const version = ++requestVersion
     const startedAt = Date.now()
     loading.value = true
@@ -96,6 +103,9 @@ export function useQueryList<TItem>(options: QueryListOptions<TItem>) {
     } catch (error) {
       if (version === requestVersion) {
         listError.value = options.toErrorMessage(error)
+        if (throwOnError) {
+          throw error
+        }
       }
     } finally {
       if (version === requestVersion) {
@@ -132,8 +142,8 @@ export function useQueryList<TItem>(options: QueryListOptions<TItem>) {
   }
 
   // reload fetches the current query immediately.
-  async function reload() {
-    await fetchList(reloadMinLoadingMs)
+  async function reload(options: QueryListReloadOptions = {}) {
+    await fetchList(reloadMinLoadingMs, options.throwOnError)
   }
 
   watch(queryString, async () => fetchList(), { immediate: true })

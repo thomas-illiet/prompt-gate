@@ -179,10 +179,11 @@ config:
   workerBlockTimeout: 5s
   workerPendingIdleTimeout: 30s
 
-  # Scheduler retention and quota sync settings.
+  # Scheduler retention, quota sync, and reset-credit distribution settings.
   usageRawRetention: 2160h
   usageRawCleanupInterval: 1h
   subscriptionQuotaSyncInterval: 5m
+  quotaResetDistributionInterval: 1h
 
   # Dashboard cost estimate settings. These are estimates only, not billing
   # data from a provider invoice.

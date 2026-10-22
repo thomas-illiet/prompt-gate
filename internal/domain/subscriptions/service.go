@@ -63,7 +63,12 @@ func (s *Service) SetNotifier(notifier configevents.Notifier) {
 }
 
 func (s *Service) AutoMigrate(ctx context.Context) error {
-	return s.db.WithContext(ctx).AutoMigrate(&SubscriptionPlan{}, &SubscriptionQuotaState{})
+	return s.db.WithContext(ctx).AutoMigrate(
+		&SubscriptionPlan{},
+		&SubscriptionQuotaState{},
+		&QuotaResetWallet{},
+		&QuotaResetEvent{},
+	)
 }
 
 func (s *Service) CreatePlan(ctx context.Context, input PlanInput) (PlanResponse, error) {
@@ -310,6 +315,10 @@ func (s *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 }
 
 func (s *Service) UpsertQuotaState(ctx context.Context, userID string, status QuotaStatus, syncedAt time.Time) error {
+	return s.upsertQuotaState(ctx, s.db, userID, status, syncedAt)
+}
+
+func (s *Service) upsertQuotaState(ctx context.Context, tx *gorm.DB, userID string, status QuotaStatus, syncedAt time.Time) error {
 	syncedAt = syncedAt.UTC()
 	state := SubscriptionQuotaState{
 		UserID:          userID,
@@ -326,7 +335,7 @@ func (s *Service) UpsertQuotaState(ctx context.Context, userID string, status Qu
 		state.PlanID = &status.Plan.ID
 		state.PlanName = status.Plan.Name
 	}
-	return s.db.WithContext(ctx).Clauses(clause.OnConflict{
+	return tx.WithContext(ctx).Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "user_id"}},
 		DoUpdates: clause.Assignments(map[string]any{
 			"has_subscription": status.HasSubscription,
@@ -341,6 +350,9 @@ func (s *Service) UpsertQuotaState(ctx context.Context, userID string, status Qu
 			"synced_at":        syncedAt,
 			"updated_at":       syncedAt,
 		}),
+		Where: clause.Where{Exprs: []clause.Expression{
+			clause.Expr{SQL: "subscription_quota_states.synced_at < excluded.synced_at"},
+		}},
 	}).Create(&state).Error
 }
 

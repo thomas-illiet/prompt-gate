@@ -49,6 +49,7 @@ data:
   PROMPTGATE_USAGE_RAW_RETENTION: {{ .Values.config.usageRawRetention | quote }}
   PROMPTGATE_USAGE_RAW_CLEANUP_INTERVAL: {{ .Values.config.usageRawCleanupInterval | quote }}
   PROMPTGATE_SUBSCRIPTION_QUOTA_SYNC_INTERVAL: {{ .Values.config.subscriptionQuotaSyncInterval | quote }}
+  PROMPTGATE_QUOTA_RESET_DISTRIBUTION_INTERVAL: {{ .Values.config.quotaResetDistributionInterval | quote }}
   PROMPTGATE_USAGE_COST_ENABLED: {{ .Values.config.usageCostEnabled | quote }}
   PROMPTGATE_USAGE_COST_INPUT: {{ .Values.config.usageCostInput | quote }}
   PROMPTGATE_USAGE_COST_OUTPUT: {{ .Values.config.usageCostOutput | quote }}

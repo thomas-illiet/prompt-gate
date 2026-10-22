@@ -12,6 +12,8 @@ definePageMeta({
 const authStore = useAuthStore()
 const { user } = storeToRefs(authStore)
 const profileGroups = useProfileGroups()
+const profileQuotaResets = useProfileQuotaResets()
+const useQuotaResetDialogOpen = shallowRef(false)
 
 const displayName = computed(
   () =>
@@ -58,6 +60,26 @@ const technicalDetails = computed(() => [
   },
 ])
 
+const quotaResetConfirmationMessage = computed(() => {
+  const available = profileQuotaResets.summary.value?.available ?? 0
+  const remaining = Math.max(0, available - 1)
+
+  return `Use one quota reset? This clears the live 5-hour and 7-day quota windows while preserving usage analytics. ${remaining} reset${remaining === 1 ? '' : 's'} will remain.`
+})
+
+async function confirmQuotaReset() {
+  try {
+    const response = await profileQuotaResets.useReset()
+    if (response) {
+      useQuotaResetDialogOpen.value = false
+    }
+  } catch {
+    // The composable reports mutation failures through the notification store.
+    if (profileQuotaResets.summary.value?.pendingReset) {
+      useQuotaResetDialogOpen.value = false
+    }
+  }
+}
 </script>
 
 <template>
@@ -84,6 +106,18 @@ const technicalDetails = computed(() => [
           :role-label="displayRole"
           :status-color="statusColor"
           :status-label="statusLabel"
+        />
+      </v-col>
+
+      <v-col cols="12">
+        <ProfileQuotaResetCard
+          :error="profileQuotaResets.error.value"
+          :loading="profileQuotaResets.loading.value"
+          :summary="profileQuotaResets.summary.value"
+          :using="profileQuotaResets.using.value"
+          @retry="profileQuotaResets.reload"
+          @show-history="profileQuotaResets.openHistory"
+          @use="useQuotaResetDialogOpen = true"
         />
       </v-col>
 
@@ -123,6 +157,31 @@ const technicalDetails = computed(() => [
         </ProfileInfoCard>
       </v-col>
     </v-row>
+
+    <ProfileQuotaResetHistoryDialog
+      v-model="profileQuotaResets.historyOpen.value"
+      :error="profileQuotaResets.historyError.value"
+      :items="profileQuotaResets.history.value"
+      :loading="profileQuotaResets.historyLoading.value"
+      :maximum="profileQuotaResets.summary.value?.maximum ?? 2"
+      :page="profileQuotaResets.historyPage.value"
+      :page-size="profileQuotaResets.historyPageSize.value"
+      :total="profileQuotaResets.historyTotal.value"
+      @refresh="profileQuotaResets.loadHistory"
+      @update:page="profileQuotaResets.setHistoryPage"
+      @update:page-size="profileQuotaResets.setHistoryPageSize"
+    />
+
+    <AppConfirmDialog
+      v-model="useQuotaResetDialogOpen"
+      confirm-label="Use reset"
+      icon="mdi-refresh"
+      :loading="profileQuotaResets.using.value"
+      :message="quotaResetConfirmationMessage"
+      title="Use a quota reset"
+      @cancel="useQuotaResetDialogOpen = false"
+      @confirm="confirmQuotaReset"
+    />
   </v-container>
 </template>
 

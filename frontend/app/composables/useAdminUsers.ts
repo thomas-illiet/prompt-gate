@@ -15,6 +15,7 @@ import type {
 } from '~/types/groups'
 import type {
   AdminUser,
+  CreateUserPayload,
   UpdateUserAccessPayload,
   UpdateUserPayload,
   UserListResponse,
@@ -22,6 +23,7 @@ import type {
   UserStatusFilter,
 } from '~/types/users'
 import type { AssignSubscriptionPlanPayload } from '~/types/subscriptions'
+import type { QuotaResetSummary } from '~/types/quota-resets'
 import { Notify } from '~/stores/notification'
 import {
   BLOCKED_ROUTE_PATH,
@@ -36,9 +38,11 @@ import {
 } from '~/utils/api-paths'
 import { toApiErrorMessage } from '~/utils/api-error'
 import { downloadUsersCsv } from '~/utils/users-csv'
+import { createIdempotencyKey } from '~/utils/idempotency'
 
 const ERROR_MESSAGES = {
   invalid_expiration: 'Expiration date must be in the future.',
+  invalid_preferred_username: 'User UID is required.',
   invalid_note: 'Notes must be 2,000 characters or fewer.',
   group_not_found: 'Group no longer exists.',
   invalid_role: 'Selected role is invalid.',
@@ -46,6 +50,11 @@ const ERROR_MESSAGES = {
   invalid_subscription_assignment: 'Selected subscription plan is invalid.',
   invalid_token_name: 'Use lowercase letters, numbers, dashes, or underscores.',
   invalid_token_ttl: 'Virtual key lifetime must be between 1 and 30 days.',
+  balance_full: 'This user already has the maximum number of quota resets.',
+  missing_idempotency_key: 'Unable to safely offer the reset. Try again.',
+  quota_reset_balance_full:
+    'This user already has the maximum number of quota resets.',
+  preferred_username_conflict: 'A user with this UID already exists.',
   token_not_found: 'Virtual key no longer exists.',
   user_not_found: 'User no longer exists.',
 }
@@ -93,6 +102,7 @@ export function useAdminUsers() {
   )
   const groupOptions = shallowRef<AccessGroup[]>([])
   const userGroups = shallowRef<AccessGroup[]>([])
+  const quotaResetGrantKeys = new Map<string, string>()
 
   const queryList = useQueryList<AdminUser>({
     debounceMs: 80,
@@ -197,6 +207,30 @@ export function useAdminUsers() {
   async function loadUser(userId: string) {
     selectedUser.value = await apiFetch<AdminUser>(adminUserPath(userId))
     return selectedUser.value
+  }
+
+  // createUser pre-creates a human identity and focuses it in the directory.
+  async function createUser(payload: CreateUserPayload) {
+    return await runApiMutation(
+      {
+        loading: saving,
+        successMessage: 'User pre-created.',
+        toErrorMessage: toAdminUserErrorMessage,
+      },
+      async () => {
+        const createdUser = await apiJson<AdminUser>(
+          adminUsersPath,
+          { preferredUsername: payload.preferredUsername.trim() },
+          { method: 'POST' },
+        )
+
+        selectedUser.value = createdUser
+        role.value = 'all'
+        status.value = 'all'
+        queryList.setSearch(createdUser.preferredUsername)
+        return createdUser
+      },
+    )
   }
 
   // loadTokens fetches paged virtual key rows for a selected user.
@@ -457,6 +491,34 @@ export function useAdminUsers() {
     )
   }
 
+  // grantQuotaReset adds one retry-safe quota reset credit to a user account.
+  async function grantQuotaReset(userId: string) {
+    const idempotencyKey =
+      quotaResetGrantKeys.get(userId) ?? createIdempotencyKey()
+    quotaResetGrantKeys.set(userId, idempotencyKey)
+
+    return await runApiMutation(
+      {
+        loading: saving,
+        successMessage: 'Quota reset offered.',
+        toErrorMessage: toAdminUserErrorMessage,
+      },
+      async () => {
+        const response = await apiFetch<QuotaResetSummary>(
+          adminUserPath(userId, 'quota-resets'),
+          {
+            method: 'POST',
+            headers: { 'Idempotency-Key': idempotencyKey },
+          },
+        )
+
+        await queryList.reload({ throwOnError: true })
+        quotaResetGrantKeys.delete(userId)
+        return response
+      },
+    )
+  }
+
   // deleteUser removes a user and handles current-user side effects.
   async function deleteUser(userId: string) {
     await runApiMutation(
@@ -544,6 +606,7 @@ export function useAdminUsers() {
   return {
     clearIPAddresses,
     createdToken,
+    createUser,
     createUserToken,
     deleteUser,
     exporting,
@@ -551,6 +614,7 @@ export function useAdminUsers() {
     assignUserSubscriptionPlan,
     listError: queryList.listError,
     groupLoading,
+    grantQuotaReset,
     groupOptions,
     ipAddresses,
     ipLoading,

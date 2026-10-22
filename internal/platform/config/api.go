@@ -21,6 +21,7 @@ func LoadApi() (APIConfig, error) {
 	v.SetDefault("session_ttl", "8h")
 	v.SetDefault("token_cleanup_interval", "1h")
 	v.SetDefault("user_access_expiration_interval", "1h")
+	v.SetDefault("quota_reset_distribution_interval", "1h")
 	v.SetDefault("proxy_port", "8081")
 	v.SetDefault("redis_cache_ttl", "5m")
 	v.SetDefault("proxy_reload_debounce", "250ms")
@@ -58,8 +59,9 @@ func LoadApi() (APIConfig, error) {
 			AdminAPIKey:     strings.TrimSpace(v.GetString("admin_api_key")),
 		},
 		ScheduleIntervals: ScheduleIntervals{
-			TokenCleanupInterval:         v.GetDuration("token_cleanup_interval"),
-			UserAccessExpirationInterval: v.GetDuration("user_access_expiration_interval"),
+			TokenCleanupInterval:           v.GetDuration("token_cleanup_interval"),
+			UserAccessExpirationInterval:   v.GetDuration("user_access_expiration_interval"),
+			QuotaResetDistributionInterval: v.GetDuration("quota_reset_distribution_interval"),
 		},
 		ProxyRuntimeConfig: ProxyRuntimeConfig{
 			ProxyReloadDebounce: v.GetDuration("proxy_reload_debounce"),
@@ -121,6 +123,7 @@ func LoadApi() (APIConfig, error) {
 	if err := validatePositiveDurations(
 		positiveDuration{"PROMPTGATE_TOKEN_CLEANUP_INTERVAL", cfg.TokenCleanupInterval},
 		positiveDuration{"PROMPTGATE_USER_ACCESS_EXPIRATION_INTERVAL", cfg.UserAccessExpirationInterval},
+		positiveDuration{"PROMPTGATE_QUOTA_RESET_DISTRIBUTION_INTERVAL", cfg.QuotaResetDistributionInterval},
 		positiveDuration{"PROMPTGATE_REDIS_CACHE_TTL", cfg.RedisCacheTTL},
 		positiveDuration{"PROMPTGATE_PROXY_RELOAD_DEBOUNCE", cfg.ProxyReloadDebounce},
 	); err != nil {

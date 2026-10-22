@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { UserToken, UserTokenPayload } from '~/types/user-service'
-import type { AdminUser } from '~/types/users'
+import type { AdminUser, CreateUserPayload } from '~/types/users'
+import AdminUserCreateDialog from '~/components/AdminUsers/AdminUserCreateDialog.vue'
 import AdminUserDeleteDialog from '~/components/AdminUsers/AdminUserDeleteDialog.vue'
 import AdminUserEditDialog from '~/components/AdminUsers/AdminUserEditDialog.vue'
 import AdminUserGroupsDialog from '~/components/AdminUsers/AdminUserGroupsDialog.vue'
@@ -21,6 +22,7 @@ definePageMeta({
 
 const adminUsers = useAdminUsers()
 const adminSubscriptions = useAdminSubscriptions()
+const createDialogOpen = shallowRef(false)
 const editDialogOpen = shallowRef(false)
 const deleteDialogOpen = shallowRef(false)
 const tokenDialogOpen = shallowRef(false)
@@ -36,6 +38,7 @@ const tokenRevokeDialog = useTargetDialog<UserToken>()
 const usageDialog = useTargetDialog<AdminUser>()
 const ipDialog = useTargetDialog<AdminUser>()
 const ipClearDialog = useTargetDialog<AdminUser>()
+const quotaResetDialog = useTargetDialog<AdminUser>()
 let ipRefreshTimer: ReturnType<typeof setInterval> | null = null
 const statusConfirm = useToggleConfirmDialog(statusDialog.target, {
   disableIcon: 'mdi-account-cancel-outline',
@@ -59,6 +62,16 @@ const revokeTokenMessage = computed(() => {
   return `Revoke ${tokenName} for ${userName}? Existing clients using this virtual key will stop working.`
 })
 
+const quotaResetMessage = computed(() => {
+  const target = quotaResetDialog.target.value
+  if (!target) {
+    return 'Offer one quota reset to this user?'
+  }
+
+  const nextBalance = Math.min(2, target.quotaResetCredits + 1)
+  return `Offer one quota reset to ${displayUser(target)}? Their balance will become ${nextBalance}/2.`
+})
+
 // displayUser returns the best available user identifier for dialogs.
 function displayUser(user: AdminUser) {
   return user.name || user.preferredUsername || user.email
@@ -78,6 +91,17 @@ async function openEditDialog(user: AdminUser) {
     adminSubscriptions.loadAllPlans(),
   ])
   editDialogOpen.value = true
+}
+
+// preCreateUser reserves the SSO identity, then opens its access settings.
+async function preCreateUser(payload: CreateUserPayload) {
+  try {
+    const createdUser = await adminUsers.createUser(payload)
+    createDialogOpen.value = false
+    await openEditDialog(createdUser)
+  } catch {
+    // The composable reports API failures; keep the create dialog open to retry.
+  }
 }
 
 // saveUserAccess persists role, status, and expiration changes.
@@ -271,6 +295,19 @@ async function saveUserNote(note: string) {
   await adminUsers.updateUserNote(noteDialog.target.value.id, note)
   noteDialog.close()
 }
+
+async function confirmQuotaResetGrant() {
+  if (!quotaResetDialog.target.value) {
+    return
+  }
+
+  try {
+    await adminUsers.grantQuotaReset(quotaResetDialog.target.value.id)
+    quotaResetDialog.close()
+  } catch {
+    // The composable reports mutation failures through the notification store.
+  }
+}
 </script>
 
 <template>
@@ -330,12 +367,14 @@ async function saveUserNote(note: string) {
           :sort-by="adminUsers.sortBy.value"
           :sort-dir="adminUsers.sortDir.value"
           :total="adminUsers.total.value"
+          @create="createDialogOpen = true"
           @delete="openDeleteDialog"
           @edit="openEditDialog"
           @manage-ips="openIPDialog"
           @manage-groups="openGroupsDialog"
           @manage-tokens="openTokenDialog"
           @notes="noteDialog.open"
+          @offer-quota-reset="quotaResetDialog.open"
           @refresh="adminUsers.reload"
           @toggle-status="statusDialog.open"
           @usage-statistics="usageDialog.open"
@@ -346,6 +385,11 @@ async function saveUserNote(note: string) {
       </v-col>
     </v-row>
 
+    <AdminUserCreateDialog
+      v-model="createDialogOpen"
+      :loading="adminUsers.saving.value"
+      @create="preCreateUser"
+    />
     <AdminUserEditDialog
       v-model="editDialogOpen"
       :loading="adminUsers.saving.value"
@@ -428,6 +472,16 @@ async function saveUserNote(note: string) {
       @update:page="updateIPPage"
       @update:page-size="updateIPPageSize"
       @update:sort="updateIPSort"
+    />
+    <AppConfirmDialog
+      v-model="quotaResetDialog.isOpen.value"
+      confirm-label="Offer reset"
+      icon="mdi-refresh"
+      :loading="adminUsers.saving.value"
+      :message="quotaResetMessage"
+      title="Offer quota reset"
+      @cancel="quotaResetDialog.close"
+      @confirm="confirmQuotaResetGrant"
     />
     <AppConfirmDialog
       v-model="ipClearDialog.isOpen.value"

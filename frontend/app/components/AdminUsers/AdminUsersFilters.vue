@@ -22,9 +22,9 @@ const roleOptions = computed(() => [
   })),
 ])
 const statusOptions = [
-  { title: 'All statuses', value: 'all' as const },
-  { title: 'Active', value: 'active' as const },
-  { title: 'Inactive', value: 'inactive' as const },
+  { title: 'All access', value: 'all' as const },
+  { title: 'Enabled', value: 'active' as const },
+  { title: 'Disabled', value: 'inactive' as const },
 ]
 
 // updateSearch emits normalized search text.
@@ -78,7 +78,7 @@ function updateStatus(value: UserStatusFilter | null) {
         :model-value="props.status"
         :items="statusOptions"
         prepend-inner-icon="mdi-account-check-outline"
-        label="Status"
+        label="Access"
         density="compact"
         variant="outlined"
         flat

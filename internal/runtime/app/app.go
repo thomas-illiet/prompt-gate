@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"sync"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -221,6 +222,85 @@ func (a *App) StartSubscriptionWatcher(ctx context.Context) {
 	})
 }
 
+// StartQuotaResetDistribution grants the current calendar month's reset credit
+// immediately, then periodically reconciles newly eligible user accounts.
+func (a *App) StartQuotaResetDistribution(ctx context.Context, interval time.Duration) {
+	if a == nil || a.Subscriptions == nil || interval <= 0 {
+		return
+	}
+
+	run := func() {
+		result, err := a.Subscriptions.DistributeMonthlyQuotaResetCredits(ctx, time.Now().UTC())
+		if err != nil {
+			slog.Error("failed to distribute monthly quota reset credits", "error", err)
+			return
+		}
+		slog.Info(
+			"monthly quota reset credit distribution completed",
+			"eligible", result.Eligible,
+			"granted", result.Granted,
+			"already_processed", result.AlreadyProcessed,
+			"skipped_at_maximum", result.SkippedAtMaximum,
+		)
+	}
+
+	go func() {
+		run()
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				run()
+			}
+		}
+	}()
+}
+
+// StartQuotaStateMaintenance applies durable pending reset events to Redis and
+// then refreshes the PostgreSQL quota projection. It runs once immediately and
+// repeats both operations in that order on the same ticker.
+func (a *App) StartQuotaStateMaintenance(ctx context.Context, interval time.Duration) {
+	if a == nil || a.Subscriptions == nil || a.QuotaRedis == nil || interval <= 0 {
+		return
+	}
+
+	run := func() {
+		count, err := a.Subscriptions.ReconcilePendingQuotaResets(ctx, a.QuotaRedis, time.Now().UTC())
+		if err != nil {
+			slog.Error("failed to reconcile pending quota resets", "error", err)
+		}
+		if count > 0 {
+			slog.Info("reconciled pending quota resets", "resets", count)
+		}
+
+		synced, err := a.QuotaRedis.SyncQuotaStates(ctx, a.Subscriptions)
+		if err != nil {
+			slog.Error("failed to sync subscription quota states", "error", err)
+			return
+		}
+		if synced > 0 {
+			slog.Info("synced subscription quota states", "users", synced)
+		}
+	}
+
+	go func() {
+		run()
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				run()
+			}
+		}
+	}()
+}
+
 // StartBackgroundJobs launches long-running goroutines tied to the context lifetime.
 func (a *App) StartBackgroundJobs(ctx context.Context) {
 	slog.Info("starting token cleanup goroutine", "interval", a.Schedule.TokenCleanupInterval)
@@ -233,7 +313,9 @@ func (a *App) StartBackgroundJobs(ctx context.Context) {
 	a.Proxy.StartRawUsageCleanup(ctx, a.Schedule.UsageRawRetention, a.Schedule.UsageRawCleanupInterval)
 	if a.Subscriptions != nil && a.QuotaRedis != nil {
 		a.StartSubscriptionWatcher(ctx)
-		slog.Info("starting subscription quota sync goroutine", "interval", a.Schedule.SubscriptionQuotaSyncInterval)
-		a.Subscriptions.StartQuotaStateSync(ctx, a.QuotaRedis, a.Schedule.SubscriptionQuotaSyncInterval)
+		slog.Info("starting quota reset distribution goroutine", "interval", a.Schedule.QuotaResetDistributionInterval)
+		a.StartQuotaResetDistribution(ctx, a.Schedule.QuotaResetDistributionInterval)
+		slog.Info("starting subscription quota maintenance goroutine", "interval", a.Schedule.SubscriptionQuotaSyncInterval)
+		a.StartQuotaStateMaintenance(ctx, a.Schedule.SubscriptionQuotaSyncInterval)
 	}
 }

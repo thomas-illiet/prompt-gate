@@ -269,6 +269,12 @@ func SubscriptionUsageHashKey(userID, window string) string {
 	return fmt.Sprintf("promptgate:subscriptions:usage:%s:%s:h", userID, window)
 }
 
+// SubscriptionQuotaResetStateKey stores the last applied reset sequence and cutoff.
+// It intentionally has no TTL so a retried older reset can never clear newer usage.
+func SubscriptionQuotaResetStateKey(userID string) string {
+	return fmt.Sprintf("promptgate:subscriptions:usage:%s:reset", userID)
+}
+
 // SubscriptionActiveUsersKey returns the Redis set key for identities with quota usage.
 func SubscriptionActiveUsersKey() string {
 	return "promptgate:subscriptions:active_users"

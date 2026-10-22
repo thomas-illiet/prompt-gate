@@ -3,7 +3,17 @@ package users
 import (
 	"context"
 	"fmt"
+	"time"
 )
+
+const activeUserWindowDays = 30
+
+func (s *Service) attachAdminUserUsage(ctx context.Context, items []AdminUser) error {
+	if err := s.attachAdminUserTokenConsumption(ctx, items); err != nil {
+		return err
+	}
+	return s.attachAdminUserActivity(ctx, items)
+}
 
 func (s *Service) attachAdminUserTokenConsumption(ctx context.Context, items []AdminUser) error {
 	ids := make([]string, 0, len(items))
@@ -19,6 +29,42 @@ func (s *Service) attachAdminUserTokenConsumption(ctx context.Context, items []A
 		items[i].OutputTokens = consumptionByUserID[items[i].ID].OutputTokens
 	}
 	return nil
+}
+
+func (s *Service) attachAdminUserActivity(ctx context.Context, items []AdminUser) error {
+	if len(items) == 0 {
+		return nil
+	}
+
+	ids := make([]string, 0, len(items))
+	for _, item := range items {
+		ids = append(ids, item.ID)
+	}
+
+	today := utcDay(s.nowUTC())
+	startsAt := today.AddDate(0, 0, -(activeUserWindowDays - 1))
+	var activeIDs []string
+	if err := s.db.WithContext(ctx).
+		Table("proxy_daily_usage_kpis").
+		Where("initiator_id IN ? AND day >= ? AND day <= ? AND requests > 0", ids, startsAt, today).
+		Distinct().
+		Pluck("initiator_id", &activeIDs).Error; err != nil {
+		return fmt.Errorf("load recent user activity: %w", err)
+	}
+
+	activeByID := make(map[string]struct{}, len(activeIDs))
+	for _, id := range activeIDs {
+		activeByID[id] = struct{}{}
+	}
+	for i := range items {
+		_, items[i].ActiveInLast30Days = activeByID[items[i].ID]
+	}
+	return nil
+}
+
+func utcDay(value time.Time) time.Time {
+	value = value.UTC()
+	return time.Date(value.Year(), value.Month(), value.Day(), 0, 0, 0, 0, time.UTC)
 }
 
 func (s *Service) attachServiceAccountTokenConsumption(ctx context.Context, items []ServiceAccount) error {

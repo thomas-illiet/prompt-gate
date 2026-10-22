@@ -60,6 +60,7 @@ dotenv file.
 | `PROMPTGATE_USAGE_RAW_RETENTION` | schedule | `2160h` | Retention for raw proxy usage rows used by operational metrics. |
 | `PROMPTGATE_USAGE_RAW_CLEANUP_INTERVAL` | schedule | `1h` | Interval for raw proxy usage cleanup. |
 | `PROMPTGATE_SUBSCRIPTION_QUOTA_SYNC_INTERVAL` | schedule | `5m` | Interval for copying live Redis subscription quota state into PostgreSQL. |
+| `PROMPTGATE_QUOTA_RESET_DISTRIBUTION_INTERVAL` | API, schedule | `1h` | Interval for idempotently granting the current UTC calendar month's reset credit to eligible users. The scheduler runs this job immediately on startup; the API validates the shared setting for configuration parity. |
 | `PROMPTGATE_USAGE_COST_ENABLED` | API, proxy | `true` | Enables dashboard estimates and estimated OpenInference cost attributes. |
 | `PROMPTGATE_USAGE_COST_INPUT` | API, proxy | `5.00` | Estimated USD price per 1M completion input tokens. |
 | `PROMPTGATE_USAGE_COST_OUTPUT` | API, proxy | `30.00` | Estimated USD price per 1M completion output tokens. |
@@ -173,6 +174,7 @@ PROMPTGATE_WORKER_CONSUMER_NAME=
 PROMPTGATE_USAGE_RAW_RETENTION=2160h
 PROMPTGATE_USAGE_RAW_CLEANUP_INTERVAL=1h
 PROMPTGATE_SUBSCRIPTION_QUOTA_SYNC_INTERVAL=5m
+PROMPTGATE_QUOTA_RESET_DISTRIBUTION_INTERVAL=1h
 PROMPTGATE_USAGE_COST_ENABLED=true
 PROMPTGATE_USAGE_COST_INPUT=5.00
 PROMPTGATE_USAGE_COST_OUTPUT=30.00

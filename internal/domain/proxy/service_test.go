@@ -73,25 +73,25 @@ func newProxyServiceTestDB(t *testing.T) (*gorm.DB, *Service) {
 	for _, user := range []users.User{
 		{
 			ID:                "11111111-1111-1111-1111-111111111111",
-			ExternalSub:       "sub-1",
+			ExternalSub:       testPointer("sub-1"),
 			Email:             "one@example.com",
 			PreferredUsername: "one",
 			Name:              "One",
 			Type:              auth.UserTypeUser,
 			Role:              auth.RoleUser,
 			IsActive:          true,
-			LastLoginAt:       now,
+			LastLoginAt:       testPointer(now),
 		},
 		{
 			ID:                "22222222-2222-2222-2222-222222222222",
-			ExternalSub:       "sub-2",
+			ExternalSub:       testPointer("sub-2"),
 			Email:             "two@example.com",
 			PreferredUsername: "two",
 			Name:              "Two",
 			Type:              auth.UserTypeUser,
 			Role:              auth.RoleUser,
 			IsActive:          true,
-			LastLoginAt:       now,
+			LastLoginAt:       testPointer(now),
 		},
 	} {
 		if err := db.Create(&user).Error; err != nil {
@@ -534,13 +534,13 @@ func TestAdminDashboardWidgetsAggregateGlobally(t *testing.T) {
 
 	if err := db.Create(&users.User{
 		ID:                serviceAccountID,
-		ExternalSub:       "service:bot",
+		ExternalSub:       testPointer("service:bot"),
 		PreferredUsername: "service-bot",
 		Name:              "Service Bot",
 		Type:              auth.UserTypeService,
 		Role:              auth.RoleUser,
 		IsActive:          true,
-		LastLoginAt:       now,
+		LastLoginAt:       testPointer(now),
 	}).Error; err != nil {
 		t.Fatalf("seed service account: %v", err)
 	}

@@ -42,14 +42,14 @@ func newGroupsTestHandler(t *testing.T) (*Handler, *groups.Service, users.User, 
 
 	user := users.User{
 		ID:                uuid.NewString(),
-		ExternalSub:       "oidc-sub",
+		ExternalSub:       testPointer("oidc-sub"),
 		Email:             "user@example.com",
 		PreferredUsername: "user",
 		Name:              "User",
 		Type:              auth.UserTypeUser,
 		Role:              auth.RoleUser,
 		IsActive:          true,
-		LastLoginAt:       time.Now().UTC(),
+		LastLoginAt:       testPointer(time.Now().UTC()),
 	}
 	if err := db.Create(&user).Error; err != nil {
 		t.Fatalf("create user: %v", err)

@@ -47,7 +47,7 @@ const displayEmail = computed(() => props.user?.email || 'No email')
 const displayUsername = computed(
   () => props.user?.preferredUsername || 'No username',
 )
-const displaySubject = computed(() => props.user?.sub || 'No OIDC subject')
+const displaySubject = computed(() => props.user?.sub || 'Not linked')
 
 watch(
   () => props.user,
@@ -182,7 +182,7 @@ function toISOStringOrNull(value: string) {
                 v-model="isActive"
                 color="success"
                 inset
-                label="Active account"
+                label="Access enabled"
               />
             </v-col>
 

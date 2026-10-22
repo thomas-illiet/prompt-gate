@@ -17,8 +17,8 @@ func CORS(allowedOrigins []string) Middleware {
 				headers.Set("Access-Control-Allow-Origin", origin)
 				headers.Add("Vary", "Origin")
 				headers.Set("Access-Control-Allow-Credentials", "true")
-				headers.Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Accept")
-				headers.Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
+				headers.Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Accept, Idempotency-Key")
+				headers.Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 				headers.Set("Access-Control-Max-Age", "600")
 			}
 

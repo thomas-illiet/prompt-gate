@@ -43,14 +43,14 @@ func TestHandleAdminDashboardQuotaRiskReturnsSQLProjection(t *testing.T) {
 	quota := int64(100)
 	account := users.User{
 		ID:                "11111111-1111-1111-1111-111111111111",
-		ExternalSub:       "service:quota-risk",
+		ExternalSub:       testPointer("service:quota-risk"),
 		Email:             "quota-risk@example.com",
 		PreferredUsername: "quota-risk-worker",
 		Name:              "Quota risk worker",
 		Type:              auth.UserTypeService,
 		Role:              auth.RoleUser,
 		IsActive:          true,
-		LastLoginAt:       now,
+		LastLoginAt:       testPointer(now),
 	}
 	if err := db.Create(&account).Error; err != nil {
 		t.Fatalf("seed service account: %v", err)

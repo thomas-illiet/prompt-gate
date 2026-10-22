@@ -40,14 +40,14 @@ func TestHandleCurrentUserQuotaRefreshesChangedAssignmentImmediately(t *testing.
 	profile := testUserProfile()
 	user := users.User{
 		ID:                profile.ID,
-		ExternalSub:       profile.Sub,
+		ExternalSub:       testPointer(profile.Sub),
 		Email:             profile.Email,
 		PreferredUsername: profile.PreferredUsername,
 		Name:              profile.Name,
 		Type:              profile.Type,
 		Role:              profile.Role,
 		IsActive:          true,
-		LastLoginAt:       profile.LastLoginAt,
+		LastLoginAt:       testPointer(profile.LastLoginAt),
 	}
 	if err := db.Create(&user).Error; err != nil {
 		t.Fatalf("create user: %v", err)

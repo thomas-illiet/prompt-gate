@@ -10,9 +10,11 @@ import (
 
 	"promptgate/backend/internal/domain/auth"
 	"promptgate/backend/internal/platform/configevents"
+	"promptgate/backend/internal/platform/database"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var (
@@ -23,6 +25,8 @@ var (
 	ErrInvalidServiceAccountIdentifier = errors.New("service account identifier must be lowercase alphanumeric with dashes or underscores, max 64 chars")
 	ErrServiceAccountConflict          = errors.New("service account identifier already exists")
 	ErrPreferredUsernameRequired       = errors.New("preferred_username is required")
+	ErrPreferredUsernameConflict       = errors.New("preferred_username already exists")
+	ErrDuplicatePreferredUsername      = errors.New("duplicate type and preferred_username values exist")
 	ErrInvalidSort                     = errors.New("invalid_sort")
 )
 
@@ -32,24 +36,24 @@ var serviceAccountIdentifierRegexp = regexp.MustCompile(`^[a-z0-9_-]{1,64}$`)
 
 type User struct {
 	ID                 string        `gorm:"type:uuid;primaryKey"`
-	ExternalSub        string        `gorm:"column:external_sub;uniqueIndex;not null"`
+	ExternalSub        *string       `gorm:"column:external_sub;uniqueIndex"`
 	Email              string        `gorm:"not null;index"`
-	PreferredUsername  string        `gorm:"column:preferred_username;not null;index"`
+	PreferredUsername  string        `gorm:"column:preferred_username;not null;index;uniqueIndex:idx_users_type_preferred_username,priority:2"`
 	Name               string        `gorm:"not null"`
-	Type               auth.UserType `gorm:"type:varchar(16);not null;default:'user';index"`
+	Type               auth.UserType `gorm:"type:varchar(16);not null;default:'user';index;uniqueIndex:idx_users_type_preferred_username,priority:1"`
 	Role               auth.AppRole  `gorm:"type:varchar(16);not null;index"`
 	SubscriptionPlanID *string       `gorm:"column:subscription_plan_id;type:uuid;index"`
 	Note               string        `gorm:"type:text;not null;default:''"`
 	IsActive           bool          `gorm:"not null;default:true;index"`
 	ExpiresAt          *time.Time    `gorm:"column:expires_at;index"`
-	LastLoginAt        time.Time     `gorm:"column:last_login_at;not null;index"`
+	LastLoginAt        *time.Time    `gorm:"column:last_login_at;index"`
 	CreatedAt          time.Time
 	UpdatedAt          time.Time
 }
 
 type AdminUser struct {
 	ID                        string                   `json:"id"`
-	Sub                       string                   `json:"sub"`
+	Sub                       *string                  `json:"sub"`
 	PreferredUsername         string                   `json:"preferredUsername"`
 	Email                     string                   `json:"email"`
 	Name                      string                   `json:"name"`
@@ -59,12 +63,14 @@ type AdminUser struct {
 	SubscriptionPlan          *AccountSubscriptionPlan `json:"subscriptionPlan,omitempty"`
 	EffectiveSubscriptionPlan *AccountSubscriptionPlan `json:"effectiveSubscriptionPlan,omitempty"`
 	QuotaState                *AccountQuotaState       `json:"quotaState,omitempty"`
+	QuotaResetCredits         int                      `json:"quotaResetCredits"`
 	Note                      string                   `json:"note"`
 	IsActive                  bool                     `json:"isActive"`
+	ActiveInLast30Days        bool                     `json:"activeInLast30Days"`
 	InputTokens               int64                    `json:"inputTokens"`
 	OutputTokens              int64                    `json:"outputTokens"`
 	ExpiresAt                 *time.Time               `json:"expiresAt"`
-	LastLoginAt               time.Time                `json:"lastLoginAt"`
+	LastLoginAt               *time.Time               `json:"lastLoginAt"`
 	CreatedAt                 time.Time                `json:"createdAt"`
 	UpdatedAt                 time.Time                `json:"updatedAt"`
 }
@@ -161,6 +167,7 @@ type Service struct {
 	db           *gorm.DB
 	notifier     configevents.Notifier
 	tokenRevoker tokenRevoker
+	now          func() time.Time
 }
 
 type tokenConsumption struct {
@@ -175,7 +182,7 @@ type tokenRevoker interface {
 
 // NewService creates a new user service backed by the given database.
 func NewService(db *gorm.DB) *Service {
-	return &Service{db: db, notifier: configevents.NoopNotifier{}}
+	return &Service{db: db, notifier: configevents.NoopNotifier{}, now: time.Now}
 }
 
 // SetNotifier configures config event publication after user mutations.
@@ -202,6 +209,9 @@ func (u *User) BeforeCreate(_ *gorm.DB) error {
 
 // AutoMigrate runs database schema migrations for the User model.
 func (s *Service) AutoMigrate(ctx context.Context) error {
+	if err := s.ensurePreferredUsernamesUnique(ctx); err != nil {
+		return err
+	}
 	return s.db.WithContext(ctx).AutoMigrate(&User{})
 }
 
@@ -212,28 +222,10 @@ func (s *Service) SyncUser(ctx context.Context, identity auth.Identity) (auth.Us
 	}
 
 	var record User
-	now := time.Now().UTC()
+	now := s.nowUTC()
+	externalSub := identity.Sub
 
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		err := tx.Where(
-			"type = ? AND preferred_username = ?",
-			auth.UserTypeUser,
-			identity.PreferredUsername,
-		).Take(&record).Error
-		if err == nil {
-			record.ExternalSub = identity.Sub
-			record.Email = identity.Email
-			record.PreferredUsername = identity.PreferredUsername
-			record.Name = identity.Name
-			record.LastLoginAt = now
-
-			return tx.Save(&record).Error
-		}
-
-		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			return err
-		}
-
 		role := auth.RoleNone
 		var total int64
 		if err := tx.Model(&User{}).Count(&total).Error; err != nil {
@@ -243,24 +235,76 @@ func (s *Service) SyncUser(ctx context.Context, identity auth.Identity) (auth.Us
 			role = auth.RoleAdmin
 		}
 
-		record = User{
-			ExternalSub:       identity.Sub,
+		candidate := User{
+			ExternalSub:       &externalSub,
 			Email:             identity.Email,
 			PreferredUsername: identity.PreferredUsername,
 			Name:              identity.Name,
 			Type:              auth.UserTypeUser,
 			Role:              role,
 			IsActive:          true,
-			LastLoginAt:       now,
+			LastLoginAt:       &now,
 		}
 
-		return tx.Create(&record).Error
+		if err := tx.Clauses(clause.OnConflict{
+			Columns: []clause.Column{{Name: "type"}, {Name: "preferred_username"}},
+			DoUpdates: clause.Assignments(map[string]any{
+				"external_sub":  &externalSub,
+				"email":         identity.Email,
+				"name":          identity.Name,
+				"last_login_at": &now,
+				"updated_at":    now,
+			}),
+		}).Create(&candidate).Error; err != nil {
+			return err
+		}
+
+		return tx.Where(
+			"type = ? AND preferred_username = ?",
+			auth.UserTypeUser,
+			identity.PreferredUsername,
+		).Take(&record).Error
 	})
 	if err != nil {
 		return auth.UserProfile{}, fmt.Errorf("sync user: %w", err)
 	}
 
 	return record.profile(), nil
+}
+
+// CreateUser creates a pending human user identified only by its exact SSO preferred username.
+func (s *Service) CreateUser(ctx context.Context, preferredUsername string) (AdminUser, error) {
+	preferredUsername = strings.TrimSpace(preferredUsername)
+	if preferredUsername == "" {
+		return AdminUser{}, ErrPreferredUsernameRequired
+	}
+
+	record := User{
+		PreferredUsername: preferredUsername,
+		Type:              auth.UserTypeUser,
+		Role:              auth.RoleNone,
+		IsActive:          true,
+	}
+	result := s.db.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "type"}, {Name: "preferred_username"}},
+		DoNothing: true,
+	}).Create(&record)
+	if result.Error != nil {
+		if database.IsUniqueViolation(result.Error) {
+			return AdminUser{}, ErrPreferredUsernameConflict
+		}
+		return AdminUser{}, fmt.Errorf("create user: %w", result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return AdminUser{}, ErrPreferredUsernameConflict
+	}
+
+	s.notifier.Notify(ctx, configevents.DomainAuth)
+	items := []AdminUser{record.adminUser()}
+	if err := s.attachAdminUserUsage(ctx, items); err != nil {
+		return AdminUser{}, err
+	}
+	return items[0], nil
 }
 
 // UserByID returns a UserProfile for the given user ID, or ErrUserNotFound if absent.
@@ -291,7 +335,7 @@ func (s *Service) GetUser(ctx context.Context, id string) (AdminUser, error) {
 	}
 
 	items := []AdminUser{record.adminUser()}
-	if err := s.attachAdminUserTokenConsumption(ctx, items); err != nil {
+	if err := s.attachAdminUserUsage(ctx, items); err != nil {
 		return AdminUser{}, err
 	}
 
@@ -354,7 +398,7 @@ func (s *Service) ListUsers(ctx context.Context, params ListParams) (ListResult,
 	for _, record := range records {
 		items = append(items, record.adminUser())
 	}
-	if err := s.attachAdminUserTokenConsumption(ctx, items); err != nil {
+	if err := s.attachAdminUserUsage(ctx, items); err != nil {
 		return ListResult{}, err
 	}
 
@@ -416,7 +460,7 @@ func (s *Service) UpdateUser(ctx context.Context, id string, input UpdateUserInp
 
 	s.notifier.Notify(ctx, configevents.DomainAuth)
 	items := []AdminUser{record.adminUser()}
-	if err := s.attachAdminUserTokenConsumption(ctx, items); err != nil {
+	if err := s.attachAdminUserUsage(ctx, items); err != nil {
 		return AdminUser{}, err
 	}
 
@@ -447,7 +491,7 @@ func (s *Service) UpdateUserNote(ctx context.Context, id string, input UpdateAcc
 	}
 
 	items := []AdminUser{record.adminUser()}
-	if err := s.attachAdminUserTokenConsumption(ctx, items); err != nil {
+	if err := s.attachAdminUserUsage(ctx, items); err != nil {
 		return AdminUser{}, err
 	}
 
@@ -521,6 +565,49 @@ func normalizeAccountNote(note string) (string, error) {
 	}
 
 	return note, nil
+}
+
+// ensurePreferredUsernamesUnique prevents the composite identity index from hiding legacy duplicates.
+func (s *Service) ensurePreferredUsernamesUnique(ctx context.Context) error {
+	migrator := s.db.WithContext(ctx).Migrator()
+	if !migrator.HasTable(&User{}) ||
+		!migrator.HasColumn(&User{}, "type") ||
+		!migrator.HasColumn(&User{}, "preferred_username") {
+		return nil
+	}
+
+	var duplicate struct {
+		Type              auth.UserType `gorm:"column:type"`
+		PreferredUsername string        `gorm:"column:preferred_username"`
+		Count             int64         `gorm:"column:duplicate_count"`
+	}
+	if err := s.db.WithContext(ctx).
+		Model(&User{}).
+		Select("type, preferred_username, COUNT(*) AS duplicate_count").
+		Group("type, preferred_username").
+		Having("COUNT(*) > 1").
+		Limit(1).
+		Scan(&duplicate).Error; err != nil {
+		return fmt.Errorf("check duplicate preferred usernames: %w", err)
+	}
+	if duplicate.Count > 1 {
+		return fmt.Errorf(
+			"%w: type=%q preferred_username=%q count=%d",
+			ErrDuplicatePreferredUsername,
+			duplicate.Type,
+			duplicate.PreferredUsername,
+			duplicate.Count,
+		)
+	}
+
+	return nil
+}
+
+func (s *Service) nowUTC() time.Time {
+	if s.now == nil {
+		return time.Now().UTC()
+	}
+	return s.now().UTC()
 }
 
 // ensureServiceAccountIdentifierAvailable checks service account identifier uniqueness.
@@ -639,6 +726,9 @@ func applyUserSort(query *gorm.DB, sortBy, sortDir string) (*gorm.DB, error) {
 		return nil, ErrInvalidSort
 	}
 
+	if sortBy == "lastLoginAt" {
+		query = query.Order("CASE WHEN users.last_login_at IS NULL THEN 1 ELSE 0 END ASC")
+	}
 	query = query.Order(column + " " + dir)
 	if sortBy == "lastLoginAt" {
 		query = query.Order("users.created_at DESC")

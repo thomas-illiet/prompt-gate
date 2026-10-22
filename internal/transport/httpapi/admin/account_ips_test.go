@@ -32,8 +32,8 @@ func newAccountIPsHandler(t *testing.T) (*Handler, *gorm.DB) {
 		t.Fatalf("migrate proxy: %v", err)
 	}
 	for _, account := range []users.User{
-		{ID: "11111111-1111-1111-1111-111111111111", ExternalSub: "human", PreferredUsername: "human", Type: auth.UserTypeUser, Role: auth.RoleUser, IsActive: true},
-		{ID: "22222222-2222-2222-2222-222222222222", ExternalSub: "service", PreferredUsername: "service", Type: auth.UserTypeService, Role: auth.RoleUser, IsActive: true},
+		{ID: "11111111-1111-1111-1111-111111111111", ExternalSub: testPointer("human"), PreferredUsername: "human", Type: auth.UserTypeUser, Role: auth.RoleUser, IsActive: true},
+		{ID: "22222222-2222-2222-2222-222222222222", ExternalSub: testPointer("service"), PreferredUsername: "service", Type: auth.UserTypeService, Role: auth.RoleUser, IsActive: true},
 	} {
 		if err := db.Create(&account).Error; err != nil {
 			t.Fatalf("seed account: %v", err)

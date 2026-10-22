@@ -78,11 +78,12 @@ type APIHTTPConfig struct {
 
 // ScheduleIntervals contains intervals used by scheduled background jobs.
 type ScheduleIntervals struct {
-	TokenCleanupInterval          time.Duration
-	UserAccessExpirationInterval  time.Duration
-	UsageRawRetention             time.Duration
-	UsageRawCleanupInterval       time.Duration
-	SubscriptionQuotaSyncInterval time.Duration
+	TokenCleanupInterval           time.Duration
+	UserAccessExpirationInterval   time.Duration
+	UsageRawRetention              time.Duration
+	UsageRawCleanupInterval        time.Duration
+	SubscriptionQuotaSyncInterval  time.Duration
+	QuotaResetDistributionInterval time.Duration
 }
 
 // ProxyRuntimeConfig contains proxy reload, trust, and buffering settings.

@@ -15,7 +15,7 @@ func userRoutes(srv *server) []routeDefinition {
 }
 
 func limitedRoutes(srv *server) []routeDefinition {
-	routes := make([]routeDefinition, 0, 12)
+	routes := make([]routeDefinition, 0, 15)
 	routes = append(routes, currentUserRoutes(srv)...)
 	routes = append(routes, userFAQRoutes(srv)...)
 	return routes
@@ -25,6 +25,9 @@ func currentUserRoutes(srv *server) []routeDefinition {
 	return []routeDefinition{
 		{pattern: "GET /api/v1/me/usage", handler: srv.handleCurrentUserUsage},
 		{pattern: "GET /api/v1/me/quota", handler: srv.handleCurrentUserQuota},
+		{pattern: "GET /api/v1/me/quota-resets", handler: srv.handleCurrentUserQuotaResetSummary},
+		{pattern: "POST /api/v1/me/quota-resets/use", handler: srv.handleCurrentUserQuotaResetUse},
+		{pattern: "GET /api/v1/me/quota-resets/history", handler: srv.handleCurrentUserQuotaResetHistory},
 		{pattern: "GET /api/v1/me/dashboard/overview", handler: srv.handleCurrentUserDashboardOverview},
 		{pattern: "GET /api/v1/me/dashboard/tokens", handler: srv.handleCurrentUserDashboardTokens},
 		{pattern: "GET /api/v1/me/dashboard/messages", handler: srv.handleCurrentUserDashboardMessages},

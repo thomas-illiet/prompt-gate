@@ -49,14 +49,14 @@ func seedQuotaRiskFixture(t *testing.T, db *gorm.DB, fixture quotaRiskFixture) {
 	t.Helper()
 	user := users.User{
 		ID:                fixture.id,
-		ExternalSub:       "sub-" + fixture.id,
+		ExternalSub:       testPointer("sub-" + fixture.id),
 		Email:             fixture.id + "@example.com",
 		PreferredUsername: "account-" + fixture.id,
 		Name:              fixture.name,
 		Type:              fixture.accountType,
 		Role:              auth.RoleUser,
 		IsActive:          true,
-		LastLoginAt:       fixture.syncedAt,
+		LastLoginAt:       testPointer(fixture.syncedAt),
 	}
 	if err := db.Create(&user).Error; err != nil {
 		t.Fatalf("seed quota-risk account: %v", err)

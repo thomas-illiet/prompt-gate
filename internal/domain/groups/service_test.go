@@ -58,14 +58,14 @@ func newGroupTestService(t *testing.T) (*Service, *gorm.DB, users.User, provider
 
 	user := users.User{
 		ID:                uuid.NewString(),
-		ExternalSub:       "oidc-sub",
+		ExternalSub:       testPointer("oidc-sub"),
 		Email:             "user@example.com",
 		PreferredUsername: "user",
 		Name:              "User",
 		Type:              auth.UserTypeUser,
 		Role:              auth.RoleUser,
 		IsActive:          true,
-		LastLoginAt:       time.Now().UTC(),
+		LastLoginAt:       testPointer(time.Now().UTC()),
 	}
 	if err := db.Create(&user).Error; err != nil {
 		t.Fatalf("create user: %v", err)
@@ -295,13 +295,13 @@ func TestSnapshotCombinesMultipleGroupsWithUnionSemantics(t *testing.T) {
 	ctx := context.Background()
 	serviceUser := users.User{
 		ID:                uuid.NewString(),
-		ExternalSub:       "service-sub",
+		ExternalSub:       testPointer("service-sub"),
 		PreferredUsername: "automation",
 		Name:              "Automation",
 		Type:              auth.UserTypeService,
 		Role:              auth.RoleUser,
 		IsActive:          true,
-		LastLoginAt:       time.Now().UTC(),
+		LastLoginAt:       testPointer(time.Now().UTC()),
 	}
 	if err := db.Create(&serviceUser).Error; err != nil {
 		t.Fatalf("create service user: %v", err)
@@ -614,24 +614,24 @@ func TestListGroupsPagedIncludesCurrentMemberUsageTotals(t *testing.T) {
 	ctx := context.Background()
 	serviceAccount := users.User{
 		ID:                uuid.NewString(),
-		ExternalSub:       "service-usage-sub",
+		ExternalSub:       testPointer("service-usage-sub"),
 		PreferredUsername: "usage-automation",
 		Name:              "Usage Automation",
 		Type:              auth.UserTypeService,
 		Role:              auth.RoleUser,
 		IsActive:          false,
-		LastLoginAt:       time.Now().UTC(),
+		LastLoginAt:       testPointer(time.Now().UTC()),
 	}
 	outsider := users.User{
 		ID:                uuid.NewString(),
-		ExternalSub:       "outsider-usage-sub",
+		ExternalSub:       testPointer("outsider-usage-sub"),
 		Email:             "outsider-usage@example.com",
 		PreferredUsername: "outsider-usage",
 		Name:              "Outsider Usage",
 		Type:              auth.UserTypeUser,
 		Role:              auth.RoleUser,
 		IsActive:          true,
-		LastLoginAt:       time.Now().UTC(),
+		LastLoginAt:       testPointer(time.Now().UTC()),
 	}
 	if err := db.Create(&serviceAccount).Error; err != nil {
 		t.Fatalf("create inactive service account: %v", err)
@@ -715,14 +715,14 @@ func TestListGroupsPagedSortsUsageBeforePagination(t *testing.T) {
 	for _, name := range []string{"medium-usage", "high-usage"} {
 		user := users.User{
 			ID:                uuid.NewString(),
-			ExternalSub:       name + "-sub",
+			ExternalSub:       testPointer(name + "-sub"),
 			Email:             name + "@example.com",
 			PreferredUsername: name,
 			Name:              name,
 			Type:              auth.UserTypeUser,
 			Role:              auth.RoleUser,
 			IsActive:          true,
-			LastLoginAt:       time.Now().UTC(),
+			LastLoginAt:       testPointer(time.Now().UTC()),
 		}
 		if err := db.Create(&user).Error; err != nil {
 			t.Fatalf("create %s user: %v", name, err)
@@ -895,5 +895,51 @@ func TestGroupMutationsNotifyDomainGroups(t *testing.T) {
 		if domain != configevents.DomainGroups {
 			t.Fatalf("expected groups domain notification, got %q", domain)
 		}
+	}
+}
+
+func TestPendingUserMembershipSurvivesFirstSSOSync(t *testing.T) {
+	service, db, _, openai, _ := newGroupTestService(t)
+	ctx := context.Background()
+	pending := users.User{
+		ID:                uuid.NewString(),
+		PreferredUsername: "pending-group-user",
+		Type:              auth.UserTypeUser,
+		Role:              auth.RoleLimited,
+		IsActive:          true,
+	}
+	if err := db.Create(&pending).Error; err != nil {
+		t.Fatalf("create pending group user: %v", err)
+	}
+	group, err := service.CreateGroup(ctx, CreateGroupInput{
+		Name:        "preassigned-access",
+		DisplayName: "Preassigned Access",
+		ProviderIDs: []string{openai.ID.String()},
+	})
+	if err != nil {
+		t.Fatalf("create group: %v", err)
+	}
+	if err := service.AddMember(ctx, group.ID.String(), pending.ID); err != nil {
+		t.Fatalf("assign pending user group: %v", err)
+	}
+
+	profile, err := users.NewService(db).SyncUser(ctx, auth.Identity{
+		Sub:               "pending-group-subject",
+		PreferredUsername: "pending-group-user",
+		Email:             "pending-group@example.com",
+		Name:              "Pending Group User",
+	})
+	if err != nil {
+		t.Fatalf("claim pending group user: %v", err)
+	}
+	if profile.ID != pending.ID || profile.Role != auth.RoleLimited {
+		t.Fatalf("expected stable local user and role, got %#v", profile)
+	}
+	assigned, err := service.ListUserGroups(ctx, pending.ID)
+	if err != nil {
+		t.Fatalf("list claimed user groups: %v", err)
+	}
+	if len(assigned) != 1 || assigned[0].ID != group.ID {
+		t.Fatalf("expected preassigned group to survive SSO claim, got %#v", assigned)
 	}
 }

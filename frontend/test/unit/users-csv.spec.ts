@@ -4,6 +4,8 @@ import type { AdminUser } from '../../app/types/users'
 import { usersToCsv } from '../../app/utils/users-csv'
 
 const user: AdminUser = {
+  activeInLast30Days: true,
+  quotaResetCredits: 1,
   id: 'user-id',
   sub: 'oidc-sub',
   preferredUsername: '=unsafe',
@@ -25,10 +27,29 @@ describe('usersToCsv', () => {
     const csv = usersToCsv([user])
 
     expect(csv).toContain('"ID","Name","Username","Email"')
+    expect(csv).toContain('"Access","Platform activity (30d)"')
     expect(csv).toContain('"Lovelace, ""Ada"""')
     expect(csv).toContain('"\'=unsafe"')
-    expect(csv).toContain('"Active"')
+    expect(csv).toContain('"Enabled","Active"')
     expect(csv).not.toContain('oidc-sub')
     expect(csv).not.toContain('not exported')
+  })
+
+  it('exports disabled, recently inactive, and never-linked values clearly', () => {
+    const csv = usersToCsv([
+      {
+        ...user,
+        sub: null,
+        email: '',
+        name: '',
+        isActive: false,
+        activeInLast30Days: false,
+        lastLoginAt: null,
+      },
+    ])
+
+    expect(csv).toContain('"Disabled","Inactive"')
+    expect(csv).toContain('"Never"')
+    expect(csv).not.toContain('oidc-sub')
   })
 })

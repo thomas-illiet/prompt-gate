@@ -15,11 +15,21 @@ OIDC login uses:
 - ID token verification
 - OIDC access-token validation against the configured JWKS URL
 
-The first OIDC user synced into an empty database receives role `admin`.
-Subsequent users are created with role `none` until an admin grants access.
-Existing human users are matched by the exact `preferred_username` claim; their
-OIDC subject, email, display name, and last-login timestamp are refreshed at
-login while application-managed role and status fields are preserved.
+The first account created by an OIDC login in an empty database receives role
+`admin`. Administratively pre-created accounts and subsequent OIDC users start
+with role `none` until an admin grants access. Pre-created accounts are matched
+by the exact, case-sensitive `preferred_username` claim. Their OIDC subject,
+email, display name, and last-login timestamp are filled or refreshed at login,
+while the local ID, role, active state, expiration, subscription, note, groups,
+and virtual keys are preserved.
+
+Administrators can grant a role and issue a virtual key before the first SSO
+login. Proxy authorization uses the stable local account ID and normal role,
+active-state, expiry, group, and policy checks; an SSO login is not an extra
+precondition. The administration user list reports recent platform activity
+separately from access: `activeInLast30Days` means the KPI store contains at
+least one proxy request for today or the preceding 29 UTC calendar days. It is
+eventually consistent and must not be treated as an authorization signal.
 
 Browser sessions are stored in Redis when Redis is configured. Session cookies
 are HTTP-only, use `PROMPTGATE_SESSION_COOKIE_NAME`, and inherit secure-cookie
@@ -64,6 +74,22 @@ in constant time and does not expose the configured value. Only one value is
 accepted at a time; rotation requires replacing the secret and restarting every
 API process or triggering an API deployment rollout, with no dual-key grace
 period.
+
+## Browser API Documentation
+
+The Swagger UI at `/admin/documentation` and its OpenAPI document at
+`/api/v1/admin/openapi.json` are protected by the same administrator session
+checks as the rest of the browser administration surface. The UI authenticates
+Try it out requests only with the current HTTP-only session cookie. JavaScript
+does not read or persist the cookie, and it does not inject bearer credentials
+or `X-Admin-API-Key` headers.
+
+Swagger Try it out executes against the configured backend and can perform live
+create, update, and delete operations. Keep the frontend and API same-site so
+the `SameSite=Lax` session cookie remains usable, serve production deployments
+over HTTPS, and grant administrator sessions only to trusted operators. The
+administration API key remains reserved for trusted CLI and server-to-server
+clients.
 
 ## API Tokens
 
@@ -138,7 +164,11 @@ origins are configured:
 - the proxy defaults to `PROMPTGATE_FRONTEND_BASE_URL` when present
 
 Loopback origins are expanded across `localhost`, `127.0.0.1`, and `::1` for
-local development.
+local development. Credentialed browser API requests allow the methods `GET`,
+`POST`, `PUT`, `PATCH`, `DELETE`, and `OPTIONS`; browsers manage the `Cookie`
+header themselves. Allowed request headers are `Authorization`, `Content-Type`,
+`Accept`, and `Idempotency-Key`. Neither `Cookie` nor `X-Admin-API-Key` is
+manually exposed through CORS.
 
 ## Operational Checklist
 

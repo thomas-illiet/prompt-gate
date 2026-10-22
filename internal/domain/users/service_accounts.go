@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"promptgate/backend/internal/domain/auth"
 	"promptgate/backend/internal/platform/configevents"
@@ -98,14 +97,16 @@ func (s *Service) CreateServiceAccount(ctx context.Context, input ServiceAccount
 		if err := s.ensureServiceAccountIdentifierAvailable(ctx, tx, normalized, ""); err != nil {
 			return err
 		}
+		externalSub := "service:" + uuid.NewString()
+		now := s.nowUTC()
 		record = User{
-			ExternalSub:       "service:" + uuid.NewString(),
+			ExternalSub:       &externalSub,
 			PreferredUsername: normalized,
 			Name:              name,
 			Type:              auth.UserTypeService,
 			Role:              auth.RoleUser,
 			IsActive:          input.IsActive,
-			LastLoginAt:       time.Now().UTC(),
+			LastLoginAt:       &now,
 		}
 		if err := tx.Create(&record).Error; err != nil {
 			return fmt.Errorf("create service account: %w", err)

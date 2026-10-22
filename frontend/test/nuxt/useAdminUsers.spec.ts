@@ -26,16 +26,21 @@ vi.mock('../../app/utils/users-csv', async (importOriginal) => ({
   downloadUsersCsv: downloadUsersCsvMock,
 }))
 
-const { apiFetch, routeQuery, useApiFetchMock, useRouteMock } = vi.hoisted(() => {
-  const apiFetch = vi.fn()
-  const routeQuery: Record<string, string> = {}
-  return {
-    apiFetch,
-    routeQuery,
-    useApiFetchMock: vi.fn(() => apiFetch),
-    useRouteMock: vi.fn(() => ({ fullPath: '/admin/users', query: routeQuery })),
-  }
-})
+const { apiFetch, routeQuery, useApiFetchMock, useRouteMock } = vi.hoisted(
+  () => {
+    const apiFetch = vi.fn()
+    const routeQuery: Record<string, string> = {}
+    return {
+      apiFetch,
+      routeQuery,
+      useApiFetchMock: vi.fn(() => apiFetch),
+      useRouteMock: vi.fn(() => ({
+        fullPath: '/admin/users',
+        query: routeQuery,
+      })),
+    }
+  },
+)
 
 mockNuxtImport('useApiFetch', () => useApiFetchMock)
 mockNuxtImport('useRoute', () => useRouteMock)
@@ -49,6 +54,8 @@ function apiError(code: string) {
 }
 
 const user: AdminUser = {
+  activeInLast30Days: true,
+  quotaResetCredits: 1,
   id: 'user-id',
   sub: 'oidc-sub',
   preferredUsername: 'ada',
@@ -133,7 +140,8 @@ describe('useAdminUsers', () => {
     apiFetch.mockReset()
     useApiFetchMock.mockClear()
     useRouteMock.mockClear()
-    for (const key of Object.keys(routeQuery)) Reflect.deleteProperty(routeQuery, key)
+    for (const key of Object.keys(routeQuery))
+      Reflect.deleteProperty(routeQuery, key)
     downloadUsersCsvMock.mockReset()
     setActivePinia(createPinia())
   })
@@ -146,9 +154,7 @@ describe('useAdminUsers', () => {
     await vi.waitFor(() => expect(adminUsers.loading.value).toBe(false))
 
     expect(adminUsers.search.value).toBe(routeQuery.search)
-    expect(apiFetch.mock.calls[0]?.[0]).toContain(
-      `search=${routeQuery.search}`,
-    )
+    expect(apiFetch.mock.calls[0]?.[0]).toContain(`search=${routeQuery.search}`)
   })
 
   it('loads admin users on creation and supports reload', async () => {
@@ -172,6 +178,53 @@ describe('useAdminUsers', () => {
       '/api/v1/admin/users?page=1&pageSize=10&sortBy=lastLoginAt&sortDir=desc',
     )
     expect(adminUsers.users.value).toEqual([])
+  })
+
+  it('pre-creates a trimmed UID and focuses the new account', async () => {
+    const pendingUser: AdminUser = {
+      ...user,
+      id: 'pending-user-id',
+      sub: null,
+      preferredUsername: 'Alice.Example',
+      email: '',
+      name: '',
+      role: 'none',
+      isActive: true,
+      lastLoginAt: null,
+      activeInLast30Days: false,
+    }
+    apiFetch.mockImplementation(async (request, options) => {
+      if (request === '/api/v1/admin/users' && options?.method === 'POST') {
+        return pendingUser
+      }
+      return userResponse([])
+    })
+
+    const adminUsers = useAdminUsers()
+    await vi.waitFor(() => expect(adminUsers.loading.value).toBe(false))
+    adminUsers.setRole('admin')
+    adminUsers.setStatus('inactive')
+    adminUsers.setSearch('previous search')
+
+    const created = await adminUsers.createUser({
+      preferredUsername: '  Alice.Example  ',
+    })
+
+    expect(apiFetch).toHaveBeenCalledWith('/api/v1/admin/users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ preferredUsername: 'Alice.Example' }),
+    })
+    expect(created).toEqual(pendingUser)
+    expect(adminUsers.selectedUser.value).toEqual(pendingUser)
+    expect(adminUsers.role.value).toBe('all')
+    expect(adminUsers.status.value).toBe('all')
+    expect(adminUsers.search.value).toBe('Alice.Example')
+    await vi.waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledWith(
+        expect.stringContaining('search=Alice.Example'),
+      )
+    })
   })
 
   it('exports all users matching the active filters across pages', async () => {
@@ -353,6 +406,95 @@ describe('useAdminUsers', () => {
     expect(adminUsers.users.value).toEqual([notedUser])
   })
 
+  it('offers one quota reset with an idempotency key and reloads users', async () => {
+    const resetSummary = {
+      available: 2,
+      maximum: 2,
+      hasResettableQuota: true,
+      pendingReset: false,
+    }
+    const updatedUser = { ...user, quotaResetCredits: 2 }
+    apiFetch
+      .mockResolvedValueOnce(userResponse([user]))
+      .mockResolvedValueOnce(resetSummary)
+      .mockResolvedValueOnce(userResponse([updatedUser]))
+
+    const adminUsers = useAdminUsers()
+    await vi.waitFor(() => expect(adminUsers.loading.value).toBe(false))
+
+    const response = await adminUsers.grantQuotaReset(user.id)
+
+    expect(response).toEqual(resetSummary)
+    expect(apiFetch).toHaveBeenNthCalledWith(
+      2,
+      `/api/v1/admin/users/${user.id}/quota-resets`,
+      {
+        method: 'POST',
+        headers: { 'Idempotency-Key': expect.any(String) },
+      },
+    )
+    expect(apiFetch).toHaveBeenNthCalledWith(
+      3,
+      '/api/v1/admin/users?page=1&pageSize=10&sortBy=lastLoginAt&sortDir=desc',
+    )
+    expect(adminUsers.users.value).toEqual([updatedUser])
+  })
+
+  it('reuses the quota reset idempotency key when an admin retries', async () => {
+    const retryError = new Error('connection interrupted')
+    const resetSummary = {
+      available: 2,
+      maximum: 2,
+      hasResettableQuota: true,
+      pendingReset: false,
+    }
+    apiFetch
+      .mockResolvedValueOnce(userResponse([user]))
+      .mockRejectedValueOnce(retryError)
+      .mockResolvedValueOnce(resetSummary)
+      .mockResolvedValueOnce(userResponse([{ ...user, quotaResetCredits: 2 }]))
+
+    const adminUsers = useAdminUsers()
+    await vi.waitFor(() => expect(adminUsers.loading.value).toBe(false))
+
+    await expect(adminUsers.grantQuotaReset(user.id)).rejects.toBe(retryError)
+    await adminUsers.grantQuotaReset(user.id)
+
+    const firstHeaders = apiFetch.mock.calls[1]?.[1]?.headers
+    const retryHeaders = apiFetch.mock.calls[2]?.[1]?.headers
+    expect(firstHeaders).toEqual({ 'Idempotency-Key': expect.any(String) })
+    expect(retryHeaders).toEqual(firstHeaders)
+  })
+
+  it('keeps the quota reset idempotency key when the post-grant reload fails', async () => {
+    const reloadError = new Error('reload interrupted')
+    const resetSummary = {
+      available: 2,
+      maximum: 2,
+      hasResettableQuota: true,
+      pendingReset: false,
+    }
+    const updatedUser = { ...user, quotaResetCredits: 2 }
+    apiFetch
+      .mockResolvedValueOnce(userResponse([user]))
+      .mockResolvedValueOnce(resetSummary)
+      .mockRejectedValueOnce(reloadError)
+      .mockResolvedValueOnce(resetSummary)
+      .mockResolvedValueOnce(userResponse([updatedUser]))
+
+    const adminUsers = useAdminUsers()
+    await vi.waitFor(() => expect(adminUsers.loading.value).toBe(false))
+
+    await expect(adminUsers.grantQuotaReset(user.id)).rejects.toBe(reloadError)
+    await adminUsers.grantQuotaReset(user.id)
+
+    const firstHeaders = apiFetch.mock.calls[1]?.[1]?.headers
+    const retryHeaders = apiFetch.mock.calls[3]?.[1]?.headers
+    expect(firstHeaders).toEqual({ 'Idempotency-Key': expect.any(String) })
+    expect(retryHeaders).toEqual(firstHeaders)
+    expect(adminUsers.users.value).toEqual([updatedUser])
+  })
+
   it('loads group options across all pages', async () => {
     apiFetch
       .mockResolvedValueOnce(userResponse([]))
@@ -381,6 +523,18 @@ describe('useAdminUsers', () => {
   it('maps token API errors to readable messages', () => {
     expect(toAdminUserErrorMessage(apiError('token_not_found'))).toBe(
       'Virtual key no longer exists.',
+    )
+    expect(toAdminUserErrorMessage(apiError('quota_reset_balance_full'))).toBe(
+      'This user already has the maximum number of quota resets.',
+    )
+    expect(toAdminUserErrorMessage(apiError('missing_idempotency_key'))).toBe(
+      'Unable to safely offer the reset. Try again.',
+    )
+    expect(toAdminUserErrorMessage(apiError('invalid_preferred_username'))).toBe(
+      'User UID is required.',
+    )
+    expect(toAdminUserErrorMessage(apiError('preferred_username_conflict'))).toBe(
+      'A user with this UID already exists.',
     )
   })
 })

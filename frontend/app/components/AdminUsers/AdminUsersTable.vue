@@ -2,6 +2,7 @@
 import type { DataTableHeader } from 'vuetify'
 
 import type { AppRowAction } from '~/types/row-actions'
+import { QUOTA_RESET_MAXIMUM } from '~/types/quota-resets'
 import type { AdminUser } from '~/types/users'
 import { appRoleColor, appRoleLabel } from '~/utils/auth'
 import { formatNumber } from '~/utils/formatters'
@@ -18,12 +19,14 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
+  create: []
   delete: [user: AdminUser]
   edit: [user: AdminUser]
   manageIps: [user: AdminUser]
   manageGroups: [user: AdminUser]
   manageTokens: [user: AdminUser]
   notes: [user: AdminUser]
+  offerQuotaReset: [user: AdminUser]
   refresh: []
   toggleStatus: [user: AdminUser]
   usageStatistics: [user: AdminUser]
@@ -40,8 +43,13 @@ const headers: DataTableHeader[] = [
     key: 'role',
   }),
   appTableCenteredColumn({
-    title: 'Status',
+    title: 'Access',
     key: 'isActive',
+  }),
+  appTableCenteredColumn({
+    title: 'Platform activity',
+    key: 'activeInLast30Days',
+    sortable: false,
   }),
   appTableCenteredColumn({
     title: 'Plan',
@@ -95,7 +103,7 @@ function displayEmail(user: AdminUser) {
 // displaySubjectSuffix keeps OIDC subjects scannable in compact table cells.
 function displaySubjectSuffix(user: AdminUser) {
   if (!user.sub) {
-    return 'sub: none'
+    return 'Not linked'
   }
 
   if (user.sub.length <= 12) {
@@ -155,6 +163,14 @@ const rowActions: AppRowAction<AdminUser>[] = [
     title: 'Usage statistics',
   },
   {
+    disabled: (user) => user.quotaResetCredits >= QUOTA_RESET_MAXIMUM,
+    icon: 'mdi-refresh',
+    key: 'offerQuotaReset',
+    onSelect: (user) => emit('offerQuotaReset', user),
+    title: (user) =>
+      `Offer quota reset (${user.quotaResetCredits}/${QUOTA_RESET_MAXIMUM})`,
+  },
+  {
     icon: 'mdi-note-edit-outline',
     key: 'notes',
     onSelect: (user) => emit('notes', user),
@@ -178,12 +194,21 @@ const rowActions: AppRowAction<AdminUser>[] = [
   >
     <template #actions>
       <v-btn
+        data-test="pre-create-user"
+        color="primary"
+        rounded="xl"
+        prepend-icon="mdi-account-plus-outline"
+        @click.stop="emit('create')"
+      >
+        Pre-create user
+      </v-btn>
+      <v-btn
         color="primary"
         variant="tonal"
         rounded="xl"
         prepend-icon="mdi-refresh"
         :loading="props.loading"
-        @click="emit('refresh')"
+        @click.stop="emit('refresh')"
       >
         Refresh
       </v-btn>
@@ -194,7 +219,7 @@ const rowActions: AppRowAction<AdminUser>[] = [
       default-sort-dir="desc"
       empty-icon="mdi-account-group-outline"
       empty-title="No users found"
-      empty-text="Try adjusting the search, role, or status filters."
+      empty-text="Try adjusting the search, role, or access filters."
       :headers="headers"
       :items="props.items"
       :loading="props.loading"
@@ -249,10 +274,23 @@ const rowActions: AppRowAction<AdminUser>[] = [
         <div class="app-table-center">
           <AppStatusToggleButton
             :active="item.isActive"
-            active-label="Active"
-            inactive-label="Inactive"
+            active-label="Enabled"
+            inactive-label="Disabled"
             @click="emit('toggleStatus', item)"
           />
+        </div>
+      </template>
+
+      <template #item.activeInLast30Days="{ item }">
+        <div class="app-table-center">
+          <v-chip
+            size="small"
+            label
+            variant="tonal"
+            :color="item.activeInLast30Days ? 'success' : undefined"
+          >
+            {{ item.activeInLast30Days ? 'Active (30d)' : 'Inactive (30d)' }}
+          </v-chip>
         </div>
       </template>
 

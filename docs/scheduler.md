@@ -18,11 +18,17 @@ It does not expose HTTP routes. It runs until the process receives `SIGINT` or
 | Monitoring checks | `15s` scheduler tick, per-service intervals | Runs due HTTP/S checks and marks enabled services `ok` or `degraded`. |
 | Raw usage cleanup | `1h` | Deletes raw proxy usage rows older than `PROMPTGATE_USAGE_RAW_RETENTION`; dashboard KPI rows are retained. |
 | Subscription quota sync | `5m` | Copies live Redis quota counters into PostgreSQL for admin/profile display and audit. |
+| Quota reset distribution | `1h` | Idempotently grants the current UTC calendar month's reset credit to eligible users, up to the two-credit cap. |
+| Pending quota reset reconciliation | `5m` | Retries durable reset consumptions that have not yet been applied to Redis. |
 
 The access expiration job runs once immediately on startup and then repeats on
 its interval. The token cleanup job starts its ticker and runs on the first
 tick. Monitoring checks run once immediately on startup, then every `15s`; each
-service is only checked when its own `intervalSeconds` has elapsed.
+service is only checked when its own `intervalSeconds` has elapsed. Quota reset
+distribution runs immediately and then uses its own interval. Pending-reset
+reconciliation and quota projection sync share one ordered loop: both run on
+startup, then reconciliation always runs before projection on each quota sync
+tick.
 
 ## Runtime Flow
 
@@ -34,13 +40,20 @@ flowchart TD
     App --> AccessJob["Start user access expiration goroutine"]
     App --> MonitoringJob["Start monitoring checker goroutine"]
     App --> UsageCleanup["Start raw usage cleanup goroutine"]
+    App --> ResetDistribution["Distribute monthly reset credits"]
+    App --> QuotaMaintenance["Run quota maintenance loop"]
+    QuotaMaintenance --> ResetReconcile["Reconcile pending quota resets"]
+    ResetReconcile --> QuotaSync["Sync subscription quota projection"]
     TokenJob --> DB["Update token expired_at"]
     AccessJob --> DB
     AccessJob --> Redis["Publish auth config event"]
     MonitoringJob --> DB
     MonitoringJob --> HTTP["HTTP/S services"]
     UsageCleanup --> DB
-    QuotaSync["Subscription quota sync"] --> Redis
+    ResetDistribution --> DB
+    ResetReconcile --> DB
+    ResetReconcile --> Redis
+    QuotaSync --> Redis
     QuotaSync --> DB
 ```
 
@@ -79,6 +92,7 @@ Optional scheduler settings:
 | `PROMPTGATE_USAGE_RAW_RETENTION` | `2160h` | Retention for raw proxy usage tables used by operational metrics. |
 | `PROMPTGATE_USAGE_RAW_CLEANUP_INTERVAL` | `1h` | Interval for raw proxy usage cleanup. |
 | `PROMPTGATE_SUBSCRIPTION_QUOTA_SYNC_INTERVAL` | `5m` | Interval for syncing Redis subscription quota state to PostgreSQL. |
+| `PROMPTGATE_QUOTA_RESET_DISTRIBUTION_INTERVAL` | `1h` | Interval for idempotently granting the current UTC calendar month's reset credit. |
 
 Durations use Go duration syntax such as `30m`, `1h`, or `24h`.
 

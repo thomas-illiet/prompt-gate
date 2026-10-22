@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -24,6 +25,19 @@ const (
 )
 
 var incrementUsageScript = redis.NewScript(`
+local event_at_micros = tonumber(ARGV[11])
+local reset_cutoff_micros = tonumber(redis.call("HGET", KEYS[6], "cutoff") or "0")
+if event_at_micros <= reset_cutoff_micros then
+ return 0
+end
+
+local function update_active_user(zset, user_id, score)
+ local current = redis.call("ZSCORE", zset, user_id)
+ if not current or tonumber(score) > tonumber(current) then
+  redis.call("ZADD", zset, score, user_id)
+ end
+end
+
 local function increment(zset, hash, bucket, tokens, ttl, cutoff)
  local expired = redis.call("ZRANGEBYSCORE", zset, "-inf", cutoff)
  if #expired > 0 then
@@ -37,8 +51,37 @@ local function increment(zset, hash, bucket, tokens, ttl, cutoff)
 end
 increment(KEYS[1], KEYS[2], ARGV[1], ARGV[2], ARGV[3], ARGV[4])
 increment(KEYS[4], KEYS[5], ARGV[5], ARGV[6], ARGV[7], ARGV[8])
-redis.call("ZADD", KEYS[3], ARGV[10], ARGV[9])
+update_active_user(KEYS[3], ARGV[9], ARGV[10])
 return 1
+`)
+
+var applyQuotaResetScript = redis.NewScript(`
+local function update_active_user(zset, user_id, score)
+ local current = redis.call("ZSCORE", zset, user_id)
+ if not current or tonumber(score) > tonumber(current) then
+  redis.call("ZADD", zset, score, user_id)
+ end
+end
+
+local requested_sequence = tonumber(ARGV[1])
+local current_sequence = tonumber(redis.call("HGET", KEYS[6], "sequence") or "0")
+local current_cutoff = tonumber(redis.call("HGET", KEYS[6], "cutoff") or "0")
+
+if requested_sequence <= current_sequence then
+ return {0, current_sequence, current_cutoff}
+end
+
+local redis_time = redis.call("TIME")
+local effective_cutoff = (tonumber(redis_time[1]) * 1000000) + tonumber(redis_time[2])
+if current_cutoff > effective_cutoff then
+ effective_cutoff = current_cutoff
+end
+
+redis.call("DEL", KEYS[1], KEYS[2], KEYS[3], KEYS[4])
+redis.call("HSET", KEYS[6], "sequence", requested_sequence, "cutoff", effective_cutoff)
+update_active_user(KEYS[5], ARGV[2], math.floor(effective_cutoff / 1000000))
+redis.call("SREM", KEYS[7], ARGV[2])
+return {1, requested_sequence, effective_cutoff}
 `)
 
 type RedisStore struct {
@@ -55,6 +98,13 @@ type quotaWindow struct {
 	name          string
 	windowSeconds int64
 	bucketSeconds int64
+}
+
+// QuotaResetApplication reports the durable Redis barrier observed for a reset.
+type QuotaResetApplication struct {
+	Advanced bool
+	Sequence int64
+	Cutoff   time.Time
 }
 
 func NewRedisStore(store *redisstore.Store, service *Service, ttl time.Duration, logger *slog.Logger) *RedisStore {
@@ -291,6 +341,57 @@ func (s *RedisStore) IncrementUsage(ctx context.Context, userID string, tokens i
 	return s.incrementWindow(ctx, client, userID, tokens, now, quota5H())
 }
 
+// ApplyQuotaReset atomically clears both quota windows. Redis chooses the cutoff
+// at the script's linearization point; the sequence makes retries idempotent and
+// prevents an older pending event from clearing usage recorded after a reset.
+func (s *RedisStore) ApplyQuotaReset(ctx context.Context, userID string, sequence int64) (QuotaResetApplication, error) {
+	if !s.Enabled() {
+		return QuotaResetApplication{}, errors.New("subscription quota store unavailable")
+	}
+	userID = strings.TrimSpace(userID)
+	if userID == "" || sequence <= 0 {
+		return QuotaResetApplication{}, errors.New("invalid quota reset application")
+	}
+	values, err := applyQuotaResetScript.Run(
+		ctx,
+		s.store.Client(),
+		[]string{
+			redisstore.SubscriptionUsageZSetKey(userID, Window5H),
+			redisstore.SubscriptionUsageHashKey(userID, Window5H),
+			redisstore.SubscriptionUsageZSetKey(userID, Window7D),
+			redisstore.SubscriptionUsageHashKey(userID, Window7D),
+			redisstore.SubscriptionActiveUsersZSetKey(),
+			redisstore.SubscriptionQuotaResetStateKey(userID),
+			redisstore.SubscriptionActiveUsersKey(),
+		},
+		sequence,
+		userID,
+	).Slice()
+	if err != nil {
+		return QuotaResetApplication{}, fmt.Errorf("apply quota reset: %w", err)
+	}
+	if len(values) != 3 {
+		return QuotaResetApplication{}, fmt.Errorf("apply quota reset: unexpected result length %d", len(values))
+	}
+	advanced, err := quotaResetScriptInt64(values[0])
+	if err != nil {
+		return QuotaResetApplication{}, fmt.Errorf("decode quota reset applied flag: %w", err)
+	}
+	appliedSequence, err := quotaResetScriptInt64(values[1])
+	if err != nil {
+		return QuotaResetApplication{}, fmt.Errorf("decode quota reset sequence: %w", err)
+	}
+	appliedCutoff, err := quotaResetScriptInt64(values[2])
+	if err != nil {
+		return QuotaResetApplication{}, fmt.Errorf("decode quota reset cutoff: %w", err)
+	}
+	return QuotaResetApplication{
+		Advanced: advanced == 1,
+		Sequence: appliedSequence,
+		Cutoff:   time.UnixMicro(appliedCutoff).UTC(),
+	}, nil
+}
+
 func (s *RedisStore) ActiveUserIDs(ctx context.Context) ([]string, error) {
 	if !s.Enabled() {
 		return nil, nil
@@ -324,14 +425,16 @@ func (s *RedisStore) SyncQuotaStates(ctx context.Context, service *Service) (int
 	if err != nil {
 		return 0, fmt.Errorf("load active subscription users: %w", err)
 	}
-	now := time.Now().UTC()
 	var count int64
 	for _, userID := range ids {
-		status, err := s.CurrentQuota(ctx, userID, now)
+		// Timestamp each observation before reading Redis. A concurrent reset
+		// obtains a later timestamp after its Lua barrier and wins monotonically.
+		observedAt := time.Now().UTC()
+		status, err := s.CurrentQuota(ctx, userID, observedAt)
 		if err != nil {
 			return count, err
 		}
-		if err := service.UpsertQuotaState(ctx, userID, status, now); err != nil {
+		if err := service.UpsertQuotaState(ctx, userID, status, observedAt); err != nil {
 			return count, err
 		}
 		count++
@@ -412,10 +515,11 @@ func (s *RedisStore) incrementWindow(ctx context.Context, client *redis.Client, 
 	keys = append(keys,
 		redisstore.SubscriptionUsageZSetKey(userID, other.name),
 		redisstore.SubscriptionUsageHashKey(userID, other.name),
+		redisstore.SubscriptionQuotaResetStateKey(userID),
 	)
 	otherBucket := bucketStart(now, other.bucketSeconds)
 	otherCutoff := bucketStart(now.Add(-time.Duration(other.windowSeconds+other.bucketSeconds)*time.Second), other.bucketSeconds)
-	return incrementUsageScript.Run(ctx, client, keys, bucket, tokens, ttl, cutoff, otherBucket, tokens, other.windowSeconds+(2*other.bucketSeconds), otherCutoff, userID, now.Unix()).Err()
+	return incrementUsageScript.Run(ctx, client, keys, bucket, tokens, ttl, cutoff, otherBucket, tokens, other.windowSeconds+(2*other.bucketSeconds), otherCutoff, userID, now.Unix(), now.UnixMicro()).Err()
 }
 
 func (s *RedisStore) windowUsage(ctx context.Context, userID string, window quotaWindow, now time.Time) (int64, *time.Time, error) {
@@ -492,6 +596,19 @@ func stringMembers(values []string) []any {
 		members = append(members, value)
 	}
 	return members
+}
+
+func quotaResetScriptInt64(value any) (int64, error) {
+	switch typed := value.(type) {
+	case int64:
+		return typed, nil
+	case string:
+		return strconv.ParseInt(typed, 10, 64)
+	case []byte:
+		return strconv.ParseInt(string(typed), 10, 64)
+	default:
+		return 0, fmt.Errorf("unexpected Redis integer type %T", value)
+	}
 }
 
 func quota5H() quotaWindow {

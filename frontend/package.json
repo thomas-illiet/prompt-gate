@@ -2,6 +2,9 @@
   "private": true,
   "type": "module",
   "packageManager": "npm@11.5.1",
+  "scarfSettings": {
+    "enabled": false
+  },
   "scripts": {
     "build": "nuxt build",
     "dev": "nuxt dev -o",
@@ -20,6 +23,9 @@
     "@nuxt/icon": "^2.5.1",
     "@nuxt/test-utils": "^4.2.0",
     "@types/d3": "^7.4.3",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "@types/swagger-ui": "^5.32.1",
     "@vue/test-utils": "^2.5.0",
     "eslint": "^10.9.1",
     "happy-dom": "^20.11.12",
@@ -40,6 +46,9 @@
     "d3": "^7.9.0",
     "echarts": "^6.1.0",
     "pinia": "^4.0.3",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "swagger-ui": "5.34.0",
     "vuetify": "^4.1.12"
   },
   "overrides": {

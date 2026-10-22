@@ -47,24 +47,24 @@ func newDashboardTestHandler(t *testing.T) (*Handler, *gorm.DB) {
 	for _, user := range []users.User{
 		{
 			ID:                "11111111-1111-1111-1111-111111111111",
-			ExternalSub:       "sub-1",
+			ExternalSub:       testPointer("sub-1"),
 			Email:             "one@example.com",
 			PreferredUsername: "one",
 			Name:              "One",
 			Type:              auth.UserTypeUser,
 			Role:              auth.RoleUser,
 			IsActive:          true,
-			LastLoginAt:       now,
+			LastLoginAt:       testPointer(now),
 		},
 		{
 			ID:                "22222222-2222-2222-2222-222222222222",
-			ExternalSub:       "service:worker",
+			ExternalSub:       testPointer("service:worker"),
 			PreferredUsername: "worker",
 			Name:              "Worker",
 			Type:              auth.UserTypeService,
 			Role:              auth.RoleUser,
 			IsActive:          true,
-			LastLoginAt:       now,
+			LastLoginAt:       testPointer(now),
 		},
 	} {
 		if err := db.Create(&user).Error; err != nil {

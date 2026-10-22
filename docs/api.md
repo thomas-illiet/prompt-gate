@@ -23,6 +23,21 @@ by `PROMPTGATE_SESSION_COOKIE_NAME`.
 If `PROMPTGATE_STATIC_ASSETS_DIR` is set, the API also serves static frontend
 assets from `/` and falls back to the SPA shell for frontend routes.
 
+## Interactive Admin Documentation
+
+Administrators can open the native Swagger UI at `/admin/documentation`. The
+page documents the complete control API under `/api/v1/**`; authentication
+routes, the health check, and the LLM proxy are intentionally excluded.
+
+The page loads its OpenAPI 3.0 document from the protected
+`GET /api/v1/admin/openapi.json` endpoint and uses the current HTTP-only browser
+session for Try it out requests. The browser sends the session cookie directly;
+the frontend never reads it or copies it into a header. The documentation does
+not expose `X-Admin-API-Key` as an interactive authentication option.
+
+Try it out is enabled for reads and mutations. `POST`, `PUT`, `PATCH`, and
+`DELETE` requests affect the current environment immediately.
+
 ## User Routes
 
 These routes require a valid browser session and active app access. Roles
@@ -35,6 +50,9 @@ routes require `user` or `admin`.
 | `GET` | `/api/v1/me` | Current authenticated user profile. |
 | `GET` | `/api/v1/me/usage` | Usage summary for the current user. |
 | `GET` | `/api/v1/me/quota` | Current subscription quota state and reset windows. |
+| `GET` | `/api/v1/me/quota-resets` | Current quota-reset credit balance, applicability, and pending state. |
+| `POST` | `/api/v1/me/quota-resets/use` | Spend one credit to clear both live quota windows. Requires `Idempotency-Key`. |
+| `GET` | `/api/v1/me/quota-resets/history` | List applied credit grants and uses, newest first, with `page` and `pageSize`. |
 | `GET` | `/api/v1/me/groups` | Access groups assigned to the current user. |
 | `GET` | `/api/v1/me/help/setup` | Provider setup helper with proxy base URLs and available models. |
 | `GET` | `/api/v1/me/dashboard/tokens` | Token totals for a dashboard window. |
@@ -99,6 +117,12 @@ curl --fail-with-body \
   https://promptgate.example.com/api/v1/admin/providers
 ```
 
+### Documentation
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/v1/admin/openapi.json` | Return the runtime OpenAPI document used by the admin Swagger UI. |
+
 ### Dashboard
 
 | Method | Path | Purpose |
@@ -122,6 +146,7 @@ Admin dashboard token and activity responses follow the same optional
 | --- | --- | --- |
 | `GET` | `/api/v1/admin/users/{id}/ips` | List client IP addresses observed for a user, paginated and sortable by `ip` or `lastSeen`. |
 | `GET` | `/api/v1/admin/users` | List users with pagination, filters, usage totals, and sorting. |
+| `POST` | `/api/v1/admin/users` | Pre-create a human user from an exact OIDC `preferred_username`. |
 | `GET` | `/api/v1/admin/users/{id}` | Get one user. |
 | `GET` | `/api/v1/admin/users/{id}/statistics` | Get aggregated usage totals, duration, and daily activity for one human user. |
 | `PATCH` | `/api/v1/admin/users/{id}` | Update role, active state, or access expiration. |
@@ -133,14 +158,48 @@ Admin dashboard token and activity responses follow the same optional
 | `GET` | `/api/v1/admin/users/{id}/groups` | List the user's access groups. |
 | `PUT` | `/api/v1/admin/users/{id}/groups` | Replace the user's access groups. |
 | `PUT` | `/api/v1/admin/users/{id}/subscription-plan` | Assign or clear the user's subscription plan. |
+| `POST` | `/api/v1/admin/users/{id}/quota-resets` | Offer exactly one reset credit to a human account. Requires `Idempotency-Key`. |
 
-The first synced OIDC user is assigned role `admin`. Later users are created
-with role `none` until an admin grants access.
+The first user created by an OIDC login in an otherwise empty database is
+assigned role `admin`. Later OIDC users, and all administratively pre-created
+users, start with role `none` and with their administrative access switch
+enabled. They cannot use protected routes until an administrator assigns a
+supported role. Pre-creation accepts only
+`{"preferredUsername":"..."}`. The value is trimmed at its edges and then
+stored case-sensitively; an empty value returns `invalid_preferred_username`
+and an existing human identifier returns `preferred_username_conflict`.
+
+Before the first SSO login, `sub` and `lastLoginAt` are `null`, while email and
+name are empty. The first login whose exact `preferred_username` matches fills
+those identity fields on the same local record and preserves its ID, role,
+active state, expiration, subscription, note, groups, and virtual keys.
+
+`isActive` is the administrator-controlled access switch. Separately,
+`activeInLast30Days` reports whether the account has at least one proxy request
+recorded in the KPI data for today and the preceding 29 UTC calendar days. The
+activity value is eventually consistent and does not imply that access is
+currently enabled.
 
 Administrators may create a token for any human user, including an inactive
 user or one with role `none`. The token is stored but proxy authentication
 continues to reject it until the account is active and has a supported access
-role; normal expiration and revocation checks still apply.
+role; normal expiration and revocation checks still apply. A token created for
+a pre-created user becomes usable as soon as those access conditions are met,
+without requiring an SSO login.
+
+Quota-reset mutations require a caller-generated `Idempotency-Key`; retrying
+the same operation with the same key does not debit or grant twice. A reset
+clears both the rolling 5-hour and 7-day Redis counters but preserves all
+historical usage, interception, and KPI records. Business conflicts return
+`409` with one of `quota_reset_credit_unavailable`,
+`quota_reset_not_applicable`, `quota_reset_balance_full`, or
+`quota_reset_pending`. A missing key returns
+`400 {"error":"missing_idempotency_key"}`. Administrators may grant a credit to
+any human account, including an inactive account or one without a subscription,
+up to the two-credit wallet maximum.
+The private ledger records the connected administrator ID for session grants;
+API-key grants record only the `admin_api_key` actor type. Raw administration
+keys and raw idempotency keys are never persisted.
 
 User statistics accept `window=7d`, `window=30d`, or `window=all`, defaulting
 to `30d` when omitted. The response contains `window`, `startsAt`, `endsAt`,

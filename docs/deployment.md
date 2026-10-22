@@ -72,6 +72,13 @@ reference.
 9. Configure providers, users, service accounts, tokens, and the external OPA policy
    through the admin API or frontend.
 
+The user pre-creation migration makes the OIDC subject and last-login columns
+nullable. During an upgrade to the first version that supports pre-creation,
+run the migration, replace every API replica, and only then deploy or use the
+frontend action and `POST /api/v1/admin/users`. Do not create a pending user
+while older API replicas remain in service, because those binaries still expect
+the two columns to be non-null when reading administration responses.
+
 ## Container Examples
 
 Run migrations:

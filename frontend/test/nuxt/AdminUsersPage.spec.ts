@@ -15,6 +15,8 @@ mockNuxtImport('useAdminSubscriptions', () => useAdminSubscriptionsMock)
 mockNuxtImport('useAdminUsers', () => useAdminUsersMock)
 
 const user: AdminUser = {
+  activeInLast30Days: true,
+  quotaResetCredits: 1,
   id: 'user-id',
   sub: 'oidc-sub',
   preferredUsername: 'ada',
@@ -35,12 +37,14 @@ function createAdminUsersMock() {
   return {
     clearIPAddresses: vi.fn(),
     createdToken: shallowRef(null),
+    createUser: vi.fn().mockResolvedValue(user),
     createUserToken: vi.fn(),
     deleteUser: vi.fn(),
     exporting: shallowRef(false),
     exportUsers: vi.fn(),
     groupLoading: shallowRef(false),
     groupOptions: shallowRef([]),
+    grantQuotaReset: vi.fn(),
     ipAddresses: shallowRef([]),
     ipLoading: shallowRef(false),
     ipPage: shallowRef(1),
@@ -50,9 +54,9 @@ function createAdminUsersMock() {
     ipTotal: shallowRef(0),
     listError: shallowRef(null),
     loadGroups: vi.fn(),
-    loadIPAddresses: vi.fn(),
-    loadTokens: vi.fn(),
-    loadUser: vi.fn(),
+    loadIPAddresses: vi.fn().mockResolvedValue([]),
+    loadTokens: vi.fn().mockResolvedValue([]),
+    loadUser: vi.fn().mockResolvedValue(user),
     loadUserGroups: vi.fn(),
     loading: shallowRef(false),
     page: shallowRef(1),
@@ -102,9 +106,18 @@ const UsersTableStub = defineComponent({
       required: true,
     },
   },
-  emits: ['manageIps', 'manageTokens', 'usageStatistics'],
+  emits: [
+    'create',
+    'manageIps',
+    'manageTokens',
+    'offerQuotaReset',
+    'usageStatistics',
+  ],
   template: `
     <div>
+      <button data-test="open-create-user" @click="$emit('create')">
+        Pre-create user
+      </button>
       <button
         data-test="open-ips"
         @click="$emit('manageIps', items[0])"
@@ -123,7 +136,54 @@ const UsersTableStub = defineComponent({
       >
         Virtual keys
       </button>
+      <button
+        data-test="offer-quota-reset"
+        @click="$emit('offerQuotaReset', items[0])"
+      >
+        Offer quota reset
+      </button>
     </div>
+  `,
+})
+
+const CreateDialogStub = defineComponent({
+  props: { modelValue: Boolean },
+  emits: ['create', 'update:modelValue'],
+  template: `
+    <section v-if="modelValue" data-test="create-user-dialog">
+      <button
+        data-test="submit-create-user"
+        @click="$emit('create', { preferredUsername: 'Alice.Example' })"
+      >
+        Create
+      </button>
+    </section>
+  `,
+})
+
+const EditDialogStub = defineComponent({
+  props: { modelValue: Boolean },
+  emits: ['save', 'update:modelValue'],
+  template:
+    '<section v-if="modelValue" data-test="edit-user-dialog">Edit access</section>',
+})
+
+const ConfirmDialogStub = defineComponent({
+  props: {
+    confirmLabel: String,
+    message: String,
+    modelValue: Boolean,
+    title: String,
+  },
+  emits: ['cancel', 'confirm', 'update:modelValue'],
+  template: `
+    <section v-if="modelValue" data-test="confirm-dialog">
+      <h2>{{ title }}</h2>
+      <p>{{ message }}</p>
+      <button data-test="confirm-action" @click="$emit('confirm')">
+        {{ confirmLabel }}
+      </button>
+    </section>
   `,
 })
 
@@ -186,14 +246,15 @@ function mountPage() {
       stubs: {
         AdminAccountNoteDialog: true,
         AdminAccountIPAddressesDialog: IPAddressesDialogStub,
+        AdminUserCreateDialog: CreateDialogStub,
         AdminUserDeleteDialog: true,
-        AdminUserEditDialog: true,
+        AdminUserEditDialog: EditDialogStub,
         AdminUserGroupsDialog: true,
         AdminUsersFilters: true,
         AdminUsersTable: UsersTableStub,
         AdminUserTokensDialog: UserTokensDialogStub,
         AdminUserUsageDialog: UsageDialogStub,
-        AppConfirmDialog: true,
+        AppConfirmDialog: ConfirmDialogStub,
         AppPageHero: true,
         AppTokenCreateDialog: TokenCreateDialogStub,
         UserTokenCreatedDialog: true,
@@ -246,6 +307,51 @@ describe('Admin users page usage statistics dialog', () => {
     expect(adminUsers.exportUsers).toHaveBeenCalledOnce()
   })
 
+  it('pre-creates a user and opens access settings after success', async () => {
+    const adminUsers = createAdminUsersMock()
+    useAdminUsersMock.mockReturnValue(adminUsers)
+    const loadAllPlans = vi.fn()
+    useAdminSubscriptionsMock.mockReturnValue({
+      loadAllPlans,
+      plans: shallowRef([]),
+    })
+    const wrapper = mountPage()
+
+    await wrapper.get('[data-test="open-create-user"]').trigger('click')
+    await wrapper.get('[data-test="submit-create-user"]').trigger('click')
+
+    await vi.waitFor(() => {
+      expect(adminUsers.createUser).toHaveBeenCalledWith({
+        preferredUsername: 'Alice.Example',
+      })
+      expect(wrapper.find('[data-test="create-user-dialog"]').exists()).toBe(
+        false,
+      )
+      expect(wrapper.find('[data-test="edit-user-dialog"]').exists()).toBe(
+        true,
+      )
+    })
+    expect(adminUsers.loadUser).toHaveBeenCalledWith(user.id)
+    expect(loadAllPlans).toHaveBeenCalledOnce()
+  })
+
+  it('keeps the pre-create dialog open when creation fails', async () => {
+    const adminUsers = createAdminUsersMock()
+    adminUsers.createUser.mockRejectedValueOnce(new Error('conflict'))
+    useAdminUsersMock.mockReturnValue(adminUsers)
+    const wrapper = mountPage()
+
+    await wrapper.get('[data-test="open-create-user"]').trigger('click')
+    await wrapper.get('[data-test="submit-create-user"]').trigger('click')
+
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-test="create-user-dialog"]').exists()).toBe(
+        true,
+      )
+    })
+    expect(wrapper.find('[data-test="edit-user-dialog"]').exists()).toBe(false)
+  })
+
   it('creates a token for the user selected from the table', async () => {
     const adminUsers = createAdminUsersMock()
     useAdminUsersMock.mockReturnValue(adminUsers)
@@ -260,6 +366,26 @@ describe('Admin users page usage statistics dialog', () => {
     expect(adminUsers.createUserToken).toHaveBeenCalledWith(user.id, {
       name: 'admin_created',
       description: 'Managed',
+    })
+  })
+
+  it('confirms and grants a quota reset from the selected user row', async () => {
+    const adminUsers = createAdminUsersMock()
+    useAdminUsersMock.mockReturnValue(adminUsers)
+    const wrapper = mountPage()
+
+    await wrapper.get('[data-test="offer-quota-reset"]').trigger('click')
+
+    const dialog = wrapper.get('[data-test="confirm-dialog"]')
+    expect(dialog.text()).toContain('Offer quota reset')
+    expect(dialog.text()).toContain('Ada Lovelace')
+    expect(dialog.text()).toContain('2/2')
+
+    await dialog.get('[data-test="confirm-action"]').trigger('click')
+
+    expect(adminUsers.grantQuotaReset).toHaveBeenCalledWith(user.id)
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-test="confirm-dialog"]').exists()).toBe(false)
     })
   })
 

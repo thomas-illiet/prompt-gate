@@ -62,6 +62,12 @@ func createUsageTables(t *testing.T, db *gorm.DB) {
 			input_tokens integer NOT NULL DEFAULT 0,
 			output_tokens integer NOT NULL DEFAULT 0
 		)`,
+		`CREATE TABLE proxy_daily_usage_kpis (
+			day date NOT NULL,
+			initiator_id text NOT NULL,
+			requests integer NOT NULL DEFAULT 0,
+			PRIMARY KEY (day, initiator_id)
+		)`,
 	}
 	for _, statement := range statements {
 		if err := db.Exec(statement).Error; err != nil {
@@ -207,7 +213,7 @@ func TestSyncUserMatchesPreferredUsernameAndPreservesManagedFields(t *testing.T)
 		t.Fatalf("expected identity fields to be refreshed, got %#v", resynced)
 	}
 
-	if !resynced.LastLoginAt.After(updated.LastLoginAt) {
+	if updated.LastLoginAt == nil || !resynced.LastLoginAt.After(*updated.LastLoginAt) {
 		t.Fatal("expected last login timestamp to move forward on re-sync")
 	}
 }
@@ -256,6 +262,219 @@ func TestSyncUserRequiresPreferredUsername(t *testing.T) {
 	_, err := service.SyncUser(context.Background(), auth.Identity{Sub: "sub-without-username"})
 	if !errors.Is(err, ErrPreferredUsernameRequired) {
 		t.Fatalf("expected preferred username validation error, got %v", err)
+	}
+}
+
+func TestCreateUserCreatesPendingAccountFromExactTrimmedUID(t *testing.T) {
+	service := newTestService(t)
+	ctx := context.Background()
+
+	created, err := service.CreateUser(ctx, "  Alice.Admin  ")
+	if err != nil {
+		t.Fatalf("create pending user: %v", err)
+	}
+	if created.PreferredUsername != "Alice.Admin" {
+		t.Fatalf("expected trimmed case-preserved UID, got %q", created.PreferredUsername)
+	}
+	if created.Sub != nil || created.LastLoginAt != nil {
+		t.Fatalf("expected pending SSO fields to be null, got %#v", created)
+	}
+	if created.Email != "" || created.Name != "" || created.Role != auth.RoleNone || !created.IsActive {
+		t.Fatalf("unexpected pending user defaults: %#v", created)
+	}
+	if created.ActiveInLast30Days {
+		t.Fatal("expected a newly pre-created user to be inactive on the platform")
+	}
+
+	if _, err := service.CreateUser(ctx, "Alice.Admin"); !errors.Is(err, ErrPreferredUsernameConflict) {
+		t.Fatalf("expected exact UID conflict, got %v", err)
+	}
+	if _, err := service.CreateUser(ctx, "alice.admin"); err != nil {
+		t.Fatalf("expected case-distinct UID to be accepted: %v", err)
+	}
+	if _, err := service.CreateUser(ctx, " \t "); !errors.Is(err, ErrPreferredUsernameRequired) {
+		t.Fatalf("expected blank UID rejection, got %v", err)
+	}
+}
+
+func TestCreateUserAllowsServiceAccountWithSameIdentifier(t *testing.T) {
+	service := newTestService(t)
+	ctx := context.Background()
+
+	account, err := service.CreateServiceAccount(ctx, ServiceAccountInput{
+		Identifier: "shared-uid",
+		Name:       "Shared UID worker",
+		IsActive:   true,
+	})
+	if err != nil {
+		t.Fatalf("create service account: %v", err)
+	}
+	person, err := service.CreateUser(ctx, "shared-uid")
+	if err != nil {
+		t.Fatalf("create human with shared identifier: %v", err)
+	}
+	if account.ID == person.ID || person.Type != auth.UserTypeUser {
+		t.Fatalf("expected distinct service and human accounts, got account=%#v person=%#v", account, person)
+	}
+}
+
+func TestCreateUserConcurrentConflictLeavesOneAccount(t *testing.T) {
+	service := newTestService(t)
+	sqlDB, err := service.db.DB()
+	if err != nil {
+		t.Fatalf("expose database: %v", err)
+	}
+	sqlDB.SetMaxOpenConns(1)
+
+	start := make(chan struct{})
+	errorsCh := make(chan error, 2)
+	for range 2 {
+		go func() {
+			<-start
+			_, createErr := service.CreateUser(context.Background(), "concurrent-user")
+			errorsCh <- createErr
+		}()
+	}
+	close(start)
+
+	var successes, conflicts int
+	for range 2 {
+		switch err := <-errorsCh; {
+		case err == nil:
+			successes++
+		case errors.Is(err, ErrPreferredUsernameConflict):
+			conflicts++
+		default:
+			t.Fatalf("unexpected concurrent create error: %v", err)
+		}
+	}
+	if successes != 1 || conflicts != 1 {
+		t.Fatalf("expected one success and one conflict, got successes=%d conflicts=%d", successes, conflicts)
+	}
+
+	var count int64
+	if err := service.db.Model(&User{}).
+		Where("type = ? AND preferred_username = ?", auth.UserTypeUser, "concurrent-user").
+		Count(&count).Error; err != nil {
+		t.Fatalf("count concurrent user: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected one persisted account, got %d", count)
+	}
+}
+
+func TestCreateUserRacingWithSyncUserConvergesOnClaimedAccount(t *testing.T) {
+	service := newTestService(t)
+	sqlDB, err := service.db.DB()
+	if err != nil {
+		t.Fatalf("expose database: %v", err)
+	}
+	sqlDB.SetMaxOpenConns(1)
+
+	type createResult struct {
+		user AdminUser
+		err  error
+	}
+	type syncResult struct {
+		profile auth.UserProfile
+		err     error
+	}
+	start := make(chan struct{})
+	createdCh := make(chan createResult, 1)
+	syncedCh := make(chan syncResult, 1)
+	go func() {
+		<-start
+		user, createErr := service.CreateUser(context.Background(), "racing-user")
+		createdCh <- createResult{user: user, err: createErr}
+	}()
+	go func() {
+		<-start
+		profile, syncErr := service.SyncUser(context.Background(), auth.Identity{
+			Sub:               "racing-subject",
+			PreferredUsername: "racing-user",
+			Email:             "racing@example.com",
+			Name:              "Racing User",
+		})
+		syncedCh <- syncResult{profile: profile, err: syncErr}
+	}()
+	close(start)
+
+	created := <-createdCh
+	if created.err != nil && !errors.Is(created.err, ErrPreferredUsernameConflict) {
+		t.Fatalf("unexpected create side result: %v", created.err)
+	}
+	synced := <-syncedCh
+	if synced.err != nil {
+		t.Fatalf("sync side failed: %v", synced.err)
+	}
+
+	var records []User
+	if err := service.db.Where(
+		"type = ? AND preferred_username = ?",
+		auth.UserTypeUser,
+		"racing-user",
+	).Find(&records).Error; err != nil {
+		t.Fatalf("load racing user: %v", err)
+	}
+	if len(records) != 1 || records[0].ID != synced.profile.ID {
+		t.Fatalf("expected one stable claimed account, records=%#v profile=%#v", records, synced.profile)
+	}
+	if created.err == nil && created.user.ID != synced.profile.ID {
+		t.Fatalf("expected pre-created id %q to be claimed as %q", created.user.ID, synced.profile.ID)
+	}
+	if records[0].ExternalSub == nil || *records[0].ExternalSub != "racing-subject" ||
+		records[0].LastLoginAt == nil || records[0].Email != "racing@example.com" || records[0].Name != "Racing User" {
+		t.Fatalf("expected SSO fields on converged account, got %#v", records[0])
+	}
+}
+
+func TestSyncUserClaimsPendingAccountAndPreservesManagedFields(t *testing.T) {
+	service := newTestService(t)
+	ctx := context.Background()
+
+	pending, err := service.CreateUser(ctx, "pending-user")
+	if err != nil {
+		t.Fatalf("pre-create user: %v", err)
+	}
+	expiresAt := time.Now().UTC().Add(time.Hour)
+	if _, err := service.UpdateUser(ctx, pending.ID, UpdateUserInput{
+		Role:      auth.RoleLimited,
+		IsActive:  false,
+		ExpiresAt: &expiresAt,
+	}); err != nil {
+		t.Fatalf("grant pending user access: %v", err)
+	}
+	if _, err := service.UpdateUserNote(ctx, pending.ID, UpdateAccountNoteInput{Note: "managed note"}); err != nil {
+		t.Fatalf("set pending user note: %v", err)
+	}
+	planID := "11111111-1111-1111-1111-111111111111"
+	if err := service.db.Model(&User{}).Where("id = ?", pending.ID).
+		Update("subscription_plan_id", planID).Error; err != nil {
+		t.Fatalf("assign pending subscription: %v", err)
+	}
+
+	profile, err := service.SyncUser(ctx, auth.Identity{
+		Sub:               "oidc-subject",
+		PreferredUsername: "pending-user",
+		Email:             "pending@example.com",
+		Name:              "Pending User",
+	})
+	if err != nil {
+		t.Fatalf("claim pending user through SSO: %v", err)
+	}
+	if profile.ID != pending.ID || profile.Role != auth.RoleLimited || profile.IsActive {
+		t.Fatalf("expected local identity and access to be preserved, got %#v", profile)
+	}
+	if profile.Sub != "oidc-subject" || profile.Email != "pending@example.com" || profile.Name != "Pending User" || profile.LastLoginAt.IsZero() {
+		t.Fatalf("expected SSO fields to be populated, got %#v", profile)
+	}
+
+	claimed, err := service.GetUser(ctx, pending.ID)
+	if err != nil {
+		t.Fatalf("load claimed user: %v", err)
+	}
+	if claimed.Note != "managed note" || claimed.SubscriptionPlanID == nil || *claimed.SubscriptionPlanID != planID || claimed.ExpiresAt == nil {
+		t.Fatalf("expected managed fields to survive SSO claim, got %#v", claimed)
 	}
 }
 
@@ -339,8 +558,8 @@ func TestCreateServiceAccountForcesServiceTypeAndUserRole(t *testing.T) {
 	if record.Role != auth.RoleUser {
 		t.Fatalf("expected stored role user, got %q", record.Role)
 	}
-	if !strings.HasPrefix(record.ExternalSub, "service:") {
-		t.Fatalf("expected service external sub, got %q", record.ExternalSub)
+	if record.ExternalSub == nil || !strings.HasPrefix(*record.ExternalSub, "service:") {
+		t.Fatalf("expected service external sub, got %v", record.ExternalSub)
 	}
 }
 
@@ -409,6 +628,122 @@ func TestListUsersIncludesHistoricalTokenConsumption(t *testing.T) {
 	gotSecond := adminUserByID(t, result.Items, second.ID)
 	if gotSecond.InputTokens != 101 || gotSecond.OutputTokens != 103 {
 		t.Fatalf("expected second user token totals 101/103, got %#v", gotSecond)
+	}
+}
+
+func TestAdminUserActivityUsesThirtyUTCDaysAndIsIndependentFromAccess(t *testing.T) {
+	service := newTestService(t)
+	ctx := context.Background()
+	fixedNow := time.Date(2026, time.October, 23, 21, 45, 0, 0, time.FixedZone("test", 2*60*60))
+	service.now = func() time.Time { return fixedNow }
+	todayUTC := time.Date(2026, time.October, 23, 0, 0, 0, 0, time.UTC)
+
+	create := func(uid string) AdminUser {
+		t.Helper()
+		user, err := service.CreateUser(ctx, uid)
+		if err != nil {
+			t.Fatalf("create %s: %v", uid, err)
+		}
+		return user
+	}
+	todayUser := create("today-user")
+	boundaryUser := create("boundary-user")
+	oldUser := create("old-user")
+	zeroUser := create("zero-user")
+	quietUser := create("quiet-user")
+
+	seedActivity := func(userID string, day time.Time, requests int64) {
+		t.Helper()
+		if err := service.db.Exec(
+			"INSERT INTO proxy_daily_usage_kpis (day, initiator_id, requests) VALUES (?, ?, ?)",
+			day,
+			userID,
+			requests,
+		).Error; err != nil {
+			t.Fatalf("seed activity for %s: %v", userID, err)
+		}
+	}
+	seedActivity(todayUser.ID, todayUTC, 1)
+	seedActivity(boundaryUser.ID, todayUTC.AddDate(0, 0, -29), 2)
+	seedActivity(oldUser.ID, todayUTC.AddDate(0, 0, -30), 3)
+	seedActivity(zeroUser.ID, todayUTC.AddDate(0, 0, -5), 0)
+
+	updated, err := service.UpdateUser(ctx, todayUser.ID, UpdateUserInput{
+		Role:     auth.RoleNone,
+		IsActive: false,
+	})
+	if err != nil {
+		t.Fatalf("disable recently active user: %v", err)
+	}
+	if updated.IsActive || !updated.ActiveInLast30Days {
+		t.Fatalf("expected disabled access and independent recent activity, got %#v", updated)
+	}
+
+	result, err := service.ListUsers(ctx, ListParams{Page: 1, PageSize: 10, Type: auth.UserTypeUser})
+	if err != nil {
+		t.Fatalf("list activity: %v", err)
+	}
+	assertActivity := func(user AdminUser, want bool) {
+		t.Helper()
+		got := adminUserByID(t, result.Items, user.ID).ActiveInLast30Days
+		if got != want {
+			t.Fatalf("activity for %s = %t, want %t", user.PreferredUsername, got, want)
+		}
+	}
+	assertActivity(todayUser, true)
+	assertActivity(boundaryUser, true)
+	assertActivity(oldUser, false)
+	assertActivity(zeroUser, false)
+	assertActivity(quietUser, false)
+
+	detail, err := service.GetUser(ctx, boundaryUser.ID)
+	if err != nil {
+		t.Fatalf("get boundary user: %v", err)
+	}
+	if !detail.ActiveInLast30Days {
+		t.Fatal("expected detail response to include recent activity")
+	}
+	noted, err := service.UpdateUserNote(ctx, boundaryUser.ID, UpdateAccountNoteInput{Note: "still active"})
+	if err != nil {
+		t.Fatalf("update active user note: %v", err)
+	}
+	if !noted.ActiveInLast30Days {
+		t.Fatal("expected note response to include recent activity")
+	}
+}
+
+func TestLastLoginSortAlwaysPlacesPendingUsersLast(t *testing.T) {
+	service := newTestService(t)
+	ctx := context.Background()
+
+	pending, err := service.CreateUser(ctx, "pending")
+	if err != nil {
+		t.Fatalf("create pending user: %v", err)
+	}
+	linked, err := service.SyncUser(ctx, auth.Identity{
+		Sub:               "linked-sub",
+		PreferredUsername: "linked",
+		Email:             "linked@example.com",
+		Name:              "Linked",
+	})
+	if err != nil {
+		t.Fatalf("sync linked user: %v", err)
+	}
+
+	for _, direction := range []string{"asc", "desc"} {
+		result, err := service.ListUsers(ctx, ListParams{
+			Page:     1,
+			PageSize: 10,
+			Type:     auth.UserTypeUser,
+			SortBy:   "lastLoginAt",
+			SortDir:  direction,
+		})
+		if err != nil {
+			t.Fatalf("sort last login %s: %v", direction, err)
+		}
+		if len(result.Items) != 2 || result.Items[0].ID != linked.ID || result.Items[1].ID != pending.ID {
+			t.Fatalf("expected pending user last for %s sort, got %#v", direction, result.Items)
+		}
 	}
 }
 

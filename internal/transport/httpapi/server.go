@@ -17,6 +17,7 @@ import (
 	"promptgate/backend/internal/domain/users"
 	"promptgate/backend/internal/platform/config"
 	"promptgate/backend/internal/transport/httpapi/admin"
+	openapidoc "promptgate/backend/internal/transport/httpapi/openapi"
 
 	"gorm.io/gorm"
 )
@@ -70,13 +71,14 @@ func NewHandler(deps Dependencies) http.Handler {
 		Subscriptions: deps.Subscriptions,
 		SetupGuides:   deps.SetupGuides,
 	})
+	openAPIHandler := openapidoc.NewHandler(deps.Config)
 
 	mux := http.NewServeMux()
 	registerRoutes(mux, publicRoutes(srv))
 	registerRoutes(mux, sessionRoutes(), sessionAccessMiddlewares(deps.Sessions, deps.Config)...)
 	registerRoutes(mux, limitedRoutes(srv), limitedAccessMiddlewares(deps.Sessions, deps.Config)...)
 	registerRoutes(mux, userRoutes(srv), userAccessMiddlewares(deps.Sessions, deps.Config)...)
-	registerRoutes(mux, adminRoutes(adminHandler), adminAccessMiddlewares(deps.Sessions, deps.Config)...)
+	registerRoutes(mux, adminRoutes(adminHandler, openAPIHandler), adminAccessMiddlewares(deps.Sessions, deps.Config)...)
 
 	if deps.Config.StaticAssetsDir != "" {
 		mux.Handle("/", newStaticAssetsHandler(deps.Config.StaticAssetsDir))

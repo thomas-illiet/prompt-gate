@@ -5,6 +5,8 @@ import AdminUserUsageDialog from '../../app/components/AdminUsers/AdminUserUsage
 import type { AdminUser } from '../../app/types/users'
 
 const user: AdminUser = {
+  activeInLast30Days: true,
+  quotaResetCredits: 1,
   id: 'user/id',
   sub: 'oidc-sub',
   preferredUsername: 'ada',

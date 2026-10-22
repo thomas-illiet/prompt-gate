@@ -163,14 +163,14 @@ func TestHandleCurrentUserGroupsReturnsProfileSafeMemberships(t *testing.T) {
 	ctx := context.Background()
 	user := users.User{
 		ID:                profile.ID,
-		ExternalSub:       profile.Sub,
+		ExternalSub:       testPointer(profile.Sub),
 		Email:             profile.Email,
 		PreferredUsername: profile.PreferredUsername,
 		Name:              profile.Name,
 		Type:              profile.Type,
 		Role:              profile.Role,
 		IsActive:          profile.IsActive,
-		LastLoginAt:       profile.LastLoginAt,
+		LastLoginAt:       testPointer(profile.LastLoginAt),
 	}
 	if err := db.Create(&user).Error; err != nil {
 		t.Fatalf("create user: %v", err)
@@ -488,14 +488,14 @@ func createHTTPUser(t *testing.T, db *gorm.DB, profile auth.UserProfile) {
 
 	user := users.User{
 		ID:                profile.ID,
-		ExternalSub:       profile.Sub,
+		ExternalSub:       testPointer(profile.Sub),
 		Email:             profile.Email,
 		PreferredUsername: profile.PreferredUsername,
 		Name:              profile.Name,
 		Type:              profile.Type,
 		Role:              profile.Role,
 		IsActive:          profile.IsActive,
-		LastLoginAt:       profile.LastLoginAt,
+		LastLoginAt:       testPointer(profile.LastLoginAt),
 	}
 	if err := db.Create(&user).Error; err != nil {
 		t.Fatalf("create user: %v", err)

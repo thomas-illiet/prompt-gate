@@ -53,14 +53,14 @@ func createStatisticsOutsideUser(t *testing.T, db *gorm.DB) {
 	t.Helper()
 	user := users.User{
 		ID:                statisticsOutsideGroupUserID,
-		ExternalSub:       "outside-group",
+		ExternalSub:       testPointer("outside-group"),
 		Email:             "outside@example.com",
 		PreferredUsername: "outside",
 		Name:              "Outside",
 		Type:              auth.UserTypeUser,
 		Role:              auth.RoleUser,
 		IsActive:          true,
-		LastLoginAt:       time.Now().UTC(),
+		LastLoginAt:       testPointer(time.Now().UTC()),
 	}
 	if err := db.Create(&user).Error; err != nil {
 		t.Fatalf("create outside user: %v", err)

@@ -1,18 +1,31 @@
 package users
 
-import "promptgate/backend/internal/domain/auth"
+import (
+	"time"
+
+	"promptgate/backend/internal/domain/auth"
+)
 
 func (u *User) profile() auth.UserProfile {
+	var sub string
+	if u.ExternalSub != nil {
+		sub = *u.ExternalSub
+	}
+	var lastLoginAt time.Time
+	if u.LastLoginAt != nil {
+		lastLoginAt = *u.LastLoginAt
+	}
+
 	return auth.UserProfile{
 		ID:                u.ID,
-		Sub:               u.ExternalSub,
+		Sub:               sub,
 		PreferredUsername: u.PreferredUsername,
 		Email:             u.Email,
 		Name:              u.Name,
 		Type:              u.Type,
 		Role:              u.Role,
 		IsActive:          u.IsActive,
-		LastLoginAt:       u.LastLoginAt,
+		LastLoginAt:       lastLoginAt,
 	}
 }
 

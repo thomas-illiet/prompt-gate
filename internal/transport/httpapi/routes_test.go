@@ -13,6 +13,7 @@ import (
 func TestRouteInventoryIsCompleteAndUnique(t *testing.T) {
 	srv := &server{}
 	adminHandler := admin.NewHandler(admin.Dependencies{})
+	openAPIHandler := func(http.ResponseWriter, *http.Request) {}
 	groups := []struct {
 		name   string
 		routes []routeDefinition
@@ -20,12 +21,12 @@ func TestRouteInventoryIsCompleteAndUnique(t *testing.T) {
 	}{
 		{name: "public", routes: publicRoutes(srv), want: 5},
 		{name: "session", routes: sessionRoutes(), want: 1},
-		{name: "limited", routes: limitedRoutes(srv), want: 12},
+		{name: "limited", routes: limitedRoutes(srv), want: 15},
 		{name: "user", routes: userRoutes(srv), want: 5},
-		{name: "admin", routes: adminRoutes(adminHandler), want: 86},
+		{name: "admin", routes: adminRoutes(adminHandler, openAPIHandler), want: 89},
 	}
 
-	seen := make(map[string]string, 109)
+	seen := make(map[string]string, 115)
 	for _, group := range groups {
 		if len(group.routes) != group.want {
 			t.Errorf("%s routes: got %d, want %d", group.name, len(group.routes), group.want)
@@ -45,8 +46,8 @@ func TestRouteInventoryIsCompleteAndUnique(t *testing.T) {
 		}
 	}
 
-	if len(seen) != 109 {
-		t.Errorf("route inventory: got %d routes, want 109", len(seen))
+	if len(seen) != 115 {
+		t.Errorf("route inventory: got %d routes, want 115", len(seen))
 	}
 	for _, removed := range []string{
 		"GET /api/v1/me/prompts",
@@ -65,7 +66,7 @@ func TestRouteInventoryIsCompleteAndUnique(t *testing.T) {
 
 func TestRemovedMCPRoutesReturnNotFound(t *testing.T) {
 	mux := http.NewServeMux()
-	registerRoutes(mux, adminRoutes(admin.NewHandler(admin.Dependencies{})))
+	registerRoutes(mux, adminRoutes(admin.NewHandler(admin.Dependencies{}), func(http.ResponseWriter, *http.Request) {}))
 
 	for _, request := range []struct {
 		method string
@@ -99,6 +100,9 @@ func TestLimitedRouteBoundary(t *testing.T) {
 	for _, allowed := range []string{
 		"GET /api/v1/me/usage",
 		"GET /api/v1/me/quota",
+		"GET /api/v1/me/quota-resets",
+		"POST /api/v1/me/quota-resets/use",
+		"GET /api/v1/me/quota-resets/history",
 		"GET /api/v1/me/groups",
 		"GET /api/v1/me/dashboard/overview",
 		"GET /api/v1/me/dashboard/tokens",

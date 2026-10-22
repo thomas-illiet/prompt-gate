@@ -17,6 +17,46 @@ const (
 	maxUsersPageSize     = 100
 )
 
+type createAdminUserRequest struct {
+	PreferredUsername string `json:"preferredUsername"`
+}
+
+// HandleAdminCreateUser pre-creates a human user that will be linked by an exact OIDC preferred_username match.
+func (h *Handler) HandleAdminCreateUser(w http.ResponseWriter, r *http.Request) {
+	var input createAdminUserRequest
+	if !decodeRequestBody(w, r, &input) {
+		return
+	}
+
+	user, err := h.users.CreateUser(r.Context(), input.PreferredUsername)
+	if err != nil {
+		status := http.StatusInternalServerError
+		payload := map[string]string{"error": err.Error()}
+
+		switch {
+		case errors.Is(err, users.ErrPreferredUsernameRequired):
+			status = http.StatusBadRequest
+			payload["error"] = "invalid_preferred_username"
+		case errors.Is(err, users.ErrPreferredUsernameConflict):
+			status = http.StatusConflict
+			payload["error"] = "preferred_username_conflict"
+		}
+
+		writeJSON(w, status, payload)
+		return
+	}
+	if h.subscriptions != nil {
+		items := []users.AdminUser{user}
+		if err := h.subscriptions.DecorateAdminUsers(r.Context(), items); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			return
+		}
+		user = items[0]
+	}
+
+	writeJSON(w, http.StatusCreated, user)
+}
+
 // HandleAdminListUsers lists users with optional filtering by role, status, and search query.
 func (h *Handler) HandleAdminListUsers(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()

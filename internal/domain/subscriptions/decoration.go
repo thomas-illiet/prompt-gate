@@ -19,6 +19,10 @@ func (s *Service) DecorateAdminUsers(ctx context.Context, items []users.AdminUse
 	if err != nil {
 		return err
 	}
+	resetCredits, err := s.quotaResetCreditLookup(ctx, adminUserIDs(items))
+	if err != nil {
+		return err
+	}
 	for i := range items {
 		decorateAccount(
 			items[i].ID,
@@ -30,8 +34,21 @@ func (s *Service) DecorateAdminUsers(ctx context.Context, items []users.AdminUse
 			&items[i].EffectiveSubscriptionPlan,
 			&items[i].QuotaState,
 		)
+		items[i].QuotaResetCredits = resetCredits[items[i].ID]
 	}
 	return nil
+}
+
+func (s *Service) quotaResetCreditLookup(ctx context.Context, ids []string) (map[string]int, error) {
+	var wallets []QuotaResetWallet
+	if err := s.db.WithContext(ctx).Where("user_id IN ?", ids).Find(&wallets).Error; err != nil {
+		return nil, fmt.Errorf("load quota reset wallets: %w", err)
+	}
+	lookup := make(map[string]int, len(wallets))
+	for _, wallet := range wallets {
+		lookup[wallet.UserID] = wallet.Available
+	}
+	return lookup, nil
 }
 
 func (s *Service) DecorateServiceAccounts(ctx context.Context, items []users.ServiceAccount) error {
