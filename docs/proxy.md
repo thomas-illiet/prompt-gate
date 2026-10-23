@@ -25,14 +25,24 @@ flowchart TD
     E --> F["External OPA decision (Redis-cached)"]
     F --> G{"Policy allows?"}
     G -->|No| H["403 policy_denied or 503 policy_unavailable"]
-    G -->|Yes| I["AIBridge actor middleware"]
-    I --> J["Current proxy bridge"]
-    J --> K["Provider"]
-    J --> L["Usage recorder"]
+    G -->|Yes| I["Access-group provider and model checks"]
+    I -->|Denied| I2["403 group_access_denied or group_model_required"]
+    I -->|Allowed| J["Effective subscription and rolling quota check"]
+    J -->|No plan| J2["403 subscription_required"]
+    J -->|Quota exhausted| J3["429 quota_exceeded"]
+    J -->|Allowed| K["AIBridge actor middleware"]
+    K --> L["Current proxy bridge"]
+    L --> M["Provider"]
+    L --> N["Usage recorder"]
 ```
 
 The proxy strips inbound `Authorization` and `X-Api-Key` headers after Prompt
 Gate authentication so local credentials are not forwarded upstream.
+
+Subscription checks apply to quota-consuming `POST` routes for chat
+completions, embeddings, Anthropic messages, and Responses API operations. A
+quota reset advances a per-account Redis barrier and clears both live rolling
+windows without deleting PostgreSQL usage, interception, or dashboard KPI data.
 
 ## Request Debug Mode
 
@@ -117,7 +127,7 @@ The proxy recorder stores:
 - provider name and provider type
 - model name
 - token usage, including cache read/write token counts
-- tool usage and invocation errors reported by providers
+- tool invocation names, arguments, and errors reported by providers
 - the normalized client IP and its most recent use per user or service account
 
 This data powers the current-user dashboard and user or service-account usage
@@ -216,6 +226,9 @@ The proxy uses Redis for:
 
 - API token auth cache keys
 - provider snapshots
+- access-group and subscription-plan snapshots
+- versioned subscription assignments
+- rolling 5-hour and 7-day quota counters plus quota-reset barriers
 - OPA allow and deny decisions
 - config version counters
 - config reload pub/sub
@@ -232,11 +245,14 @@ The proxy subscribes to `promptgate:config:events`.
 | Event domain | Proxy action |
 | --- | --- |
 | `providers` | Schedule a debounced bridge rebuild. |
+| `groups` | Refresh the access-group snapshot. |
 | `auth` | Update the auth cache version. |
+| `subscriptions` | Refresh subscription plans and versioned account assignments through the subscription watcher. |
 
 `PROMPTGATE_PROXY_RELOAD_DEBOUNCE` controls provider rebuild debounce
-time. The proxy also listens for `SIGHUP` and runs a full runtime reload when
-the signal is received.
+time. Subscription updates use their own watcher but consume the same Redis
+event stream. The proxy also listens for `SIGHUP` and runs a full runtime reload
+when the signal is received.
 
 If a reload fails, the proxy logs the error and keeps the previous working
 bridge.

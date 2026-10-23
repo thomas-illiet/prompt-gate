@@ -44,6 +44,21 @@ its name. It must contain:
 - `PROMPTGATE_SECRETS_KEY`
 - `PROMPTGATE_KEYCLOAK_CLIENT_SECRET` when the OIDC client requires it
 
+## Quota Reset Scheduling
+
+The scheduler distributes monthly reset credits immediately on startup and then
+at `config.quotaResetDistributionInterval`, which defaults to `1h`. Pending
+reset reconciliation and the PostgreSQL quota projection run immediately and
+then at `config.subscriptionQuotaSyncInterval`, which defaults to `5m`;
+reconciliation always runs before projection.
+
+Keep `schedule.replicas: 1` unless the deployment adds an external distributed
+lock. Complete the release migrations before the scheduler starts because these
+jobs use the subscription quota projection, wallet, and ledger tables. With
+Argo CD, keep the migration Job enabled and ordered ahead of the workloads. With
+direct Helm installs, or when `migrate.enabled=false`, run an external migration
+process before starting or upgrading the scheduler.
+
 ## Administration API Key
 
 The optional administration API key provides direct access to every

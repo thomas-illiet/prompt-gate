@@ -64,9 +64,9 @@ make build
 ```
 
 Set `PROMPTGATE_TEST_POSTGRES_URL` to a disposable PostgreSQL database when
-running `make test` to include the PostgreSQL-specific migration and concurrent
-quota-reset tests. CI and the release workflow always run those tests against
-PostgreSQL 18.
+running `make test` to include the PostgreSQL-specific migration, first-user
+bootstrap concurrency, and quota-reset tests. CI and the release workflow
+always run those tests against PostgreSQL 18.
 
 Run the backend processes:
 
@@ -131,6 +131,23 @@ PROMPTGATE_STATIC_ASSETS_DIR=/app/public
 ```
 
 When this variable is set, the API serves frontend files directly.
+
+## OpenAPI Contract
+
+`internal/transport/httpapi/openapi/openapi.yaml` is the source document loaded
+by the protected administrator explorer at `/admin/documentation`. When a
+runtime route under `/api/v1/**`, its request, or its response changes, update
+this document in the same change.
+
+The HTTP API tests validate the document, representative schemas, and
+bidirectional parity between runtime operations and OpenAPI operations. Run the
+targeted checks with:
+
+```sh
+go test ./internal/transport/httpapi/...
+```
+
+`make test` includes the same checks in the full backend suite.
 
 ## Migrations
 

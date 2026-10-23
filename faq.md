@@ -58,19 +58,21 @@ Your profile shows your assigned subscription plan, measured usage, and remainin
 
 ## 15. What happens when I exceed my quota?
 
-The proxy temporarily rejects new requests with a quota exceeded error. Access becomes available again when enough usage falls outside the rolling window or when an administrator changes your subscription plan.
+The proxy temporarily rejects new requests with a quota exceeded error. If a reset credit is available and your plan has a finite quota, open your profile and use one credit. A reset clears both live 5-hour and 7-day windows without deleting historical usage or dashboard analytics. If the reset is pending, the profile updates automatically while the scheduler retries it. Otherwise, access becomes available again when enough usage falls outside the rolling window or when an administrator changes your subscription plan.
+
+Active human accounts with unexpired `limited`, `user`, or `admin` access and an effective finite quota receive one automatic credit per UTC calendar month, up to a balance of two. Reaching the two-credit maximum still counts as that month's distribution, so spending one later in the same month does not immediately add another. An administrator can also offer one credit to any human account while its balance is below the maximum.
 
 ## 16. What can I see on my dashboard?
 
-The dashboard shows token volume, request count, request duration, daily activity, and the most frequently used models and providers. Available views cover the last 7 days, the last 30 days, or the entire retained period.
+The dashboard shows token volume, request count, request duration, daily activity, and the most frequently used models and providers. Available views cover the last 7 days, the last 30 days, or the entire retained period. The expandable 365-day activity view is available only on the personal dashboard; the organization overview does not expose a 365-day window.
 
 ## 17. Are the displayed costs actual billing amounts?
 
-No. When enabled, cost estimates are calculated from recorded token counts and the rates configured in Prompt Gate. They are provided for monitoring purposes and do not replace provider statements or invoices.
+No. When enabled, cost estimates are calculated from recorded token counts and the rates configured in Prompt Gate. They are provided for monitoring purposes and do not replace provider statements or invoices. The interface marks cost coverage as complete, partial, or unavailable when retained raw usage does not cover the whole requested period; an unavailable estimate is omitted instead of being displayed as zero.
 
 ## 18. What information does Prompt Gate record for a request?
 
-Prompt Gate records the identity that initiated the request, provider, model, timestamps, duration, token usage, and tool usage reported by the provider. Prompt contents are not recorded. This data powers dashboards and administration statistics.
+Prompt Gate records the identity that initiated the request, provider, model, timestamps, duration, token usage, and provider-reported tool invocation names, arguments, and errors. Raw prompts and assistant responses are not stored in PostgreSQL. If an operator explicitly enables OpenTelemetry prompt, output, or thinking capture, that configured content is exported to the external trace collector; review its access and retention policy. OpenTelemetry spans also include account identity metadata and tool arguments when tracing is enabled, even when raw prompt and output capture are disabled. Separately, the emergency `PROMPTGATE_PROXY_DEBUG_REQUESTS` mode logs request headers and body bytes consumed by the proxy, which can expose credentials, prompts, and personal data; it must remain disabled outside short-lived diagnosis. The PostgreSQL records power dashboards and administration statistics.
 
 ## 19. Is my Prompt Gate key sent to the AI provider?
 
@@ -90,7 +92,7 @@ Prompt Gate sends a minimal identity and request context to an external OPA serv
 
 ## 23. Do I need to restart my client when a provider or rule changes?
 
-Usually not. Prompt Gate dynamically reloads providers and authentication state. OPA policy changes take effect after an existing cached decision expires, at most 10 minutes with the default configuration.
+Usually not. Prompt Gate dynamically reloads providers, access groups, subscription plans and assignments, and authentication state. OPA policy changes take effect after an existing cached decision expires, at most 10 minutes with the default configuration.
 
 ## 24. How can I tell whether a service is unavailable or degraded?
 
@@ -98,7 +100,7 @@ The monitoring view displays the current state of monitored services, their late
 
 ## 25. What can an administrator manage in Prompt Gate?
 
-An administrator can manage users, roles, access expiration dates, service accounts, keys, providers, access groups, subscription plans, quotas, setup guides, FAQ entries, and monitored services. OPA policies are operated independently. Administrators can also access global usage statistics.
+An administrator can pre-create users, manage roles and access expiration dates, offer quota-reset credits, and manage service accounts, keys, providers, access groups, subscription plans, quotas, setup guides, FAQ entries, and monitored services. OPA policies are operated independently. Administrators can also access global usage statistics and the interactive API documentation, whose Try it out requests affect the current environment.
 
 ## 26. How are provider secrets protected?
 

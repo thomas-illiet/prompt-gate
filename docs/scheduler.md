@@ -33,7 +33,10 @@ tick.
 Monthly reset distribution considers every non-expired, active human account
 with role `limited`, `user`, or `admin` and an effective finite quota. This
 includes an active `limited` account pre-created by an administrator before its
-first SSO login.
+first SSO login. Each eligible account is processed once per UTC calendar
+month. An account already at the two-credit maximum is still marked processed,
+so spending a credit later in the same month does not backfill another monthly
+credit.
 
 ## Runtime Flow
 
@@ -110,4 +113,6 @@ Durations use Go duration syntax such as `30m`, `1h`, or `24h`.
 - Use the same `PROMPTGATE_JWT_SECRET` and `PROMPTGATE_SECRETS_KEY` values as
   API and proxy processes.
 - Treat scheduler failures as operationally important because expired access
-  and token state may lag until the process is restored.
+  and token state may lag until the process is restored. Monthly reset-credit
+  distribution, pending reset reconciliation, and the PostgreSQL quota
+  projection also stop advancing while the scheduler is unavailable.

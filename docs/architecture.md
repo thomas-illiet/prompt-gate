@@ -12,7 +12,7 @@ flowchart LR
     Admin["Admin UI"] --> API
     Client["LLM client"] --> Proxy["promptgate proxy"]
     Worker["promptgate worker"] --> WorkerJobs["Usage event jobs"]
-    Schedule["promptgate schedule"] --> Jobs["Cleanup jobs"]
+    Schedule["promptgate schedule"] --> Jobs["Maintenance and quota jobs"]
     Migrate["promptgate migrate"] --> DB["PostgreSQL"]
 
     API --> DB
@@ -34,8 +34,8 @@ flowchart LR
 | `promptgate api` | HTTP API, OIDC browser login, sessions, user/admin routes, token creation, provider configuration, optional static frontend hosting. |
 | `promptgate proxy` | API-token authentication for LLM traffic, external OPA authorization, provider routing, Redis usage event enqueueing, hot reload. |
 | `promptgate worker` | Redis Stream consumer for proxy usage events, raw usage persistence, and dashboard KPI aggregation. |
-| `promptgate schedule` | Background token expiration marking, user access expiration, monitoring checks, and raw proxy usage cleanup. |
-| `promptgate migrate` | GORM migrations for users, tokens, providers, proxy recorder tables, and dashboard KPI tables, plus removal of retired schemas. |
+| `promptgate schedule` | Background token and access expiration, monitoring checks, raw usage cleanup, quota projection, monthly reset-credit distribution, and pending-reset reconciliation. |
+| `promptgate migrate` | Ordered migrations for all durable domain models, including subscription and quota-reset state, plus removal of retired schemas. |
 
 ## Package Layout
 
@@ -50,8 +50,10 @@ flowchart LR
 | `internal/domain/policy` | OPA client, Redis decision cache, policy middleware, and observability. |
 | `internal/domain/provider` | LLM provider configuration, encrypted API keys, setup helper metadata. |
 | `internal/domain/proxy` | Usage, tool, and interception recording plus dashboards. |
+| `internal/domain/subscriptions` | Subscription plans, rolling quota enforcement, quota projections, and reset-credit wallets. |
 | `internal/platform/*` | Configuration, Postgres, Redis, migrations, and secret encryption. |
 | `internal/transport/httpapi` | HTTP routes and JSON handlers. |
+| `internal/transport/httpapi/openapi` | OpenAPI source, protected document handler, and runtime/spec parity tests. |
 | `internal/transport/httpmiddleware` | Session, CORS, authorization, and request logging middleware. |
 
 ## Data Stores
@@ -61,6 +63,8 @@ PostgreSQL is the source of truth for durable application data:
 - users and service accounts
 - Prompt Gate API token records and token hashes
 - LLM provider definitions
+- subscription plans and account assignments
+- projected live quota state, quota-reset wallets, and the reset ledger
 - proxy interceptions, token usage, and tool usage for operational metrics
 - daily dashboard KPI aggregates and processed usage event ids
 
@@ -69,6 +73,9 @@ Redis is required by the current runtime configuration. It is used for:
 - browser sessions and OIDC authorization requests
 - proxy auth cache entries
 - provider snapshots
+- access-group and subscription-plan snapshots
+- versioned subscription assignments and rolling 5-hour and 7-day quota state
+- quota-reset sequence and cutoff barriers
 - cached OPA allow and deny decisions
 - config version counters and hot-reload events
 - proxy usage event stream `promptgate:usage:events`
@@ -117,6 +124,8 @@ sequenceDiagram
     P->>D: Validate token hash and user when cache misses
     P->>R: Check cached policy decision
     P->>O: Evaluate policy on cache miss
+    P->>P: Enforce group, provider, and model access snapshot
+    P->>R: Enforce effective subscription and rolling quotas
     P->>U: Forward request through AIBridge
     P->>R: XADD usage events
     W->>R: XREADGROUP usage events
@@ -139,22 +148,32 @@ flowchart TD
     Event --> Proxy["Proxy watcher"]
     Proxy --> Kind{"Domain"}
     Kind -->|providers| Bridge["Debounced bridge rebuild"]
+    Kind -->|groups| Groups["Refresh access snapshot"]
     Kind -->|auth| AuthCache["Update auth cache version"]
+    Kind -->|subscriptions| Quotas["Refresh plan and assignment snapshot"]
 ```
 
-Provider updates trigger a debounced bridge rebuild. Auth updates bump
-the token auth cache version, which invalidates old cache keys. OPA decisions
-expire only through `PROMPTGATE_OPA_CACHE_TTL`.
+Provider updates trigger a debounced bridge rebuild. Group updates refresh the
+proxy access snapshot. Auth updates bump the token auth cache version, which
+invalidates old cache keys. A separate subscription watcher refreshes plan and
+versioned assignment snapshots. OPA decisions expire only through
+`PROMPTGATE_OPA_CACHE_TTL`.
 
 ## Migrations
 
 `promptgate migrate` runs GORM migrations in dependency order:
 
 1. users
-2. tokens
-3. providers
-4. proxy recorder and dashboard KPI tables
-5. destructive removal of retired firewall and MCP schemas
+2. subscriptions, quota projections, reset wallets, and reset events
+3. tokens
+4. FAQ entries
+5. providers
+6. setup guides
+7. pricing
+8. access groups
+9. monitoring services
+10. proxy recorder and dashboard KPI tables
+11. destructive removal of retired firewall and MCP schemas
 
 Run migrations before starting API, proxy, worker, or scheduler processes in a
 new environment.

@@ -47,7 +47,9 @@ Recommended production layout:
 Prompt Gate requires:
 
 - PostgreSQL for durable data
-- Redis for sessions, auth and OPA decision caches, snapshots, config reload events, and usage event streams
+- Redis for sessions, auth and OPA decision caches, group/provider/subscription
+  snapshots, rolling quota state and reset barriers, config reload events, and
+  usage event streams
 - an independently operated OPA server for every proxy decision
 - Keycloak or another OIDC-compatible provider
 - public API, proxy, and frontend origins configured with `PROMPTGATE_*`
@@ -78,6 +80,11 @@ run the migration, replace every API replica, and only then deploy or use the
 frontend action and `POST /api/v1/admin/users`. Do not create an active limited,
 SSO-unlinked user while older API replicas remain in service, because those binaries
 still expect the two columns to be non-null when reading administration responses.
+
+The scheduler runs monthly reset-credit distribution and pending-reset
+reconciliation immediately on startup. Always complete migrations before
+starting the scheduler, and keep it at one replica unless the deployment adds
+external job locking.
 
 ## Container Examples
 

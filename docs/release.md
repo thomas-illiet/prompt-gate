@@ -24,6 +24,7 @@ git checkout main
 git pull --ff-only origin main
 make fmt-check
 make vet
+make staticcheck
 PROMPTGATE_TEST_POSTGRES_URL='postgres://postgres:postgres@127.0.0.1:5432/promptgate_test?sslmode=disable' make test
 make build
 docker compose config --quiet
@@ -60,7 +61,9 @@ The release pipeline:
 
 - checks Go formatting
 - runs `go vet`
-- runs backend tests
+- runs the pinned Staticcheck tool
+- runs backend tests, including PostgreSQL-specific migration, bootstrap
+  concurrency, and quota-reset coverage against PostgreSQL 18
 - installs frontend dependencies
 - runs frontend lint, typecheck, and tests
 - generates frontend static assets

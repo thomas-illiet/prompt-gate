@@ -51,10 +51,11 @@ routes require `user` or `admin`.
 | `GET` | `/api/v1/me/usage` | Usage summary for the current user. |
 | `GET` | `/api/v1/me/quota` | Current subscription quota state and reset windows. |
 | `GET` | `/api/v1/me/quota-resets` | Current quota-reset credit balance, applicability, and pending state. |
-| `POST` | `/api/v1/me/quota-resets/use` | Spend one credit to clear both live quota windows. Requires a non-blank `Idempotency-Key`. |
+| `POST` | `/api/v1/me/quota-resets/use` | Spend one credit to clear both live quota windows. Requires a non-blank `Idempotency-Key` of at most 512 characters. |
 | `GET` | `/api/v1/me/quota-resets/history` | List applied credit grants and uses, newest first, with `page` and `pageSize`. |
 | `GET` | `/api/v1/me/groups` | Access groups assigned to the current user. |
 | `GET` | `/api/v1/me/help/setup` | Provider setup helper with proxy base URLs and available models. |
+| `GET` | `/api/v1/me/dashboard/overview` | Current usage overview, optional previous-period comparison, and cost-coverage state. |
 | `GET` | `/api/v1/me/dashboard/tokens` | Token totals for a dashboard window. |
 | `GET` | `/api/v1/me/dashboard/messages` | Message count for a dashboard window. |
 | `GET` | `/api/v1/me/dashboard/duration` | Total proxied request duration for a dashboard window. |
@@ -67,12 +68,18 @@ routes require `user` or `admin`.
 
 Common list-style routes use query parameters such as `page`, `pageSize`,
 `search`, `sortBy`, and `sortDir` where supported. Dashboard routes use the
-usage windows implemented by the proxy domain: `7d`, `30d`, and `all`.
-When `PROMPTGATE_USAGE_COST_ENABLED=true`, usage summary, dashboard token, and
-dashboard activity responses include an optional `estimatedCost` object. Its
-`inputUsd`, `outputUsd`, `embeddingUsd`, and `totalUsd` values are indicative
-estimates based on configured USD-per-1M-token rates, not billing records. The
-same object includes a `rates` field with the rates used for the calculation.
+usage windows implemented by the proxy domain: `7d`, `30d`, and `all`. The
+personal activity route also accepts `365d`. When
+`PROMPTGATE_USAGE_COST_ENABLED=true`, usage summary, dashboard overview,
+dashboard token, and dashboard activity responses include an optional
+`estimatedCost` object. Its `inputUsd`, `outputUsd`, `embeddingUsd`, and
+`totalUsd` values are indicative estimates based on configured
+USD-per-1M-token rates, not billing records. The same object includes a `rates`
+field with the rates used for the calculation.
+Dashboard overview responses always include `costCoverage`. A value of
+`complete` means retained raw usage covers the requested estimate period;
+`partial` reports the retained bounds, and `unavailable` omits
+`totals.estimatedCost` instead of presenting an incomplete zero value.
 
 ## Token Routes
 
@@ -127,6 +134,8 @@ curl --fail-with-body \
 
 | Method | Path | Purpose |
 | --- | --- | --- |
+| `GET` | `/api/v1/admin/dashboard/overview` | Organization usage overview with comparison, adoption, and cost-coverage state. |
+| `GET` | `/api/v1/admin/dashboard/quota-risk` | Accounts at or above 80% of their most saturated finite quota window. |
 | `GET` | `/api/v1/admin/dashboard/tokens` | Global token totals for a dashboard window. |
 | `GET` | `/api/v1/admin/dashboard/messages` | Global message count for a dashboard window. |
 | `GET` | `/api/v1/admin/dashboard/duration` | Global total proxied request duration for a dashboard window. |
@@ -140,6 +149,14 @@ curl --fail-with-body \
 Admin dashboard token and activity responses follow the same optional
 `estimatedCost` shape as current-user dashboard responses.
 
+Quota risk is read from the PostgreSQL projection maintained by the scheduler.
+It counts every projected human or service account at or above 80% of a finite
+5-hour or 7-day quota, treats 100% and above as critical, and returns at most
+the five most saturated accounts. `projectionSyncedAt` and each item `syncedAt`
+show the projection age. The scheduler refreshes it every
+`PROMPTGATE_SUBSCRIPTION_QUOTA_SYNC_INTERVAL` (`5m` by default); inspect those
+timestamps because a scheduler or Redis failure can make it older.
+
 ### Users
 
 | Method | Path | Purpose |
@@ -151,14 +168,14 @@ Admin dashboard token and activity responses follow the same optional
 | `GET` | `/api/v1/admin/users/{id}/statistics` | Get aggregated usage totals, duration, and daily activity for one human user. |
 | `PATCH` | `/api/v1/admin/users/{id}` | Update role, active state, or access expiration. |
 | `PATCH` | `/api/v1/admin/users/{id}/note` | Update the private administration note. |
-| `DELETE` | `/api/v1/admin/users/{id}` | Delete one local user and its current access data. A later OIDC sign-in can provision a new limited account. |
+| `DELETE` | `/api/v1/admin/users/{id}` | Attempt to delete one local user and its current access data. A later OIDC sign-in can provision a new account under the normal first-user bootstrap rules. |
 | `GET` | `/api/v1/admin/users/{id}/tokens` | List a user's tokens. |
 | `POST` | `/api/v1/admin/users/{id}/tokens` | Create a user token and return its raw value once. |
 | `DELETE` | `/api/v1/admin/users/{id}/tokens/{tokenId}` | Revoke one user token. |
 | `GET` | `/api/v1/admin/users/{id}/groups` | List the user's access groups. |
 | `PUT` | `/api/v1/admin/users/{id}/groups` | Replace the user's access groups. |
 | `PUT` | `/api/v1/admin/users/{id}/subscription-plan` | Assign or clear the user's subscription plan. |
-| `POST` | `/api/v1/admin/users/{id}/quota-resets` | Offer exactly one reset credit to a human account. Requires a non-blank `Idempotency-Key`. |
+| `POST` | `/api/v1/admin/users/{id}/quota-resets` | Offer exactly one reset credit to a human account. Requires a non-blank `Idempotency-Key` of at most 512 characters. |
 
 The first user created by an OIDC login in an otherwise empty database is
 assigned role `admin`. Later OIDC users, and all administratively pre-created
@@ -171,6 +188,12 @@ and an existing human identifier returns `preferred_username_conflict`.
 Once `POST /api/v1/admin/users` succeeds, the account exists even if a later
 request for its details or subscription plans fails. Clients must resume setup
 from that account instead of repeating the create request.
+
+A user or service-account deletion succeeds only when no retained proxy
+interception, daily KPI, or daily breakdown row still references the account.
+PostgreSQL protects those usage records with restrictive foreign keys; the
+current implementation does not cascade them, so an account with retained
+usage can make the delete endpoint return `500` and remains unchanged.
 
 Before the first SSO login, `sub` and `lastLoginAt` are `null`, while email and
 name are empty. The first login whose exact `preferred_username` matches fills
@@ -191,10 +214,11 @@ active `limited` user, so an administrator-created token is usable immediately
 before the first SSO login. Normal token expiration and revocation, account
 expiration, group, quota, and policy checks still apply.
 
-Quota-reset mutations require a caller-generated, non-blank
-`Idempotency-Key`; retrying the same operation with the same key does not debit
-or grant twice. A reset clears both the rolling 5-hour and 7-day Redis counters
-but preserves all historical usage, interception, and KPI records. Business
+Quota-reset mutations require a caller-generated `Idempotency-Key` containing
+at least one non-whitespace character and at most 512 Unicode characters after
+trimming. Retrying the same operation with the same key does not debit or grant
+twice. A reset clears both the rolling 5-hour and 7-day Redis counters but
+preserves all historical usage, interception, and KPI records. Business
 conflicts return
 `409` with one of `quota_reset_credit_unavailable`,
 `quota_reset_not_applicable`, `quota_reset_balance_full`, or
@@ -214,11 +238,15 @@ operation completes.
 
 User statistics accept `window=7d`, `window=30d`, or `window=all`, defaulting
 to `30d` when omitted. The response contains `window`, `startsAt`, `endsAt`,
-`totals`, `totalDurationMs`, `daily`, and `costCoverage`. Cost coverage is
-`complete`, `partial`, or `unavailable`; partial coverage includes the retained
-raw-usage bounds, while unavailable coverage omits `estimatedCost` instead of
-presenting a zero value. Unknown users and service-account IDs both return
+`totals`, `totalDurationMs`, `averageDurationMs`, `daily`, and `costCoverage`.
+Cost coverage is `complete`, `partial`, or `unavailable`; partial coverage
+includes the retained raw-usage bounds, while unavailable coverage omits
+`estimatedCost` instead of presenting a zero value. Unknown users and
+service-account IDs both return
 `404 {"error":"user_not_found"}`.
+`averageDurationMs` averages completed requests only. It is `null`, not zero,
+when no request completed or when retained raw interceptions do not exactly
+cover the durable request count for the selected window.
 
 ### Service Accounts
 
@@ -230,7 +258,7 @@ presenting a zero value. Unknown users and service-account IDs both return
 | `GET` | `/api/v1/admin/service-accounts/{id}/statistics` | Get aggregated usage totals, duration, and daily activity for one service account. |
 | `PATCH` | `/api/v1/admin/service-accounts/{id}` | Update identifier, name, or active state. |
 | `PATCH` | `/api/v1/admin/service-accounts/{id}/note` | Update the private administration note. |
-| `DELETE` | `/api/v1/admin/service-accounts/{id}` | Delete one service account. |
+| `DELETE` | `/api/v1/admin/service-accounts/{id}` | Attempt to delete one service account, subject to the retained-usage constraint described above. |
 | `GET` | `/api/v1/admin/service-accounts/{id}/tokens` | List service-account tokens. |
 | `GET` | `/api/v1/admin/service-accounts/{id}/ips` | List client IP addresses observed for a service account, paginated and sortable by `ip` or `lastSeen`. |
 | `POST` | `/api/v1/admin/service-accounts/{id}/tokens` | Create a service-account token. |
@@ -275,7 +303,9 @@ to `30d` when omitted. They aggregate users and service accounts that are
 members when the request is made. Usage from before a current member joined is
 included, while usage from removed members is excluded. Because an identity can
 belong to multiple groups, statistics from different groups can overlap and are
-not additive. Unknown groups return `404 {"error":"group_not_found"}`.
+not additive. The response has the same `costCoverage` semantics as user and
+service-account statistics. Unknown groups return
+`404 {"error":"group_not_found"}`.
 
 Each item returned by the group list also exposes `inputTokens` and
 `outputTokens`. These are durable all-time totals from the current human and

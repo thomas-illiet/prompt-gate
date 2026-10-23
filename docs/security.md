@@ -35,11 +35,17 @@ store contains at least one proxy request for today or the preceding 29 UTC
 calendar days. It is eventually consistent and must not be treated as an
 authorization signal.
 
-Deleting a local user removes its current local account and authorization
-records, but it is not an identity-provider denylist. If the same
-OIDC identity can sign in again, Prompt Gate creates a new active `limited`
-account with a new local ID. To block future access, keep the account inactive
-or assigned role `none`, or revoke the identity's access at the OIDC provider.
+When it succeeds, deleting a local user removes its current local account and
+authorization records, but it is not an identity-provider denylist. Deletion
+does not cascade retained proxy interceptions or daily KPI/breakdown rows;
+PostgreSQL therefore rejects deletion of an account still referenced by that
+usage data. The same restriction applies to service accounts. If the same OIDC
+identity can sign in again after a successful deletion, Prompt Gate creates a
+new active account with a new local ID. Its role is `limited` when another local
+identity still exists; if deletion left the users table empty, the normal
+first-user bootstrap assigns `admin`. To block future access, keep the account
+inactive or assigned role `none`, or revoke the identity's access at the OIDC
+provider.
 
 Browser sessions are stored in Redis when Redis is configured. Session cookies
 are HTTP-only, use `PROMPTGATE_SESSION_COOKIE_NAME`, and inherit secure-cookie
@@ -119,10 +125,10 @@ Token validation checks:
 - active user or service account
 - role is one of `limited`, `user`, or `admin`
 
-Before deploying a version that removes the legacy `manager` role, verify that
-no user retains it. Prompt Gate does not convert legacy `manager` rows; such a
-row is treated as an invalid role and grants no application or proxy access
-until an administrator assigns a supported role.
+When upgrading from a release that still allowed the legacy `manager` role,
+verify that no user retains it. Prompt Gate does not convert legacy `manager`
+rows; such a row is treated as an invalid role and grants no application or
+proxy access until an administrator assigns a supported role.
 
 Token revocation publishes an `auth` config event. The proxy responds by
 moving its Redis auth cache to a new version. Each cache lookup also reads the

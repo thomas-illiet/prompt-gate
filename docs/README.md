@@ -9,11 +9,12 @@ used by the repository.
 | Guide | Use it for |
 | --- | --- |
 | [Architecture](architecture.md) | Understanding the API, proxy, scheduler, data stores, and hot-reload flow. |
-| [API reference](api.md) | Finding route groups, authentication requirements, and admin capabilities. |
+| [API reference](api.md) | Finding route groups, authentication requirements, admin capabilities, and the interactive OpenAPI explorer. |
 | [Proxy runtime](proxy.md) | Configuring and operating the LLM proxy, provider routing, OPA authorization, and usage recorder. |
-| [Scheduler](scheduler.md) | Running background jobs for token cleanup and access expiration. |
+| [Scheduler](scheduler.md) | Running cleanup, access expiration, monitoring, quota projection, and quota-reset jobs. |
 | [Security model](security.md) | Reviewing OIDC, sessions, API tokens, roles, OPA behavior, CORS, and secret storage. |
 | [Development guide](development.md) | Running the stack locally, testing, migrations, and common Make targets. |
+| [User FAQ](../faq.md) | Understanding roles, virtual keys, quotas, reset credits, usage, and common failures. |
 
 ## Operations
 
