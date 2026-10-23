@@ -70,8 +70,8 @@ func TestHandleAdminCreateUserPrecreatesPendingOIDCAccount(t *testing.T) {
 	if response.Sub != nil || response.LastLoginAt != nil {
 		t.Fatalf("expected pending SSO fields to be null, got sub=%v lastLoginAt=%v", response.Sub, response.LastLoginAt)
 	}
-	if response.Role != auth.RoleNone || !response.IsActive {
-		t.Fatalf("expected active role-none account, got role=%q active=%t", response.Role, response.IsActive)
+	if response.Role != auth.RoleLimited || !response.IsActive {
+		t.Fatalf("expected active limited account, got role=%q active=%t", response.Role, response.IsActive)
 	}
 	if response.ActiveInLast30Days {
 		t.Fatal("expected a newly pre-created account to have no recent platform activity")
@@ -83,6 +83,9 @@ func TestHandleAdminCreateUserPrecreatesPendingOIDCAccount(t *testing.T) {
 	}
 	if persisted.PreferredUsername != response.PreferredUsername {
 		t.Fatalf("expected persisted UID %q, got %q", response.PreferredUsername, persisted.PreferredUsername)
+	}
+	if persisted.Role != auth.RoleLimited || !persisted.IsActive {
+		t.Fatalf("expected persisted active limited account, got role=%q active=%t", persisted.Role, persisted.IsActive)
 	}
 }
 

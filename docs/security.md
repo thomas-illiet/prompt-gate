@@ -17,19 +17,23 @@ OIDC login uses:
 
 The first account created by an OIDC login in an empty database receives role
 `admin`. Administratively pre-created accounts and subsequent OIDC users start
-with role `none` until an admin grants access. Pre-created accounts are matched
-by the exact, case-sensitive `preferred_username` claim. Their OIDC subject,
-email, display name, and last-login timestamp are filled or refreshed at login,
-while the local ID, role, active state, expiration, subscription, note, groups,
-and virtual keys are preserved.
+active with role `limited`. This default applies only when a human account is
+created: existing roles are not migrated, and later OIDC logins preserve the
+stored role, including an explicit `none`. Pre-created accounts are matched by
+the exact, case-sensitive `preferred_username` claim. Their OIDC subject, email,
+display name, and last-login timestamp are filled or refreshed at login, while
+the local ID, role, active state, expiration, subscription, note, groups, and
+virtual keys are preserved.
 
-Administrators can grant a role and issue a virtual key before the first SSO
-login. Proxy authorization uses the stable local account ID and normal role,
-active-state, expiry, group, and policy checks; an SSO login is not an extra
-precondition. The administration user list reports recent platform activity
-separately from access: `activeInLast30Days` means the KPI store contains at
-least one proxy request for today or the preceding 29 UTC calendar days. It is
-eventually consistent and must not be treated as an authorization signal.
+Administrators can issue a virtual key before the first SSO login. Because a
+pre-created account is already active with role `limited`, that key can be used
+immediately; SSO login is not an extra precondition. Proxy authorization still
+uses the stable local account ID and applies normal role, active-state, expiry,
+group, quota, and policy checks. The administration user list reports recent
+platform activity separately from access: `activeInLast30Days` means the KPI
+store contains at least one proxy request for today or the preceding 29 UTC
+calendar days. It is eventually consistent and must not be treated as an
+authorization signal.
 
 Browser sessions are stored in Redis when Redis is configured. Session cookies
 are HTTP-only, use `PROMPTGATE_SESSION_COOKIE_NAME`, and inherit secure-cookie
@@ -42,9 +46,9 @@ Prompt Gate uses these application roles:
 
 | Role | Meaning |
 | --- | --- |
-| `none` | Authenticated identity exists but has no app access. |
-| `limited` | Can view personal usage, profile, and FAQ; API tokens are administered centrally. |
-| `user` | Can use user routes, issue own tokens, and use the proxy. |
+| `none` | Identity exists but has no application or proxy access; used for explicit access removal and expired access. |
+| `limited` | Can use the proxy with centrally administered keys and access personal profile, usage, quota, quota-reset, dashboard, group, and FAQ routes. Cannot access setup, monitoring, or personal token-management routes. |
+| `user` | Has `limited` access plus setup, monitoring, and personal token management. |
 | `admin` | Can access all admin routes. |
 
 Protected routes reject inactive users, users with role `none`, and unknown or

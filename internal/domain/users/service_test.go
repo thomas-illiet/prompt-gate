@@ -124,8 +124,8 @@ func serviceAccountByID(t *testing.T, items []ServiceAccount, id string) Service
 	return ServiceAccount{}
 }
 
-// TestSyncUserBootstrapsFirstAdminThenDefaultsToNone verifies first-user bootstrap behavior.
-func TestSyncUserBootstrapsFirstAdminThenDefaultsToNone(t *testing.T) {
+// TestSyncUserBootstrapsFirstAdminThenDefaultsToLimited verifies first-user bootstrap behavior.
+func TestSyncUserBootstrapsFirstAdminThenDefaultsToLimited(t *testing.T) {
 	service := newTestService(t)
 	ctx := context.Background()
 
@@ -153,8 +153,8 @@ func TestSyncUserBootstrapsFirstAdminThenDefaultsToNone(t *testing.T) {
 		t.Fatalf("expected first user to be admin, got %q", first.Role)
 	}
 
-	if second.Role != auth.RoleNone {
-		t.Fatalf("expected second user to default to none, got %q", second.Role)
+	if second.Role != auth.RoleLimited {
+		t.Fatalf("expected second user to default to limited, got %q", second.Role)
 	}
 
 	if !second.IsActive {
@@ -279,7 +279,7 @@ func TestCreateUserCreatesPendingAccountFromExactTrimmedUID(t *testing.T) {
 	if created.Sub != nil || created.LastLoginAt != nil {
 		t.Fatalf("expected pending SSO fields to be null, got %#v", created)
 	}
-	if created.Email != "" || created.Name != "" || created.Role != auth.RoleNone || !created.IsActive {
+	if created.Email != "" || created.Name != "" || created.Role != auth.RoleLimited || !created.IsActive {
 		t.Fatalf("unexpected pending user defaults: %#v", created)
 	}
 	if created.ActiveInLast30Days {
@@ -478,8 +478,37 @@ func TestSyncUserClaimsPendingAccountAndPreservesManagedFields(t *testing.T) {
 	}
 }
 
-// TestDeleteAndRecreateUserKeepsNoneRoleWhenTableNotEmpty verifies recreated users are not promoted after bootstrap.
-func TestDeleteAndRecreateUserKeepsNoneRoleWhenTableNotEmpty(t *testing.T) {
+func TestSyncUserPreservesExplicitNoneRole(t *testing.T) {
+	service := newTestService(t)
+	ctx := context.Background()
+
+	pending, err := service.CreateUser(ctx, "blocked-user")
+	if err != nil {
+		t.Fatalf("pre-create user: %v", err)
+	}
+	if _, err := service.UpdateUser(ctx, pending.ID, UpdateUserInput{
+		Role:     auth.RoleNone,
+		IsActive: true,
+	}); err != nil {
+		t.Fatalf("set explicit none role: %v", err)
+	}
+
+	profile, err := service.SyncUser(ctx, auth.Identity{
+		Sub:               "blocked-subject",
+		PreferredUsername: "blocked-user",
+		Email:             "blocked@example.com",
+		Name:              "Blocked User",
+	})
+	if err != nil {
+		t.Fatalf("claim user through SSO: %v", err)
+	}
+	if profile.ID != pending.ID || profile.Role != auth.RoleNone {
+		t.Fatalf("expected explicit none role to survive SSO claim, got %#v", profile)
+	}
+}
+
+// TestDeleteAndRecreateUserKeepsLimitedRoleWhenTableNotEmpty verifies recreated users are not promoted after bootstrap.
+func TestDeleteAndRecreateUserKeepsLimitedRoleWhenTableNotEmpty(t *testing.T) {
 	service := newTestService(t)
 	ctx := context.Background()
 
@@ -516,8 +545,8 @@ func TestDeleteAndRecreateUserKeepsNoneRoleWhenTableNotEmpty(t *testing.T) {
 		t.Fatalf("recreate deleted user: %v", err)
 	}
 
-	if recreated.Role != auth.RoleNone {
-		t.Fatalf("expected recreated user to come back as none, got %q", recreated.Role)
+	if recreated.Role != auth.RoleLimited {
+		t.Fatalf("expected recreated user to come back as limited, got %q", recreated.Role)
 	}
 
 	if recreated.ID == created.ID {
@@ -1057,7 +1086,10 @@ func TestExpireAccessClearsExpiredRolesAndRevokesTokens(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatalf("seed future access: %v", err)
 	}
-	if err := service.db.Model(&User{}).Where("id = ?", alreadyNone.ID).Update("expires_at", expiredAt).Error; err != nil {
+	if err := service.db.Model(&User{}).Where("id = ?", alreadyNone.ID).Updates(map[string]any{
+		"role":       auth.RoleNone,
+		"expires_at": expiredAt,
+	}).Error; err != nil {
 		t.Fatalf("seed none access: %v", err)
 	}
 

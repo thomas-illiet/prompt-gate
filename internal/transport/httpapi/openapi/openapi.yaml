@@ -373,11 +373,13 @@ paths:
       operationId: createAdminUser
       summary: Pre-create a human user from an OIDC preferred username
       description: >-
-        Creates the local account before its first SSO login. The exact,
-        case-sensitive preferred_username claim links the OIDC identity later
-        without replacing application-managed access. An empty UID returns
-        invalid_preferred_username and an existing human UID returns
-        preferred_username_conflict.
+        Creates an active local account with role limited before its first SSO
+        login. A virtual key issued by an administrator can authenticate this
+        account immediately without waiting for SSO; normal key, account,
+        group, quota, and policy checks still apply. The exact, case-sensitive
+        preferred_username claim links the OIDC identity later without replacing
+        application-managed access. An empty UID returns invalid_preferred_username
+        and an existing human UID returns preferred_username_conflict.
       requestBody:
         $ref: '#/components/requestBodies/CreateUser'
       responses:

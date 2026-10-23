@@ -183,39 +183,35 @@ func TestValidateTokenAcceptsActiveUserToken(t *testing.T) {
 	}
 }
 
-// TestPendingUserTokenBecomesEffectiveAndSurvivesSSOClaim verifies an admin-created
-// virtual key is tied to the local account before and after its first SSO login.
-func TestPendingUserTokenBecomesEffectiveAndSurvivesSSOClaim(t *testing.T) {
+// TestPrecreatedLimitedUserTokenValidatesImmediatelyAndSurvivesSSOClaim verifies an
+// admin-created virtual key is immediately usable and stays tied to the local account
+// after its first SSO login.
+func TestPrecreatedLimitedUserTokenValidatesImmediatelyAndSurvivesSSOClaim(t *testing.T) {
 	tokenService, userService, _, _ := newTokenTestServices(t)
 	ctx := context.Background()
 
-	pending, err := userService.CreateUser(ctx, "pending-token-user")
+	precreated, err := userService.CreateUser(ctx, "pending-token-user")
 	if err != nil {
 		t.Fatalf("pre-create token user: %v", err)
 	}
-	pendingProfile, err := userService.UserByID(ctx, pending.ID)
+	precreatedProfile, err := userService.UserByID(ctx, precreated.ID)
 	if err != nil {
-		t.Fatalf("load pending user profile: %v", err)
+		t.Fatalf("load pre-created user profile: %v", err)
 	}
-	created, err := tokenService.CreateToken(ctx, pendingProfile, "pending_key", "", nil)
+	if precreatedProfile.Role != auth.RoleLimited || !precreatedProfile.IsActive ||
+		precreatedProfile.Sub != "" || !precreatedProfile.LastLoginAt.IsZero() {
+		t.Fatalf("unexpected pre-created user profile: %#v", precreatedProfile)
+	}
+	created, err := tokenService.CreateToken(ctx, precreatedProfile, "pending_key", "", nil)
 	if err != nil {
-		t.Fatalf("create pending user token: %v", err)
-	}
-	if _, err := tokenService.ValidateToken(ctx, created.Token, userService); !errors.Is(err, ErrInsufficientRole) {
-		t.Fatalf("expected pending role to block token, got %v", err)
-	}
-
-	if _, err := userService.UpdateUser(ctx, pending.ID, users.UpdateUserInput{
-		Role:     auth.RoleLimited,
-		IsActive: true,
-	}); err != nil {
-		t.Fatalf("grant pending user role: %v", err)
+		t.Fatalf("create pre-created user token: %v", err)
 	}
 	validatedBeforeSSO, err := tokenService.ValidateToken(ctx, created.Token, userService)
 	if err != nil {
-		t.Fatalf("validate pending user token before SSO: %v", err)
+		t.Fatalf("validate pre-created user token before SSO: %v", err)
 	}
-	if validatedBeforeSSO.ID != pending.ID || validatedBeforeSSO.Sub != "" || !validatedBeforeSSO.LastLoginAt.IsZero() {
+	if validatedBeforeSSO.ID != precreated.ID || validatedBeforeSSO.Role != auth.RoleLimited ||
+		validatedBeforeSSO.Sub != "" || !validatedBeforeSSO.LastLoginAt.IsZero() {
 		t.Fatalf("unexpected pre-SSO token profile: %#v", validatedBeforeSSO)
 	}
 
@@ -226,13 +222,15 @@ func TestPendingUserTokenBecomesEffectiveAndSurvivesSSOClaim(t *testing.T) {
 		Name:              "Claimed User",
 	})
 	if err != nil {
-		t.Fatalf("claim pending token user: %v", err)
+		t.Fatalf("claim pre-created token user: %v", err)
 	}
 	validatedAfterSSO, err := tokenService.ValidateToken(ctx, created.Token, userService)
 	if err != nil {
-		t.Fatalf("validate pending user token after SSO: %v", err)
+		t.Fatalf("validate pre-created user token after SSO: %v", err)
 	}
-	if claimed.ID != pending.ID || validatedAfterSSO.ID != pending.ID || validatedAfterSSO.Sub != "claimed-subject" {
+	if claimed.ID != precreated.ID || claimed.Role != auth.RoleLimited ||
+		validatedAfterSSO.ID != precreated.ID || validatedAfterSSO.Role != auth.RoleLimited ||
+		validatedAfterSSO.Sub != "claimed-subject" {
 		t.Fatalf("expected token to stay tied to claimed local account, claimed=%#v validated=%#v", claimed, validatedAfterSSO)
 	}
 }

@@ -320,7 +320,7 @@ func TestResponseSchemasAcceptRepresentativePayloads(t *testing.T) {
 			name: "AdminUser",
 			payload: `{
 				"id":"11111111-1111-4111-8111-111111111111","sub":null,"preferredUsername":"pending-user","email":"","name":"",
-				"type":"user","role":"none","subscriptionPlanId":null,"quotaResetCredits":0,"note":"","isActive":true,"activeInLast30Days":false,
+				"type":"user","role":"limited","subscriptionPlanId":null,"quotaResetCredits":0,"note":"","isActive":true,"activeInLast30Days":false,
 				"inputTokens":0,"outputTokens":0,"expiresAt":null,"lastLoginAt":null,
 				"createdAt":"2026-10-01T00:00:00Z","updatedAt":"2026-10-01T00:00:00Z"
 			}`,

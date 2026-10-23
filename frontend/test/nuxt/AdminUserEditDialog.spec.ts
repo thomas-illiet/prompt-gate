@@ -12,7 +12,7 @@ const pendingUser: AdminUser = {
   preferredUsername: 'alice',
   email: '',
   name: '',
-  role: 'none',
+  role: 'limited',
   note: '',
   isActive: true,
   lastLoginAt: null,

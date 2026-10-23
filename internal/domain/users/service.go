@@ -30,7 +30,10 @@ var (
 	ErrInvalidSort                     = errors.New("invalid_sort")
 )
 
-const maxAccountNoteLength = 2000
+const (
+	maxAccountNoteLength = 2000
+	defaultHumanRole     = auth.RoleLimited
+)
 
 var serviceAccountIdentifierRegexp = regexp.MustCompile(`^[a-z0-9_-]{1,64}$`)
 
@@ -215,7 +218,7 @@ func (s *Service) AutoMigrate(ctx context.Context) error {
 	return s.db.WithContext(ctx).AutoMigrate(&User{})
 }
 
-// SyncUser upserts an OIDC user by preferred username, assigning admin role to the first user.
+// SyncUser upserts an OIDC user by preferred username, bootstrapping the first user as admin.
 func (s *Service) SyncUser(ctx context.Context, identity auth.Identity) (auth.UserProfile, error) {
 	if strings.TrimSpace(identity.PreferredUsername) == "" {
 		return auth.UserProfile{}, ErrPreferredUsernameRequired
@@ -226,7 +229,7 @@ func (s *Service) SyncUser(ctx context.Context, identity auth.Identity) (auth.Us
 	externalSub := identity.Sub
 
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		role := auth.RoleNone
+		role := defaultHumanRole
 		var total int64
 		if err := tx.Model(&User{}).Count(&total).Error; err != nil {
 			return err
@@ -272,7 +275,7 @@ func (s *Service) SyncUser(ctx context.Context, identity auth.Identity) (auth.Us
 	return record.profile(), nil
 }
 
-// CreateUser creates a pending human user identified only by its exact SSO preferred username.
+// CreateUser creates an active limited human user identified only by its exact SSO preferred username.
 func (s *Service) CreateUser(ctx context.Context, preferredUsername string) (AdminUser, error) {
 	preferredUsername = strings.TrimSpace(preferredUsername)
 	if preferredUsername == "" {
@@ -282,7 +285,7 @@ func (s *Service) CreateUser(ctx context.Context, preferredUsername string) (Adm
 	record := User{
 		PreferredUsername: preferredUsername,
 		Type:              auth.UserTypeUser,
-		Role:              auth.RoleNone,
+		Role:              defaultHumanRole,
 		IsActive:          true,
 	}
 	result := s.db.WithContext(ctx).Clauses(clause.OnConflict{

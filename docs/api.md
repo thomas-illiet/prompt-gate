@@ -162,9 +162,9 @@ Admin dashboard token and activity responses follow the same optional
 
 The first user created by an OIDC login in an otherwise empty database is
 assigned role `admin`. Later OIDC users, and all administratively pre-created
-users, start with role `none` and with their administrative access switch
-enabled. They cannot use protected routes until an administrator assigns a
-supported role. Pre-creation accepts only
+users, start active with role `limited`. This default applies only to newly
+created human accounts: existing roles are not migrated, and later OIDC logins
+preserve the stored role, including an explicit `none`. Pre-creation accepts only
 `{"preferredUsername":"..."}`. The value is trimmed at its edges and then
 stored case-sensitively; an empty value returns `invalid_preferred_username`
 and an existing human identifier returns `preferred_username_conflict`.
@@ -183,9 +183,10 @@ currently enabled.
 Administrators may create a token for any human user, including an inactive
 user or one with role `none`. The token is stored but proxy authentication
 continues to reject it until the account is active and has a supported access
-role; normal expiration and revocation checks still apply. A token created for
-a pre-created user becomes usable as soon as those access conditions are met,
-without requiring an SSO login.
+role. A newly pre-created account already satisfies those two conditions as an
+active `limited` user, so an administrator-created token is usable immediately
+before the first SSO login. Normal token expiration and revocation, account
+expiration, group, quota, and policy checks still apply.
 
 Quota-reset mutations require a caller-generated `Idempotency-Key`; retrying
 the same operation with the same key does not debit or grant twice. A reset

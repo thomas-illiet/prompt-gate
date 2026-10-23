@@ -188,7 +188,7 @@ describe('useAdminUsers', () => {
       preferredUsername: 'Alice.Example',
       email: '',
       name: '',
-      role: 'none',
+      role: 'limited',
       isActive: true,
       lastLoginAt: null,
       activeInLast30Days: false,

@@ -14,11 +14,11 @@ You sign in through your organization's OIDC identity provider. Select the sign-
 
 ## 4. Why am I signed in but unable to access the application?
 
-A new account may be created with the `none` role, which does not grant access to product features. An administrator must activate your account and assign you the `user`, `manager`, or `admin` role.
+A new human account normally starts active with the `limited` role. This grants personal dashboard and proxy access through a key issued by an administrator, but it does not allow you to manage your own keys or open setup and monitoring features. If you have no access at all, an administrator may have deactivated the account, assigned the `none` role, or allowed its access period to expire.
 
-## 5. What is the difference between the user, manager, and administrator roles?
+## 5. What is the difference between the limited, user, and administrator roles?
 
-The `user` and `manager` roles can use the proxy, view their activity, and manage their own virtual keys. The `manager` role has a longer default key lifetime. The `admin` role also provides access to the platform's global configuration and administration features.
+The `limited` role can use the proxy with a centrally administered key and view personal profile, usage, quota, dashboard, group, and FAQ information. The `user` role also provides setup and monitoring access and lets you manage your own virtual keys. The `admin` role adds the platform's global configuration and administration features. The `none` role grants no application or proxy access.
 
 ## 6. What is a virtual key?
 
@@ -30,7 +30,7 @@ The complete key value is returned only when the key is created. Prompt Gate the
 
 ## 8. How long does a virtual key remain valid?
 
-The requested lifetime must be between 1 and 365 days. If you do not choose one, the default is 7 days for a user and 30 days for a manager or administrator. The expiration date is shown in the virtual key list.
+For a human account, the requested lifetime must be between 1 and 30 days; service-account keys can be requested for up to 365 days. If no lifetime is specified, the default is 7 days for `limited`, `user`, and service accounts, and 30 days for `admin`. The expiration date is shown in the virtual key list.
 
 ## 9. How do I revoke a virtual key?
 
