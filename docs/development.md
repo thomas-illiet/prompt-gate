@@ -63,6 +63,11 @@ make test
 make build
 ```
 
+Set `PROMPTGATE_TEST_POSTGRES_URL` to a disposable PostgreSQL database when
+running `make test` to include the PostgreSQL-specific migration and concurrent
+quota-reset tests. CI and the release workflow always run those tests against
+PostgreSQL 18.
+
 Run the backend processes:
 
 ```sh
@@ -147,7 +152,7 @@ Before opening a pull request:
 make fmt-check
 make vet
 make staticcheck
-make test
+PROMPTGATE_TEST_POSTGRES_URL='postgres://postgres:postgres@127.0.0.1:5432/promptgate_test?sslmode=disable' make test
 docker compose config --quiet
 docker build -t prompt-gate-backend:test .
 ```

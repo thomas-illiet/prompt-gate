@@ -25,10 +25,16 @@ export interface QuotaResetHistoryResponse {
   total: number
 }
 
-export interface UseQuotaResetResponse {
-  status: 'applied' | 'pending'
-  summary: QuotaResetSummary
-  quota: CurrentQuotaStatus
-}
+export type UseQuotaResetResponse =
+  | {
+      status: 'applied'
+      summary: QuotaResetSummary
+      quota: CurrentQuotaStatus
+    }
+  | {
+      status: 'pending'
+      summary: QuotaResetSummary
+      quota?: never
+    }
 
 export const QUOTA_RESET_MAXIMUM = 2

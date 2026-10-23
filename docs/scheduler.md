@@ -30,6 +30,11 @@ reconciliation and quota projection sync share one ordered loop: both run on
 startup, then reconciliation always runs before projection on each quota sync
 tick.
 
+Monthly reset distribution considers every non-expired, active human account
+with role `limited`, `user`, or `admin` and an effective finite quota. This
+includes an active `limited` account pre-created by an administrator before its
+first SSO login.
+
 ## Runtime Flow
 
 ```mermaid

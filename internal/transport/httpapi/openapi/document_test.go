@@ -260,7 +260,7 @@ func TestResponseSchemasAcceptRepresentativePayloads(t *testing.T) {
 			payload: `{
 				"window":"7d","startsAt":"2026-10-01T00:00:00Z","endsAt":"2026-10-08T00:00:00Z",
 				"totals":{"requests":0,"toolCalls":0,"inputTokens":0,"outputTokens":0,"cacheReadInputTokens":0,"cacheWriteInputTokens":0,"completionInputTokens":0,"completionOutputTokens":0,"completionTokens":0,"embeddingTokens":0,"totalTokens":0},
-				"totalDurationMs":0,"averageDurationMs":null,"daily":[]
+				"totalDurationMs":0,"averageDurationMs":null,"daily":[],"costCoverage":{"status":"unavailable"}
 			}`,
 		},
 		{
@@ -268,7 +268,7 @@ func TestResponseSchemasAcceptRepresentativePayloads(t *testing.T) {
 			payload: `{
 				"window":"30d","startsAt":"2026-09-01T00:00:00Z","endsAt":"2026-10-01T00:00:00Z",
 				"totals":{"requests":1,"toolCalls":0,"inputTokens":2,"outputTokens":3,"cacheReadInputTokens":0,"cacheWriteInputTokens":0,"completionInputTokens":2,"completionOutputTokens":3,"completionTokens":5,"embeddingTokens":0,"totalTokens":5},
-				"totalDurationMs":10,"averageDurationMs":10,"daily":[]
+				"totalDurationMs":10,"averageDurationMs":10,"daily":[],"costCoverage":{"status":"complete","startsAt":"2026-09-01T00:00:00Z","endsAt":"2026-10-01T00:00:00Z"}
 			}`,
 		},
 		{
@@ -357,5 +357,140 @@ func TestCreateTokenResponseMarksRawTokenReadOnly(t *testing.T) {
 	}
 	if !tokenRef.Value.ReadOnly || tokenRef.Value.WriteOnly {
 		t.Fatalf("expected response token to be readOnly and not writeOnly, got readOnly=%t writeOnly=%t", tokenRef.Value.ReadOnly, tokenRef.Value.WriteOnly)
+	}
+}
+
+func TestMutationIdentifiersRejectBlankStrings(t *testing.T) {
+	_, document := loadSourceDocument(t)
+
+	preferredUsernameSchemas := 0
+	for schemaName, schemaRef := range document.Components.Schemas {
+		if schemaRef == nil || schemaRef.Value == nil {
+			continue
+		}
+		preferredUsernameRef := schemaRef.Value.Properties["preferredUsername"]
+		if preferredUsernameRef == nil || preferredUsernameRef.Value == nil {
+			continue
+		}
+		preferredUsernameSchemas++
+		assertRejectsBlankString(t, schemaName+".preferredUsername", preferredUsernameRef.Value)
+	}
+	if preferredUsernameSchemas == 0 {
+		t.Fatal("no preferredUsername schemas found")
+	}
+
+	idempotencyRef := document.Components.Parameters["IdempotencyKey"]
+	if idempotencyRef == nil || idempotencyRef.Value == nil || idempotencyRef.Value.Schema == nil || idempotencyRef.Value.Schema.Value == nil {
+		t.Fatal("missing IdempotencyKey parameter schema")
+	}
+	idempotencySchema := idempotencyRef.Value.Schema.Value
+	assertRejectsBlankString(t, "Idempotency-Key", idempotencySchema)
+	if err := idempotencySchema.VisitJSON(strings.Repeat("é", 300), openapi3.VisitAsRequest()); err != nil {
+		t.Fatalf("Idempotency-Key rejects 300 Unicode characters: %v", err)
+	}
+	if err := idempotencySchema.VisitJSON(strings.Repeat("é", 513), openapi3.VisitAsRequest()); err == nil {
+		t.Fatal("Idempotency-Key accepts 513 Unicode characters")
+	}
+}
+
+func assertRejectsBlankString(t *testing.T, name string, schema *openapi3.Schema) {
+	t.Helper()
+
+	if err := schema.VisitJSON("valid", openapi3.VisitAsRequest()); err != nil {
+		t.Fatalf("%s rejects a non-blank value: %v", name, err)
+	}
+	if err := schema.VisitJSON("   ", openapi3.VisitAsRequest()); err == nil {
+		t.Fatalf("%s accepts a whitespace-only value", name)
+	}
+}
+
+func TestQuotaResetUseResponsesAreStrictlyDiscriminated(t *testing.T) {
+	_, document := loadSourceDocument(t)
+	pathItem := document.Paths.Map()["/api/v1/me/quota-resets/use"]
+	if pathItem == nil || pathItem.Post == nil || pathItem.Post.Responses == nil {
+		t.Fatal("missing POST /api/v1/me/quota-resets/use responses")
+	}
+	if response := pathItem.Post.Responses.Map()["200"]; response == nil || response.Ref != "#/components/responses/QuotaResetUseAppliedResponse" {
+		t.Fatalf("200 response does not use the applied contract: %#v", response)
+	}
+	if response := pathItem.Post.Responses.Map()["202"]; response == nil || response.Ref != "#/components/responses/QuotaResetUsePendingResponse" {
+		t.Fatalf("202 response does not use the pending contract: %#v", response)
+	}
+
+	summary := map[string]any{
+		"available":          0,
+		"maximum":            2,
+		"hasResettableQuota": true,
+		"pendingReset":       false,
+	}
+	quota := map[string]any{
+		"hasSubscription":   true,
+		"used5hTokens":      0,
+		"quota5hTokens":     100,
+		"remaining5hTokens": 100,
+		"reset5hAt":         nil,
+		"used7dTokens":      0,
+		"quota7dTokens":     100,
+		"remaining7dTokens": 100,
+		"reset7dAt":         nil,
+	}
+	appliedSchema := requiredComponentSchema(t, document, "QuotaResetUseAppliedResult")
+	applied := map[string]any{"status": "applied", "summary": summary, "quota": quota}
+	if err := appliedSchema.VisitJSON(applied, openapi3.VisitAsResponse()); err != nil {
+		t.Fatalf("valid applied quota reset response is rejected: %v", err)
+	}
+	delete(applied, "quota")
+	if err := appliedSchema.VisitJSON(applied, openapi3.VisitAsResponse()); err == nil {
+		t.Fatal("applied quota reset response accepts a missing quota")
+	}
+
+	pendingSchema := requiredComponentSchema(t, document, "QuotaResetUsePendingResult")
+	pending := map[string]any{
+		"status":  "pending",
+		"summary": summary,
+	}
+	if err := pendingSchema.VisitJSON(pending, openapi3.VisitAsResponse()); err != nil {
+		t.Fatalf("pending quota reset response without quota is rejected: %v", err)
+	}
+	pending["quota"] = quota
+	if err := pendingSchema.VisitJSON(pending, openapi3.VisitAsResponse()); err == nil {
+		t.Fatal("pending quota reset response accepts a live quota")
+	}
+}
+
+func TestDashboardOverviewSchemasRequireCostCoverage(t *testing.T) {
+	_, document := loadSourceDocument(t)
+	for _, name := range []string{"DashboardOverview", "DashboardOverviewPeriod"} {
+		schema := requiredComponentSchema(t, document, name)
+		if !slices.Contains(schema.Required, "costCoverage") {
+			t.Errorf("%s does not require costCoverage", name)
+		}
+	}
+}
+
+func requiredComponentSchema(t *testing.T, document *openapi3.T, name string) *openapi3.Schema {
+	t.Helper()
+	schemaRef := document.Components.Schemas[name]
+	if schemaRef == nil || schemaRef.Value == nil {
+		t.Fatalf("missing %s schema", name)
+	}
+	return schemaRef.Value
+}
+
+func TestAdminUserSchemaOnlyAllowsHumanAccounts(t *testing.T) {
+	_, document := loadSourceDocument(t)
+	schemaRef := document.Components.Schemas["AdminUser"]
+	if schemaRef == nil || schemaRef.Value == nil {
+		t.Fatal("missing AdminUser schema")
+	}
+	typeRef := schemaRef.Value.Properties["type"]
+	if typeRef == nil || typeRef.Value == nil {
+		t.Fatal("missing AdminUser.type schema")
+	}
+	if err := typeRef.Value.VisitJSON("user", openapi3.VisitAsResponse()); err != nil {
+		t.Fatalf("AdminUser.type rejects human accounts: %v", err)
+	}
+	if err := typeRef.Value.VisitJSON("service", openapi3.VisitAsResponse()); err == nil {
+		t.Fatal("AdminUser.type accepts service accounts")
 	}
 }

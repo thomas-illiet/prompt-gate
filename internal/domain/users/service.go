@@ -31,8 +31,9 @@ var (
 )
 
 const (
-	maxAccountNoteLength = 2000
-	defaultHumanRole     = auth.RoleLimited
+	maxAccountNoteLength        = 2000
+	defaultHumanRole            = auth.RoleLimited
+	userBootstrapAdvisoryLockID = int64(0x50524f4d50544741) // "PROMPTGA"
 )
 
 var serviceAccountIdentifierRegexp = regexp.MustCompile(`^[a-z0-9_-]{1,64}$`)
@@ -234,6 +235,18 @@ func (s *Service) SyncUser(ctx context.Context, identity auth.Identity) (auth.Us
 		if err := tx.Model(&User{}).Count(&total).Error; err != nil {
 			return err
 		}
+		if total == 0 && tx.Dialector.Name() == "postgres" {
+			// PostgreSQL READ COMMITTED transactions can otherwise both observe an
+			// empty table and bootstrap two administrators. The transaction-scoped
+			// lock serializes only the empty-table path across API replicas; recount
+			// after acquiring it to observe the preceding transaction's commit.
+			if err := tx.Exec("SELECT pg_advisory_xact_lock(?)", userBootstrapAdvisoryLockID).Error; err != nil {
+				return fmt.Errorf("lock user bootstrap: %w", err)
+			}
+			if err := tx.Model(&User{}).Count(&total).Error; err != nil {
+				return err
+			}
+		}
 		if total == 0 {
 			role = auth.RoleAdmin
 		}
@@ -303,11 +316,10 @@ func (s *Service) CreateUser(ctx context.Context, preferredUsername string) (Adm
 	}
 
 	s.notifier.Notify(ctx, configevents.DomainAuth)
-	items := []AdminUser{record.adminUser()}
-	if err := s.attachAdminUserUsage(ctx, items); err != nil {
-		return AdminUser{}, err
-	}
-	return items[0], nil
+	// A newly inserted account cannot have usage yet. Returning the projection
+	// directly also prevents a secondary analytics read from turning a committed,
+	// active account creation into an ambiguous error for the caller.
+	return record.adminUser(), nil
 }
 
 // UserByID returns a UserProfile for the given user ID, or ErrUserNotFound if absent.

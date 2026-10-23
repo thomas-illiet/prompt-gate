@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,10 +16,26 @@ import (
 	"github.com/glebarez/sqlite"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 type recordingNotifier struct {
 	domains []string
+}
+
+type groupUsageSortQueryLogger struct {
+	logger.Interface
+	statement string
+}
+
+func (l *groupUsageSortQueryLogger) Trace(ctx context.Context, begin time.Time, fc func() (string, int64), err error) {
+	sql, rows := fc()
+	if strings.Contains(sql, "group_usage") && strings.Contains(sql, "member_usage") {
+		l.statement = sql
+	}
+	l.Interface.Trace(ctx, begin, func() (string, int64) {
+		return sql, rows
+	}, err)
 }
 
 type groupUsageKPIFixture struct {
@@ -778,6 +795,27 @@ func TestListGroupsPagedSortsUsageBeforePagination(t *testing.T) {
 	}
 	if len(result.Items) != 2 || result.Items[0].ID != groupsByName["high-usage"].ID || result.Items[1].ID != groupsByName["medium-usage"].ID {
 		t.Fatalf("unexpected output-token order: %#v", result.Items)
+	}
+
+	// Keep the exact pre-pagination order while avoiding the previous derived
+	// table that aggregated every identity, including identities in no group.
+	capture := &groupUsageSortQueryLogger{Interface: logger.Default.LogMode(logger.Silent)}
+	capturedService := NewService(db.Session(&gorm.Session{Logger: capture}))
+	result, err = capturedService.ListGroupsPaged(ctx, ListParams{
+		Page: 1, PageSize: 1, SortBy: "inputTokens", SortDir: "desc", Search: "high-usage",
+	})
+	if err != nil {
+		t.Fatalf("sort filtered groups by input tokens: %v", err)
+	}
+	if len(result.Items) != 1 || result.Items[0].ID != groupsByName["high-usage"].ID {
+		t.Fatalf("unexpected filtered usage order: %#v", result.Items)
+	}
+	if capture.statement == "" || !strings.Contains(capture.statement, "GROUP BY") || !strings.Contains(capture.statement, "access_groups") {
+		t.Fatalf("expected candidate-scoped usage aggregation query, got %q", capture.statement)
+	}
+	if !strings.Contains(capture.statement, "SELECT DISTINCT access_group_members.user_id") ||
+		!strings.Contains(capture.statement, "initiator_id IN") {
+		t.Fatalf("usage sort must restrict per-identity aggregation to candidate members: %s", capture.statement)
 	}
 }
 

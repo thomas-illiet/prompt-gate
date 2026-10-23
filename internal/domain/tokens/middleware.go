@@ -30,14 +30,23 @@ func MiddlewareWithOptions(opts MiddlewareOptions) func(http.Handler) http.Handl
 			if rawToken, ok := bearerToken(r.Header.Get("Authorization")); ok {
 				tokenHash := sha256hex(rawToken)
 				var expiresAt time.Time
-				if principal, authenticated = cache.Get(r.Context(), tokenHash); !authenticated {
+				var generation int64
+				var cacheErr error
+				principal, generation, authenticated, cacheErr = cache.Get(r.Context(), tokenHash)
+				if cacheErr != nil {
+					principal = auth.Principal{}
+					authenticated = false
+				}
+				if !authenticated {
 					var err error
 					principal, expiresAt, err = opts.TokenService.ValidatePrincipalWithExpiry(r.Context(), rawToken, opts.UserResolver)
 					if err != nil {
 						writeAuthError(w, err)
 						return
 					}
-					cache.Set(r.Context(), tokenHash, principal, time.Until(expiresAt))
+					if cacheErr == nil {
+						cache.Set(r.Context(), generation, tokenHash, principal, time.Until(expiresAt))
+					}
 					authenticated = true
 				}
 			}

@@ -18,7 +18,7 @@ A new human account normally starts active with the `limited` role. This grants 
 
 ## 5. What is the difference between the limited, user, and administrator roles?
 
-The `limited` role can use the proxy with a centrally administered key and view personal profile, usage, quota, dashboard, group, and FAQ information. The `user` role also provides setup and monitoring access and lets you manage your own virtual keys. The `admin` role adds the platform's global configuration and administration features. The `none` role grants no application or proxy access.
+The `limited` role can use the proxy with a centrally administered key and view personal profile, usage, quota, quota-reset, dashboard, group, and FAQ information. The `user` role also provides setup and monitoring access and lets you manage your own virtual keys. The `admin` role adds the platform's global configuration and administration features. The `none` role grants no application or proxy access.
 
 ## 6. What is a virtual key?
 
@@ -26,23 +26,23 @@ A virtual key is a Prompt Gate API token used by an application, script, or LLM 
 
 ## 7. Why is my virtual key displayed only once?
 
-The complete key value is returned only when the key is created. Prompt Gate then stores only a cryptographic hash, so the original key cannot be retrieved. Copy it immediately to a secret manager. If you lose it, revoke it and create a new one.
+The complete key value is returned only to the person who creates the key. Prompt Gate then stores only a cryptographic hash, so the original value cannot be retrieved. Users with role `user` or `admin` should copy it immediately to a secret manager. For a `limited` account, an administrator creates and securely provides the key; contact that administrator if the value is lost.
 
 ## 8. How long does a virtual key remain valid?
 
-For a human account, the requested lifetime must be between 1 and 30 days; service-account keys can be requested for up to 365 days. If no lifetime is specified, the default is 7 days for `limited`, `user`, and service accounts, and 30 days for `admin`. The expiration date is shown in the virtual key list.
+For a human account, the requested lifetime must be between 1 and 30 days; service-account keys can be requested for up to 365 days. If no lifetime is specified, the default is 7 days for `limited`, `user`, and service accounts, and 30 days for `admin`. Users who can manage keys see the expiration date in the virtual key list; `limited` users can ask an administrator.
 
 ## 9. How do I revoke a virtual key?
 
-Open the virtual keys page, find the relevant key, and use the revoke action. The key will no longer authenticate new requests. Immediately revoke any key that has been exposed, is no longer used, or belongs to a retired integration.
+Users with role `user` or `admin` can open the virtual keys page, find the relevant key, and use the revoke action. A `limited` user must ask an administrator to revoke a centrally managed key. The key will no longer authenticate new requests. Immediately revoke any key that has been exposed, is no longer used, or belongs to a retired integration.
 
 ## 10. How do I configure my client to use Prompt Gate?
 
-Open the help and setup page, select a provider and model, then copy the suggested base URL and example. Use your Prompt Gate virtual key as the authentication token instead of the provider's key.
+Users with role `user` or `admin` can open the help and setup page, select a provider and model, then copy the suggested base URL and example. A `limited` user should request the approved endpoint, model, and centrally managed virtual key from an administrator. Use the Prompt Gate virtual key as the authentication token instead of the provider's key.
 
 ## 11. Which base URL should I use?
 
-The URL depends on the configured provider type and name. For OpenAI and Ollama, it usually follows the format `<proxy-url>/<provider-name>/v1`. For Anthropic, it follows the format `<proxy-url>/<provider-name>`. The setup page displays the exact URL to use.
+The URL depends on the configured provider type and name. For OpenAI and Ollama, it usually follows the format `<proxy-url>/<provider-name>/v1`. For Anthropic, it follows the format `<proxy-url>/<provider-name>`. The setup page displays the exact URL for `user` and `admin` roles; `limited` users should obtain it from an administrator.
 
 ## 12. Can I use every model available from a provider?
 

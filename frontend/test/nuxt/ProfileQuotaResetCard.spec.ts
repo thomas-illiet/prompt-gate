@@ -11,13 +11,21 @@ const availableSummary: QuotaResetSummary = {
   pendingReset: false,
 }
 
-function mountCard(summary: QuotaResetSummary | null = availableSummary) {
+function mountCard(
+  summary: QuotaResetSummary | null = availableSummary,
+  overrides: Partial<{
+    error: string | null
+    loading: boolean
+    using: boolean
+  }> = {},
+) {
   return mount(ProfileQuotaResetCard, {
     props: {
       error: null,
       loading: false,
       summary,
       using: false,
+      ...overrides,
     },
     global: {
       stubs: {
@@ -40,6 +48,37 @@ function mountCard(summary: QuotaResetSummary | null = availableSummary) {
 }
 
 describe('ProfileQuotaResetCard', () => {
+  it('does not invent a balance while the initial summary is loading', () => {
+    const wrapper = mountCard(null, { loading: true })
+
+    expect(wrapper.find('[data-test="quota-reset-balance-chip"]').exists()).toBe(
+      false,
+    )
+    expect(wrapper.find('[data-test="quota-reset-available"]').exists()).toBe(
+      false,
+    )
+    expect(wrapper.find('[aria-label="Loading quota resets"]').exists()).toBe(
+      true,
+    )
+  })
+
+  it('does not invent a balance when the initial summary fails', async () => {
+    const wrapper = mountCard(null, {
+      error: 'Unable to load quota resets.',
+    })
+
+    expect(wrapper.find('[data-test="quota-reset-balance-chip"]').exists()).toBe(
+      false,
+    )
+    expect(wrapper.find('[data-test="quota-reset-available"]').exists()).toBe(
+      false,
+    )
+    expect(wrapper.text()).toContain('Unable to load quota resets.')
+
+    await wrapper.get('button').trigger('click')
+    expect(wrapper.emitted('retry')).toEqual([[]])
+  })
+
   it('shows the available balance and emits both user actions', async () => {
     const wrapper = mountCard()
 
@@ -96,6 +135,20 @@ describe('ProfileQuotaResetCard', () => {
     expect(wrapper.text()).toContain('Unable to load quota resets.')
     await wrapper.get('button').trigger('click')
 
+    expect(wrapper.emitted('retry')).toEqual([[]])
+  })
+
+  it('offers a refresh when no summary state is available', async () => {
+    const wrapper = mountCard(null)
+
+    expect(wrapper.get('[data-test="quota-reset-unavailable"]').text()).toContain(
+      'not available yet',
+    )
+    expect(wrapper.find('[data-test="quota-reset-balance-chip"]').exists()).toBe(
+      false,
+    )
+
+    await wrapper.get('button').trigger('click')
     expect(wrapper.emitted('retry')).toEqual([[]])
   })
 })

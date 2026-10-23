@@ -51,7 +51,7 @@ function create() {
     icon="mdi-account-plus-outline"
     :loading="props.loading"
     max-width="560"
-    subtitle="Reserve an account now. SSO will complete its profile on first sign-in."
+    subtitle="Create an active limited account now. SSO will complete its profile on first sign-in."
     title="Pre-create user"
   >
     <form :id="formId" @submit.prevent="create">

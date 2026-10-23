@@ -17,12 +17,14 @@ mockNuxtImport('useAdminUsers', () => useAdminUsersMock)
 const user: AdminUser = {
   activeInLast30Days: true,
   quotaResetCredits: 1,
+  type: 'user',
   id: 'user-id',
   sub: 'oidc-sub',
   preferredUsername: 'ada',
   email: 'ada@example.com',
   name: 'Ada Lovelace',
   role: 'user',
+  subscriptionPlanId: null,
   note: '',
   isActive: true,
   lastLoginAt: '2026-01-02T00:00:00Z',
@@ -350,6 +352,49 @@ describe('Admin users page usage statistics dialog', () => {
       )
     })
     expect(wrapper.find('[data-test="edit-user-dialog"]').exists()).toBe(false)
+  })
+
+  it('offers recovery without recreating the user when post-create loading fails', async () => {
+    const adminUsers = createAdminUsersMock()
+    adminUsers.loadUser
+      .mockRejectedValueOnce(new Error('user reload interrupted'))
+      .mockResolvedValueOnce(user)
+    useAdminUsersMock.mockReturnValue(adminUsers)
+    const loadAllPlans = vi.fn().mockResolvedValue(undefined)
+    useAdminSubscriptionsMock.mockReturnValue({
+      loadAllPlans,
+      plans: shallowRef([]),
+    })
+    const wrapper = mountPage()
+
+    await wrapper.get('[data-test="open-create-user"]').trigger('click')
+    await wrapper.get('[data-test="submit-create-user"]').trigger('click')
+
+    await vi.waitFor(() => {
+      expect(
+        wrapper.find('[data-test="create-user-dialog"]').exists(),
+      ).toBe(false)
+      expect(
+        wrapper.find('[data-test="created-user-setup-warning"]').exists(),
+      ).toBe(true)
+    })
+    expect(wrapper.text()).toContain('The account already exists')
+    expect(wrapper.find('[data-test="edit-user-dialog"]').exists()).toBe(false)
+    expect(adminUsers.createUser).toHaveBeenCalledOnce()
+
+    await wrapper
+      .get('[data-test="retry-created-user-setup"]')
+      .trigger('click')
+
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-test="edit-user-dialog"]').exists()).toBe(true)
+      expect(
+        wrapper.find('[data-test="created-user-setup-warning"]').exists(),
+      ).toBe(false)
+    })
+    expect(adminUsers.createUser).toHaveBeenCalledOnce()
+    expect(adminUsers.loadUser).toHaveBeenCalledTimes(2)
+    expect(loadAllPlans).toHaveBeenCalledTimes(2)
   })
 
   it('creates a token for the user selected from the table', async () => {

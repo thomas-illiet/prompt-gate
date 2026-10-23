@@ -7,6 +7,7 @@ import (
 
 	"promptgate/backend/internal/domain/pricing"
 
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -84,8 +85,9 @@ const (
 )
 
 type dashboardUsageScope struct {
-	global       bool
-	initiatorIDs []string
+	global        bool
+	initiatorIDs  []string
+	memberGroupID string
 }
 
 // currentUserDashboardScope creates a dashboard scope limited to one user.
@@ -112,6 +114,17 @@ func identitiesDashboardScope(initiatorIDs []string) dashboardUsageScope {
 	return dashboardUsageScope{initiatorIDs: normalized}
 }
 
+// groupDashboardScope creates a dashboard scope that resolves the current
+// access-group membership in SQL. Keeping the group identifier in the scope
+// avoids materializing an arbitrarily large member list in the API process.
+func groupDashboardScope(groupID string) dashboardUsageScope {
+	normalized := strings.TrimSpace(groupID)
+	if parsed, err := uuid.Parse(normalized); err == nil {
+		normalized = parsed.String()
+	}
+	return dashboardUsageScope{memberGroupID: normalized}
+}
+
 // globalDashboardScope creates a dashboard scope across all identities.
 func globalDashboardScope() dashboardUsageScope {
 	return dashboardUsageScope{global: true}
@@ -121,6 +134,12 @@ func globalDashboardScope() dashboardUsageScope {
 func (scope dashboardUsageScope) applyInitiatorFilter(query *gorm.DB, column string) *gorm.DB {
 	if scope.global {
 		return query
+	}
+	if scope.memberGroupID != "" {
+		return query.Where(
+			column+" IN (SELECT user_id FROM access_group_members WHERE group_id = ?)",
+			scope.memberGroupID,
+		)
 	}
 	if len(scope.initiatorIDs) == 0 {
 		return query.Where("1 = 0")

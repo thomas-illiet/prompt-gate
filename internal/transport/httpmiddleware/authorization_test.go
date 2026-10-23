@@ -15,17 +15,21 @@ func TestRequireAppAccess(t *testing.T) {
 			w.WriteHeader(http.StatusNoContent)
 		}))
 
-		req := httptest.NewRequest(http.MethodGet, "/", nil)
-		req = req.WithContext(auth.ContextWithUser(req.Context(), auth.UserProfile{
-			Role:     auth.RoleUser,
-			IsActive: true,
-		}))
+		for _, role := range []auth.AppRole{auth.RoleLimited, auth.RoleUser, auth.RoleAdmin} {
+			t.Run(string(role), func(t *testing.T) {
+				req := httptest.NewRequest(http.MethodGet, "/", nil)
+				req = req.WithContext(auth.ContextWithUser(req.Context(), auth.UserProfile{
+					Role:     role,
+					IsActive: true,
+				}))
 
-		recorder := httptest.NewRecorder()
-		handler.ServeHTTP(recorder, req)
+				recorder := httptest.NewRecorder()
+				handler.ServeHTTP(recorder, req)
 
-		if recorder.Code != http.StatusNoContent {
-			t.Fatalf("expected success, got status %d", recorder.Code)
+				if recorder.Code != http.StatusNoContent {
+					t.Fatalf("expected role %q to succeed, got status %d", role, recorder.Code)
+				}
+			})
 		}
 	})
 

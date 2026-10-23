@@ -16,6 +16,7 @@ import type {
   GroupListResponse,
 } from '../../app/types/groups'
 import type { AdminUser, UserListResponse } from '../../app/types/users'
+import { useNotificationStore } from '../../app/stores/notification'
 
 const { downloadUsersCsvMock } = vi.hoisted(() => ({
   downloadUsersCsvMock: vi.fn(),
@@ -56,12 +57,14 @@ function apiError(code: string) {
 const user: AdminUser = {
   activeInLast30Days: true,
   quotaResetCredits: 1,
+  type: 'user',
   id: 'user-id',
   sub: 'oidc-sub',
   preferredUsername: 'ada',
   email: 'ada@example.com',
   name: 'Ada Lovelace',
   role: 'user',
+  subscriptionPlanId: null,
   note: '',
   isActive: true,
   lastLoginAt: '2026-01-02T00:00:00Z',
@@ -466,7 +469,7 @@ describe('useAdminUsers', () => {
     expect(retryHeaders).toEqual(firstHeaders)
   })
 
-  it('keeps the quota reset idempotency key when the post-grant reload fails', async () => {
+  it('keeps a successful quota reset grant when the post-grant reload fails', async () => {
     const reloadError = new Error('reload interrupted')
     const resetSummary = {
       available: 2,
@@ -474,25 +477,36 @@ describe('useAdminUsers', () => {
       hasResettableQuota: true,
       pendingReset: false,
     }
-    const updatedUser = { ...user, quotaResetCredits: 2 }
     apiFetch
       .mockResolvedValueOnce(userResponse([user]))
       .mockResolvedValueOnce(resetSummary)
       .mockRejectedValueOnce(reloadError)
-      .mockResolvedValueOnce(resetSummary)
-      .mockResolvedValueOnce(userResponse([updatedUser]))
 
     const adminUsers = useAdminUsers()
     await vi.waitFor(() => expect(adminUsers.loading.value).toBe(false))
+    adminUsers.selectedUser.value = user
 
-    await expect(adminUsers.grantQuotaReset(user.id)).rejects.toBe(reloadError)
-    await adminUsers.grantQuotaReset(user.id)
+    await expect(adminUsers.grantQuotaReset(user.id)).resolves.toEqual(
+      resetSummary,
+    )
 
-    const firstHeaders = apiFetch.mock.calls[1]?.[1]?.headers
-    const retryHeaders = apiFetch.mock.calls[3]?.[1]?.headers
-    expect(firstHeaders).toEqual({ 'Idempotency-Key': expect.any(String) })
-    expect(retryHeaders).toEqual(firstHeaders)
-    expect(adminUsers.users.value).toEqual([updatedUser])
+    expect(apiFetch).toHaveBeenCalledTimes(3)
+    expect(adminUsers.users.value).toEqual([
+      { ...user, quotaResetCredits: 2 },
+    ])
+    expect(adminUsers.selectedUser.value?.quotaResetCredits).toBe(2)
+    expect(useNotificationStore().notifications).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          text: 'Quota reset offered.',
+          type: 'success',
+        }),
+        expect.objectContaining({
+          text: expect.stringContaining('could not be refreshed'),
+          type: 'warning',
+        }),
+      ]),
+    )
   })
 
   it('loads group options across all pages', async () => {

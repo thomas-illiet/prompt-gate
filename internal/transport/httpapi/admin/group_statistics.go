@@ -18,17 +18,13 @@ func (h *Handler) HandleAdminGroupStatistics(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	group, err := h.groups.GetGroup(r.Context(), r.PathValue("id"))
-	if err != nil {
+	groupID := r.PathValue("id")
+	if err := h.groups.EnsureGroupExists(r.Context(), groupID); err != nil {
 		writeGroupError(w, err)
 		return
 	}
 
-	memberIDs := make([]string, 0, len(group.Members))
-	for _, member := range group.Members {
-		memberIDs = append(memberIDs, member.ID)
-	}
-	response, err := h.proxy.DashboardOverviewForIdentities(r.Context(), memberIDs, window, time.Now().UTC())
+	response, err := h.proxy.DashboardOverviewForGroup(r.Context(), groupID, window, time.Now().UTC())
 	if writeDashboardError(w, err) {
 		return
 	}

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -13,14 +14,27 @@ import (
 
 	"promptgate/backend/internal/domain/auth"
 	"promptgate/backend/internal/domain/proxy"
+	"promptgate/backend/internal/domain/subscriptions"
 	"promptgate/backend/internal/domain/users"
 
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
 )
 
+type quotaStateCleanerFunc func(context.Context, string) error
+
+func (fn quotaStateCleanerFunc) DeleteUserQuotaState(ctx context.Context, userID string) error {
+	return fn(ctx, userID)
+}
+
 // newUsersTestHandler creates an admin handler wired to an in-memory users service.
 func newUsersTestHandler(t *testing.T) (*Handler, *users.Service) {
+	t.Helper()
+	handler, service, _ := newUsersTestHandlerWithDB(t)
+	return handler, service
+}
+
+func newUsersTestHandlerWithDB(t *testing.T) (*Handler, *users.Service, *gorm.DB) {
 	t.Helper()
 
 	dsn := fmt.Sprintf(
@@ -41,11 +55,11 @@ func newUsersTestHandler(t *testing.T) (*Handler, *users.Service) {
 	}
 	createAdminUsersUsageTables(t, db)
 
-	return NewHandler(Dependencies{Users: service}), service
+	return NewHandler(Dependencies{Users: service}), service, db
 }
 
-// TestHandleAdminCreateUserPrecreatesPendingOIDCAccount verifies the UID-only creation contract.
-func TestHandleAdminCreateUserPrecreatesPendingOIDCAccount(t *testing.T) {
+// TestHandleAdminCreateUserPrecreatesActiveLimitedOIDCAccount verifies the UID-only creation contract.
+func TestHandleAdminCreateUserPrecreatesActiveLimitedOIDCAccount(t *testing.T) {
 	handler, service := newUsersTestHandler(t)
 
 	req := httptest.NewRequest(
@@ -68,7 +82,7 @@ func TestHandleAdminCreateUserPrecreatesPendingOIDCAccount(t *testing.T) {
 		t.Fatalf("expected trimmed case-sensitive UID, got %q", response.PreferredUsername)
 	}
 	if response.Sub != nil || response.LastLoginAt != nil {
-		t.Fatalf("expected pending SSO fields to be null, got sub=%v lastLoginAt=%v", response.Sub, response.LastLoginAt)
+		t.Fatalf("expected unlinked SSO fields to be null, got sub=%v lastLoginAt=%v", response.Sub, response.LastLoginAt)
 	}
 	if response.Role != auth.RoleLimited || !response.IsActive {
 		t.Fatalf("expected active limited account, got role=%q active=%t", response.Role, response.IsActive)
@@ -86,6 +100,75 @@ func TestHandleAdminCreateUserPrecreatesPendingOIDCAccount(t *testing.T) {
 	}
 	if persisted.Role != auth.RoleLimited || !persisted.IsActive {
 		t.Fatalf("expected persisted active limited account, got role=%q active=%t", persisted.Role, persisted.IsActive)
+	}
+}
+
+func TestHandleAdminCreateUserReturnsCreatedWhenSubscriptionDecorationFails(t *testing.T) {
+	handler, service, db := newUsersTestHandlerWithDB(t)
+	// Deliberately leave subscription tables absent so response decoration fails.
+	handler.subscriptions = subscriptions.NewService(db)
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/api/v1/admin/users",
+		bytes.NewBufferString(`{"preferredUsername":"decoration-unavailable"}`),
+	)
+
+	handler.HandleAdminCreateUser(recorder, req)
+
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("expected committed creation to return 201, got %d: %s", recorder.Code, recorder.Body.String())
+	}
+	var response users.AdminUser
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.ID == "" || response.Role != auth.RoleLimited || !response.IsActive {
+		t.Fatalf("unexpected fallback creation response: %#v", response)
+	}
+	if _, err := service.GetUser(context.Background(), response.ID); err != nil {
+		t.Fatalf("load committed user: %v", err)
+	}
+}
+
+func TestHandleAdminDeleteUserCleansQuotaStateBestEffort(t *testing.T) {
+	tests := []struct {
+		name       string
+		cleanupErr error
+	}{
+		{name: "cleanup succeeds"},
+		{name: "cleanup failure does not reverse committed deletion", cleanupErr: errors.New("redis unavailable")},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			handler, service := newUsersTestHandler(t)
+			user, err := service.CreateUser(context.Background(), "delete-me")
+			if err != nil {
+				t.Fatalf("create user: %v", err)
+			}
+
+			var cleanedUserID string
+			handler.quotaRedis = quotaStateCleanerFunc(func(_ context.Context, userID string) error {
+				cleanedUserID = userID
+				return test.cleanupErr
+			})
+			req := httptest.NewRequest(http.MethodDelete, "/api/v1/admin/users/"+user.ID, nil)
+			req.SetPathValue("id", user.ID)
+			recorder := httptest.NewRecorder()
+
+			handler.HandleAdminDeleteUser(recorder, req)
+
+			if recorder.Code != http.StatusNoContent {
+				t.Fatalf("expected committed deletion to return 204, got %d: %s", recorder.Code, recorder.Body.String())
+			}
+			if cleanedUserID != user.ID {
+				t.Fatalf("expected quota cleanup for %q, got %q", user.ID, cleanedUserID)
+			}
+			if _, err := service.GetUser(context.Background(), user.ID); !errors.Is(err, users.ErrUserNotFound) {
+				t.Fatalf("expected user to remain deleted after cleanup result, got %v", err)
+			}
+		})
 	}
 }
 

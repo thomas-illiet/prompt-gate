@@ -13,6 +13,7 @@ Container Registry, and creates a GitHub Release with downloadable assets.
 - GitHub Packages enabled for the repository or organization.
 - Workflow token permissions for package publishing and release creation.
 - A clean local validation run before tagging.
+- A disposable PostgreSQL 18 database for the concurrency and migration tests.
 
 ## Pre-Release Verification
 
@@ -23,7 +24,7 @@ git checkout main
 git pull --ff-only origin main
 make fmt-check
 make vet
-make test
+PROMPTGATE_TEST_POSTGRES_URL='postgres://postgres:postgres@127.0.0.1:5432/promptgate_test?sslmode=disable' make test
 make build
 docker compose config --quiet
 docker build -t prompt-gate-backend:test .

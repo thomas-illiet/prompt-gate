@@ -79,13 +79,19 @@ func (s *Service) DashboardOverviewForIdentities(ctx context.Context, initiatorI
 	return s.dashboardOverview(ctx, identitiesDashboardScope(initiatorIDs), window, now)
 }
 
+// DashboardOverviewForGroup returns usage totals, duration, and daily activity
+// for the access group's current membership without loading member IDs in Go.
+func (s *Service) DashboardOverviewForGroup(ctx context.Context, groupID string, window UsageWindow, now time.Time) (DashboardOverviewResponse, error) {
+	return s.dashboardOverview(ctx, groupDashboardScope(groupID), window, now)
+}
+
 // dashboardOverview builds an overview without comparison for one usage scope.
 func (s *Service) dashboardOverview(ctx context.Context, scope dashboardUsageScope, window UsageWindow, now time.Time) (DashboardOverviewResponse, error) {
 	resolved, err := s.resolveDashboardWindow(ctx, scope, window, now)
 	if err != nil {
 		return DashboardOverviewResponse{}, err
 	}
-	period, err := s.loadDashboardOverviewPeriod(ctx, scope, resolved, false)
+	period, err := s.loadDashboardOverviewPeriod(ctx, scope, resolved, true)
 	if err != nil {
 		return DashboardOverviewResponse{}, err
 	}
@@ -250,6 +256,7 @@ func (s *Service) dashboardCostCoverage(ctx context.Context, scope dashboardUsag
 	}
 
 	type coverageRow struct {
+		Requests    int64
 		TotalTokens int64
 	}
 	var row coverageRow
@@ -261,16 +268,17 @@ func (s *Service) dashboardCostCoverage(ctx context.Context, scope dashboardUsag
 			Where("token_usages.created_at >= ? AND token_usages.created_at <= ?", startsAt, endsAt)
 	}
 	if err := coverageQuery().
-		Select(`COALESCE(SUM(token_usages.input_tokens + token_usages.output_tokens + token_usages.cache_read_input_tokens + token_usages.cache_write_input_tokens), 0) AS total_tokens`).
+		Select(`COUNT(DISTINCT token_usages.interception_id) AS requests,
+			COALESCE(SUM(token_usages.input_tokens + token_usages.output_tokens + token_usages.cache_read_input_tokens + token_usages.cache_write_input_tokens), 0) AS total_tokens`).
 		Scan(&row).Error; err != nil {
 		return CostCoverage{}, fmt.Errorf("load dashboard cost coverage: %w", err)
 	}
 
-	if totals.Requests == 0 && totals.TotalTokens == 0 && row.TotalTokens == 0 {
+	if totals.Requests == 0 && totals.TotalTokens == 0 && row.Requests == 0 {
 		start, end := startsAt, endsAt
 		return CostCoverage{Status: CostCoverageComplete, StartsAt: &start, EndsAt: &end}, nil
 	}
-	if row.TotalTokens == 0 {
+	if row.Requests == 0 {
 		return CostCoverage{Status: CostCoverageUnavailable}, nil
 	}
 
@@ -288,7 +296,7 @@ func (s *Service) dashboardCostCoverage(ctx context.Context, scope dashboardUsag
 		Take(&lastUsage).Error; err != nil {
 		return CostCoverage{}, fmt.Errorf("load dashboard cost coverage end: %w", err)
 	}
-	if row.TotalTokens != totals.TotalTokens {
+	if row.Requests != totals.Requests || row.TotalTokens != totals.TotalTokens {
 		first, last := firstUsage.CreatedAt, lastUsage.CreatedAt
 		return CostCoverage{Status: CostCoveragePartial, StartsAt: &first, EndsAt: &last}, nil
 	}

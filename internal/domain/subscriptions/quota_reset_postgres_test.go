@@ -13,7 +13,9 @@ import (
 
 	"promptgate/backend/internal/domain/auth"
 	"promptgate/backend/internal/domain/users"
+	"promptgate/backend/internal/platform/redisstore"
 
+	"github.com/alicebob/miniredis/v2"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -136,40 +138,54 @@ func TestQuotaResetPostgresConcurrentGrantsRespectMaximum(t *testing.T) {
 		t.Fatalf("PostgreSQL row lock allowed balance %d", wallet.Available)
 	}
 
+	redisServer := miniredis.RunT(t)
+	redisBackend, err := redisstore.NewRequired(ctx, "redis://"+redisServer.Addr(), time.Minute, nil)
+	if err != nil {
+		t.Fatalf("open quota reset Redis store: %v", err)
+	}
+	defer redisBackend.Close()
+	quotaStore := NewRedisStore(redisBackend, service, time.Minute, nil)
+	if err := quotaStore.WarmSnapshot(ctx); err != nil {
+		t.Fatalf("warm quota reset snapshot: %v", err)
+	}
+
+	type useOutcome struct {
+		result QuotaResetUseResult
+		err    error
+	}
 	useStart := make(chan struct{})
-	useErrors := make(chan error, 2)
-	for index := 0; index < 2; index++ {
+	useOutcomes := make(chan useOutcome, 2)
+	for range 2 {
 		waitGroup.Add(1)
-		go func(requestIndex int) {
+		go func() {
 			defer waitGroup.Done()
 			<-useStart
-			_, useErr := service.UseQuotaReset(
+			result, useErr := service.UseQuotaReset(
 				ctx,
-				nil,
+				quotaStore,
 				profile.ID,
-				fmt.Sprintf("postgres-use-%d", requestIndex),
+				"postgres-same-use",
 				time.Now().UTC(),
 			)
-			useErrors <- useErr
-		}(index)
+			useOutcomes <- useOutcome{result: result, err: useErr}
+		}()
 	}
 	close(useStart)
 	waitGroup.Wait()
-	close(useErrors)
+	close(useOutcomes)
 
-	var reserved, blockedPending int
-	for useErr := range useErrors {
-		switch {
-		case useErr == nil:
-			reserved++
-		case errors.Is(useErr, ErrQuotaResetPending):
-			blockedPending++
-		default:
-			t.Fatalf("unexpected concurrent PostgreSQL use error: %v", useErr)
+	var appliedUses int
+	for outcome := range useOutcomes {
+		if outcome.err != nil {
+			t.Fatalf("unexpected concurrent PostgreSQL use error: %v", outcome.err)
 		}
+		if outcome.result.Status != QuotaResetUseApplied || outcome.result.Quota == nil {
+			t.Fatalf("idempotent concurrent use did not report applied live quota: %#v", outcome.result)
+		}
+		appliedUses++
 	}
-	if reserved != 1 || blockedPending != 1 {
-		t.Fatalf("unexpected PostgreSQL use results: reserved=%d pending=%d", reserved, blockedPending)
+	if appliedUses != 2 {
+		t.Fatalf("unexpected PostgreSQL applied use results: %d", appliedUses)
 	}
 	if err := db.Where("user_id = ?", profile.ID).Take(&wallet).Error; err != nil {
 		t.Fatalf("reload PostgreSQL quota reset wallet: %v", err)
@@ -177,13 +193,13 @@ func TestQuotaResetPostgresConcurrentGrantsRespectMaximum(t *testing.T) {
 	if wallet.Available != MaxQuotaResetCredits-1 {
 		t.Fatalf("concurrent uses debited the wallet more than once: %#v", wallet)
 	}
-	var pendingEvents int64
+	var appliedEvents int64
 	if err := db.Model(&QuotaResetEvent{}).
-		Where("user_id = ? AND type = ? AND status = ?", profile.ID, QuotaResetEventUsed, QuotaResetEventPending).
-		Count(&pendingEvents).Error; err != nil {
-		t.Fatalf("count PostgreSQL pending reset events: %v", err)
+		Where("user_id = ? AND type = ? AND status = ?", profile.ID, QuotaResetEventUsed, QuotaResetEventApplied).
+		Count(&appliedEvents).Error; err != nil {
+		t.Fatalf("count PostgreSQL applied reset events: %v", err)
 	}
-	if pendingEvents != 1 {
-		t.Fatalf("expected one pending PostgreSQL reset event, got %d", pendingEvents)
+	if appliedEvents != 1 {
+		t.Fatalf("expected one applied PostgreSQL reset event, got %d", appliedEvents)
 	}
 }

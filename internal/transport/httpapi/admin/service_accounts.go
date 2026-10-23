@@ -131,10 +131,12 @@ func (h *Handler) HandleAdminUpdateServiceAccountNote(w http.ResponseWriter, r *
 
 // HandleAdminDeleteServiceAccount deletes a service account.
 func (h *Handler) HandleAdminDeleteServiceAccount(w http.ResponseWriter, r *http.Request) {
-	if err := h.users.DeleteServiceAccount(r.Context(), r.PathValue("id")); err != nil {
+	accountID := r.PathValue("id")
+	if err := h.users.DeleteServiceAccount(r.Context(), accountID); err != nil {
 		writeServiceAccountError(w, err)
 		return
 	}
+	h.cleanupDeletedQuotaState(r.Context(), accountID)
 
 	w.WriteHeader(http.StatusNoContent)
 }

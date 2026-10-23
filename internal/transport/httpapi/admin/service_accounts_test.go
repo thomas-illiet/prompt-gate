@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -79,6 +80,39 @@ func TestHandleAdminListServiceAccountsFiltersByTechnicalID(t *testing.T) {
 	}
 	if response.Total != 1 || len(response.Items) != 1 || response.Items[0].ID != wanted.ID {
 		t.Fatalf("unexpected filtered response: %#v", response)
+	}
+}
+
+func TestHandleAdminDeleteServiceAccountCleansQuotaState(t *testing.T) {
+	handler, userService, _ := newServiceAccountsTestHandler(t)
+	account, err := userService.CreateServiceAccount(context.Background(), users.ServiceAccountInput{
+		Identifier: "delete-worker",
+		Name:       "Delete Worker",
+		IsActive:   true,
+	})
+	if err != nil {
+		t.Fatalf("create service account: %v", err)
+	}
+
+	var cleanedAccountID string
+	handler.quotaRedis = quotaStateCleanerFunc(func(_ context.Context, userID string) error {
+		cleanedAccountID = userID
+		return nil
+	})
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/admin/service-accounts/"+account.ID, nil)
+	req.SetPathValue("id", account.ID)
+	recorder := httptest.NewRecorder()
+
+	handler.HandleAdminDeleteServiceAccount(recorder, req)
+
+	if recorder.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d: %s", recorder.Code, recorder.Body.String())
+	}
+	if cleanedAccountID != account.ID {
+		t.Fatalf("expected quota cleanup for %q, got %q", account.ID, cleanedAccountID)
+	}
+	if _, err := userService.GetServiceAccount(context.Background(), account.ID); !errors.Is(err, users.ErrUserNotFound) {
+		t.Fatalf("expected service account to remain deleted, got %v", err)
 	}
 }
 

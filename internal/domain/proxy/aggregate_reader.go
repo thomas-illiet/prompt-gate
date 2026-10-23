@@ -10,11 +10,26 @@ import (
 
 func (s *Service) loadAggregatedUsage(ctx context.Context, scope dashboardUsageScope, startsAt, endsAt time.Time, totals *UsageTotals, daily map[string]*DailyUsage) (int64, error) {
 	var rows []ProxyDailyUsageKPI
-	query := s.db.WithContext(ctx).Model(&ProxyDailyUsageKPI{})
+	query := s.db.WithContext(ctx).
+		Table("proxy_daily_usage_kpis").
+		Select(`day,
+			COALESCE(SUM(requests), 0) AS requests,
+			COALESCE(SUM(tool_calls), 0) AS tool_calls,
+			COALESCE(SUM(total_duration_ms), 0) AS total_duration_ms,
+			COALESCE(SUM(input_tokens), 0) AS input_tokens,
+			COALESCE(SUM(output_tokens), 0) AS output_tokens,
+			COALESCE(SUM(cache_read_input_tokens), 0) AS cache_read_input_tokens,
+			COALESCE(SUM(cache_write_input_tokens), 0) AS cache_write_input_tokens,
+			COALESCE(SUM(completion_input_tokens), 0) AS completion_input_tokens,
+			COALESCE(SUM(completion_output_tokens), 0) AS completion_output_tokens,
+			COALESCE(SUM(completion_tokens), 0) AS completion_tokens,
+			COALESCE(SUM(embedding_tokens), 0) AS embedding_tokens,
+			COALESCE(SUM(total_tokens), 0) AS total_tokens`)
 	startDay, endDay := usageDayBounds(startsAt, endsAt)
 	query = scope.applyInitiatorFilter(query, "initiator_id").
-		Where("day >= ? AND day <= ?", startDay, endDay)
-	if err := query.Find(&rows).Error; err != nil {
+		Where("day >= ? AND day <= ?", startDay, endDay).
+		Group("day")
+	if err := query.Scan(&rows).Error; err != nil {
 		return 0, fmt.Errorf("load aggregated usage: %w", err)
 	}
 	totalDurationMs := int64(0)

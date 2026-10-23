@@ -116,11 +116,14 @@ func TestCurrentUserQuotaResetHTTPPendingReplayAndAppliedHistory(t *testing.T) {
 	if useRecorder.Code != http.StatusAccepted {
 		t.Fatalf("expected 202, got %d: %s", useRecorder.Code, useRecorder.Body.String())
 	}
+	if strings.Contains(useRecorder.Body.String(), `"quota"`) {
+		t.Fatalf("pending reset exposed a non-authoritative live quota: %s", useRecorder.Body.String())
+	}
 	var useResponse subscriptions.QuotaResetUseResult
 	if err := json.NewDecoder(useRecorder.Body).Decode(&useResponse); err != nil {
 		t.Fatalf("decode use response: %v", err)
 	}
-	if useResponse.Status != subscriptions.QuotaResetUsePending || !useResponse.Summary.PendingReset || useResponse.Summary.Available != 0 {
+	if useResponse.Status != subscriptions.QuotaResetUsePending || !useResponse.Summary.PendingReset || useResponse.Summary.Available != 0 || useResponse.Quota != nil {
 		t.Fatalf("unexpected pending response: %#v", useResponse)
 	}
 

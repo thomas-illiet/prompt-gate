@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -88,8 +89,9 @@ func TestHandleAdminGroupStatisticsAggregatesCurrentMembers(t *testing.T) {
 	}
 	group := createStatisticsGroup(t, db, groupService, statisticsHumanUserID, statisticsServiceUserID)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/groups/"+group.ID.String()+"/statistics?window=7d", nil)
-	req.SetPathValue("id", group.ID.String())
+	requestedGroupID := strings.ToUpper(group.ID.String())
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/groups/"+requestedGroupID+"/statistics?window=7d", nil)
+	req.SetPathValue("id", requestedGroupID)
 	recorder := httptest.NewRecorder()
 	handler.HandleAdminGroupStatistics(recorder, req)
 

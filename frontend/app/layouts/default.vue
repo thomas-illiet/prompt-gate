@@ -1,9 +1,18 @@
+<script setup lang="ts">
+import { hasRequiredRole } from '~/utils/auth'
+
+const authStore = useAuthStore()
+const canViewMonitoring = computed(() =>
+  hasRequiredRole(authStore.user, ['user', 'admin']),
+)
+</script>
+
 <template>
   <v-app>
     <AppDrawer />
     <AppBar />
     <v-main class="default-layout-main">
-      <AppMonitoringBanner />
+      <AppMonitoringBanner v-if="canViewMonitoring" />
       <slot />
     </v-main>
     <AppFooter />

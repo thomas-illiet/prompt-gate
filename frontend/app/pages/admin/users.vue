@@ -39,6 +39,10 @@ const usageDialog = useTargetDialog<AdminUser>()
 const ipDialog = useTargetDialog<AdminUser>()
 const ipClearDialog = useTargetDialog<AdminUser>()
 const quotaResetDialog = useTargetDialog<AdminUser>()
+const createdUserSetupWarning = shallowRef<{
+  message: string
+  user: AdminUser
+} | null>(null)
 let ipRefreshTimer: ReturnType<typeof setInterval> | null = null
 const statusConfirm = useToggleConfirmDialog(statusDialog.target, {
   disableIcon: 'mdi-account-cancel-outline',
@@ -91,16 +95,44 @@ async function openEditDialog(user: AdminUser) {
     adminSubscriptions.loadAllPlans(),
   ])
   editDialogOpen.value = true
+  if (createdUserSetupWarning.value?.user.id === user.id) {
+    createdUserSetupWarning.value = null
+  }
 }
 
-// preCreateUser reserves the SSO identity, then opens its access settings.
+// preCreateUser creates an active limited account, then opens its access settings.
 async function preCreateUser(payload: CreateUserPayload) {
+  let createdUser: AdminUser
   try {
-    const createdUser = await adminUsers.createUser(payload)
-    createDialogOpen.value = false
-    await openEditDialog(createdUser)
+    createdUser = await adminUsers.createUser(payload)
   } catch {
     // The composable reports API failures; keep the create dialog open to retry.
+    return
+  }
+
+  createdUserSetupWarning.value = null
+  createDialogOpen.value = false
+  try {
+    await openEditDialog(createdUser)
+  } catch {
+    createdUserSetupWarning.value = {
+      message: `${displayUser(createdUser)} was created, but access settings could not be loaded. The account already exists; open its settings again instead of creating it again.`,
+      user: createdUser,
+    }
+  }
+}
+
+// retryCreatedUserSetup resumes configuration after a post-create load failure.
+async function retryCreatedUserSetup() {
+  const warning = createdUserSetupWarning.value
+  if (!warning) {
+    return
+  }
+
+  try {
+    await openEditDialog(warning.user)
+  } catch {
+    // Keep the recovery alert visible until loading succeeds.
   }
 }
 
@@ -350,6 +382,28 @@ async function confirmQuotaResetGrant() {
 
       <v-col cols="12">
         <v-alert
+          v-if="createdUserSetupWarning"
+          class="mb-4"
+          data-test="created-user-setup-warning"
+          rounded="lg"
+          type="warning"
+          variant="tonal"
+        >
+          <div class="admin-users-page__recovery-alert">
+            <span>{{ createdUserSetupWarning.message }}</span>
+            <v-btn
+              data-test="retry-created-user-setup"
+              prepend-icon="mdi-account-edit-outline"
+              size="small"
+              variant="text"
+              @click="retryCreatedUserSetup"
+            >
+              Open settings
+            </v-btn>
+          </div>
+        </v-alert>
+
+        <v-alert
           v-if="adminUsers.listError.value"
           type="warning"
           variant="tonal"
@@ -524,5 +578,19 @@ async function confirmQuotaResetGrant() {
   display: flex;
   justify-content: flex-end;
   margin-bottom: 12px;
+}
+
+.admin-users-page__recovery-alert {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+@media (max-width: 600px) {
+  .admin-users-page__recovery-alert {
+    align-items: stretch;
+    flex-direction: column;
+  }
 }
 </style>

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"promptgate/backend/internal/domain/users"
 
@@ -76,22 +77,24 @@ type QuotaResetWallet struct {
 // QuotaResetEvent is the append-only balance ledger. Reset consumption is first
 // persisted as pending and becomes applied after its Redis barrier succeeds.
 type QuotaResetEvent struct {
-	ID             string                `gorm:"type:uuid;primaryKey"`
-	UserID         string                `gorm:"type:uuid;not null;index;uniqueIndex:idx_quota_reset_event_idempotency,priority:1"`
-	User           *users.User           `gorm:"foreignKey:UserID;references:ID;constraint:OnDelete:CASCADE"`
-	Type           QuotaResetEventType   `gorm:"type:varchar(32);not null;index;uniqueIndex:idx_quota_reset_event_idempotency,priority:2"`
-	Status         QuotaResetEventStatus `gorm:"type:varchar(16);not null;index"`
-	Delta          int                   `gorm:"not null"`
-	BalanceAfter   int                   `gorm:"column:balance_after;not null;check:quota_reset_event_balance, balance_after >= 0 AND balance_after <= 2"`
-	ActorType      QuotaResetActorType   `gorm:"column:actor_type;type:varchar(32);not null"`
-	ActorUserID    *string               `gorm:"column:actor_user_id;type:uuid"`
-	ActorUser      *users.User           `gorm:"foreignKey:ActorUserID;references:ID;constraint:OnDelete:SET NULL"`
-	IdempotencyKey *string               `gorm:"column:idempotency_key;type:char(64);uniqueIndex:idx_quota_reset_event_idempotency,priority:3"`
-	GrantMonth     *time.Time            `gorm:"column:grant_month;type:date"`
-	ResetSequence  *int64                `gorm:"column:reset_sequence"`
-	ResetCutoffAt  *time.Time            `gorm:"column:reset_cutoff_at"`
-	AppliedAt      *time.Time            `gorm:"column:applied_at"`
-	CreatedAt      time.Time             `gorm:"index"`
+	ID                     string                `gorm:"type:uuid;primaryKey"`
+	UserID                 string                `gorm:"type:uuid;not null;index;uniqueIndex:idx_quota_reset_event_idempotency,priority:1"`
+	User                   *users.User           `gorm:"foreignKey:UserID;references:ID;constraint:OnDelete:CASCADE"`
+	Type                   QuotaResetEventType   `gorm:"type:varchar(32);not null;index;index:idx_quota_reset_reconcile,priority:1;uniqueIndex:idx_quota_reset_event_idempotency,priority:2"`
+	Status                 QuotaResetEventStatus `gorm:"type:varchar(16);not null;index;index:idx_quota_reset_reconcile,priority:2"`
+	Delta                  int                   `gorm:"not null"`
+	BalanceAfter           int                   `gorm:"column:balance_after;not null;check:quota_reset_event_balance, balance_after >= 0 AND balance_after <= 2"`
+	ActorType              QuotaResetActorType   `gorm:"column:actor_type;type:varchar(32);not null"`
+	ActorUserID            *string               `gorm:"column:actor_user_id;type:uuid"`
+	ActorUser              *users.User           `gorm:"foreignKey:ActorUserID;references:ID;constraint:OnDelete:SET NULL"`
+	IdempotencyKey         *string               `gorm:"column:idempotency_key;type:char(64);uniqueIndex:idx_quota_reset_event_idempotency,priority:3"`
+	GrantMonth             *time.Time            `gorm:"column:grant_month;type:date"`
+	ResetSequence          *int64                `gorm:"column:reset_sequence"`
+	ResetCutoffAt          *time.Time            `gorm:"column:reset_cutoff_at"`
+	ReconcileAttempts      int64                 `gorm:"column:reconcile_attempts;not null;default:0;index:idx_quota_reset_reconcile,priority:3"`
+	LastReconcileAttemptAt *time.Time            `gorm:"column:last_reconcile_attempt_at"`
+	AppliedAt              *time.Time            `gorm:"column:applied_at"`
+	CreatedAt              time.Time             `gorm:"index;index:idx_quota_reset_reconcile,priority:4"`
 }
 
 // BeforeCreate assigns a stable UUID to quota reset ledger entries.
@@ -141,11 +144,12 @@ const (
 	QuotaResetUseApplied QuotaResetUseStatus = "applied"
 )
 
-// QuotaResetUseResult reports the durable balance and current live quota after a reset request.
+// QuotaResetUseResult reports the durable balance and, once applied, the current live quota.
+// Pending resets omit Quota because Redis has not yet produced an authoritative live state.
 type QuotaResetUseResult struct {
 	Status  QuotaResetUseStatus `json:"status"`
 	Summary QuotaResetSummary   `json:"summary"`
-	Quota   QuotaStatus         `json:"quota"`
+	Quota   *QuotaStatus        `json:"quota,omitempty"`
 }
 
 // QuotaResetDistributionResult summarizes one idempotent monthly distribution pass.
@@ -158,7 +162,7 @@ type QuotaResetDistributionResult struct {
 
 func normalizeQuotaResetIdempotencyKey(value string) (*string, error) {
 	value = strings.TrimSpace(value)
-	if value == "" || len(value) > maxQuotaResetIdempotencyKeyLength {
+	if value == "" || utf8.RuneCountInString(value) > maxQuotaResetIdempotencyKeyLength {
 		return nil, ErrInvalidQuotaResetIdempotencyKey
 	}
 	digest := sha256.Sum256([]byte(value))

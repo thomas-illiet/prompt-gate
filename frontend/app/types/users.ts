@@ -5,11 +5,12 @@ import type {
 } from '~/types/subscriptions'
 
 export interface AdminUser extends Omit<AuthUser, 'lastLoginAt' | 'sub'> {
+  type: 'user'
   sub: string | null
   lastLoginAt: string | null
   activeInLast30Days: boolean
   quotaResetCredits: number
-  subscriptionPlanId?: string | null
+  subscriptionPlanId: string | null
   subscriptionPlan?: AccountSubscriptionPlan
   effectiveSubscriptionPlan?: AccountSubscriptionPlan
   quotaState?: AccountQuotaState

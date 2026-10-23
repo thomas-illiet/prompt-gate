@@ -14,6 +14,7 @@ import (
 	"promptgate/backend/internal/platform/configevents"
 	"promptgate/backend/internal/platform/redisstore"
 
+	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -25,11 +26,13 @@ const (
 )
 
 var incrementUsageScript = redis.NewScript(`
-local event_at_micros = tonumber(ARGV[11])
+local redis_time = redis.call("TIME")
+local recorded_at_micros = (tonumber(redis_time[1]) * 1000000) + tonumber(redis_time[2])
 local reset_cutoff_micros = tonumber(redis.call("HGET", KEYS[6], "cutoff") or "0")
-if event_at_micros <= reset_cutoff_micros then
- return 0
+if recorded_at_micros <= reset_cutoff_micros then
+ recorded_at_micros = reset_cutoff_micros + 1
 end
+local recorded_at_seconds = math.floor(recorded_at_micros / 1000000)
 
 local function update_active_user(zset, user_id, score)
  local current = redis.call("ZSCORE", zset, user_id)
@@ -38,7 +41,14 @@ local function update_active_user(zset, user_id, score)
  end
 end
 
-local function increment(zset, hash, bucket, tokens, ttl, cutoff)
+local function bucket_start(timestamp, bucket_seconds)
+ return timestamp - (timestamp % bucket_seconds)
+end
+
+local function increment(zset, hash, tokens, window_seconds, bucket_seconds)
+ local bucket = bucket_start(recorded_at_seconds, bucket_seconds)
+ local cutoff = bucket_start(recorded_at_seconds - window_seconds - bucket_seconds, bucket_seconds)
+ local ttl = window_seconds + (2 * bucket_seconds)
  local expired = redis.call("ZRANGEBYSCORE", zset, "-inf", cutoff)
  if #expired > 0 then
   redis.call("ZREM", zset, unpack(expired))
@@ -49,10 +59,50 @@ local function increment(zset, hash, bucket, tokens, ttl, cutoff)
  redis.call("EXPIRE", zset, ttl)
  redis.call("EXPIRE", hash, ttl)
 end
-increment(KEYS[1], KEYS[2], ARGV[1], ARGV[2], ARGV[3], ARGV[4])
-increment(KEYS[4], KEYS[5], ARGV[5], ARGV[6], ARGV[7], ARGV[8])
-update_active_user(KEYS[3], ARGV[9], ARGV[10])
-return 1
+increment(KEYS[1], KEYS[2], ARGV[1], ARGV[2], ARGV[3])
+increment(KEYS[4], KEYS[5], ARGV[1], ARGV[4], ARGV[5])
+update_active_user(KEYS[3], ARGV[6], recorded_at_seconds)
+return {1, recorded_at_micros}
+`)
+
+var currentQuotaScript = redis.NewScript(`
+local redis_time = redis.call("TIME")
+local wall_time_micros = (tonumber(redis_time[1]) * 1000000) + tonumber(redis_time[2])
+local observed_at_micros = wall_time_micros
+local previous_observation = tonumber(redis.call("GET", KEYS[5]) or "0")
+if observed_at_micros <= previous_observation then
+ observed_at_micros = previous_observation + 1
+end
+redis.call("SET", KEYS[5], observed_at_micros)
+local wall_time_seconds = math.floor(wall_time_micros / 1000000)
+
+local function snapshot_window(zset, hash, window_seconds, bucket_seconds)
+ local cutoff_time = wall_time_seconds - window_seconds - bucket_seconds
+ local cutoff = cutoff_time - (cutoff_time % bucket_seconds)
+ local expired = redis.call("ZRANGEBYSCORE", zset, "-inf", cutoff)
+ if #expired > 0 then
+  redis.call("ZREM", zset, unpack(expired))
+  redis.call("HDEL", hash, unpack(expired))
+ end
+
+ local members = redis.call("ZRANGE", zset, 0, -1)
+ if #members == 0 then
+  return 0, 0
+ end
+ local values = redis.call("HMGET", hash, unpack(members))
+ local used = 0
+ for _, value in ipairs(values) do
+  used = used + tonumber(value or "0")
+ end
+ if used == 0 then
+  return 0, 0
+ end
+ return used, tonumber(members[1]) or 0
+end
+
+local used_5h, oldest_5h = snapshot_window(KEYS[1], KEYS[2], ARGV[1], ARGV[2])
+local used_7d, oldest_7d = snapshot_window(KEYS[3], KEYS[4], ARGV[3], ARGV[4])
+return {observed_at_micros, used_5h, oldest_5h, used_7d, oldest_7d}
 `)
 
 var applyQuotaResetScript = redis.NewScript(`
@@ -84,20 +134,48 @@ redis.call("SREM", KEYS[7], ARGV[2])
 return {1, requested_sequence, effective_cutoff}
 `)
 
+var deleteUserQuotaStateScript = redis.NewScript(`
+redis.call("DEL", KEYS[1], KEYS[2], KEYS[3], KEYS[4], KEYS[5], KEYS[6])
+redis.call("ZREM", KEYS[7], ARGV[1])
+redis.call("SREM", KEYS[8], ARGV[1])
+return 1
+`)
+
+var migrateLegacyActiveUsersScript = redis.NewScript(`
+local members = redis.call("SRANDMEMBER", KEYS[2], tonumber(ARGV[2]))
+if #members == 0 then
+ return members
+end
+for _, user_id in ipairs(members) do
+ local current = redis.call("ZSCORE", KEYS[1], user_id)
+ if not current or tonumber(ARGV[1]) > tonumber(current) then
+  redis.call("ZADD", KEYS[1], ARGV[1], user_id)
+ end
+end
+redis.call("SREM", KEYS[2], unpack(members))
+return members
+`)
+
 type RedisStore struct {
-	store     *redisstore.Store
-	service   *Service
-	ttl       time.Duration
-	logger    *slog.Logger
-	version   atomic.Int64
-	snapshot  atomic.Value
-	refreshMu sync.Mutex
+	store              *redisstore.Store
+	service            *Service
+	ttl                time.Duration
+	logger             *slog.Logger
+	version            atomic.Int64
+	snapshot           atomic.Value
+	refreshMu          sync.Mutex
+	deletedUserScanMu  sync.Mutex
+	deletedUserZCursor uint64
+	deletedUserSCursor uint64
+	deletedUserScanSet bool
 }
 
-type quotaWindow struct {
-	name          string
-	windowSeconds int64
-	bucketSeconds int64
+type quotaUsageSnapshot struct {
+	observedAt time.Time
+	used5H     int64
+	reset5HAt  *time.Time
+	used7D     int64
+	reset7DAt  *time.Time
 }
 
 // QuotaResetApplication reports the durable Redis barrier observed for a reset.
@@ -274,24 +352,30 @@ func (s *RedisStore) warmSnapshotLocked(ctx context.Context) error {
 }
 
 func (s *RedisStore) CurrentQuota(ctx context.Context, userID string, now time.Time) (QuotaStatus, error) {
+	status, _, err := s.currentQuota(ctx, userID, now)
+	return status, err
+}
+
+func (s *RedisStore) currentQuota(ctx context.Context, userID string, now time.Time) (QuotaStatus, time.Time, error) {
 	now = now.UTC()
 	plan, ok, err := s.ResolveEffectivePlan(ctx, userID)
 	if err != nil {
-		return QuotaStatus{}, err
+		return QuotaStatus{}, time.Time{}, err
+	}
+	usage, err := s.loadQuotaUsageSnapshot(ctx, userID, now)
+	if err != nil {
+		return QuotaStatus{}, time.Time{}, err
 	}
 	if !ok {
-		return QuotaStatus{HasSubscription: false}, nil
+		return QuotaStatus{HasSubscription: false}, usage.observedAt, nil
 	}
-
-	used5h, reset5h, err := s.windowUsage(ctx, userID, quota5H(), now)
-	if err != nil {
-		return QuotaStatus{}, err
-	}
-	used7d, reset7d, err := s.windowUsage(ctx, userID, quota7D(), now)
-	if err != nil {
-		return QuotaStatus{}, err
-	}
-	return quotaStatusFromPlan(plan, used5h, reset5h, used7d, reset7d), nil
+	return quotaStatusFromPlan(
+		plan,
+		usage.used5H,
+		usage.reset5HAt,
+		usage.used7D,
+		usage.reset7DAt,
+	), usage.observedAt, nil
 }
 
 func (s *RedisStore) ResolveEffectivePlan(ctx context.Context, userID string) (PlanSnapshot, bool, error) {
@@ -332,13 +416,52 @@ func (s *RedisStore) ResolveEffectivePlan(ctx context.Context, userID string) (P
 	return plan, ok, nil
 }
 
-func (s *RedisStore) IncrementUsage(ctx context.Context, userID string, tokens int64, now time.Time) error {
+// IncrementUsage records tokens at Redis' linearization time. The timestamp
+// argument is retained for API compatibility but is deliberately not trusted:
+// proxy clock skew must never make usage recorded after a reset disappear.
+func (s *RedisStore) IncrementUsage(ctx context.Context, userID string, tokens int64, _ time.Time) error {
 	if !s.Enabled() || tokens <= 0 {
 		return nil
 	}
-	now = now.UTC()
-	client := s.store.Client()
-	return s.incrementWindow(ctx, client, userID, tokens, now, quota5H())
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		return errors.New("subscription usage user is required")
+	}
+	values, err := incrementUsageScript.Run(
+		ctx,
+		s.store.Client(),
+		[]string{
+			redisstore.SubscriptionUsageZSetKey(userID, Window5H),
+			redisstore.SubscriptionUsageHashKey(userID, Window5H),
+			redisstore.SubscriptionActiveUsersZSetKey(),
+			redisstore.SubscriptionUsageZSetKey(userID, Window7D),
+			redisstore.SubscriptionUsageHashKey(userID, Window7D),
+			redisstore.SubscriptionQuotaResetStateKey(userID),
+		},
+		tokens,
+		quotaWindow5HSeconds,
+		quotaBucket5HSeconds,
+		quotaWindow7DSeconds,
+		quotaBucket7DSeconds,
+		userID,
+	).Slice()
+	if err != nil {
+		return fmt.Errorf("increment subscription usage: %w", err)
+	}
+	if len(values) != 2 {
+		return fmt.Errorf("increment subscription usage: unexpected result length %d", len(values))
+	}
+	recorded, err := quotaResetScriptInt64(values[0])
+	if err != nil {
+		return fmt.Errorf("decode subscription usage recorded flag: %w", err)
+	}
+	if recorded != 1 {
+		return errors.New("increment subscription usage: Redis rejected usage")
+	}
+	if _, err := quotaResetScriptInt64(values[1]); err != nil {
+		return fmt.Errorf("decode subscription usage timestamp: %w", err)
+	}
+	return nil
 }
 
 // ApplyQuotaReset atomically clears both quota windows. Redis chooses the cutoff
@@ -396,41 +519,208 @@ func (s *RedisStore) ActiveUserIDs(ctx context.Context) ([]string, error) {
 	if !s.Enabled() {
 		return nil, nil
 	}
-	cutoff := time.Now().UTC().Add(-7 * 24 * time.Hour).Unix()
+	redisNow, err := s.store.Client().Time(ctx).Result()
+	if err != nil {
+		return nil, fmt.Errorf("load Redis active-user clock: %w", err)
+	}
+	// Usage remains authoritative until the final seven-day bucket expires.
+	// Retain its projection for the same conservative window so SQL cannot be
+	// pruned while CurrentQuota still counts the bucket.
+	cutoff := redisNow.UTC().Add(-time.Duration(quotaWindow7DSeconds+quotaBucket7DSeconds) * time.Second).Unix()
 	ids, err := s.store.Client().ZRangeArgs(ctx, redis.ZRangeArgs{
 		Key:     redisstore.SubscriptionActiveUsersZSetKey(),
 		ByScore: true,
 		Start:   strconv.FormatInt(cutoff, 10),
 		Stop:    "+inf",
 	}).Result()
-	if errors.Is(err, redis.Nil) {
-		return nil, nil
+	if err != nil && !errors.Is(err, redis.Nil) {
+		return nil, err
 	}
-	if err != nil || len(ids) > 0 {
-		return ids, err
-	}
-	// Read the legacy set during the rolling migration so existing usage is not skipped.
-	legacy, legacyErr := s.store.Client().SMembers(ctx, redisstore.SubscriptionActiveUsersKey()).Result()
+	// Atomically migrate a bounded legacy batch after adding every selected
+	// identity to the zset. Returning the migrated members preserves this run's
+	// sync, while repeated runs drain the set without a full-history SMEMBERS.
+	legacy, legacyErr := migrateLegacyActiveUsersScript.Run(
+		ctx,
+		s.store.Client(),
+		[]string{
+			redisstore.SubscriptionActiveUsersZSetKey(),
+			redisstore.SubscriptionActiveUsersKey(),
+		},
+		redisNow.UTC().Unix(),
+		100,
+	).StringSlice()
 	if legacyErr != nil && !errors.Is(legacyErr, redis.Nil) {
 		return nil, legacyErr
 	}
-	return legacy, nil
+	seen := make(map[string]struct{}, len(ids)+len(legacy))
+	combined := make([]string, 0, len(ids)+len(legacy))
+	for _, userID := range append(ids, legacy...) {
+		if _, ok := seen[userID]; ok {
+			continue
+		}
+		seen[userID] = struct{}{}
+		combined = append(combined, userID)
+	}
+	return combined, nil
+}
+
+// DeleteUserQuotaState atomically removes all Redis quota and reset state for one identity.
+func (s *RedisStore) DeleteUserQuotaState(ctx context.Context, userID string) error {
+	if !s.Enabled() {
+		return nil
+	}
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		return errors.New("subscription quota user is required")
+	}
+	result, err := deleteUserQuotaStateScript.Run(
+		ctx,
+		s.store.Client(),
+		[]string{
+			redisstore.SubscriptionUsageZSetKey(userID, Window5H),
+			redisstore.SubscriptionUsageHashKey(userID, Window5H),
+			redisstore.SubscriptionUsageZSetKey(userID, Window7D),
+			redisstore.SubscriptionUsageHashKey(userID, Window7D),
+			redisstore.SubscriptionQuotaResetStateKey(userID),
+			redisstore.SubscriptionAssignmentKey(s.version.Load(), userID),
+			redisstore.SubscriptionActiveUsersZSetKey(),
+			redisstore.SubscriptionActiveUsersKey(),
+		},
+		userID,
+	).Int64()
+	if err != nil {
+		return fmt.Errorf("delete subscription quota state: %w", err)
+	}
+	if result != 1 {
+		return fmt.Errorf("delete subscription quota state: unexpected result %d", result)
+	}
+	return nil
+}
+
+func (s *RedisStore) existingTrackedUserIDs(ctx context.Context, service *Service, rawIDs []string) ([]string, error) {
+	ids := make([]string, 0, len(rawIDs))
+	seen := make(map[string]struct{}, len(rawIDs))
+	for _, rawID := range rawIDs {
+		userID := strings.TrimSpace(rawID)
+		if userID == "" {
+			continue
+		}
+		parsed, err := uuid.Parse(userID)
+		if err != nil || parsed.String() != userID {
+			if err := s.DeleteUserQuotaState(ctx, userID); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		if _, ok := seen[userID]; ok {
+			continue
+		}
+		seen[userID] = struct{}{}
+		ids = append(ids, userID)
+	}
+
+	existingIDs, err := service.existingUserIDSet(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	existing := make([]string, 0, len(existingIDs))
+	for _, userID := range ids {
+		if _, exists := existingIDs[userID]; exists {
+			existing = append(existing, userID)
+			continue
+		}
+		if err := s.DeleteUserQuotaState(ctx, userID); err != nil {
+			return nil, err
+		}
+	}
+	return existing, nil
+}
+
+func (s *RedisStore) pruneDeletedUserQuotaStates(ctx context.Context, service *Service) error {
+	// IncrementUsage and ApplyQuotaReset both add the owner to the active-user
+	// zset. A cursorized batch over the full zset (not only the seven-day
+	// projection window) therefore discovers reset-only state even after years
+	// of inactivity without walking every historical owner every five minutes.
+	// The legacy set is scanned on alternating runs so it cannot starve a large
+	// current zset. Direct cleanup on user deletion is the fast path; this is a
+	// bounded, retryable backstop for Redis outages and older deletion paths.
+	const scanSize = 100
+
+	s.deletedUserScanMu.Lock()
+	defer s.deletedUserScanMu.Unlock()
+	client := s.store.Client()
+
+	if s.deletedUserScanSet {
+		ids, next, err := client.SScan(
+			ctx,
+			redisstore.SubscriptionActiveUsersKey(),
+			s.deletedUserSCursor,
+			"*",
+			scanSize,
+		).Result()
+		if err != nil && !errors.Is(err, redis.Nil) {
+			return fmt.Errorf("scan legacy subscription users: %w", err)
+		}
+		if _, err := s.existingTrackedUserIDs(ctx, service, ids); err != nil {
+			return err
+		}
+		s.deletedUserSCursor = next
+	} else {
+		entries, next, err := client.ZScan(
+			ctx,
+			redisstore.SubscriptionActiveUsersZSetKey(),
+			s.deletedUserZCursor,
+			"*",
+			scanSize,
+		).Result()
+		if err != nil && !errors.Is(err, redis.Nil) {
+			return fmt.Errorf("scan tracked subscription users: %w", err)
+		}
+		ids := make([]string, 0, (len(entries)+1)/2)
+		for index := 0; index < len(entries); index += 2 {
+			ids = append(ids, entries[index])
+		}
+		if _, err := s.existingTrackedUserIDs(ctx, service, ids); err != nil {
+			return err
+		}
+		s.deletedUserZCursor = next
+	}
+	s.deletedUserScanSet = !s.deletedUserScanSet
+	return nil
+}
+
+func (s *RedisStore) pruneQuotaStateProjections(ctx context.Context, service *Service, activeIDs []string) error {
+	legacyRemaining, err := s.store.Client().SCard(ctx, redisstore.SubscriptionActiveUsersKey()).Result()
+	if err != nil && !errors.Is(err, redis.Nil) {
+		return fmt.Errorf("inspect legacy subscription users: %w", err)
+	}
+	if legacyRemaining > 0 {
+		// Some legacy identities have not reached the bounded migration batch yet.
+		// Pruning now would make their persisted quota projections flicker away.
+		return nil
+	}
+	return service.PruneQuotaStates(ctx, activeIDs)
 }
 
 func (s *RedisStore) SyncQuotaStates(ctx context.Context, service *Service) (int64, error) {
 	if !s.Enabled() || service == nil {
 		return 0, nil
 	}
+	if err := s.pruneDeletedUserQuotaStates(ctx, service); err != nil {
+		return 0, err
+	}
+
 	ids, err := s.ActiveUserIDs(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("load active subscription users: %w", err)
 	}
+	ids, err = s.existingTrackedUserIDs(ctx, service, ids)
+	if err != nil {
+		return 0, fmt.Errorf("filter active subscription users: %w", err)
+	}
 	var count int64
 	for _, userID := range ids {
-		// Timestamp each observation before reading Redis. A concurrent reset
-		// obtains a later timestamp after its Lua barrier and wins monotonically.
-		observedAt := time.Now().UTC()
-		status, err := s.CurrentQuota(ctx, userID, observedAt)
+		status, observedAt, err := s.currentQuota(ctx, userID, time.Now().UTC())
 		if err != nil {
 			return count, err
 		}
@@ -439,7 +729,7 @@ func (s *RedisStore) SyncQuotaStates(ctx context.Context, service *Service) (int
 		}
 		count++
 	}
-	if err := service.PruneQuotaStates(ctx, ids); err != nil {
+	if err := s.pruneQuotaStateProjections(ctx, service, ids); err != nil {
 		return count, err
 	}
 	return count, nil
@@ -502,100 +792,53 @@ func (s *RedisStore) loadAssignment(ctx context.Context, userID string) (Assignm
 	return assignment, nil
 }
 
-func (s *RedisStore) incrementWindow(ctx context.Context, client *redis.Client, userID string, tokens int64, now time.Time, window quotaWindow) error {
-	bucket := bucketStart(now, window.bucketSeconds)
-	cutoff := bucketStart(now.Add(-time.Duration(window.windowSeconds+window.bucketSeconds)*time.Second), window.bucketSeconds)
-	ttl := window.windowSeconds + (2 * window.bucketSeconds)
-	keys := []string{
-		redisstore.SubscriptionUsageZSetKey(userID, window.name),
-		redisstore.SubscriptionUsageHashKey(userID, window.name),
-		redisstore.SubscriptionActiveUsersZSetKey(),
-	}
-	other := quota7D()
-	keys = append(keys,
-		redisstore.SubscriptionUsageZSetKey(userID, other.name),
-		redisstore.SubscriptionUsageHashKey(userID, other.name),
-		redisstore.SubscriptionQuotaResetStateKey(userID),
-	)
-	otherBucket := bucketStart(now, other.bucketSeconds)
-	otherCutoff := bucketStart(now.Add(-time.Duration(other.windowSeconds+other.bucketSeconds)*time.Second), other.bucketSeconds)
-	return incrementUsageScript.Run(ctx, client, keys, bucket, tokens, ttl, cutoff, otherBucket, tokens, other.windowSeconds+(2*other.bucketSeconds), otherCutoff, userID, now.Unix(), now.UnixMicro()).Err()
-}
-
-func (s *RedisStore) windowUsage(ctx context.Context, userID string, window quotaWindow, now time.Time) (int64, *time.Time, error) {
+func (s *RedisStore) loadQuotaUsageSnapshot(ctx context.Context, userID string, now time.Time) (quotaUsageSnapshot, error) {
+	snapshot := quotaUsageSnapshot{observedAt: now.UTC()}
 	if !s.Enabled() {
-		return 0, nil, nil
+		return snapshot, nil
 	}
-	client := s.store.Client()
-	zsetKey := redisstore.SubscriptionUsageZSetKey(userID, window.name)
-	hashKey := redisstore.SubscriptionUsageHashKey(userID, window.name)
-	cutoff := bucketStart(now.Add(-time.Duration(window.windowSeconds+window.bucketSeconds)*time.Second), window.bucketSeconds)
-
-	expired, err := client.ZRangeArgs(ctx, redis.ZRangeArgs{
-		Key:     zsetKey,
-		ByScore: true,
-		Start:   "-inf",
-		Stop:    strconv.FormatInt(cutoff, 10),
-	}).Result()
-	if err != nil && !errors.Is(err, redis.Nil) {
-		return 0, nil, err
+	values, err := currentQuotaScript.Run(
+		ctx,
+		s.store.Client(),
+		[]string{
+			redisstore.SubscriptionUsageZSetKey(userID, Window5H),
+			redisstore.SubscriptionUsageHashKey(userID, Window5H),
+			redisstore.SubscriptionUsageZSetKey(userID, Window7D),
+			redisstore.SubscriptionUsageHashKey(userID, Window7D),
+			redisstore.SubscriptionQuotaObservationClockKey(),
+		},
+		quotaWindow5HSeconds,
+		quotaBucket5HSeconds,
+		quotaWindow7DSeconds,
+		quotaBucket7DSeconds,
+	).Slice()
+	if err != nil {
+		return quotaUsageSnapshot{}, fmt.Errorf("load subscription quota snapshot: %w", err)
 	}
-	if len(expired) > 0 {
-		pipe := client.Pipeline()
-		pipe.ZRem(ctx, zsetKey, stringMembers(expired)...)
-		pipe.HDel(ctx, hashKey, expired...)
-		if _, err := pipe.Exec(ctx); err != nil && !errors.Is(err, redis.Nil) {
-			return 0, nil, fmt.Errorf("remove expired quota buckets: %w", err)
+	if len(values) != 5 {
+		return quotaUsageSnapshot{}, fmt.Errorf("load subscription quota snapshot: unexpected result length %d", len(values))
+	}
+	decoded := make([]int64, len(values))
+	for index, value := range values {
+		decoded[index], err = quotaResetScriptInt64(value)
+		if err != nil {
+			return quotaUsageSnapshot{}, fmt.Errorf("decode subscription quota snapshot field %d: %w", index, err)
 		}
 	}
-
-	members, err := client.ZRange(ctx, zsetKey, 0, -1).Result()
-	if errors.Is(err, redis.Nil) || len(members) == 0 {
-		return 0, nil, nil
-	}
-	if err != nil {
-		return 0, nil, err
-	}
-	values, err := client.HMGet(ctx, hashKey, members...).Result()
-	if err != nil {
-		return 0, nil, err
-	}
-
-	var used int64
-	for _, raw := range values {
-		switch value := raw.(type) {
-		case string:
-			next, _ := strconv.ParseInt(value, 10, 64)
-			used += next
-		case []byte:
-			next, _ := strconv.ParseInt(string(value), 10, 64)
-			used += next
-		case int64:
-			used += value
-		}
-	}
-	if used == 0 {
-		return 0, nil, nil
-	}
-	oldest, err := strconv.ParseInt(members[0], 10, 64)
-	if err != nil {
-		return used, nil, nil
-	}
-	resetAt := time.Unix(oldest+window.windowSeconds+window.bucketSeconds, 0).UTC()
-	return used, &resetAt, nil
+	snapshot.observedAt = time.UnixMicro(decoded[0]).UTC()
+	snapshot.used5H = decoded[1]
+	snapshot.reset5HAt = quotaWindowResetAt(decoded[1], decoded[2], quotaWindow5HSeconds, quotaBucket5HSeconds)
+	snapshot.used7D = decoded[3]
+	snapshot.reset7DAt = quotaWindowResetAt(decoded[3], decoded[4], quotaWindow7DSeconds, quotaBucket7DSeconds)
+	return snapshot, nil
 }
 
-func bucketStart(now time.Time, bucketSeconds int64) int64 {
-	unix := now.UTC().Unix()
-	return unix - (unix % bucketSeconds)
-}
-
-func stringMembers(values []string) []any {
-	members := make([]any, 0, len(values))
-	for _, value := range values {
-		members = append(members, value)
+func quotaWindowResetAt(used, oldestBucket, windowSeconds, bucketSeconds int64) *time.Time {
+	if used == 0 || oldestBucket == 0 {
+		return nil
 	}
-	return members
+	resetAt := time.Unix(oldestBucket+windowSeconds+bucketSeconds, 0).UTC()
+	return &resetAt
 }
 
 func quotaResetScriptInt64(value any) (int64, error) {
@@ -608,21 +851,5 @@ func quotaResetScriptInt64(value any) (int64, error) {
 		return strconv.ParseInt(string(typed), 10, 64)
 	default:
 		return 0, fmt.Errorf("unexpected Redis integer type %T", value)
-	}
-}
-
-func quota5H() quotaWindow {
-	return quotaWindow{
-		name:          Window5H,
-		windowSeconds: quotaWindow5HSeconds,
-		bucketSeconds: quotaBucket5HSeconds,
-	}
-}
-
-func quota7D() quotaWindow {
-	return quotaWindow{
-		name:          Window7D,
-		windowSeconds: quotaWindow7DSeconds,
-		bucketSeconds: quotaBucket7DSeconds,
 	}
 }

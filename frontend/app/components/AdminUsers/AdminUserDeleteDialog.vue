@@ -72,11 +72,21 @@ function confirm() {
 </script>
 
 <template>
-  <AppDialogCard v-model="isOpen" icon="mdi-delete-alert-outline" icon-color="error" :loading="props.loading" max-width="560" :subtitle="`Permanently remove the local account for ${displayName}. This cannot be undone.`" title="Delete user">
+  <AppDialogCard v-model="isOpen" icon="mdi-delete-alert-outline" icon-color="error" :loading="props.loading" max-width="560" :subtitle="`Permanently remove the current local account and data for ${displayName}. This cannot be undone.`" title="Delete user">
       <div
         v-if="props.user"
         class="admin-users-delete-dialog__body"
       >
+        <v-alert
+          color="warning"
+          icon="mdi-account-reactivate-outline"
+          variant="tonal"
+        >
+          This does not block the OIDC identity. A later sign-in will create a new
+          limited account. To prevent future access, cancel and deactivate this
+          account, assign role none, or revoke access in the identity provider.
+        </v-alert>
+
         <v-sheet rounded="lg" border class="admin-users-delete-dialog__identity">
           <v-list bg-color="transparent" density="comfortable" lines="two">
             <v-list-item

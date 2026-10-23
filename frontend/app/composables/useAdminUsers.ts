@@ -496,15 +496,16 @@ export function useAdminUsers() {
     const idempotencyKey =
       quotaResetGrantKeys.get(userId) ?? createIdempotencyKey()
     quotaResetGrantKeys.set(userId, idempotencyKey)
+    let refreshFailed = false
 
-    return await runApiMutation(
+    const response = await runApiMutation(
       {
         loading: saving,
         successMessage: 'Quota reset offered.',
         toErrorMessage: toAdminUserErrorMessage,
       },
       async () => {
-        const response = await apiFetch<QuotaResetSummary>(
+        const summary = await apiFetch<QuotaResetSummary>(
           adminUserPath(userId, 'quota-resets'),
           {
             method: 'POST',
@@ -512,11 +513,34 @@ export function useAdminUsers() {
           },
         )
 
-        await queryList.reload({ throwOnError: true })
         quotaResetGrantKeys.delete(userId)
-        return response
+        queryList.items.value = queryList.items.value.map((user) =>
+          user.id === userId
+            ? { ...user, quotaResetCredits: summary.available }
+            : user,
+        )
+        if (selectedUser.value?.id === userId) {
+          selectedUser.value = {
+            ...selectedUser.value,
+            quotaResetCredits: summary.available,
+          }
+        }
+        try {
+          await queryList.reload({ throwOnError: true })
+        } catch {
+          refreshFailed = true
+        }
+        return summary
       },
     )
+
+    if (refreshFailed) {
+      Notify.warning(
+        'Quota reset was offered, but the user list could not be refreshed. The displayed balance may be stale.',
+      )
+    }
+
+    return response
   }
 
   // deleteUser removes a user and handles current-user side effects.

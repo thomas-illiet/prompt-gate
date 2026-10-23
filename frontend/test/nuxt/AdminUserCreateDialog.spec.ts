@@ -12,9 +12,9 @@ function mountDialog(options: { loading?: boolean } = {}) {
     global: {
       stubs: {
         AppDialogCard: {
-          props: ['modelValue'],
+          props: ['modelValue', 'subtitle'],
           template:
-            '<section v-if="modelValue"><slot /><footer><slot name="actions" /></footer></section>',
+            '<section v-if="modelValue"><p>{{ subtitle }}</p><slot /><footer><slot name="actions" /></footer></section>',
         },
         AppDialogActionButton: {
           props: ['disabled', 'form', 'label', 'loading', 'type'],
@@ -52,6 +52,12 @@ function mountDialog(options: { loading?: boolean } = {}) {
 }
 
 describe('AdminUserCreateDialog', () => {
+  it('explains that pre-creation immediately grants limited access', () => {
+    const wrapper = mountDialog()
+
+    expect(wrapper.text()).toContain('Create an active limited account now.')
+  })
+
   it('requires a UID before emitting', async () => {
     const wrapper = mountDialog()
 

@@ -143,7 +143,9 @@ export interface DashboardActivityResponse extends Omit<UsageWindowMeta, 'window
 export interface DashboardOverviewResponse extends UsageWindowMeta {
   totals: UsageTotals
   totalDurationMs: number
+  averageDurationMs: number | null
   daily: DailyUsage[]
+  costCoverage: DashboardCostCoverage
 }
 
 export interface DashboardCockpitOverviewResponse extends UsageWindowMeta {
@@ -152,7 +154,7 @@ export interface DashboardCockpitOverviewResponse extends UsageWindowMeta {
   averageDurationMs: number | null
   daily: DailyUsage[]
   previous?: DashboardPreviousPeriod | null
-  costCoverage?: DashboardCostCoverage
+  costCoverage: DashboardCostCoverage
   adoption?: DashboardAdoption
 }
 
@@ -163,7 +165,7 @@ export interface DashboardPreviousPeriod {
   totalDurationMs: number
   averageDurationMs: number | null
   daily: DailyUsage[]
-  costCoverage?: DashboardCostCoverage
+  costCoverage: DashboardCostCoverage
 }
 
 export interface DashboardCostCoverage {

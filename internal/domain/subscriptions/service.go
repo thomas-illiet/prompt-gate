@@ -294,6 +294,25 @@ func (s *Service) UserPlanID(ctx context.Context, userID string) (*string, bool,
 	return cloneStringPtr(row.SubscriptionPlanID), true, nil
 }
 
+func (s *Service) existingUserIDSet(ctx context.Context, candidateIDs []string) (map[string]struct{}, error) {
+	const queryBatchSize = 500
+	existing := make(map[string]struct{}, len(candidateIDs))
+	for offset := 0; offset < len(candidateIDs); offset += queryBatchSize {
+		end := min(offset+queryBatchSize, len(candidateIDs))
+		var userIDs []string
+		if err := s.db.WithContext(ctx).
+			Model(&users.User{}).
+			Where("id IN ?", candidateIDs[offset:end]).
+			Pluck("id", &userIDs).Error; err != nil {
+			return nil, fmt.Errorf("load existing subscription users: %w", err)
+		}
+		for _, userID := range userIDs {
+			existing[userID] = struct{}{}
+		}
+	}
+	return existing, nil
+}
+
 func (s *Service) Snapshot(ctx context.Context) (Snapshot, error) {
 	var plans []SubscriptionPlan
 	if err := s.db.WithContext(ctx).Find(&plans).Error; err != nil {

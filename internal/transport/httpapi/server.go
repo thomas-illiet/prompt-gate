@@ -69,6 +69,7 @@ func NewHandler(deps Dependencies) http.Handler {
 		Pricing:       deps.Pricing,
 		Proxy:         deps.Proxy,
 		Subscriptions: deps.Subscriptions,
+		QuotaRedis:    deps.QuotaRedis,
 		SetupGuides:   deps.SetupGuides,
 	})
 	openAPIHandler := openapidoc.NewHandler(deps.Config)

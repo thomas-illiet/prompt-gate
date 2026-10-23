@@ -14,7 +14,10 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-const quotaResetReconcileBatchSize = 100
+const (
+	quotaResetReconcileBatchSize  = 100
+	quotaResetReconcileMaxBatches = 10
+)
 
 // QuotaResetSummary returns the durable reset balance and current applicability for a human user.
 func (s *Service) QuotaResetSummary(ctx context.Context, userID string, _ time.Time) (QuotaResetSummary, error) {
@@ -164,29 +167,29 @@ func (s *Service) UseQuotaReset(
 	result := QuotaResetUseResult{
 		Status:  QuotaResetUsePending,
 		Summary: reservation.summary,
-		Quota:   reservation.fallbackQuota,
 	}
 	if reservation.event.Status == QuotaResetEventApplied {
-		result.Status = QuotaResetUseApplied
-		if store != nil && store.Enabled() {
-			if refreshErr := store.RefreshIfStale(ctx); refreshErr != nil {
-				return QuotaResetUseResult{}, fmt.Errorf("refresh subscription quota snapshot for reset replay: %w", refreshErr)
-			}
-			quota, quotaErr := store.CurrentQuota(ctx, userID, now)
-			if quotaErr != nil {
-				return QuotaResetUseResult{}, fmt.Errorf("load live quota for reset replay: %w", quotaErr)
-			}
-			result.Quota = quota
+		if store == nil || !store.Enabled() {
+			return QuotaResetUseResult{}, errors.New("subscription quota store unavailable")
 		}
+		result.Status = QuotaResetUseApplied
+		if refreshErr := store.RefreshIfStale(ctx); refreshErr != nil {
+			return QuotaResetUseResult{}, fmt.Errorf("refresh subscription quota snapshot for reset replay: %w", refreshErr)
+		}
+		quota, quotaErr := store.CurrentQuota(ctx, userID, now)
+		if quotaErr != nil {
+			return QuotaResetUseResult{}, fmt.Errorf("load live quota for reset replay: %w", quotaErr)
+		}
+		result.Quota = &quota
 		return result, nil
 	}
 
-	quota, applied, applyErr := s.applyPendingQuotaReset(ctx, store, reservation.event, now)
-	if applyErr != nil || !applied {
+	application, applyErr := s.applyPendingQuotaReset(ctx, store, reservation.event, now)
+	if applyErr != nil || !application.applied {
 		return result, nil
 	}
 	result.Status = QuotaResetUseApplied
-	result.Quota = quota
+	result.Quota = &application.quota
 	if refreshed, refreshErr := s.QuotaResetSummary(ctx, userID, now); refreshErr == nil {
 		result.Summary = refreshed
 	} else {
@@ -195,32 +198,52 @@ func (s *Service) UseQuotaReset(
 	return result, nil
 }
 
-// ReconcilePendingQuotaResets applies durable pending reset reservations in creation order.
+// ReconcilePendingQuotaResets applies durable pending reset reservations in fair,
+// bounded batches. Failed records gain an attempt count so a permanently invalid
+// record cannot monopolize the oldest page and starve newer reservations.
 func (s *Service) ReconcilePendingQuotaResets(ctx context.Context, store *RedisStore, now time.Time) (int64, error) {
 	if store == nil || !store.Enabled() {
 		return 0, errors.New("subscription quota store unavailable")
 	}
-	var pending []QuotaResetEvent
-	if err := s.db.WithContext(ctx).
-		Where("type = ? AND status = ?", QuotaResetEventUsed, QuotaResetEventPending).
-		Order("created_at ASC").
-		Order("id ASC").
-		Limit(quotaResetReconcileBatchSize).
-		Find(&pending).Error; err != nil {
-		return 0, fmt.Errorf("list pending quota resets: %w", err)
-	}
-
 	now = quotaResetNow(now)
 	var applied int64
 	var reconcileErr error
-	for _, event := range pending {
-		_, changed, err := s.applyPendingQuotaReset(ctx, store, event, now)
-		if err != nil {
-			reconcileErr = errors.Join(reconcileErr, fmt.Errorf("reconcile quota reset %s: %w", event.ID, err))
-			continue
+	attemptedIDs := make([]string, 0, quotaResetReconcileBatchSize*quotaResetReconcileMaxBatches)
+	for batch := 0; batch < quotaResetReconcileMaxBatches; batch++ {
+		var pending []QuotaResetEvent
+		query := s.db.WithContext(ctx).
+			Where("type = ? AND status = ?", QuotaResetEventUsed, QuotaResetEventPending)
+		if len(attemptedIDs) > 0 {
+			query = query.Where("id NOT IN ?", attemptedIDs)
 		}
-		if changed {
-			applied++
+		if err := query.
+			Order("reconcile_attempts ASC").
+			Order("created_at ASC").
+			Order("id ASC").
+			Limit(quotaResetReconcileBatchSize).
+			Find(&pending).Error; err != nil {
+			return applied, errors.Join(reconcileErr, fmt.Errorf("list pending quota resets: %w", err))
+		}
+		if len(pending) == 0 {
+			break
+		}
+
+		for _, event := range pending {
+			attemptedIDs = append(attemptedIDs, event.ID)
+			application, err := s.applyPendingQuotaReset(ctx, store, event, now)
+			if err != nil {
+				if recordErr := s.recordQuotaResetReconcileFailure(ctx, event.ID, now); recordErr != nil {
+					err = errors.Join(err, recordErr)
+				}
+				reconcileErr = errors.Join(reconcileErr, fmt.Errorf("reconcile quota reset %s: %w", event.ID, err))
+				continue
+			}
+			if application.changed {
+				applied++
+			}
+		}
+		if len(pending) < quotaResetReconcileBatchSize {
+			break
 		}
 	}
 	return applied, reconcileErr
@@ -266,9 +289,8 @@ func (s *Service) DistributeMonthlyQuotaResetCredits(ctx context.Context, now ti
 }
 
 type quotaResetReservation struct {
-	event         QuotaResetEvent
-	summary       QuotaResetSummary
-	fallbackQuota QuotaStatus
+	event   QuotaResetEvent
+	summary QuotaResetSummary
 }
 
 func (s *Service) reserveQuotaReset(ctx context.Context, userID string, hashedKey *string, now time.Time) (quotaResetReservation, error) {
@@ -282,12 +304,9 @@ func (s *Service) reserveQuotaReset(ctx context.Context, userID string, hashedKe
 		if err != nil {
 			return err
 		}
-		plan, hasResettableQuota, err := effectiveQuotaResetPlan(ctx, tx, account)
+		_, hasResettableQuota, err := effectiveQuotaResetPlan(ctx, tx, account)
 		if err != nil {
 			return err
-		}
-		if strings.TrimSpace(plan.ID) != "" {
-			reservation.fallbackQuota = quotaStatusFromPlan(snapshotFromPlan(plan), 0, nil, 0, nil)
 		}
 		var existing QuotaResetEvent
 		err = tx.WithContext(ctx).
@@ -347,43 +366,45 @@ func (s *Service) reserveQuotaReset(ctx context.Context, userID string, hashedKe
 	return reservation, err
 }
 
+type pendingQuotaResetApplication struct {
+	quota   QuotaStatus
+	applied bool
+	changed bool
+}
+
 func (s *Service) applyPendingQuotaReset(
 	ctx context.Context,
 	store *RedisStore,
 	event QuotaResetEvent,
 	now time.Time,
-) (QuotaStatus, bool, error) {
+) (pendingQuotaResetApplication, error) {
 	if event.Status == QuotaResetEventApplied {
 		if store == nil || !store.Enabled() {
-			return QuotaStatus{}, false, nil
+			return pendingQuotaResetApplication{applied: true}, nil
 		}
 		quota, err := store.CurrentQuota(ctx, event.UserID, now)
-		return quota, false, err
+		return pendingQuotaResetApplication{quota: quota, applied: true}, err
 	}
 	if event.ResetSequence == nil || *event.ResetSequence <= 0 {
-		return QuotaStatus{}, false, errors.New("pending quota reset has no sequence")
+		return pendingQuotaResetApplication{}, errors.New("pending quota reset has no sequence")
 	}
 	if store == nil || !store.Enabled() {
-		return QuotaStatus{}, false, errors.New("subscription quota store unavailable")
+		return pendingQuotaResetApplication{}, errors.New("subscription quota store unavailable")
 	}
 	if err := store.RefreshIfStale(ctx); err != nil {
-		return QuotaStatus{}, false, fmt.Errorf("refresh subscription quota snapshot before reset: %w", err)
+		return pendingQuotaResetApplication{}, fmt.Errorf("refresh subscription quota snapshot before reset: %w", err)
 	}
 
 	application, err := store.ApplyQuotaReset(ctx, event.UserID, *event.ResetSequence)
 	if err != nil {
-		return QuotaStatus{}, false, err
+		return pendingQuotaResetApplication{}, err
 	}
-	quotaObservedAt := time.Now().UTC()
-	quota, err := store.CurrentQuota(ctx, event.UserID, quotaObservedAt)
+	quota, observedAt, err := store.currentQuota(ctx, event.UserID, time.Now().UTC())
 	if err != nil {
-		return QuotaStatus{}, false, fmt.Errorf("load quota after reset: %w", err)
+		return pendingQuotaResetApplication{}, fmt.Errorf("load quota after reset: %w", err)
 	}
-	// The observation timestamp is the post-Lua point used for the Redis read.
-	// A pre-reset sync is older, while a later sync remains authoritative.
-	observedAt := quotaObservedAt
 
-	changed := false
+	result := pendingQuotaResetApplication{quota: quota}
 	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var current QuotaResetEvent
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
@@ -392,6 +413,7 @@ func (s *Service) applyPendingQuotaReset(
 			return fmt.Errorf("lock pending quota reset: %w", err)
 		}
 		if current.Status == QuotaResetEventApplied {
+			result.applied = true
 			return nil
 		}
 		current.Status = QuotaResetEventApplied
@@ -403,13 +425,27 @@ func (s *Service) applyPendingQuotaReset(
 		if err := s.upsertQuotaState(ctx, tx, current.UserID, quota, observedAt); err != nil {
 			return err
 		}
-		changed = true
+		result.applied = true
+		result.changed = true
 		return nil
 	})
 	if err != nil {
-		return QuotaStatus{}, false, err
+		return pendingQuotaResetApplication{}, err
 	}
-	return quota, changed, nil
+	return result, nil
+}
+
+func (s *Service) recordQuotaResetReconcileFailure(ctx context.Context, eventID string, attemptedAt time.Time) error {
+	result := s.db.WithContext(ctx).Model(&QuotaResetEvent{}).
+		Where("id = ? AND type = ? AND status = ?", eventID, QuotaResetEventUsed, QuotaResetEventPending).
+		Updates(map[string]any{
+			"reconcile_attempts":        gorm.Expr("reconcile_attempts + 1"),
+			"last_reconcile_attempt_at": attemptedAt,
+		})
+	if result.Error != nil {
+		return fmt.Errorf("record quota reset reconciliation failure: %w", result.Error)
+	}
+	return nil
 }
 
 type monthlyQuotaResetOutcome int

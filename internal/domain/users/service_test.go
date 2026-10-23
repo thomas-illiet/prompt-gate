@@ -265,25 +265,25 @@ func TestSyncUserRequiresPreferredUsername(t *testing.T) {
 	}
 }
 
-func TestCreateUserCreatesPendingAccountFromExactTrimmedUID(t *testing.T) {
+func TestCreateUserCreatesActiveLimitedAccountFromExactTrimmedUID(t *testing.T) {
 	service := newTestService(t)
 	ctx := context.Background()
 
 	created, err := service.CreateUser(ctx, "  Alice.Admin  ")
 	if err != nil {
-		t.Fatalf("create pending user: %v", err)
+		t.Fatalf("create pre-created user: %v", err)
 	}
 	if created.PreferredUsername != "Alice.Admin" {
 		t.Fatalf("expected trimmed case-preserved UID, got %q", created.PreferredUsername)
 	}
 	if created.Sub != nil || created.LastLoginAt != nil {
-		t.Fatalf("expected pending SSO fields to be null, got %#v", created)
+		t.Fatalf("expected unlinked SSO fields to be null, got %#v", created)
 	}
 	if created.Email != "" || created.Name != "" || created.Role != auth.RoleLimited || !created.IsActive {
-		t.Fatalf("unexpected pending user defaults: %#v", created)
+		t.Fatalf("unexpected pre-created user defaults: %#v", created)
 	}
 	if created.ActiveInLast30Days {
-		t.Fatal("expected a newly pre-created user to be inactive on the platform")
+		t.Fatal("expected a newly pre-created user to have no recent proxy activity")
 	}
 
 	if _, err := service.CreateUser(ctx, "Alice.Admin"); !errors.Is(err, ErrPreferredUsernameConflict) {
@@ -315,6 +315,21 @@ func TestCreateUserAllowsServiceAccountWithSameIdentifier(t *testing.T) {
 	}
 	if account.ID == person.ID || person.Type != auth.UserTypeUser {
 		t.Fatalf("expected distinct service and human accounts, got account=%#v person=%#v", account, person)
+	}
+}
+
+func TestCreateUserSucceedsWhenUsageProjectionIsUnavailable(t *testing.T) {
+	service := newTestService(t)
+	if err := service.db.Exec("DROP TABLE token_usages").Error; err != nil {
+		t.Fatalf("drop usage projection table: %v", err)
+	}
+
+	created, err := service.CreateUser(context.Background(), "usage-unavailable")
+	if err != nil {
+		t.Fatalf("create user without usage projection: %v", err)
+	}
+	if created.Role != auth.RoleLimited || !created.IsActive || created.InputTokens != 0 || created.OutputTokens != 0 {
+		t.Fatalf("unexpected created user projection: %#v", created)
 	}
 }
 

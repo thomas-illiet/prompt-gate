@@ -1,8 +1,10 @@
 package admin
 
 import (
+	"context"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"strconv"
 
@@ -18,6 +20,10 @@ import (
 	"promptgate/backend/internal/domain/users"
 )
 
+type quotaStateCleaner interface {
+	DeleteUserQuotaState(context.Context, string) error
+}
+
 // Handler handles admin-only HTTP routes for user and token management.
 type Handler struct {
 	users         *users.Service
@@ -29,6 +35,7 @@ type Handler struct {
 	pricing       *pricing.Service
 	proxy         *proxy.Service
 	subscriptions *subscriptions.Service
+	quotaRedis    quotaStateCleaner
 	setupGuides   *setupguide.Service
 }
 
@@ -58,6 +65,7 @@ type Dependencies struct {
 	Pricing       *pricing.Service
 	Proxy         *proxy.Service
 	Subscriptions *subscriptions.Service
+	QuotaRedis    *subscriptions.RedisStore
 	SetupGuides   *setupguide.Service
 }
 
@@ -73,7 +81,20 @@ func NewHandler(deps Dependencies) *Handler {
 		pricing:       deps.Pricing,
 		proxy:         deps.Proxy,
 		subscriptions: deps.Subscriptions,
+		quotaRedis:    deps.QuotaRedis,
 		setupGuides:   deps.SetupGuides,
+	}
+}
+
+func (h *Handler) cleanupDeletedQuotaState(ctx context.Context, userID string) {
+	if h.quotaRedis == nil {
+		return
+	}
+	if err := h.quotaRedis.DeleteUserQuotaState(ctx, userID); err != nil {
+		// PostgreSQL is authoritative for deletion. Redis cleanup is retried by
+		// the bounded quota-state sweep, so a transient cache outage must not
+		// turn an already-committed deletion into a false 500 response.
+		slog.WarnContext(ctx, "deleted account quota cleanup failed", "user_id", userID, "error", err)
 	}
 }
 

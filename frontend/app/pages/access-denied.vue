@@ -15,7 +15,7 @@ const message = computed(() => {
     return 'Your account is inactive. An administrator needs to reactivate it before you can continue.'
   }
   if (user.value?.role === 'none') {
-    return 'Your account is connected, but it still needs an application role before you can access the platform.'
+    return 'Your platform access has been removed. Contact an administrator if you believe this is a mistake.'
   }
   return 'You are signed in, but you do not have permission to open this section.'
 })

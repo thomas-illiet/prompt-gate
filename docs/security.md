@@ -35,6 +35,12 @@ store contains at least one proxy request for today or the preceding 29 UTC
 calendar days. It is eventually consistent and must not be treated as an
 authorization signal.
 
+Deleting a local user removes its current local account and authorization
+records, but it is not an identity-provider denylist. If the same
+OIDC identity can sign in again, Prompt Gate creates a new active `limited`
+account with a new local ID. To block future access, keep the account inactive
+or assigned role `none`, or revoke the identity's access at the OIDC provider.
+
 Browser sessions are stored in Redis when Redis is configured. Session cookies
 are HTTP-only, use `PROMPTGATE_SESSION_COOKIE_NAME`, and inherit secure-cookie
 behavior from `PROMPTGATE_BACKEND_BASE_URL`: HTTPS backend URLs produce secure
@@ -119,7 +125,13 @@ row is treated as an invalid role and grants no application or proxy access
 until an administrator assigns a supported role.
 
 Token revocation publishes an `auth` config event. The proxy responds by
-moving its Redis auth cache to a new version.
+moving its Redis auth cache to a new version. Each cache lookup also reads the
+authoritative Redis version atomically with the entry from that generation, so
+a missed Pub/Sub event cannot keep an older generation active. If Redis cannot
+increment the auth version after the database mutation, however, an already
+cached principal can remain usable for at most its remaining auth-cache TTL.
+Treat the corresponding Redis warning as security-relevant and restore Redis
+promptly; `PROMPTGATE_REDIS_CACHE_TTL` bounds this residual stale-cache window.
 
 ## Service Accounts
 

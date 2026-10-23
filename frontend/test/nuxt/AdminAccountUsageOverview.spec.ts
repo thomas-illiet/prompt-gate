@@ -49,7 +49,13 @@ const response: DashboardOverviewResponse = {
     },
   },
   totalDurationMs: 4500,
+  averageDurationMs: 1500,
   daily: [day],
+  costCoverage: {
+    status: 'complete',
+    startsAt: '2026-07-07T00:00:00Z',
+    endsAt: '2026-07-13T23:59:59Z',
+  },
 }
 
 const KpiStub = defineComponent({
@@ -208,5 +214,38 @@ describe('AdminAccountUsageOverview', () => {
     expect(wrapper.find('[data-test="activity-chip"]').exists()).toBe(false)
     expect(wrapper.findAll('[data-test="kpi"]')).toHaveLength(4)
     expect(wrapper.text()).toContain('Cost estimate unavailable')
+  })
+
+  it('labels retained raw usage as a partial cost estimate', () => {
+    const wrapper = mountOverview({
+      data: {
+        ...response,
+        costCoverage: {
+          status: 'partial',
+          startsAt: '2026-07-10T00:00:00Z',
+          endsAt: '2026-07-13T23:59:59Z',
+        },
+      },
+    })
+
+    expect(wrapper.text()).toContain('Partial estimate since')
+    expect(wrapper.text()).not.toContain('Service account usage estimate')
+  })
+
+  it('does not present a cost when coverage is unavailable', () => {
+    const wrapper = mountOverview({
+      data: {
+        ...response,
+        totals: {
+          ...response.totals,
+          estimatedCost: undefined,
+        },
+        costCoverage: { status: 'unavailable' },
+      },
+    })
+
+    const costKpi = wrapper.findAll('[data-test="kpi"]')[0]
+    expect(costKpi?.attributes('data-value')).toBe('')
+    expect(costKpi?.text()).toContain('Cost estimate unavailable')
   })
 })

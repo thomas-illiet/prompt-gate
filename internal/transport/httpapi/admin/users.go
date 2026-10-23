@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 
 	"promptgate/backend/internal/domain/auth"
@@ -48,10 +49,13 @@ func (h *Handler) HandleAdminCreateUser(w http.ResponseWriter, r *http.Request) 
 	if h.subscriptions != nil {
 		items := []users.AdminUser{user}
 		if err := h.subscriptions.DecorateAdminUsers(r.Context(), items); err != nil {
-			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-			return
+			// The account is already committed and active. Subscription decoration is
+			// response-only metadata, so a transient read failure must not hide the
+			// successful creation behind an ambiguous 500 response.
+			slog.WarnContext(r.Context(), "created user subscription decoration failed", "user_id", user.ID, "error", err)
+		} else {
+			user = items[0]
 		}
-		user = items[0]
 	}
 
 	writeJSON(w, http.StatusCreated, user)
@@ -240,7 +244,8 @@ func (h *Handler) HandleAdminUpdateUserNote(w http.ResponseWriter, r *http.Reque
 
 // HandleAdminDeleteUser permanently deletes a user by ID.
 func (h *Handler) HandleAdminDeleteUser(w http.ResponseWriter, r *http.Request) {
-	if err := h.users.DeleteUser(r.Context(), r.PathValue("id")); err != nil {
+	userID := r.PathValue("id")
+	if err := h.users.DeleteUser(r.Context(), userID); err != nil {
 		if errors.Is(err, users.ErrUserNotFound) {
 			writeJSON(w, http.StatusNotFound, map[string]string{
 				"error": "user_not_found",
@@ -253,6 +258,7 @@ func (h *Handler) HandleAdminDeleteUser(w http.ResponseWriter, r *http.Request) 
 		})
 		return
 	}
+	h.cleanupDeletedQuotaState(r.Context(), userID)
 
 	w.WriteHeader(http.StatusNoContent)
 }

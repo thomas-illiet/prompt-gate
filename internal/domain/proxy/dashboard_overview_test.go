@@ -3,12 +3,52 @@ package proxy
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
+
+type dashboardAggregateQueryLogger struct {
+	logger.Interface
+	sawDailyAggregation bool
+	sawGroupScope       bool
+	statement           string
+}
+
+func (l *dashboardAggregateQueryLogger) Trace(ctx context.Context, begin time.Time, fc func() (string, int64), err error) {
+	sql, rows := fc()
+	if strings.Contains(sql, "proxy_daily_usage_kpis") && strings.Contains(sql, "SUM(requests)") {
+		l.statement = sql
+		l.sawDailyAggregation = strings.Contains(sql, "GROUP BY") && strings.Contains(sql, "day")
+		l.sawGroupScope = strings.Contains(sql, "access_group_members")
+	}
+	l.Interface.Trace(ctx, begin, func() (string, int64) {
+		return sql, rows
+	}, err)
+}
+
+func seedDashboardGroupMembership(t *testing.T, db *gorm.DB, groupID string, userIDs ...string) {
+	t.Helper()
+	if err := db.Exec(`CREATE TABLE IF NOT EXISTS access_group_members (
+		group_id TEXT NOT NULL,
+		user_id TEXT NOT NULL,
+		PRIMARY KEY (group_id, user_id)
+	)`).Error; err != nil {
+		t.Fatalf("create access group membership table: %v", err)
+	}
+	for _, userID := range userIDs {
+		if err := db.Exec(
+			"INSERT INTO access_group_members (group_id, user_id) VALUES (?, ?)",
+			groupID,
+			userID,
+		).Error; err != nil {
+			t.Fatalf("seed access group membership: %v", err)
+		}
+	}
+}
 
 // TestDashboardOverviewAggregatesScopedUsage verifies the overview aggregates one user's KPIs once per window.
 func TestDashboardOverviewAggregatesScopedUsage(t *testing.T) {
@@ -129,6 +169,33 @@ func TestDashboardOverviewForIdentitiesAggregatesUniqueSelection(t *testing.T) {
 	}
 	if len(overview.Daily) != 7 || overview.Daily[6].Requests != 2 {
 		t.Fatalf("unexpected selected identity activity: %#v", overview.Daily)
+	}
+}
+
+// TestDashboardOverviewForGroupAggregatesDailyUsageInSQL verifies group usage
+// is reduced to daily rows by the database and membership remains a SQL scope.
+func TestDashboardOverviewForGroupAggregatesDailyUsageInSQL(t *testing.T) {
+	db, service := newProxyServiceTestDB(t)
+	now := time.Date(2026, 1, 30, 15, 0, 0, 0, time.UTC)
+	groupID := "aaaaaaaa-1111-1111-1111-111111111111"
+	firstUserID := "11111111-1111-1111-1111-111111111111"
+	secondUserID := "22222222-2222-2222-2222-222222222222"
+	seedProxyInteraction(t, db, firstUserID, "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "gpt-5", now.Add(-2*time.Hour), 10, 20)
+	seedProxyInteraction(t, db, secondUserID, "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", "gpt-5", now.Add(-time.Hour), 30, 40)
+	mustAggregateUsageKPIs(t, service)
+	seedDashboardGroupMembership(t, db, groupID, firstUserID, secondUserID)
+
+	capture := &dashboardAggregateQueryLogger{Interface: logger.Default.LogMode(logger.Silent)}
+	service = NewService(db.Session(&gorm.Session{Logger: capture}))
+	overview, err := service.DashboardOverviewForGroup(context.Background(), strings.ToUpper(groupID), UsageWindow7Days, now)
+	if err != nil {
+		t.Fatalf("dashboard overview for group: %v", err)
+	}
+	if overview.Totals.Requests != 2 || overview.Totals.TotalTokens != 114 {
+		t.Fatalf("unexpected group totals: %#v", overview.Totals)
+	}
+	if !capture.sawDailyAggregation || !capture.sawGroupScope {
+		t.Fatalf("expected grouped daily SQL with membership subquery, got aggregation=%t groupScope=%t query=%q", capture.sawDailyAggregation, capture.sawGroupScope, capture.statement)
 	}
 }
 
@@ -304,6 +371,72 @@ func TestDashboardOverviewCostCoverageDistinguishesPartialAndUnavailable(t *test
 	}
 	if unavailable.Totals.EstimatedCost != nil {
 		t.Fatalf("unavailable estimate must be absent, got %#v", unavailable.Totals.EstimatedCost)
+	}
+}
+
+// TestDashboardOverviewUncomparedScopesExposeCostCoverage verifies account,
+// identity-cohort, and group endpoints cannot present retained partial data as
+// a complete zero-dollar estimate.
+func TestDashboardOverviewUncomparedScopesExposeCostCoverage(t *testing.T) {
+	db, service := newProxyServiceTestDB(t)
+	now := time.Date(2026, 1, 30, 15, 0, 0, 0, time.UTC)
+	userID := "11111111-1111-1111-1111-111111111111"
+	groupID := "aaaaaaaa-1111-1111-1111-111111111111"
+	oldID := "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+	recentID := "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+	seedProxyInteraction(t, db, userID, oldID, "gpt-old", time.Date(2025, 10, 1, 9, 0, 0, 0, time.UTC), 100, 200)
+	seedProxyInteraction(t, db, userID, recentID, "gpt-current", time.Date(2026, 1, 29, 9, 0, 0, 0, time.UTC), 10, 20)
+	mustAggregateUsageKPIs(t, service)
+	seedDashboardGroupMembership(t, db, groupID, userID)
+
+	type overviewLoader func() (DashboardOverviewResponse, error)
+	loaders := map[string]overviewLoader{
+		"account": func() (DashboardOverviewResponse, error) {
+			return service.DashboardOverview(context.Background(), userID, UsageWindowAll, now)
+		},
+		"identities": func() (DashboardOverviewResponse, error) {
+			return service.DashboardOverviewForIdentities(context.Background(), []string{userID}, UsageWindowAll, now)
+		},
+		"group": func() (DashboardOverviewResponse, error) {
+			return service.DashboardOverviewForGroup(context.Background(), groupID, UsageWindowAll, now)
+		},
+	}
+
+	if err := db.Delete(&Interception{}, "id = ?", oldID).Error; err != nil {
+		t.Fatalf("remove expired raw usage: %v", err)
+	}
+	for name, load := range loaders {
+		overview, err := load()
+		if err != nil {
+			t.Fatalf("load partial %s overview: %v", name, err)
+		}
+		if overview.CostCoverage == nil || overview.CostCoverage.Status != CostCoveragePartial {
+			t.Fatalf("expected partial %s cost coverage, got %#v", name, overview.CostCoverage)
+		}
+		if overview.Totals.EstimatedCost == nil || overview.Totals.EstimatedCost.TotalUSD == 0 {
+			t.Fatalf("expected retained partial %s estimate, got %#v", name, overview.Totals.EstimatedCost)
+		}
+	}
+
+	if err := db.Delete(&Interception{}, "id = ?", recentID).Error; err != nil {
+		t.Fatalf("remove all raw usage: %v", err)
+	}
+	for name, load := range loaders {
+		overview, err := load()
+		if err != nil {
+			t.Fatalf("load unavailable %s overview: %v", name, err)
+		}
+		if overview.CostCoverage == nil || overview.CostCoverage.Status != CostCoverageUnavailable {
+			t.Fatalf("expected unavailable %s cost coverage, got %#v", name, overview.CostCoverage)
+		}
+		if overview.Totals.EstimatedCost != nil {
+			t.Fatalf("unavailable %s estimate must be absent, got %#v", name, overview.Totals.EstimatedCost)
+		}
+		for _, day := range overview.Daily {
+			if day.EstimatedCost != nil {
+				t.Fatalf("unavailable %s daily estimate must be absent, got %#v", name, day)
+			}
+		}
 	}
 }
 

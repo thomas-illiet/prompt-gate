@@ -91,14 +91,17 @@ paths:
       tags: [Current account]
       operationId: useCurrentUserQuotaReset
       summary: Spend one credit and clear both live quota windows
-      description: Clears the rolling 5-hour and 7-day quota windows without deleting usage analytics.
+      description: >-
+        Clears the rolling 5-hour and 7-day quota windows without deleting usage analytics.
+        An applied response includes the refreshed live quota. A pending response omits quota
+        until background reconciliation completes.
       security:
         - sessionCookie: []
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       responses:
-        '200': { $ref: '#/components/responses/QuotaResetUseResponse' }
-        '202': { $ref: '#/components/responses/QuotaResetUseResponse' }
+        '200': { $ref: '#/components/responses/QuotaResetUseAppliedResponse' }
+        '202': { $ref: '#/components/responses/QuotaResetUsePendingResponse' }
         '400': { $ref: '#/components/responses/QuotaResetBadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -1638,6 +1641,7 @@ components:
         type: string
         minLength: 1
         maxLength: 512
+        pattern: '\S'
     Search:
       name: search
       in: query
@@ -1966,11 +1970,16 @@ components:
       content:
         application/json:
           schema: { $ref: '#/components/schemas/QuotaResetSummary' }
-    QuotaResetUseResponse:
-      description: Quota reset state, updated wallet, and current live quota.
+    QuotaResetUseAppliedResponse:
+      description: Quota reset applied synchronously, with the updated wallet and authoritative live quota.
       content:
         application/json:
-          schema: { $ref: '#/components/schemas/QuotaResetUseResult' }
+          schema: { $ref: '#/components/schemas/QuotaResetUseAppliedResult' }
+    QuotaResetUsePendingResponse:
+      description: Quota reset durably queued for background reconciliation; no live quota is returned yet.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/QuotaResetUsePendingResult' }
     QuotaResetHistoryResponse:
       description: Paginated applied quota-reset wallet events.
       content:
@@ -2226,7 +2235,7 @@ components:
       properties:
         id: { type: string, format: uuid }
         sub: { type: string }
-        preferredUsername: { type: string }
+        preferredUsername: { type: string, minLength: 1, pattern: '\S' }
         email: { type: string }
         name: { type: string }
         type: { $ref: '#/components/schemas/UserType' }
@@ -2266,10 +2275,12 @@ components:
       properties:
         id: { type: string, format: uuid }
         sub: { type: string, nullable: true }
-        preferredUsername: { type: string }
+        preferredUsername: { type: string, minLength: 1, pattern: '\S' }
         email: { type: string }
         name: { type: string }
-        type: { $ref: '#/components/schemas/UserType' }
+        type:
+          type: string
+          enum: [user]
         role: { $ref: '#/components/schemas/AppRole' }
         subscriptionPlanId: { type: string, format: uuid, nullable: true }
         subscriptionPlan:
@@ -2322,6 +2333,8 @@ components:
       properties:
         preferredUsername:
           type: string
+          minLength: 1
+          pattern: '\S'
           description: Exact, case-sensitive OIDC preferred_username claim. Surrounding whitespace is ignored.
     UpdateAccountNoteRequest:
       type: object
@@ -2527,7 +2540,7 @@ components:
     DashboardOverviewPeriod:
       type: object
       additionalProperties: false
-      required: [window, startsAt, endsAt, totals, totalDurationMs, averageDurationMs, daily]
+      required: [window, startsAt, endsAt, totals, totalDurationMs, averageDurationMs, daily, costCoverage]
       properties:
         window:
           type: string
@@ -2544,7 +2557,7 @@ components:
     DashboardOverview:
       type: object
       additionalProperties: false
-      required: [window, startsAt, endsAt, totals, totalDurationMs, averageDurationMs, daily]
+      required: [window, startsAt, endsAt, totals, totalDurationMs, averageDurationMs, daily, costCoverage]
       properties:
         window:
           type: string
@@ -2768,16 +2781,25 @@ components:
         page: { type: integer, minimum: 1 }
         pageSize: { type: integer, minimum: 1, maximum: 100 }
         total: { type: integer, format: int64, minimum: 0 }
-    QuotaResetUseResult:
+    QuotaResetUseAppliedResult:
       type: object
       additionalProperties: false
       required: [status, summary, quota]
       properties:
         status:
           type: string
-          enum: [pending, applied]
+          enum: [applied]
         summary: { $ref: '#/components/schemas/QuotaResetSummary' }
         quota: { $ref: '#/components/schemas/QuotaStatus' }
+    QuotaResetUsePendingResult:
+      type: object
+      additionalProperties: false
+      required: [status, summary]
+      properties:
+        status:
+          type: string
+          enum: [pending]
+        summary: { $ref: '#/components/schemas/QuotaResetSummary' }
     ProfileGroup:
       type: object
       additionalProperties: false
@@ -2803,7 +2825,7 @@ components:
       required: [id, preferredUsername, email, name, type, role, isActive]
       properties:
         id: { type: string, format: uuid }
-        preferredUsername: { type: string }
+        preferredUsername: { type: string, minLength: 1, pattern: '\S' }
         email: { type: string }
         name: { type: string }
         type: { $ref: '#/components/schemas/UserType' }

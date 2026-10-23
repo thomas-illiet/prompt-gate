@@ -18,6 +18,19 @@ const (
 	EventsChannel = "promptgate:config:events"
 )
 
+var authCacheReadScript = redis.NewScript(`
+local version = redis.call("GET", KEYS[1])
+if not version then
+  version = "0"
+end
+
+local value = redis.call("GET", ARGV[1] .. version .. ":" .. ARGV[2])
+if not value then
+  return {version, false}
+end
+return {version, value}
+`)
+
 type Event struct {
 	Domain    string    `json:"domain"`
 	Version   int64     `json:"version"`
@@ -143,6 +156,59 @@ func (s *Store) GetJSON(ctx context.Context, key string, dst any) (bool, error) 
 		return false, err
 	}
 	return true, json.Unmarshal(raw, dst)
+}
+
+// GetAuthCacheJSON atomically loads the authoritative auth cache version and
+// the token entry stored in that generation. This keeps a missed Pub/Sub event
+// from allowing a process-local version to select an older cache entry.
+func (s *Store) GetAuthCacheJSON(ctx context.Context, tokenHash string, dst any) (int64, bool, error) {
+	if !s.Enabled() {
+		return 0, false, nil
+	}
+
+	result, err := authCacheReadScript.Run(
+		ctx,
+		s.client,
+		[]string{VersionKey("auth")},
+		"promptgate:proxy:auth:v",
+		tokenHash,
+	).Slice()
+	if err != nil {
+		return 0, false, err
+	}
+	if len(result) != 2 {
+		return 0, false, fmt.Errorf("unexpected auth cache read response length %d", len(result))
+	}
+
+	version, err := strconv.ParseInt(fmt.Sprint(result[0]), 10, 64)
+	if err != nil {
+		return 0, false, fmt.Errorf("parse auth cache version: %w", err)
+	}
+	if version < 0 {
+		return 0, false, fmt.Errorf("invalid negative auth cache version %d", version)
+	}
+
+	var raw []byte
+	switch value := result[1].(type) {
+	case nil:
+		return version, false, nil
+	case bool:
+		if !value {
+			return version, false, nil
+		}
+		return 0, false, fmt.Errorf("unexpected auth cache boolean response")
+	case string:
+		raw = []byte(value)
+	case []byte:
+		raw = value
+	default:
+		return 0, false, fmt.Errorf("unexpected auth cache response type %T", result[1])
+	}
+
+	if err := json.Unmarshal(raw, dst); err != nil {
+		return version, false, err
+	}
+	return version, true, nil
 }
 
 // GetDelJSON atomically loads, deletes, and unmarshals a JSON value from Redis.
@@ -283,6 +349,13 @@ func SubscriptionActiveUsersKey() string {
 // SubscriptionActiveUsersZSetKey tracks the last token-usage timestamp per user.
 func SubscriptionActiveUsersZSetKey() string {
 	return "promptgate:subscriptions:active_users:last_seen"
+}
+
+// SubscriptionQuotaObservationClockKey stores the global logical timestamp
+// used to order durable quota projections independently of Redis wall-clock
+// regressions or duplicate microsecond readings.
+func SubscriptionQuotaObservationClockKey() string {
+	return "promptgate:subscriptions:quota:observation_clock"
 }
 
 // AuthSessionKey returns the Redis key for a browser session.

@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -64,6 +65,22 @@ func TestGrantQuotaResetCreditIsIdempotentCappedAndHashed(t *testing.T) {
 	}
 }
 
+func TestNormalizeQuotaResetIdempotencyKeyCountsTrimmedUnicodeCharacters(t *testing.T) {
+	accepted := strings.Repeat("é", 300)
+	hashedKey, err := normalizeQuotaResetIdempotencyKey("  " + accepted + "  ")
+	if err != nil {
+		t.Fatalf("normalize 300-character Unicode idempotency key: %v", err)
+	}
+	wantDigest := sha256.Sum256([]byte(accepted))
+	if hashedKey == nil || *hashedKey != hex.EncodeToString(wantDigest[:]) {
+		t.Fatalf("idempotency key was not trimmed before hashing: %v", hashedKey)
+	}
+
+	if _, err := normalizeQuotaResetIdempotencyKey(strings.Repeat("é", 513)); !errors.Is(err, ErrInvalidQuotaResetIdempotencyKey) {
+		t.Fatalf("expected 513-character Unicode key to be rejected, got %v", err)
+	}
+}
+
 func TestUseQuotaResetAppliesAtAnyFiniteUsageAndPreservesAnalytics(t *testing.T) {
 	service, store, user := newSubscriptionTestStore(t)
 	ctx := context.Background()
@@ -92,7 +109,7 @@ func TestUseQuotaResetAppliesAtAnyFiniteUsageAndPreservesAnalytics(t *testing.T)
 	if result.Status != QuotaResetUseApplied || result.Summary.Available != 0 || result.Summary.PendingReset {
 		t.Fatalf("unexpected applied reset result: %#v", result)
 	}
-	if result.Quota.Used5HTokens != 0 || result.Quota.Used7DTokens != 0 {
+	if result.Quota == nil || result.Quota.Used5HTokens != 0 || result.Quota.Used7DTokens != 0 {
 		t.Fatalf("quota counters were not reset: %#v", result.Quota)
 	}
 	var interceptionCount, usageCount int64
@@ -118,8 +135,11 @@ func TestUseQuotaResetAppliesAtAnyFiniteUsageAndPreservesAnalytics(t *testing.T)
 	if err != nil {
 		t.Fatalf("replay applied reset: %v", err)
 	}
-	if replayed.Status != QuotaResetUseApplied || replayed.Summary.HasResettableQuota || replayed.Quota.Used5HTokens != 7 || replayed.Quota.Used7DTokens != 7 {
+	if replayed.Status != QuotaResetUseApplied || replayed.Summary.HasResettableQuota || replayed.Quota == nil || replayed.Quota.Used5HTokens != 7 || replayed.Quota.Used7DTokens != 7 {
 		t.Fatalf("idempotent replay cleared newer usage: %#v", replayed)
+	}
+	if _, err := service.UseQuotaReset(ctx, nil, user.ID, "use-request-1", now.Add(3*time.Minute)); err == nil {
+		t.Fatal("applied reset replay returned without an authoritative live quota")
 	}
 
 	var resetEvents int64
@@ -167,7 +187,7 @@ func TestUseQuotaResetRefreshesStalePlanBeforeLiveProjection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("use reset after plan update: %v", err)
 	}
-	if result.Status != QuotaResetUseApplied || result.Quota.Quota5HTokens == nil || *result.Quota.Quota5HTokens != quota {
+	if result.Status != QuotaResetUseApplied || result.Quota == nil || result.Quota.Quota5HTokens == nil || *result.Quota.Quota5HTokens != quota {
 		t.Fatalf("reset projected a stale subscription plan: %#v", result)
 	}
 	if store.version.Load() != 2 {
@@ -184,7 +204,7 @@ func TestUseQuotaResetRefreshesStalePlanBeforeLiveProjection(t *testing.T) {
 	if err != nil {
 		t.Fatalf("replay reset after second plan update: %v", err)
 	}
-	if replayed.Status != QuotaResetUseApplied || replayed.Quota.Quota5HTokens == nil || *replayed.Quota.Quota5HTokens != updatedQuota {
+	if replayed.Status != QuotaResetUseApplied || replayed.Quota == nil || replayed.Quota.Quota5HTokens == nil || *replayed.Quota.Quota5HTokens != updatedQuota {
 		t.Fatalf("reset replay projected a stale subscription plan: %#v", replayed)
 	}
 	if store.version.Load() != 3 {
@@ -211,7 +231,7 @@ func TestUseQuotaResetRemainsPendingAndReconciles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reserve pending reset: %v", err)
 	}
-	if pending.Status != QuotaResetUsePending || !pending.Summary.PendingReset || pending.Summary.Available != 0 {
+	if pending.Status != QuotaResetUsePending || !pending.Summary.PendingReset || pending.Summary.Available != 0 || pending.Quota != nil {
 		t.Fatalf("unexpected pending result: %#v", pending)
 	}
 	var pendingEvent QuotaResetEvent
@@ -282,6 +302,98 @@ func TestUseQuotaResetRemainsPendingAndReconciles(t *testing.T) {
 	}
 }
 
+func TestApplyPendingQuotaResetReportsConcurrentAppliedState(t *testing.T) {
+	service, store, user := newSubscriptionTestStore(t)
+	ctx := context.Background()
+	quota := int64(100)
+	if _, err := service.CreatePlan(ctx, PlanInput{Name: "Default", Quota5HTokens: &quota, IsDefault: true}); err != nil {
+		t.Fatalf("create resettable plan: %v", err)
+	}
+	if err := store.WarmSnapshot(ctx); err != nil {
+		t.Fatalf("warm subscription snapshot: %v", err)
+	}
+	now := time.Now().UTC()
+	if _, err := service.GrantQuotaResetCredit(ctx, user.ID, QuotaResetActor{Type: QuotaResetActorAdminAPIKey}, "grant-concurrent-use", now); err != nil {
+		t.Fatalf("grant reset credit: %v", err)
+	}
+	hashedKey, err := normalizeQuotaResetIdempotencyKey("same-use-request")
+	if err != nil {
+		t.Fatalf("normalize idempotency key: %v", err)
+	}
+	firstReservation, err := service.reserveQuotaReset(ctx, user.ID, hashedKey, now)
+	if err != nil {
+		t.Fatalf("reserve first reset: %v", err)
+	}
+	concurrentReservation, err := service.reserveQuotaReset(ctx, user.ID, hashedKey, now)
+	if err != nil {
+		t.Fatalf("load concurrent reset reservation: %v", err)
+	}
+
+	first, err := service.applyPendingQuotaReset(ctx, store, firstReservation.event, now)
+	if err != nil || !first.applied || !first.changed {
+		t.Fatalf("apply first reset: %#v, %v", first, err)
+	}
+	concurrent, err := service.applyPendingQuotaReset(ctx, store, concurrentReservation.event, now)
+	if err != nil || !concurrent.applied || concurrent.changed {
+		t.Fatalf("concurrent idempotent apply was not reported as applied: %#v, %v", concurrent, err)
+	}
+}
+
+func TestReconcilePendingQuotaResetsDrainsPastPersistentFailures(t *testing.T) {
+	service, store, user := newSubscriptionTestStore(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	events := make([]QuotaResetEvent, 0, quotaResetReconcileBatchSize+1)
+	for index := 0; index < quotaResetReconcileBatchSize; index++ {
+		events = append(events, QuotaResetEvent{
+			UserID:       user.ID,
+			Type:         QuotaResetEventUsed,
+			Status:       QuotaResetEventPending,
+			Delta:        -1,
+			BalanceAfter: 0,
+			ActorType:    QuotaResetActorUser,
+			CreatedAt:    now.Add(time.Duration(index) * time.Nanosecond),
+		})
+	}
+	sequence := int64(1)
+	valid := QuotaResetEvent{
+		UserID:        user.ID,
+		Type:          QuotaResetEventUsed,
+		Status:        QuotaResetEventPending,
+		Delta:         -1,
+		BalanceAfter:  0,
+		ActorType:     QuotaResetActorUser,
+		ResetSequence: &sequence,
+		CreatedAt:     now.Add(time.Second),
+	}
+	events = append(events, valid)
+	if err := service.db.Create(&events).Error; err != nil {
+		t.Fatalf("seed pending reset backlog: %v", err)
+	}
+	valid = events[len(events)-1]
+
+	applied, err := service.ReconcilePendingQuotaResets(ctx, store, now.Add(time.Minute))
+	if err == nil {
+		t.Fatal("expected malformed pending resets to report reconciliation errors")
+	}
+	if applied != 1 {
+		t.Fatalf("valid reset behind failed batch was starved: applied=%d", applied)
+	}
+	if err := service.db.First(&valid, "id = ?", valid.ID).Error; err != nil {
+		t.Fatalf("reload valid reset: %v", err)
+	}
+	if valid.Status != QuotaResetEventApplied {
+		t.Fatalf("valid reset behind failed batch remains pending: %#v", valid)
+	}
+	var failed QuotaResetEvent
+	if err := service.db.First(&failed, "id = ?", events[0].ID).Error; err != nil {
+		t.Fatalf("reload failed reset: %v", err)
+	}
+	if failed.ReconcileAttempts != 1 || failed.LastReconcileAttemptAt == nil {
+		t.Fatalf("failed reset retry metadata was not recorded: %#v", failed)
+	}
+}
+
 func TestApplyQuotaResetSequencePreventsStaleReplay(t *testing.T) {
 	service, store, user := newSubscriptionTestStore(t)
 	ctx := context.Background()
@@ -326,8 +438,8 @@ func TestApplyQuotaResetSequencePreventsStaleReplay(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load quota after stale replay: %v", err)
 	}
-	if status.Used5HTokens != 6 || status.Used7DTokens != 6 {
-		t.Fatalf("stale reset cleared newer usage: %#v", status)
+	if status.Used5HTokens != 105 || status.Used7DTokens != 105 {
+		t.Fatalf("proxy clock skew caused post-reset usage loss: %#v", status)
 	}
 
 	newerSequence, err := store.ApplyQuotaReset(ctx, user.ID, 2)
@@ -357,8 +469,8 @@ func TestApplyQuotaResetSequencePreventsStaleReplay(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load quota after newer reset: %v", err)
 	}
-	if status.Used5HTokens != 4 || status.Used7DTokens != 4 {
-		t.Fatalf("newer reset admitted old usage or rejected new usage: %#v", status)
+	if status.Used5HTokens != 54 || status.Used7DTokens != 54 {
+		t.Fatalf("newer reset lost usage recorded after its Redis barrier: %#v", status)
 	}
 
 	futureCutoff := newerSequence.Cutoff.Add(time.Hour).Truncate(time.Microsecond)
@@ -380,6 +492,16 @@ func TestApplyQuotaResetSequencePreventsStaleReplay(t *testing.T) {
 	}
 	if status.Used5HTokens != 0 || status.Used7DTokens != 0 {
 		t.Fatalf("new sequence did not clear usage under a future cutoff: %#v", status)
+	}
+	if err := store.IncrementUsage(ctx, user.ID, 8, futureCutoff.Add(-24*time.Hour)); err != nil {
+		t.Fatalf("record usage with a proxy clock behind the Redis cutoff: %v", err)
+	}
+	status, err = store.CurrentQuota(ctx, user.ID, futureCutoff.Add(2*time.Minute))
+	if err != nil {
+		t.Fatalf("load quota after skewed post-reset usage: %v", err)
+	}
+	if status.Used5HTokens != 8 || status.Used7DTokens != 8 {
+		t.Fatalf("Redis cutoff rejected usage recorded after the reset barrier: %#v", status)
 	}
 }
 
@@ -539,6 +661,43 @@ func TestMonthlyQuotaResetDistributionHonorsEligibilityExpiryAndCap(t *testing.T
 	}
 	if late.AlreadyProcessed != 1 || late.Granted != 0 {
 		t.Fatalf("capped month was backfilled after consumption: %#v", late)
+	}
+}
+
+func TestMonthlyQuotaResetDistributionIncludesActivePrecreatedLimitedUser(t *testing.T) {
+	service, _, _ := newSubscriptionTestStore(t)
+	ctx := context.Background()
+	quota := int64(100)
+	if _, err := service.CreatePlan(ctx, PlanInput{Name: "Default", Quota5HTokens: &quota, IsDefault: true}); err != nil {
+		t.Fatalf("create resettable plan: %v", err)
+	}
+	precreated := users.User{
+		ID:                "33333333-3333-3333-3333-333333333333",
+		PreferredUsername: "precreated-limited",
+		Type:              auth.UserTypeUser,
+		Role:              auth.RoleLimited,
+		IsActive:          true,
+	}
+	if err := service.db.Create(&precreated).Error; err != nil {
+		t.Fatalf("create pre-created limited user: %v", err)
+	}
+
+	result, err := service.DistributeMonthlyQuotaResetCredits(
+		ctx,
+		time.Date(2026, 10, 23, 13, 0, 0, 0, time.UTC),
+	)
+	if err != nil {
+		t.Fatalf("distribute monthly reset: %v", err)
+	}
+	if result.Eligible != 2 || result.Granted != 2 {
+		t.Fatalf("expected signed-in and pre-created active users to receive a credit: %#v", result)
+	}
+	var wallet QuotaResetWallet
+	if err := service.db.Where("user_id = ?", precreated.ID).Take(&wallet).Error; err != nil {
+		t.Fatalf("load pre-created user wallet: %v", err)
+	}
+	if wallet.Available != 1 {
+		t.Fatalf("expected one monthly credit for pre-created user, got %#v", wallet)
 	}
 }
 

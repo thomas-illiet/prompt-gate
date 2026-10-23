@@ -51,6 +51,7 @@ const useLabel = computed(() =>
     >
       <template #actions>
         <v-chip
+          v-if="props.summary"
           color="primary"
           label
           size="small"
@@ -89,7 +90,7 @@ const useLabel = computed(() =>
         </div>
       </v-alert>
 
-      <div v-else class="profile-quota-reset-card__body">
+      <div v-else-if="props.summary" class="profile-quota-reset-card__body">
         <div class="profile-quota-reset-card__balance">
           <v-avatar color="primary" size="54" variant="tonal">
             <strong data-test="quota-reset-available">{{ available }}</strong>
@@ -132,6 +133,27 @@ const useLabel = computed(() =>
           </v-btn>
         </div>
       </div>
+
+      <v-alert
+        v-else
+        class="profile-quota-reset-card__error"
+        data-test="quota-reset-unavailable"
+        rounded="lg"
+        type="info"
+        variant="tonal"
+      >
+        <div class="profile-quota-reset-card__alert-content">
+          <span>Quota reset information is not available yet.</span>
+          <v-btn
+            prepend-icon="mdi-refresh"
+            size="small"
+            variant="text"
+            @click="emit('retry')"
+          >
+            Refresh
+          </v-btn>
+        </div>
+      </v-alert>
     </ProfileInfoCard>
   </section>
 </template>

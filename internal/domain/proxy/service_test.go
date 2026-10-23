@@ -31,7 +31,7 @@ func (l *usagePriceCountingLogger) Trace(ctx context.Context, begin time.Time, f
 	if strings.Contains(sql, "usage_prices") {
 		l.pricingQueries++
 	}
-	if strings.Contains(sql, "token_usages") && strings.Contains(sql, "SUM") {
+	if strings.Contains(sql, "token_usages") && strings.Contains(sql, "GROUP BY") {
 		l.usageCostQueries++
 		if rows > l.usageCostMaxRows {
 			l.usageCostMaxRows = rows

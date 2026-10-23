@@ -175,7 +175,6 @@ describe('useProfileQuotaResets', () => {
       .mockResolvedValueOnce({
         status: 'pending',
         summary: pendingSummary,
-        quota: {},
       })
       .mockResolvedValueOnce(appliedSummary)
       .mockResolvedValueOnce({
@@ -223,7 +222,6 @@ describe('useProfileQuotaResets', () => {
       .mockResolvedValueOnce({
         status: 'pending',
         summary: { ...availableSummary, pendingReset: true },
-        quota: {},
       })
       .mockResolvedValueOnce({
         ...availableSummary,

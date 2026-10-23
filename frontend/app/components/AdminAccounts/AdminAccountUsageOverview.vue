@@ -2,6 +2,7 @@
 import type { DashboardOverviewResponse } from '~/types/user-service'
 import {
   formatCurrencyUsd,
+  formatDate,
   formatDurationMs,
   formatNumber,
 } from '~/utils/formatters'
@@ -39,11 +40,28 @@ const hasUsage = computed(() => {
     props.data.daily.some((item) => item.requests > 0 || item.totalTokens > 0)
   )
 })
-const costCaption = computed(() =>
-  props.data && !props.data.totals.estimatedCost
-    ? 'Cost estimate unavailable'
-    : props.costCaption,
-)
+const costCaption = computed(() => {
+  const data = props.data
+  if (!data) {
+    return props.costCaption
+  }
+
+  const coverage =
+    data.costCoverage ??
+    (data.totals.estimatedCost
+      ? ({ status: 'complete' } as const)
+      : ({ status: 'unavailable' } as const))
+  if (coverage.status === 'unavailable' || !data.totals.estimatedCost) {
+    return 'Cost estimate unavailable'
+  }
+  if (coverage.status === 'partial') {
+    return coverage.startsAt
+      ? `Partial estimate since ${formatDate(coverage.startsAt)}`
+      : 'Partial cost estimate'
+  }
+
+  return props.costCaption
+})
 </script>
 
 <template>

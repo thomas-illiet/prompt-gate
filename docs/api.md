@@ -51,7 +51,7 @@ routes require `user` or `admin`.
 | `GET` | `/api/v1/me/usage` | Usage summary for the current user. |
 | `GET` | `/api/v1/me/quota` | Current subscription quota state and reset windows. |
 | `GET` | `/api/v1/me/quota-resets` | Current quota-reset credit balance, applicability, and pending state. |
-| `POST` | `/api/v1/me/quota-resets/use` | Spend one credit to clear both live quota windows. Requires `Idempotency-Key`. |
+| `POST` | `/api/v1/me/quota-resets/use` | Spend one credit to clear both live quota windows. Requires a non-blank `Idempotency-Key`. |
 | `GET` | `/api/v1/me/quota-resets/history` | List applied credit grants and uses, newest first, with `page` and `pageSize`. |
 | `GET` | `/api/v1/me/groups` | Access groups assigned to the current user. |
 | `GET` | `/api/v1/me/help/setup` | Provider setup helper with proxy base URLs and available models. |
@@ -151,14 +151,14 @@ Admin dashboard token and activity responses follow the same optional
 | `GET` | `/api/v1/admin/users/{id}/statistics` | Get aggregated usage totals, duration, and daily activity for one human user. |
 | `PATCH` | `/api/v1/admin/users/{id}` | Update role, active state, or access expiration. |
 | `PATCH` | `/api/v1/admin/users/{id}/note` | Update the private administration note. |
-| `DELETE` | `/api/v1/admin/users/{id}` | Delete one user. |
+| `DELETE` | `/api/v1/admin/users/{id}` | Delete one local user and its current access data. A later OIDC sign-in can provision a new limited account. |
 | `GET` | `/api/v1/admin/users/{id}/tokens` | List a user's tokens. |
 | `POST` | `/api/v1/admin/users/{id}/tokens` | Create a user token and return its raw value once. |
 | `DELETE` | `/api/v1/admin/users/{id}/tokens/{tokenId}` | Revoke one user token. |
 | `GET` | `/api/v1/admin/users/{id}/groups` | List the user's access groups. |
 | `PUT` | `/api/v1/admin/users/{id}/groups` | Replace the user's access groups. |
 | `PUT` | `/api/v1/admin/users/{id}/subscription-plan` | Assign or clear the user's subscription plan. |
-| `POST` | `/api/v1/admin/users/{id}/quota-resets` | Offer exactly one reset credit to a human account. Requires `Idempotency-Key`. |
+| `POST` | `/api/v1/admin/users/{id}/quota-resets` | Offer exactly one reset credit to a human account. Requires a non-blank `Idempotency-Key`. |
 
 The first user created by an OIDC login in an otherwise empty database is
 assigned role `admin`. Later OIDC users, and all administratively pre-created
@@ -168,6 +168,9 @@ preserve the stored role, including an explicit `none`. Pre-creation accepts onl
 `{"preferredUsername":"..."}`. The value is trimmed at its edges and then
 stored case-sensitively; an empty value returns `invalid_preferred_username`
 and an existing human identifier returns `preferred_username_conflict`.
+Once `POST /api/v1/admin/users` succeeds, the account exists even if a later
+request for its details or subscription plans fails. Clients must resume setup
+from that account instead of repeating the create request.
 
 Before the first SSO login, `sub` and `lastLoginAt` are `null`, while email and
 name are empty. The first login whose exact `preferred_username` matches fills
@@ -188,10 +191,11 @@ active `limited` user, so an administrator-created token is usable immediately
 before the first SSO login. Normal token expiration and revocation, account
 expiration, group, quota, and policy checks still apply.
 
-Quota-reset mutations require a caller-generated `Idempotency-Key`; retrying
-the same operation with the same key does not debit or grant twice. A reset
-clears both the rolling 5-hour and 7-day Redis counters but preserves all
-historical usage, interception, and KPI records. Business conflicts return
+Quota-reset mutations require a caller-generated, non-blank
+`Idempotency-Key`; retrying the same operation with the same key does not debit
+or grant twice. A reset clears both the rolling 5-hour and 7-day Redis counters
+but preserves all historical usage, interception, and KPI records. Business
+conflicts return
 `409` with one of `quota_reset_credit_unavailable`,
 `quota_reset_not_applicable`, `quota_reset_balance_full`, or
 `quota_reset_pending`. A missing key returns
@@ -202,11 +206,19 @@ The private ledger records the connected administrator ID for session grants;
 API-key grants record only the `admin_api_key` actor type. Raw administration
 keys and raw idempotency keys are never persisted.
 
+When a reset is applied synchronously, the response has `status: "applied"`
+and includes the refreshed `quota`. When reconciliation is required, the API
+returns HTTP `202` with `status: "pending"` and omits `quota`; clients should
+use the wallet `pendingReset` state and poll the quota-reset summary until the
+operation completes.
+
 User statistics accept `window=7d`, `window=30d`, or `window=all`, defaulting
 to `30d` when omitted. The response contains `window`, `startsAt`, `endsAt`,
-`totals`, `totalDurationMs`, and `daily`; `totals.estimatedCost` is omitted when
-usage cost estimation is disabled. Unknown users and service-account IDs both
-return `404 {"error":"user_not_found"}`.
+`totals`, `totalDurationMs`, `daily`, and `costCoverage`. Cost coverage is
+`complete`, `partial`, or `unavailable`; partial coverage includes the retained
+raw-usage bounds, while unavailable coverage omits `estimatedCost` instead of
+presenting a zero value. Unknown users and service-account IDs both return
+`404 {"error":"user_not_found"}`.
 
 ### Service Accounts
 

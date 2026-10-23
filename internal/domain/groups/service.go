@@ -73,20 +73,23 @@ func (s *Service) AutoMigrate(ctx context.Context) error {
 func (s *Service) ListGroupsPaged(ctx context.Context, params ListParams) (ListResult, error) {
 	normalizeListParams(&params)
 
-	query := s.db.WithContext(ctx).Model(&Group{})
-	if search := strings.TrimSpace(strings.ToLower(params.Search)); search != "" {
-		like := "%" + search + "%"
-		query = query.Where("LOWER(name) LIKE ? OR LOWER(display_name) LIKE ? OR LOWER(description) LIKE ?", like, like, like)
-	}
+	query := applyGroupSearch(s.db.WithContext(ctx).Model(&Group{}), params.Search)
 
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
 		return ListResult{}, fmt.Errorf("count groups: %w", err)
 	}
 	if groupSortNeedsUsage(params.SortBy) {
+		// Exact ranking must evaluate all filtered candidates before LIMIT. Scope
+		// both aggregation stages to those candidates so unrelated identities and
+		// groups never enter the derived usage table.
+		candidates := applyGroupSearch(
+			s.db.WithContext(ctx).Model(&Group{}).Select("access_groups.id"),
+			params.Search,
+		)
 		query = query.Joins(
 			"LEFT JOIN (?) AS group_usage ON group_usage.group_id = access_groups.id",
-			groupUsageTotalsQuery(s.db.WithContext(ctx)),
+			groupUsageTotalsQuery(s.db.WithContext(ctx), candidates),
 		)
 	}
 
@@ -139,15 +142,21 @@ func groupSortNeedsUsage(sortBy string) bool {
 	return sortBy == "inputTokens" || sortBy == "outputTokens"
 }
 
-// groupUsageTotalsQuery aggregates durable all-time token totals once per
-// group from the current membership set. Cache token columns are deliberately
-// excluded from these totals.
-func groupUsageTotalsQuery(db *gorm.DB) *gorm.DB {
+// groupUsageTotalsQuery aggregates durable all-time token totals for only the
+// groups participating in the current filtered result set. Pre-aggregating by
+// member keeps identities shared by several groups from rescanning daily KPI
+// history for every membership. Cache token columns are deliberately excluded.
+func groupUsageTotalsQuery(db *gorm.DB, candidateGroups *gorm.DB) *gorm.DB {
+	candidateMembers := db.
+		Table("access_group_members").
+		Select("DISTINCT access_group_members.user_id").
+		Where("access_group_members.group_id IN (?)", candidateGroups)
 	memberUsage := db.
 		Table("proxy_daily_usage_kpis").
 		Select(`initiator_id,
 			COALESCE(SUM(input_tokens), 0) AS input_tokens,
 			COALESCE(SUM(output_tokens), 0) AS output_tokens`).
+		Where("initiator_id IN (?)", candidateMembers).
 		Group("initiator_id")
 
 	return db.
@@ -156,6 +165,7 @@ func groupUsageTotalsQuery(db *gorm.DB) *gorm.DB {
 			COALESCE(SUM(member_usage.input_tokens), 0) AS input_tokens,
 			COALESCE(SUM(member_usage.output_tokens), 0) AS output_tokens`).
 		Joins("LEFT JOIN (?) AS member_usage ON member_usage.initiator_id = access_group_members.user_id", memberUsage).
+		Where("access_group_members.group_id IN (?)", candidateGroups).
 		Group("access_group_members.group_id")
 }
 
@@ -197,6 +207,16 @@ func (s *Service) GetGroup(ctx context.Context, id string) (GroupResponse, error
 		return GroupResponse{}, err
 	}
 	return record.toResponse(), nil
+}
+
+// EnsureGroupExists validates an access-group identifier and verifies the
+// record without preloading its potentially large membership collection.
+func (s *Service) EnsureGroupExists(ctx context.Context, id string) error {
+	groupID, err := parseGroupID(id)
+	if err != nil {
+		return ErrGroupNotFound
+	}
+	return s.ensureGroupExists(ctx, s.db, groupID)
 }
 
 // CreateGroup validates and stores a new access group.
@@ -597,6 +617,21 @@ func normalizeListParams(params *ListParams) {
 	if params.SortDir == "" {
 		params.SortDir = "asc"
 	}
+}
+
+// applyGroupSearch applies the normalized list search to a group query.
+func applyGroupSearch(query *gorm.DB, raw string) *gorm.DB {
+	search := strings.TrimSpace(strings.ToLower(raw))
+	if search == "" {
+		return query
+	}
+	like := "%" + search + "%"
+	return query.Where(
+		"LOWER(name) LIKE ? OR LOWER(display_name) LIKE ? OR LOWER(description) LIKE ?",
+		like,
+		like,
+		like,
+	)
 }
 
 // applyGroupSort applies a validated access group order to the query.
