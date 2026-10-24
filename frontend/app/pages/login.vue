@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
 
+import loginGatewayImage from '~/assets/images/login-gateway.jpg'
 import { Notify } from '~/stores/notification'
 import {
   DEFAULT_AUTH_REDIRECT_PATH,
@@ -86,9 +87,16 @@ async function retrySession() {
   <v-container fluid class="login-page">
     <div class="login-composition">
       <section class="login-visual" aria-hidden="true">
-        <div class="login-visual__mark">
-          <AppSignalVisual name="gate" />
-        </div>
+        <img
+          :src="loginGatewayImage"
+          alt=""
+          class="login-visual__image"
+          data-test="login-visual-image"
+          decoding="async"
+          fetchpriority="high"
+          height="1200"
+          width="1200"
+        />
         <div class="login-visual__wash" />
         <div
           class="login-visual__status"
@@ -226,6 +234,7 @@ async function retrySession() {
 
 .login-visual::before {
   position: absolute;
+  z-index: 1;
   inset: 0;
   background-image:
     linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
@@ -235,31 +244,35 @@ async function retrySession() {
   mask-image: radial-gradient(circle at center, #000, transparent 78%);
 }
 
-.login-visual__mark {
-  position: relative;
-  z-index: 1;
-  width: clamp(220px, 32vw, 350px);
-  height: clamp(220px, 32vw, 350px);
-  --app-accent-coral: 255, 130, 111;
-  --app-shell-surface-strong: 12, 52, 39;
-  --v-theme-primary: 118, 236, 174;
-  filter: drop-shadow(0 30px 42px rgba(0, 0, 0, 0.28));
+.login-visual__image {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 42%;
   animation: login-visual-arrive 720ms var(--app-motion-emphasized, ease-out)
     both;
 }
 
 .login-visual__wash {
   position: absolute;
+  z-index: 1;
   inset: 0;
   background:
-    linear-gradient(180deg, transparent 48%, rgba(7, 31, 24, 0.62)),
-    linear-gradient(90deg, rgba(0, 150, 94, 0.08), transparent 56%);
+    linear-gradient(
+      180deg,
+      rgba(7, 31, 24, 0.06) 30%,
+      rgba(7, 31, 24, 0.76) 100%
+    ),
+    linear-gradient(90deg, rgba(7, 31, 24, 0.34), transparent 58%);
 }
 
 .login-visual__status,
 .login-visual__caption {
   position: absolute;
-  z-index: 1;
+  z-index: 2;
   color: white;
 }
 
@@ -552,7 +565,7 @@ async function retrySession() {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .login-visual__mark,
+  .login-visual__image,
   .login-visual__status-ping {
     animation: none;
   }

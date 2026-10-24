@@ -13,7 +13,6 @@ function mountPage() {
   return mount(LoginPage, {
     global: {
       stubs: {
-        AppSignalVisual: true,
         VAlert: { template: '<div><slot /><slot name="append" /></div>' },
         VAvatar: { template: '<span><slot /></span>' },
         VBtn: { template: '<button><slot /></button>' },
@@ -51,5 +50,13 @@ describe('LoginPage', () => {
     expect(status.attributes('data-tone')).toBe('unavailable')
     expect(status.text()).toContain('Control room unavailable')
     expect(status.text()).not.toContain('Private transport detail')
+  })
+
+  it('uses the generated gateway artwork as a decorative login visual', () => {
+    const wrapper = mountPage()
+    const image = wrapper.get('[data-test="login-visual-image"]')
+
+    expect(image.attributes('alt')).toBe('')
+    expect(image.attributes('src')).toContain('login-gateway.jpg')
   })
 })
