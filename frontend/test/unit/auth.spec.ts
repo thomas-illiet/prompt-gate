@@ -6,6 +6,7 @@ import {
   hasRequiredRole,
   isAuthUser,
   isBlockedUser,
+  publicLoginErrorMessage,
   resolveRuntimeApiBaseUrl,
 } from '../../app/utils/auth'
 
@@ -86,5 +87,21 @@ describe('access-state classification', () => {
   it('distinguishes a valid session from insufficient route permissions', () => {
     expect(hasRequiredRole(activeUser, ['limited', 'user'])).toBe(true)
     expect(hasRequiredRole(activeUser, ['admin'])).toBe(false)
+  })
+})
+
+describe('publicLoginErrorMessage', () => {
+  it('maps callback values to trusted product copy', () => {
+    expect(publicLoginErrorMessage('access_denied')).toContain('cancelled')
+    expect(publicLoginErrorMessage('raw provider detail')).toBe(
+      'PromptGate could not complete sign-in. Please try again.',
+    )
+  })
+
+  it('hides raw initialization failures behind a stable message', () => {
+    expect(publicLoginErrorMessage(null, true)).toContain(
+      'cannot reach the authentication service',
+    )
+    expect(publicLoginErrorMessage(null)).toBeNull()
   })
 })

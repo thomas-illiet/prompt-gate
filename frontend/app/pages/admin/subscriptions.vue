@@ -20,12 +20,12 @@ const deleteDialog = useTargetDialog<SubscriptionPlan>()
 const defaultDialog = useTargetDialog<SubscriptionPlan>()
 
 const totalLabel = computed(() => {
-  const total = adminSubscriptions.total.value
-  const defaultName = adminSubscriptions.defaultPlan.value?.name
-  if (!defaultName) {
-    return total === 1 ? '1 plan' : `${total} plans`
+  if (adminSubscriptions.loading.value) {
+    return '…'
   }
-  return defaultName
+
+  const total = adminSubscriptions.total.value
+  return total === 1 ? '1 plan' : `${total} plans`
 })
 
 function openCreateDialog() {
@@ -76,7 +76,8 @@ async function confirmDefault() {
           kicker="Usage control"
           title="Subscription plans"
           copy="Define token windows for proxy access and choose the default plan inherited by accounts."
-          stat-label="Default plan"
+          visual="ledger"
+          stat-label="Plan catalog"
           :stat-value="totalLabel"
         />
       </v-col>

@@ -17,6 +17,7 @@ definePageMeta({
           kicker="Developer tools"
           title="API documentation"
           copy="Explore the PromptGate API and execute requests with your current administrator session."
+          visual="cables"
           stat-label="Authentication"
           stat-value="Current session"
         />

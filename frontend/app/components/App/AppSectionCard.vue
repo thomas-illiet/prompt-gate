@@ -102,6 +102,8 @@ const props = withDefaults(
   .app-section-card__header {
     align-items: stretch;
     flex-direction: column;
+    gap: 12px;
+    padding: 16px;
   }
 
   .app-section-card__actions {

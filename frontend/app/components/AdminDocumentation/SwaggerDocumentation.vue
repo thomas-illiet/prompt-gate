@@ -9,9 +9,7 @@ import { createSwaggerLifecyclePreset } from '~/utils/swagger-lifecycle'
 type OpenAPIDocument = Record<string, unknown>
 
 const apiFetch = useApiFetch()
-const theme = useVTheme()
 const swaggerRoot = useTemplateRef<HTMLDivElement>('swaggerRoot')
-const isDark = computed(() => theme.current.value.dark)
 const initializationError = shallowRef<string | null>(null)
 const loading = shallowRef(false)
 
@@ -114,17 +112,6 @@ onBeforeUnmount(() => {
 
     <div class="swagger-documentation-content">
       <v-alert
-        type="warning"
-        variant="tonal"
-        title="Requests can change data"
-        class="swagger-documentation-warning"
-      >
-        Try it out sends real requests to PromptGate. POST, PUT, PATCH, and
-        DELETE operations can change or remove data in the current environment
-        immediately.
-      </v-alert>
-
-      <v-alert
         v-if="initializationError"
         type="error"
         variant="tonal"
@@ -147,7 +134,6 @@ onBeforeUnmount(() => {
         v-show="!initializationError"
         ref="swaggerRoot"
         class="swagger-documentation"
-        :class="{ 'swagger-documentation--dark': isDark }"
       />
     </div>
   </AppSectionCard>
@@ -163,10 +149,6 @@ onBeforeUnmount(() => {
   margin: 20px 8px 4px;
 }
 
-.swagger-documentation-warning {
-  margin: 20px 8px 4px;
-}
-
 .swagger-documentation-alert p {
   margin: 0 0 16px;
 }
@@ -174,10 +156,6 @@ onBeforeUnmount(() => {
 .swagger-documentation {
   min-height: 560px;
   color-scheme: light;
-}
-
-.swagger-documentation--dark {
-  color-scheme: dark;
 }
 
 .swagger-documentation :deep(.swagger-ui) {
@@ -215,45 +193,6 @@ onBeforeUnmount(() => {
 .swagger-documentation :deep(.swagger-ui .information-container),
 .swagger-documentation :deep(.swagger-ui .auth-wrapper) {
   display: none;
-}
-
-.swagger-documentation--dark :deep(.swagger-ui),
-.swagger-documentation--dark :deep(.swagger-ui .opblock-tag),
-.swagger-documentation--dark :deep(.swagger-ui .opblock-summary-description),
-.swagger-documentation--dark :deep(.swagger-ui .opblock-summary-path),
-.swagger-documentation--dark :deep(.swagger-ui .opblock-section-header h4),
-.swagger-documentation--dark :deep(.swagger-ui .opblock-section-header label),
-.swagger-documentation--dark :deep(.swagger-ui .opblock-description-wrapper p),
-.swagger-documentation--dark :deep(.swagger-ui .parameter__name),
-.swagger-documentation--dark :deep(.swagger-ui .parameter__type),
-.swagger-documentation--dark :deep(.swagger-ui .response-col_status),
-.swagger-documentation--dark :deep(.swagger-ui .response-col_links),
-.swagger-documentation--dark :deep(.swagger-ui .responses-inner h4),
-.swagger-documentation--dark :deep(.swagger-ui .responses-inner h5),
-.swagger-documentation--dark :deep(.swagger-ui table thead tr th),
-.swagger-documentation--dark :deep(.swagger-ui .model-title),
-.swagger-documentation--dark :deep(.swagger-ui .model),
-.swagger-documentation--dark :deep(.swagger-ui section.models h4) {
-  color: rgb(var(--app-shell-text-primary));
-}
-
-.swagger-documentation--dark :deep(.swagger-ui .opblock),
-.swagger-documentation--dark :deep(.swagger-ui .opblock-section-header),
-.swagger-documentation--dark :deep(.swagger-ui .model-container),
-.swagger-documentation--dark :deep(.swagger-ui .model-box) {
-  background: rgba(var(--app-shell-surface-muted), 0.72);
-}
-
-.swagger-documentation--dark :deep(.swagger-ui input),
-.swagger-documentation--dark :deep(.swagger-ui select),
-.swagger-documentation--dark :deep(.swagger-ui textarea) {
-  border-color: rgba(var(--app-shell-border), 0.72);
-  color: rgb(var(--app-shell-text-primary));
-  background: rgb(var(--app-shell-surface));
-}
-
-.swagger-documentation--dark :deep(.swagger-ui svg) {
-  fill: rgb(var(--app-shell-text-secondary));
 }
 
 @media (max-width: 720px) {

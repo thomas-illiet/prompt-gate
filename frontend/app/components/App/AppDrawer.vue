@@ -100,6 +100,10 @@ drawerState.value = lgAndUp.value && width.value !== 1280
           >
             Prompt<span class="text-primary">Gate</span>
           </v-list-item-title>
+          <v-list-item-subtitle class="drawer-brand__subtitle">
+            <span class="drawer-brand__beacon" aria-hidden="true" />
+            Friendly control room
+          </v-list-item-subtitle>
         </v-list-item>
       </v-list>
     </template>
@@ -116,16 +120,19 @@ drawerState.value = lgAndUp.value && width.value !== 1280
   transition-property:
     box-shadow, transform, visibility, width, height, left, right, top, bottom,
     border-radius;
+  transition-duration: var(--app-motion-standard);
+  transition-timing-function: var(--app-ease-standard);
   overflow: hidden;
   &.v-navigation-drawer--rail {
     border-top-right-radius: 0px;
     border-bottom-right-radius: 0px;
     &.v-navigation-drawer--is-hovering {
-      border-top-right-radius: 15px;
-      border-bottom-right-radius: 15px;
+      border-top-right-radius: var(--app-card-radius);
+      border-bottom-right-radius: var(--app-card-radius);
       box-shadow:
-        0px 1px 2px 0px rgb(0 0 0 / 30%),
-        0px 1px 3px 1px rgb(0 0 0 / 15%);
+        0 20px 48px -30px
+          rgba(var(--app-shell-shadow), var(--app-shell-shadow-strong-opacity)),
+        inset -1px 0 rgba(var(--app-shell-border), 0.4);
     }
     &:not(.v-navigation-drawer--is-hovering) {
       .drawer-header-icon {
@@ -180,7 +187,14 @@ drawerState.value = lgAndUp.value && width.value !== 1280
     opacity: 1;
     height: 1.2em;
     width: 1.2em;
-    transition: all 0.2s;
+    filter: drop-shadow(0 8px 12px rgba(var(--v-theme-primary), 0.2));
+    transition:
+      width var(--app-motion-standard) var(--app-ease-out),
+      height var(--app-motion-standard) var(--app-ease-out),
+      margin var(--app-motion-standard) var(--app-ease-out);
+    animation:
+      app-enter-soft var(--app-motion-expressive) var(--app-ease-out) both,
+      app-float 6s ease-in-out 1.2s infinite;
     margin-right: -4px;
   }
   .drawer-brand {
@@ -190,11 +204,33 @@ drawerState.value = lgAndUp.value && width.value !== 1280
       display: none;
     }
   }
+  .drawer-brand__subtitle {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-top: -2px;
+    font-family: var(--app-font-mono);
+    font-size: 0.64rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .drawer-brand__beacon {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    flex: 0 0 auto;
+    border-radius: 50%;
+    background: rgb(var(--v-theme-primary));
+    animation: app-signal-pulse 2.4s var(--app-ease-standard) infinite;
+  }
   .v-list-group__items {
     --v-list-indent: 28px;
   }
   .v-list-item {
-    transition: all 0.2s;
+    transition:
+      background-color var(--app-motion-fast) var(--app-ease-standard),
+      border-color var(--app-motion-fast) var(--app-ease-standard),
+      transform var(--app-motion-fast) var(--app-ease-out);
   }
 }
 </style>

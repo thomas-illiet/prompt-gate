@@ -17,8 +17,8 @@ const servicesLabel = computed(() => {
 })
 const message = computed(() =>
   serviceNames.value.length === 1
-    ? `Service perturbe: ${servicesLabel.value}`
-    : `Services perturbes: ${servicesLabel.value}`,
+    ? `Signal degraded: ${servicesLabel.value}`
+    : `Degraded signals: ${servicesLabel.value}`,
 )
 </script>
 

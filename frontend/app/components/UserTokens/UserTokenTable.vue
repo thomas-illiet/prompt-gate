@@ -71,11 +71,11 @@ const summaryLabel = computed(() => {
 const emptyState = computed(() =>
   props.total === 0
     ? {
-        title: 'No virtual keys',
-        text: 'Create a virtual key to enable CLI, SDK, or proxy access.',
+        title: 'The keyring is suspiciously light',
+        text: 'No virtual keys exist yet. Create one to enable CLI, SDK, or proxy access.',
       }
     : {
-        title: 'No matching virtual keys',
+        title: 'Nothing jingles for these filters',
         text: 'Adjust the search or status filter to see more virtual key records.',
       },
 )

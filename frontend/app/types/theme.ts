@@ -1,0 +1,12 @@
+export type AppSignalVisualName =
+  | 'book'
+  | 'cables'
+  | 'gate'
+  | 'heartbeat'
+  | 'identity'
+  | 'key'
+  | 'ledger'
+  | 'network'
+  | 'people'
+  | 'radar'
+  | 'robot'

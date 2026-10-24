@@ -19,6 +19,9 @@ const props = withDefaults(
   <section
     class="app-empty-state"
     :class="{ 'app-empty-state--compact': props.compact }"
+    aria-atomic="true"
+    aria-live="polite"
+    role="status"
   >
     <div class="app-empty-state__visual" aria-hidden="true">
       <v-avatar
@@ -57,6 +60,7 @@ const props = withDefaults(
   padding: 28px 18px;
   color: rgb(var(--app-shell-text-secondary));
   text-align: center;
+  animation: app-enter-soft var(--app-motion-standard) var(--app-ease-out) both;
 }
 
 .app-empty-state--compact {
@@ -120,6 +124,7 @@ const props = withDefaults(
 .app-empty-state__copy h3 {
   margin: 0;
   color: rgb(var(--app-shell-text-primary));
+  font-family: var(--app-font-display);
   font-size: 1rem;
   font-weight: 800;
 }

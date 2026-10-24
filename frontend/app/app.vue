@@ -1,9 +1,4 @@
 <script setup lang="ts">
-const theme = useVTheme()
-provide(
-  THEME_KEY,
-  computed(() => (theme.current.value.dark ? 'dark' : undefined)),
-)
 const route = useRoute()
 const title = computed(() => {
   return route.meta?.title || route.matched[0]?.meta?.title || ''
@@ -16,10 +11,8 @@ useHead({
 })
 useSeoMeta({
   viewport: 'width=device-width, initial-scale=1',
-  description: 'Vuetify 3 + Nuxt 3, Opinionated Admin Starter Template',
-  ogImage: '/social-image.png',
-  twitterImage: '/social-image.png',
-  twitterCard: 'summary_large_image',
+  description:
+    'PromptGate provides secure, governed access to every AI model your organization is allowed to use.',
 })
 </script>
 

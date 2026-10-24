@@ -69,7 +69,6 @@ export default defineVuetifyConfiguration({
     defaultTheme: 'light',
     themes: {
       light: { colors: { primary: BNP_GREEN } },
-      dark: { colors: { primary: BNP_GREEN } },
     },
   },
 })

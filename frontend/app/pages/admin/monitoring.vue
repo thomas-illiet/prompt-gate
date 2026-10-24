@@ -28,11 +28,29 @@ const toggleConfirm = useToggleConfirmDialog(toggleDialog.target, {
 })
 
 const totalLabel = computed(() => {
+  if (adminMonitoring.loading.value) {
+    return '…'
+  }
+
   const enabled = adminMonitoring.enabledServicesCount.value
   const degraded = adminMonitoring.degradedServicesCount.value
   return enabled === 1
     ? `${degraded}/1 degraded`
     : `${degraded}/${enabled} degraded`
+})
+const heroCopy = computed(() => {
+  const enabled = adminMonitoring.enabledServicesCount.value
+  const degraded = adminMonitoring.degradedServicesCount.value
+
+  if (degraded > 0) {
+    return 'Visible service checks need attention. Manage HTTP/S checks that drive user-facing incident banners.'
+  }
+
+  if (enabled > 0) {
+    return 'Visible heartbeats are green. Manage HTTP/S service checks that drive user-facing incident banners.'
+  }
+
+  return 'The stethoscope is ready. Manage HTTP/S service checks that drive user-facing incident banners.'
 })
 
 function servicePayload(service: MonitoringService, enabled: boolean) {
@@ -116,10 +134,11 @@ async function confirmDelete() {
       <v-col cols="12">
         <AppPageHero
           icon="mdi-heart-pulse"
-          kicker="Operations"
+          kicker="Control room"
           title="Monitoring"
-          copy="Manage HTTP/S service checks that drive user-facing incident banners."
-          stat-label="Service disruption"
+          :copy="heroCopy"
+          visual="heartbeat"
+          stat-label="Visible health"
           :stat-value="totalLabel"
         />
       </v-col>

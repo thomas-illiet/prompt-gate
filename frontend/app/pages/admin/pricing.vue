@@ -79,6 +79,7 @@ async function confirmDelete() {
           kicker="Cost intelligence"
           title="Model pricing"
           copy="Configure fallback and model-specific token prices used for dashboard cost estimates."
+          visual="ledger"
           stat-label="Pricing status"
           :stat-value="statusLabel"
         />

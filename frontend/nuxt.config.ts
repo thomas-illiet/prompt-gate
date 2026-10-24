@@ -52,8 +52,6 @@ export default defineNuxtConfig({
       prefixComposables: true,
       ssrClientHints: {
         viewportSize: true,
-        prefersColorScheme: true,
-        prefersColorSchemeOptions: {},
         reloadOnFirstRequest: true,
       },
     },

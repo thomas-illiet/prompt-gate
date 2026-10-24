@@ -8,20 +8,36 @@ describe('FAQList', () => {
     const wrapper = mount(FAQList, {
       props: {
         entries: [
-          { id: '1', question: 'How do I authenticate?', renderedHtml: '<p>Use a <strong>key</strong>.</p>', position: 0 },
-          { id: '2', question: 'Where is usage?', renderedHtml: '<p>Dashboard.</p>', position: 1 },
+          {
+            id: '1',
+            question: 'How do I authenticate?',
+            renderedHtml: '<p>Use a <strong>key</strong>.</p>',
+            position: 0,
+          },
+          {
+            id: '2',
+            question: 'Where is usage?',
+            renderedHtml: '<p>Dashboard.</p>',
+            position: 1,
+          },
         ],
         loading: false,
       },
       global: {
         stubs: {
+          AppFilterCard: { template: '<section><slot /></section>' },
           AppSectionCard: { template: '<section><slot /></section>' },
           VExpansionPanels: { template: '<div><slot /></div>' },
           VExpansionPanel: { template: '<article><slot /></article>' },
           VExpansionPanelTitle: { template: '<h2><slot /></h2>' },
           VExpansionPanelText: { template: '<div><slot /></div>' },
           VChip: { template: '<span><slot /></span>' },
-          VTextField: { props: ['modelValue'], emits: ['update:modelValue'], template: '<input :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />' },
+          VTextField: {
+            props: ['modelValue'],
+            emits: ['update:modelValue'],
+            template:
+              '<input :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />',
+          },
         },
       },
     })

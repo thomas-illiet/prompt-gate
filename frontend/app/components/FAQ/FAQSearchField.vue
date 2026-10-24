@@ -7,12 +7,12 @@ const props = defineProps<{
 const search = defineModel<string>({ default: '' })
 const resultLabel = computed(() => {
   if (!search.value.trim()) {
-    return props.totalCount === 1 ? '1 question' : `${props.totalCount} questions`
+    return props.totalCount === 1
+      ? '1 question'
+      : `${props.totalCount} questions`
   }
 
-  return props.resultCount === 1
-    ? '1 result'
-    : `${props.resultCount} results`
+  return props.resultCount === 1 ? '1 result' : `${props.resultCount} results`
 })
 </script>
 
@@ -44,8 +44,9 @@ const resultLabel = computed(() => {
 
 <style scoped>
 .faq-search {
-  position: relative;
+  display: grid;
   width: 100%;
+  gap: 8px;
 }
 
 .faq-search :deep(.v-field) {
@@ -59,16 +60,13 @@ const resultLabel = computed(() => {
 }
 
 .faq-search__count {
-  position: absolute;
-  top: 50%;
-  right: 48px;
-  transform: translateY(-50%);
+  justify-self: end;
   pointer-events: none;
 }
 
 @media (max-width: 600px) {
   .faq-search__count {
-    display: none;
+    justify-self: start;
   }
 }
 </style>

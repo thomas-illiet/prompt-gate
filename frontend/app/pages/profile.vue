@@ -84,17 +84,19 @@ async function confirmQuotaReset() {
 
 <template>
   <v-container fluid class="app-page profile-page">
-    <div class="profile-page__header">
-      <div>
-        <p class="profile-page__kicker">Account</p>
-        <h1 class="profile-page__title">Profile</h1>
-        <p class="profile-page__subtitle">
-          Review your identity, access level, and current session details.
-        </p>
-      </div>
-    </div>
-
     <v-row>
+      <v-col cols="12">
+        <AppPageHero
+          icon="mdi-account-circle-outline"
+          kicker="Access badge"
+          title="Profile"
+          copy="Your identity, access groups, and quota safety controls — all in one place."
+          visual="identity"
+          stat-label="Account status"
+          :stat-value="statusLabel"
+        />
+      </v-col>
+
       <v-col cols="12">
         <ProfileIdentityCard
           :display-email="displayEmail"
@@ -126,6 +128,7 @@ async function confirmQuotaReset() {
           :error="profileGroups.error.value"
           :groups="profileGroups.groups.value"
           :loading="profileGroups.loading.value"
+          @retry="profileGroups.reload"
         />
       </v-col>
 
@@ -186,37 +189,6 @@ async function confirmQuotaReset() {
 </template>
 
 <style scoped>
-.profile-page__header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 24px;
-}
-
-.profile-page__kicker {
-  margin: 0 0 8px;
-  color: rgb(var(--app-shell-text-muted));
-  font-size: 0.78rem;
-  font-weight: 750;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.profile-page__title {
-  margin: 0;
-  font-size: 1.55rem;
-  font-weight: 800;
-  line-height: 1.2;
-}
-
-.profile-page__subtitle {
-  max-width: 44rem;
-  margin: 6px 0 0;
-  color: rgb(var(--app-shell-text-secondary));
-  line-height: 1.6;
-}
-
 .profile-detail-list {
   display: grid;
   gap: 10px;
@@ -250,12 +222,5 @@ async function confirmQuotaReset() {
   overflow-wrap: anywhere;
   font-size: 0.95rem;
   line-height: 1.4;
-}
-
-@media (max-width: 720px) {
-  .profile-page__header {
-    align-items: stretch;
-    flex-direction: column;
-  }
 }
 </style>
