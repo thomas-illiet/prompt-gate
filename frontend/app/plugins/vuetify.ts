@@ -23,20 +23,12 @@ export default defineNuxtPlugin((nuxtApp) => {
     }
     vuetifyOptions.theme = {
       ...themeOptions,
-      defaultTheme: themeOptions.defaultTheme ?? 'light',
+      defaultTheme: 'light',
       themes: {
-        ...(themeOptions.themes ?? {}),
         light: {
           ...(themeOptions.themes?.light ?? {}),
           colors: {
             ...(themeOptions.themes?.light?.colors ?? {}),
-            primary: BNP_GREEN,
-          },
-        },
-        dark: {
-          ...(themeOptions.themes?.dark ?? {}),
-          colors: {
-            ...(themeOptions.themes?.dark?.colors ?? {}),
             primary: BNP_GREEN,
           },
         },

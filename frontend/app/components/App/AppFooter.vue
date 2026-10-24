@@ -1,29 +1,11 @@
-<script setup lang="ts">
-const theme = useVTheme()
-const isDark = computed({
-  get() {
-    return theme.current.value.dark
-  },
-  set(v) {
-    theme.change(v ? 'dark' : 'light')
-  },
-})
-</script>
-
 <template>
-  <v-footer app>
+  <v-footer app class="app-shell-footer">
+    <div class="footer-signature" aria-hidden="true">
+      <span class="footer-signature__beacon" />
+      <span>Friendly control room</span>
+    </div>
     <v-spacer />
     <div class="footer-actions">
-      <v-switch
-        v-model="isDark"
-        aria-label="Toggle color theme"
-        color=""
-        hide-details
-        density="compact"
-        false-icon="mdi-white-balance-sunny"
-        true-icon="mdi-weather-night"
-        class="opacity-80"
-      />
       <v-defaults-provider
         :defaults="{ VBtn: { variant: 'text', size: 'x-small' } }"
       >
@@ -35,21 +17,43 @@ const isDark = computed({
 
 <style scoped>
 .v-footer {
-  padding: 0 10px;
+  min-height: 42px;
+  padding: 0 14px;
+}
+
+.footer-signature {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: rgb(var(--app-shell-text-muted));
+  font-family: var(--app-font-mono);
+  font-size: 0.66rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.footer-signature__beacon {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgb(var(--v-theme-primary));
+  animation: app-signal-pulse 2.4s var(--app-ease-standard) infinite;
 }
 
 .footer-actions {
   display: flex;
   align-items: center;
-  gap: 2px;
-}
-
-:deep(.footer-actions .v-switch) {
-  margin-inline-end: 6px;
+  gap: 8px;
 }
 
 :deep(.footer-actions .v-btn--icon .v-icon) {
   height: 1.25em;
   width: 1.25em;
+}
+
+@media (max-width: 600px) {
+  .footer-signature {
+    display: none;
+  }
 }
 </style>

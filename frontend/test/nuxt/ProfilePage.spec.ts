@@ -8,16 +8,21 @@ import ProfilePage from '../../app/pages/profile.vue'
 import { useAuthStore } from '../../app/stores/auth'
 
 const { useProfileGroupsMock, useProfileQuotaResetsMock } = vi.hoisted(() => ({
-  useProfileGroupsMock: vi.fn(() => ({
-    error: { value: null },
-    groups: { value: [] },
-    loading: { value: false },
-  })),
+  useProfileGroupsMock: vi.fn(),
   useProfileQuotaResetsMock: vi.fn(),
 }))
 
 mockNuxtImport('useProfileGroups', () => useProfileGroupsMock)
 mockNuxtImport('useProfileQuotaResets', () => useProfileQuotaResetsMock)
+
+function createProfileGroupsMock() {
+  return {
+    error: shallowRef<string | null>(null),
+    groups: shallowRef([]),
+    loading: shallowRef(false),
+    reload: vi.fn(),
+  }
+}
 
 function createProfileQuotaResetsMock() {
   const historyOpen = shallowRef(false)
@@ -82,15 +87,27 @@ const ConfirmDialogStub = defineComponent({
   `,
 })
 
+const ProfileGroupsCardStub = defineComponent({
+  props: ['error', 'groups', 'loading'],
+  emits: ['retry'],
+  template: `
+    <div data-test="groups-card">
+      <button data-test="groups-retry" @click="$emit('retry')">Retry</button>
+    </div>
+  `,
+})
+
 function mountPage() {
   return mount(ProfilePage, {
     global: {
       stubs: {
         AppConfirmDialog: ConfirmDialogStub,
-        ProfileGroupsCard: {
-          props: ['groups', 'loading'],
-          template: '<div data-test="groups-card" />',
+        AppPageHero: {
+          props: ['statValue', 'visual'],
+          template:
+            '<div data-test="profile-hero" :data-visual="visual">{{ statValue }}</div>',
         },
+        ProfileGroupsCard: ProfileGroupsCardStub,
         ProfileIdentityCard: {
           props: ['roleLabel'],
           template: '<div data-test="identity-card" :data-role="roleLabel" />',
@@ -122,7 +139,8 @@ describe('ProfilePage', () => {
       role: 'user',
       sub: 'oidc-subject',
     }
-    useProfileGroupsMock.mockClear()
+    useProfileGroupsMock.mockReset()
+    useProfileGroupsMock.mockReturnValue(createProfileGroupsMock())
     useProfileQuotaResetsMock.mockReset()
     useProfileQuotaResetsMock.mockReturnValue(createProfileQuotaResetsMock())
   })
@@ -131,6 +149,10 @@ describe('ProfilePage', () => {
     const wrapper = mountPage()
 
     expect(wrapper.find('[data-test="identity-card"]').exists()).toBe(true)
+    expect(wrapper.get('[data-test="profile-hero"]').text()).toBe('Active')
+    expect(
+      wrapper.get('[data-test="profile-hero"]').attributes('data-visual'),
+    ).toBe('identity')
     expect(wrapper.find('[data-test="groups-card"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="quota-reset-card"]').exists()).toBe(true)
     expect(wrapper.text()).toContain('User ID')
@@ -149,6 +171,17 @@ describe('ProfilePage', () => {
     expect(
       wrapper.get('[data-test="identity-card"]').attributes('data-role'),
     ).toBe('Limited')
+  })
+
+  it('retries loading profile groups from the groups card', async () => {
+    const groups = createProfileGroupsMock()
+    groups.error.value = 'Groups unavailable.'
+    useProfileGroupsMock.mockReturnValue(groups)
+    const wrapper = mountPage()
+
+    await wrapper.get('[data-test="groups-retry"]').trigger('click')
+
+    expect(groups.reload).toHaveBeenCalledOnce()
   })
 
   it('opens quota reset history from the dedicated profile card', async () => {

@@ -99,7 +99,8 @@ async function confirmDelete() {
           kicker="AI control plane"
           title="Providers"
           copy="Manage upstream LLM provider endpoints, credentials, and runtime availability for proxy traffic."
-          stat-label="Enabled providers"
+          visual="network"
+          stat-label="Visible providers"
           :stat-value="totalLabel"
         />
       </v-col>

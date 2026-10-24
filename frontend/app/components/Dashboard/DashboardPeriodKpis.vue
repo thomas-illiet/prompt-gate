@@ -320,7 +320,7 @@ function deltaLabel(
 }
 
 .dashboard-period-kpis__card--secondary {
-  background: rgba(var(--app-shell-surface-muted), 0.42);
+  background: rgb(var(--app-shell-surface));
 }
 
 .dashboard-period-kpis__copy {

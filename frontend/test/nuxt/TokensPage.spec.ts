@@ -6,78 +6,75 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { UserTokenStatusFilter } from '../../app/types/user-service'
 import TokensPage from '../../app/pages/tokens.vue'
 
-const {
-  createUserTokensState,
-  useTargetDialogMock,
-  useUserTokensMock,
-} = vi.hoisted(() => {
-  function createUserTokensState() {
-    const search = shallowRef('')
-    const statusFilter = shallowRef<UserTokenStatusFilter>('active')
-    const total = shallowRef(3)
+const { createUserTokensState, useTargetDialogMock, useUserTokensMock } =
+  vi.hoisted(() => {
+    function createUserTokensState() {
+      const search = shallowRef('')
+      const statusFilter = shallowRef<UserTokenStatusFilter>('active')
+      const total = shallowRef(3)
+
+      return {
+        createToken: vi.fn(),
+        createdToken: shallowRef(null),
+        listError: shallowRef<string | null>(null),
+        loading: shallowRef(false),
+        page: shallowRef(1),
+        pageSize: shallowRef(10),
+        reload: vi.fn(),
+        revokeToken: vi.fn(),
+        saving: shallowRef(false),
+        search,
+        setPage: vi.fn(),
+        setPageSize: vi.fn(),
+        setSearch: vi.fn((value: string) => {
+          search.value = value
+        }),
+        setSort: vi.fn(),
+        setStatusFilter: vi.fn((value: UserTokenStatusFilter) => {
+          statusFilter.value = value
+
+          if (value === 'active') {
+            total.value = 3
+            return
+          }
+
+          if (value === 'expired') {
+            total.value = 1
+            return
+          }
+
+          if (value === 'revoked') {
+            total.value = 2
+            return
+          }
+
+          total.value = 6
+        }),
+        sortBy: shallowRef('createdAt'),
+        sortDir: shallowRef<'asc' | 'desc'>('desc'),
+        statusFilter,
+        tokenStats: computed(() => ({
+          active: statusFilter.value === 'active' ? total.value : 0,
+          all: total.value,
+          expired: statusFilter.value === 'expired' ? total.value : 0,
+          revoked: statusFilter.value === 'revoked' ? total.value : 0,
+        })),
+        tokens: shallowRef([]),
+        total,
+      }
+    }
 
     return {
-      createToken: vi.fn(),
-      createdToken: shallowRef(null),
-      listError: shallowRef<string | null>(null),
-      loading: shallowRef(false),
-      page: shallowRef(1),
-      pageSize: shallowRef(10),
-      reload: vi.fn(),
-      revokeToken: vi.fn(),
-      saving: shallowRef(false),
-      search,
-      setPage: vi.fn(),
-      setPageSize: vi.fn(),
-      setSearch: vi.fn((value: string) => {
-        search.value = value
-      }),
-      setSort: vi.fn(),
-      setStatusFilter: vi.fn((value: UserTokenStatusFilter) => {
-        statusFilter.value = value
-
-        if (value === 'active') {
-          total.value = 3
-          return
-        }
-
-        if (value === 'expired') {
-          total.value = 1
-          return
-        }
-
-        if (value === 'revoked') {
-          total.value = 2
-          return
-        }
-
-        total.value = 6
-      }),
-      sortBy: shallowRef('createdAt'),
-      sortDir: shallowRef<'asc' | 'desc'>('desc'),
-      statusFilter,
-      tokenStats: computed(() => ({
-        active: statusFilter.value === 'active' ? total.value : 0,
-        all: total.value,
-        expired: statusFilter.value === 'expired' ? total.value : 0,
-        revoked: statusFilter.value === 'revoked' ? total.value : 0,
+      createUserTokensState,
+      useTargetDialogMock: vi.fn(() => ({
+        close: vi.fn(),
+        isOpen: shallowRef(false),
+        open: vi.fn(),
+        target: shallowRef(null),
       })),
-      tokens: shallowRef([]),
-      total,
+      useUserTokensMock: vi.fn(),
     }
-  }
-
-  return {
-    createUserTokensState,
-    useTargetDialogMock: vi.fn(() => ({
-      close: vi.fn(),
-      isOpen: shallowRef(false),
-      open: vi.fn(),
-      target: shallowRef(null),
-    })),
-    useUserTokensMock: vi.fn(),
-  }
-})
+  })
 
 mockNuxtImport('useTargetDialog', () => useTargetDialogMock)
 mockNuxtImport('useUserTokens', () => useUserTokensMock)
@@ -88,7 +85,8 @@ function mountPage() {
       stubs: {
         AppTokenCreateDialog: {
           props: ['maxLifetime'],
-          template: '<div data-test="create-dialog" :data-max-lifetime="String(maxLifetime)" />',
+          template:
+            '<div data-test="create-dialog" :data-max-lifetime="String(maxLifetime)" />',
         },
         AppConfirmDialog: true,
         UserTokenCreatedDialog: true,
@@ -120,10 +118,12 @@ function mountPage() {
           `,
         },
         AppPageHero: {
-          props: ['statValue'],
-          template: '<div data-test="hero-stat">{{ statValue }}</div>',
+          props: ['statLabel', 'statValue'],
+          template:
+            '<div data-test="hero-stat" :data-label="statLabel">{{ statValue }}</div>',
         },
         VAlert: { template: '<div><slot /></div>' },
+        VBtn: { template: '<button><slot /></button>' },
         VCol: { template: '<div><slot /></div>' },
         VContainer: { template: '<div><slot /></div>' },
         VRow: { template: '<div><slot /></div>' },
@@ -139,25 +139,52 @@ describe('TokensPage', () => {
     useUserTokensMock.mockReturnValue(createUserTokensState())
   })
 
-  it('updates the hero stat label when the selected status filter changes', async () => {
+  it('updates the hero key count when the selected status filter changes', async () => {
     const wrapper = mountPage()
 
-    expect(wrapper.get('[data-test="hero-stat"]').text()).toBe('3 active')
+    expect(wrapper.get('[data-test="hero-stat"]').text()).toBe('3')
+    expect(
+      wrapper.get('[data-test="hero-stat"]').attributes('data-label'),
+    ).toBe('Active keys')
 
     await wrapper.get('[data-test="set-expired"]').trigger('click')
-    expect(wrapper.get('[data-test="hero-stat"]').text()).toBe('1 expired')
+    expect(wrapper.get('[data-test="hero-stat"]').text()).toBe('1')
+    expect(
+      wrapper.get('[data-test="hero-stat"]').attributes('data-label'),
+    ).toBe('Expired keys')
 
     await wrapper.get('[data-test="set-revoked"]').trigger('click')
-    expect(wrapper.get('[data-test="hero-stat"]').text()).toBe('2 revoked')
+    expect(wrapper.get('[data-test="hero-stat"]').text()).toBe('2')
+    expect(
+      wrapper.get('[data-test="hero-stat"]').attributes('data-label'),
+    ).toBe('Revoked keys')
 
     await wrapper.get('[data-test="set-all"]').trigger('click')
-    expect(wrapper.get('[data-test="hero-stat"]').text()).toBe('6 all')
+    expect(wrapper.get('[data-test="hero-stat"]').text()).toBe('6')
+    expect(
+      wrapper.get('[data-test="hero-stat"]').attributes('data-label'),
+    ).toBe('All keys')
+  })
+
+  it('shows loading in the hero and retries list failures', async () => {
+    const state = createUserTokensState()
+    state.loading.value = true
+    state.listError.value = 'Unable to load virtual keys.'
+    useUserTokensMock.mockReturnValue(state)
+
+    const wrapper = mountPage()
+
+    expect(wrapper.get('[data-test="hero-stat"]').text()).toBe('…')
+    await wrapper.get('[data-test="tokens-retry"]').trigger('click')
+    expect(state.reload).toHaveBeenCalledOnce()
   })
 
   it('limits user-created virtual keys to 30 days', () => {
     const wrapper = mountPage()
 
-    expect(wrapper.get('[data-test="create-dialog"]').attributes()).toMatchObject({
+    expect(
+      wrapper.get('[data-test="create-dialog"]').attributes(),
+    ).toMatchObject({
       'data-max-lifetime': '30',
     })
   })

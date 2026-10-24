@@ -89,7 +89,7 @@ func (s *server) handleCallback(w http.ResponseWriter, r *http.Request) {
 		redirectURL, err := s.oidcService.LoginErrorRedirectURL(
 			redirectPath,
 			query.Get("error"),
-			query.Get("error_description"),
+			"Authentication was cancelled or could not be completed. Please try again.",
 			frontendBaseURL,
 		)
 		if err != nil {
@@ -113,7 +113,7 @@ func (s *server) handleCallback(w http.ResponseWriter, r *http.Request) {
 		redirectURL, redirectErr := s.oidcService.LoginErrorRedirectURL(
 			redirectPath,
 			"authentication_failed",
-			err.Error(),
+			"Authentication could not be completed. Please try again.",
 			frontendBaseURL,
 		)
 		if redirectErr != nil {

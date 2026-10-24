@@ -7,6 +7,10 @@ const props = defineProps<{
   loading: boolean
 }>()
 
+const emit = defineEmits<{
+  retry: []
+}>()
+
 const groupCountLabel = computed(() =>
   props.groups.length === 1 ? '1 group' : `${props.groups.length} groups`,
 )
@@ -35,7 +39,18 @@ const groupCountLabel = computed(() =>
       rounded="lg"
       class="ma-4"
     >
-      {{ props.error }}
+      <div class="profile-groups-card__error-content">
+        <span>{{ props.error }}</span>
+        <v-btn
+          data-test="profile-groups-retry"
+          prepend-icon="mdi-refresh"
+          size="small"
+          variant="text"
+          @click="emit('retry')"
+        >
+          Retry
+        </v-btn>
+      </div>
     </v-alert>
 
     <div v-else-if="props.groups.length" class="profile-groups-card__list">
@@ -76,6 +91,13 @@ const groupCountLabel = computed(() =>
   place-items: center;
 }
 
+.profile-groups-card__error-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .profile-groups-card__list {
   display: grid;
   gap: 10px;
@@ -111,5 +133,12 @@ const groupCountLabel = computed(() =>
   color: rgb(var(--app-shell-text-secondary));
   line-height: 1.45;
   overflow-wrap: anywhere;
+}
+
+@media (max-width: 600px) {
+  .profile-groups-card__error-content {
+    align-items: stretch;
+    flex-direction: column;
+  }
 }
 </style>

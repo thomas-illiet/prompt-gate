@@ -5,6 +5,26 @@ export const BLOCKED_ROUTE_PATH = '/access-denied'
 export const APP_ROLES: AppRole[] = ['none', 'limited', 'user', 'admin']
 export const FRONTEND_ORIGIN_QUERY_PARAM = 'frontend_origin'
 
+// publicLoginErrorMessage maps untrusted callback and transport failures to safe UI copy.
+export function publicLoginErrorMessage(
+  authError: unknown,
+  initializationFailed = false,
+) {
+  if (typeof authError === 'string') {
+    if (authError === 'access_denied') {
+      return 'Sign-in was cancelled or your identity provider refused access.'
+    }
+
+    return 'PromptGate could not complete sign-in. Please try again.'
+  }
+
+  if (initializationFailed) {
+    return 'PromptGate cannot reach the authentication service right now. Please try again in a moment.'
+  }
+
+  return null
+}
+
 // isAuthUser validates the minimum session shape before it reaches route guards.
 export function isAuthUser(value: unknown): value is AuthUser {
   if (typeof value !== 'object' || value === null) {

@@ -21,9 +21,13 @@ const router = useRouter()
 const isAdmin = computed(() => authStore.user?.role === 'admin')
 const selectedWindow = shallowRef<UsageWindow>(parseWindow(route.query.window))
 const selectedScope = shallowRef<DashboardScope>(
-  isAdmin.value && queryValue(route.query.scope) === 'global' ? 'global' : 'self',
+  isAdmin.value && queryValue(route.query.scope) === 'global'
+    ? 'global'
+    : 'self',
 )
-const selectedMetric = shallowRef<DashboardMetric>(parseMetric(route.query.metric))
+const selectedMetric = shallowRef<DashboardMetric>(
+  parseMetric(route.query.metric),
+)
 const selectedBreakdown = shallowRef<DashboardBreakdown>(
   parseBreakdown(route.query.breakdown),
 )
@@ -38,8 +42,8 @@ const title = computed(() =>
 )
 const subtitle = computed(() =>
   dashboardScope.value === 'global'
-    ? 'Spot operational risk, then understand how the organization is consuming Prompt Gate.'
-    : 'Check what needs attention, review consumption, then explore what drove it.',
+    ? 'All signals, one radar. Spot operational risk, then understand how the organization is consuming PromptGate.'
+    : 'Your flight recorder, minus the turbulence. Check what needs attention, review consumption, then explore what drove it.',
 )
 const periodLabel = computed(() => {
   const data = overview.data.value
@@ -50,19 +54,19 @@ const hasActivity = computed(() => {
   const totals = overview.data.value?.totals
   return Boolean(
     totals &&
-      (totals.requests > 0 || totals.totalTokens > 0 || totals.toolCalls > 0),
+    (totals.requests > 0 || totals.totalTokens > 0 || totals.toolCalls > 0),
   )
 })
 const emptyAction = computed(() =>
   authStore.user?.role === 'limited'
     ? {
         label: 'Browse FAQ',
-        text: 'No API activity is visible for this period. Browse the FAQ or contact your administrator to request access.',
+        text: 'No API activity was recorded for this period. Browse the FAQ or contact your administrator to request access.',
         to: '/faq',
       }
     : {
         label: 'Open setup guide',
-        text: 'No API activity is visible for this period. Configure a client, send a first request, or choose another period.',
+        text: 'No API activity was recorded for this period. Configure a client, send your first request, or choose another period.',
         to: '/help',
       },
 )
@@ -190,6 +194,10 @@ function parseBreakdown(value: unknown): DashboardBreakdown {
         </div>
       </div>
 
+      <div class="dashboard-page__visual" aria-hidden="true">
+        <AppSignalVisual name="radar" />
+      </div>
+
       <div class="dashboard-page__controls" aria-label="Dashboard controls">
         <DashboardScopeSelect v-if="isAdmin" v-model="selectedScope" />
         <DashboardTimeRangeSelect v-model="selectedWindow" />
@@ -235,7 +243,12 @@ function parseBreakdown(value: unknown): DashboardBreakdown {
     >
       <div class="dashboard-page__error">
         <span>{{ overview.error.value }}</span>
-        <v-btn size="small" variant="text" prepend-icon="mdi-refresh" @click="overview.reload">
+        <v-btn
+          size="small"
+          variant="text"
+          prepend-icon="mdi-refresh"
+          @click="overview.reload"
+        >
           Retry
         </v-btn>
       </div>
@@ -258,7 +271,7 @@ function parseBreakdown(value: unknown): DashboardBreakdown {
     >
       <AppEmptyState
         icon="mdi-radar"
-        title="No API activity yet"
+        title="The launchpad is ready"
         :text="emptyAction.text"
       >
         <template #actions>
@@ -312,11 +325,34 @@ function parseBreakdown(value: unknown): DashboardBreakdown {
 }
 
 .dashboard-page__header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 24px;
-  margin-bottom: 24px;
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 104px;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 18px;
+  padding: 16px 18px;
+  overflow: hidden;
+  border: 1px solid rgba(var(--app-shell-border), 0.52);
+  border-radius: var(--app-card-radius);
+  background:
+    radial-gradient(
+      circle at 72% 8%,
+      rgba(var(--app-accent-coral), 0.12),
+      transparent 24%
+    ),
+    linear-gradient(
+      90deg,
+      rgba(var(--v-theme-primary), 0.08) 0,
+      rgba(var(--v-theme-primary), 0) 5px
+    ),
+    linear-gradient(
+      180deg,
+      rgba(var(--app-shell-surface-strong), 0.98) 0%,
+      rgba(var(--app-shell-surface), 0.98) 58%,
+      rgba(var(--app-shell-surface-muted), 0.82) 100%
+    );
+  box-shadow: var(--app-card-shadow-soft);
 }
 
 .dashboard-page__heading {
@@ -333,6 +369,7 @@ function parseBreakdown(value: unknown): DashboardBreakdown {
 
 .dashboard-page__kicker {
   color: rgb(var(--app-shell-text-muted));
+  font-family: var(--app-font-mono);
   font-size: 0.76rem;
   font-weight: 750;
   letter-spacing: 0.12em;
@@ -340,6 +377,7 @@ function parseBreakdown(value: unknown): DashboardBreakdown {
 }
 
 .dashboard-page__heading h1 {
+  font-family: var(--app-font-display);
   font-size: 1.55rem;
   font-weight: 800;
 }
@@ -360,11 +398,32 @@ function parseBreakdown(value: unknown): DashboardBreakdown {
   font-weight: 650;
 }
 
+.dashboard-page__visual {
+  position: relative;
+  display: grid;
+  width: 104px;
+  height: 104px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid rgba(var(--app-shell-border), 0.6);
+  border-radius: calc(var(--app-card-radius) - 2px);
+  background:
+    radial-gradient(
+      circle at 70% 20%,
+      rgba(var(--app-accent-coral), 0.12),
+      transparent 42%
+    ),
+    rgba(var(--v-theme-primary), 0.055);
+  box-shadow: var(--app-card-shadow-soft);
+  padding: 10px;
+}
+
 .dashboard-page__controls {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  justify-content: flex-end;
+  grid-column: 1 / -1;
+  justify-content: flex-start;
   gap: 10px;
 }
 
@@ -401,12 +460,12 @@ function parseBreakdown(value: unknown): DashboardBreakdown {
 
 @media (max-width: 959px) {
   .dashboard-page__header {
-    align-items: stretch;
-    flex-direction: column;
+    grid-template-columns: minmax(0, 1fr) 88px;
   }
 
-  .dashboard-page__controls {
-    justify-content: flex-start;
+  .dashboard-page__visual {
+    width: 88px;
+    height: 88px;
   }
 
   .dashboard-page__loading {
@@ -415,6 +474,15 @@ function parseBreakdown(value: unknown): DashboardBreakdown {
 }
 
 @media (max-width: 599px) {
+  .dashboard-page__header {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 15px;
+  }
+
+  .dashboard-page__visual {
+    display: none;
+  }
+
   .dashboard-page__controls {
     align-items: stretch;
     flex-direction: column;

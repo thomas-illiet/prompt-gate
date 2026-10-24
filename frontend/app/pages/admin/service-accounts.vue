@@ -241,7 +241,8 @@ async function confirmToggleStatus() {
           kicker="Automation access"
           title="Service accounts"
           copy="Manage non-human accounts and generate short-lived virtual keys for integrations."
-          stat-label="Active accounts"
+          visual="robot"
+          stat-label="Visible accounts"
           :stat-value="totalLabel"
         />
       </v-col>

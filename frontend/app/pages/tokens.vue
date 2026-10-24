@@ -18,8 +18,12 @@ const createDialogOpen = shallowRef(false)
 const createdTokenDialogOpen = shallowRef(false)
 const revokeDialog = useTargetDialog<UserToken>()
 
-const filteredTokenLabel = computed(
-  () => `${userTokens.total.value} ${userTokens.statusFilter.value}`,
+const filteredTokenStatLabel = computed(() => {
+  const label = userTokens.statusFilter.value
+  return `${label.charAt(0).toUpperCase()}${label.slice(1)} keys`
+})
+const filteredTokenStatValue = computed(() =>
+  userTokens.loading.value ? '…' : String(userTokens.total.value),
 )
 
 // createToken submits the token form and opens the one-time secret dialog.
@@ -51,11 +55,12 @@ async function confirmRevoke() {
       <v-col cols="12">
         <AppPageHero
           icon="mdi-key-outline"
-          kicker="Personal access"
+          kicker="The keyring"
           title="Virtual keys"
-          copy="Create and revoke virtual keys for your own service access."
-          stat-label="Keys"
-          :stat-value="filteredTokenLabel"
+          copy="Keep access on your terms. Create and revoke virtual keys for your own service access."
+          visual="key"
+          :stat-label="filteredTokenStatLabel"
+          :stat-value="filteredTokenStatValue"
         />
       </v-col>
 
@@ -76,7 +81,18 @@ async function confirmRevoke() {
           rounded="lg"
           class="mb-4"
         >
-          {{ userTokens.listError.value }}
+          <div class="tokens-page__error">
+            <span>{{ userTokens.listError.value }}</span>
+            <v-btn
+              data-test="tokens-retry"
+              prepend-icon="mdi-refresh"
+              size="small"
+              variant="text"
+              @click="userTokens.reload"
+            >
+              Retry
+            </v-btn>
+          </div>
         </v-alert>
 
         <UserTokenTable
@@ -123,3 +139,19 @@ async function confirmRevoke() {
     />
   </v-container>
 </template>
+
+<style scoped>
+.tokens-page__error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+@media (max-width: 600px) {
+  .tokens-page__error {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+</style>

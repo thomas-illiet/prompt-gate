@@ -64,7 +64,7 @@ describe('AppMonitoringBanner', () => {
     const wrapper = mountBanner()
 
     expect(wrapper.get('[data-test="banner"]').text()).toContain(
-      'Service perturbe: API health',
+      'Signal degraded: API health',
     )
     expect(wrapper.get('[data-test="banner"]').attributes('data-variant')).toBe(
       'flat',
@@ -82,7 +82,7 @@ describe('AppMonitoringBanner', () => {
     const wrapper = mountBanner()
 
     expect(wrapper.get('[data-test="banner"]').text()).toContain(
-      'Services perturbes: API, Proxy, MCP +1',
+      'Degraded signals: API, Proxy, MCP +1',
     )
   })
 })

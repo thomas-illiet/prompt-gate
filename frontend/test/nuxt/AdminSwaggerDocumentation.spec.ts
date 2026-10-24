@@ -1,6 +1,5 @@
 import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 import { mount } from '@vue/test-utils'
-import { nextTick, shallowRef } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import SwaggerDocumentation from '../../app/components/AdminDocumentation/SwaggerDocumentation.vue'
@@ -13,7 +12,6 @@ const {
   swaggerPreset,
   swaggerUI,
   useApiFetchMock,
-  useVThemeMock,
 } = vi.hoisted(() => {
   const apiFetch = vi.fn()
   const createRoot = vi.fn()
@@ -30,11 +28,8 @@ const {
     swaggerPreset,
     swaggerUI,
     useApiFetchMock: vi.fn(() => apiFetch),
-    useVThemeMock: vi.fn(),
   }
 })
-
-const themeCurrent = shallowRef({ dark: false })
 
 mockNuxtImport('useApiFetch', () => useApiFetchMock)
 
@@ -43,11 +38,6 @@ vi.mock('swagger-ui', () => {
   Object.assign(swaggerUI, { presets: { apis: swaggerPreset } })
   return { default: swaggerUI }
 })
-vi.mock('vuetify', async (importOriginal) => {
-  const vuetify = await importOriginal<typeof import('vuetify')>()
-  return { ...vuetify, useTheme: useVThemeMock }
-})
-
 const openAPIDocument = {
   openapi: '3.1.0',
   info: { title: 'PromptGate API', version: '1.0.0' },
@@ -85,9 +75,6 @@ describe('Admin Swagger documentation', () => {
     reactRootUnmount.mockReset()
     swaggerUI.mockReset()
     useApiFetchMock.mockClear()
-    useVThemeMock.mockReset()
-    useVThemeMock.mockReturnValue({ current: themeCurrent })
-    themeCurrent.value = { dark: false }
     document.documentElement.className = ''
 
     createRoot.mockImplementation((domNode: HTMLElement) => ({
@@ -159,15 +146,13 @@ describe('Admin Swagger documentation', () => {
     expect(reactRootRender).toHaveBeenCalledOnce()
     expect(swaggerOptions).not.toHaveProperty('requestInterceptor')
     expect(JSON.stringify(swaggerOptions)).not.toContain('X-Admin-API-Key')
-    expect(wrapper.text()).toContain('Requests can change data')
-    expect(wrapper.text()).toContain(
-      'DELETE operations can change or remove data in the current environment immediately',
-    )
+    expect(wrapper.text()).not.toContain('Requests can change data')
+    expect(wrapper.text()).not.toContain('Try it out sends real requests')
 
     wrapper.unmount()
   })
 
-  it('keeps the mutation warning visible and retries after a loading error', async () => {
+  it('retries after a loading error without restoring the removed warning', async () => {
     apiFetch
       .mockRejectedValueOnce(new Error('OpenAPI is temporarily unavailable'))
       .mockResolvedValueOnce(openAPIDocument)
@@ -176,7 +161,7 @@ describe('Admin Swagger documentation', () => {
     await vi.waitFor(() =>
       expect(wrapper.text()).toContain('OpenAPI is temporarily unavailable'),
     )
-    expect(wrapper.text()).toContain('Requests can change data')
+    expect(wrapper.text()).not.toContain('Requests can change data')
     expect(swaggerUI).not.toHaveBeenCalled()
 
     await wrapper.get('button').trigger('click')
@@ -184,29 +169,23 @@ describe('Admin Swagger documentation', () => {
 
     expect(apiFetch).toHaveBeenCalledTimes(2)
     expect(wrapper.text()).not.toContain('OpenAPI is temporarily unavailable')
-    expect(wrapper.text()).toContain('Requests can change data')
+    expect(wrapper.text()).not.toContain('Requests can change data')
 
     wrapper.unmount()
   })
 
-  it('uses a local reactive dark theme and unmounts its React root', async () => {
+  it('unmounts its React root without changing global document classes', async () => {
     document.documentElement.className = 'existing-root-class'
-    themeCurrent.value = { dark: true }
     apiFetch.mockResolvedValue(openAPIDocument)
     const wrapper = mountDocumentation()
 
     await vi.waitFor(() => expect(swaggerUI).toHaveBeenCalledOnce())
 
     const swaggerRoot = wrapper.get('.swagger-documentation')
-    expect(swaggerRoot.classes()).toContain('swagger-documentation--dark')
     expect(document.documentElement.className).toBe('existing-root-class')
     expect(swaggerRoot.find('[data-test="swagger-rendered"]').exists()).toBe(
       true,
     )
-
-    themeCurrent.value = { dark: false }
-    await nextTick()
-    expect(swaggerRoot.classes()).not.toContain('swagger-documentation--dark')
 
     const swaggerElement = swaggerRoot.element
     wrapper.unmount()

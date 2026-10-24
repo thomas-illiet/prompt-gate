@@ -131,6 +131,7 @@ async function confirmDelete() {
           kicker="Proxy authorization"
           title="Groups"
           copy="Grant proxy access by assigning users and service accounts to provider and model rules."
+          visual="people"
           stat-label="Access groups"
           :stat-value="totalLabel"
         />

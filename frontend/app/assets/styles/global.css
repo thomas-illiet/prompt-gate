@@ -1,11 +1,18 @@
-html.dark {
-  color-scheme: dark;
+html {
+  color-scheme: light;
 }
 
 :root {
-  --app-card-radius: 8px;
-  --app-control-radius: 8px;
-  --app-chip-radius: 6px;
+  --app-card-radius: 18px;
+  --app-control-radius: 12px;
+  --app-chip-radius: 999px;
+  --app-font-display: 'Avenir Next', 'Segoe UI', system-ui, sans-serif;
+  --app-font-mono: 'SFMono-Regular', 'Cascadia Code', 'Roboto Mono', monospace;
+  --app-motion-fast: 160ms;
+  --app-motion-standard: 280ms;
+  --app-motion-expressive: 620ms;
+  --app-ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --app-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .v-card--variant-elevated:not(.v-card--flat) {
@@ -18,51 +25,60 @@ html.dark {
     color: rgba(0, 0, 0, 0.54);
   }
   --v-border-opacity: 0.09;
-  --v-theme-background: 244, 246, 245;
-  --app-shell-surface: 255, 255, 255;
-  --app-shell-surface-muted: 249, 251, 250;
-  --app-shell-border: 208, 216, 213;
-  --app-shell-shadow: 15, 23, 42;
+  --v-theme-background: 247, 244, 237;
+  --app-shell-surface: 255, 253, 248;
+  --app-shell-surface-muted: 244, 241, 233;
+  --app-shell-border: 205, 211, 200;
+  --app-shell-shadow: 25, 43, 36;
   --app-shell-shadow-opacity: 0.12;
   --app-shell-shadow-strong-opacity: 0.18;
-  --app-shell-text-primary: 15, 23, 42;
-  --app-shell-text-secondary: 46, 62, 82;
-  --app-shell-text-muted: 71, 85, 105;
-  --app-shell-surface-strong: 255, 255, 255;
-  --app-card-shadow: 0 18px 44px -38px rgba(15, 23, 42, 0.42);
-  --app-card-shadow-soft: 0 12px 30px -26px rgba(15, 23, 42, 0.28);
-  --app-control-shadow: 0 10px 22px -18px rgba(15, 23, 42, 0.34);
-  --app-markdown-code-background: 241, 245, 243;
-  --app-markdown-code-border: 207, 218, 213;
+  --app-shell-text-primary: 27, 43, 37;
+  --app-shell-text-secondary: 57, 72, 66;
+  --app-shell-text-muted: 91, 104, 98;
+  --app-shell-surface-strong: 255, 255, 252;
+  --app-accent-coral: 231, 110, 83;
+  --app-accent-amber: 224, 167, 62;
+  --app-signal-mint: 53, 169, 126;
+  --app-card-shadow: 0 24px 54px -42px rgba(25, 43, 36, 0.46);
+  --app-card-shadow-soft: 0 16px 38px -30px rgba(25, 43, 36, 0.3);
+  --app-control-shadow: 0 12px 24px -18px rgba(25, 43, 36, 0.38);
+  --app-markdown-code-background: 240, 242, 234;
+  --app-markdown-code-border: 205, 215, 204;
   --app-markdown-code-text: 31, 48, 42;
 }
 
-.v-theme--dark {
-  --v-theme-background: 19, 24, 23;
-  --app-shell-surface: 28, 34, 32;
-  --app-shell-surface-muted: 24, 29, 28;
-  --app-shell-border: 67, 80, 76;
-  --app-shell-shadow: 0, 0, 0;
-  --app-shell-shadow-opacity: 0.34;
-  --app-shell-shadow-strong-opacity: 0.48;
-  --app-shell-text-primary: 236, 242, 239;
-  --app-shell-text-secondary: 191, 202, 197;
-  --app-shell-text-muted: 154, 168, 161;
-  --app-shell-surface-strong: 36, 43, 41;
-  --app-card-shadow: 0 18px 44px -34px rgba(0, 0, 0, 0.72);
-  --app-card-shadow-soft: 0 12px 30px -24px rgba(0, 0, 0, 0.62);
-  --app-control-shadow: 0 10px 22px -18px rgba(0, 0, 0, 0.64);
-  --app-markdown-code-background: 23, 33, 30;
-  --app-markdown-code-border: 58, 75, 69;
-  --app-markdown-code-text: 232, 241, 237;
+.v-application {
+  font-family: var(--app-font-display);
+}
+
+.v-application :where(h1, h2, h3, .text-h1, .text-h2, .text-h3, .text-h4) {
+  text-wrap: balance;
 }
 
 .v-main {
-  background-color: rgb(var(--v-theme-background));
+  background:
+    radial-gradient(
+      circle at 14% 0%,
+      rgba(var(--v-theme-primary), 0.075),
+      transparent 34rem
+    ),
+    radial-gradient(
+      circle at 92% 12%,
+      rgba(var(--app-accent-coral), 0.07),
+      transparent 30rem
+    ),
+    rgb(var(--v-theme-background));
 }
 
 .v-app-bar.app-shell-bar {
-  background-color: rgba(var(--app-shell-surface), 0.94);
+  background:
+    linear-gradient(
+      90deg,
+      rgba(var(--v-theme-primary), 0.055),
+      transparent 34%,
+      rgba(var(--app-accent-coral), 0.035)
+    ),
+    rgba(var(--app-shell-surface), 0.94);
   border-bottom: 1px solid rgba(var(--app-shell-border), 0.65);
   box-shadow: 0 16px 30px -28px
     rgba(var(--app-shell-shadow), var(--app-shell-shadow-opacity));
@@ -73,7 +89,8 @@ html.dark {
   background: linear-gradient(
     180deg,
     rgba(var(--app-shell-surface), 0.98) 0%,
-    rgba(var(--app-shell-surface-muted), 0.98) 100%
+    rgba(var(--app-shell-surface-muted), 0.98) 72%,
+    rgba(var(--v-theme-primary), 0.065) 140%
   );
   border: 0;
   border-right: 1px solid rgba(var(--app-shell-border), 0.55);
@@ -82,7 +99,21 @@ html.dark {
 }
 
 .v-navigation-drawer.app-shell-drawer .v-list-item--active {
+  position: relative;
+  overflow: hidden;
   background-color: rgba(var(--v-theme-primary), 0.12);
+}
+
+.v-navigation-drawer.app-shell-drawer .v-list-item--active::before {
+  position: absolute;
+  top: 25%;
+  bottom: 25%;
+  left: 0;
+  width: 3px;
+  border-radius: 0 999px 999px 0;
+  background: rgb(var(--v-theme-primary));
+  box-shadow: 0 0 14px rgba(var(--v-theme-primary), 0.42);
+  content: '';
 }
 
 .v-navigation-drawer.app-shell-drawer .v-list-item:hover {
@@ -90,8 +121,17 @@ html.dark {
 }
 
 .v-footer {
-  background-color: rgb(var(--app-shell-surface));
+  background:
+    linear-gradient(
+      90deg,
+      rgba(var(--v-theme-primary), 0.045),
+      transparent 38%,
+      rgba(var(--app-accent-coral), 0.035)
+    ),
+    rgb(var(--app-shell-surface));
   border-top: 1px solid rgba(var(--app-shell-border), 0.5);
+  box-shadow: 0 -16px 30px -30px
+    rgba(var(--app-shell-shadow), var(--app-shell-shadow-opacity));
 }
 
 .v-card.rounded-lg,
@@ -133,6 +173,9 @@ html.dark {
 
 .v-btn {
   letter-spacing: 0;
+  transition:
+    transform var(--app-motion-fast) var(--app-ease-out),
+    box-shadow var(--app-motion-fast) var(--app-ease-out);
 }
 
 /* Vuetify 4.1 uses typed CSS division, which Firefox does not support yet. */
@@ -152,6 +195,22 @@ html.dark {
 
 .v-btn--variant-tonal {
   border: 1px solid rgba(var(--app-shell-border), 0.46);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .v-btn:not(.v-btn--icon, .v-btn--disabled):hover {
+    transform: translateY(-1px);
+  }
+}
+
+:where(a, button, input, textarea, select, [tabindex]):focus-visible {
+  outline: 3px solid rgb(var(--v-theme-primary));
+  outline-offset: 2px;
+}
+
+/* Vuetify already renders focus on the rounded field container. */
+.v-field :where(input, textarea, select):focus-visible {
+  outline: none;
 }
 
 .v-overlay__content .v-list {
@@ -216,12 +275,18 @@ html.dark {
 
 .app-surface-gradient {
   border: 1px solid rgba(var(--app-shell-border), 0.52);
-  background: linear-gradient(
-    180deg,
-    rgb(var(--app-shell-surface-strong)) 0%,
-    rgb(var(--app-shell-surface)) 54%,
-    rgb(var(--app-shell-surface-muted)) 100%
-  );
+  background:
+    radial-gradient(
+      circle at 92% 4%,
+      rgba(var(--app-accent-coral), 0.055),
+      transparent 32%
+    ),
+    linear-gradient(
+      180deg,
+      rgb(var(--app-shell-surface-strong)) 0%,
+      rgb(var(--app-shell-surface)) 54%,
+      rgb(var(--app-shell-surface-muted)) 100%
+    );
   box-shadow: var(--app-card-shadow-soft);
 }
 
@@ -281,4 +346,73 @@ html.dark {
   display: flex;
   justify-content: center;
   width: 100%;
+}
+
+@keyframes app-enter-soft {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.99);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes app-signal-pulse {
+  0%,
+  100% {
+    opacity: 0.72;
+    box-shadow: 0 0 0 0 rgba(var(--v-theme-primary), 0.3);
+  }
+
+  50% {
+    opacity: 1;
+    box-shadow: 0 0 0 5px rgba(var(--v-theme-primary), 0);
+  }
+}
+
+@keyframes app-scanline {
+  0%,
+  18% {
+    opacity: 0;
+    transform: translateY(-110%);
+  }
+
+  26% {
+    opacity: 0.55;
+  }
+
+  64% {
+    opacity: 0.28;
+  }
+
+  72%,
+  100% {
+    opacity: 0;
+    transform: translateY(110%);
+  }
+}
+
+@keyframes app-float {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+
+  50% {
+    transform: translate3d(0, -4px, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :where(.v-application, .v-overlay-container) *,
+  :where(.v-application, .v-overlay-container) *::before,
+  :where(.v-application, .v-overlay-container) *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

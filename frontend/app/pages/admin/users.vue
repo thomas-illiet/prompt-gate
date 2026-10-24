@@ -351,6 +351,7 @@ async function confirmQuotaResetGrant() {
           kicker="Security control plane"
           title="User management"
           copy="Manage application roles, disable access, and monitor who has connected recently."
+          visual="people"
           stat-label="Total users"
           :stat-value="totalLabel"
         />
@@ -361,6 +362,7 @@ async function confirmQuotaResetGrant() {
           <v-btn
             color="primary"
             prepend-icon="mdi-download-outline"
+            rounded="xl"
             variant="tonal"
             :disabled="adminUsers.loading.value"
             :loading="adminUsers.exporting.value"

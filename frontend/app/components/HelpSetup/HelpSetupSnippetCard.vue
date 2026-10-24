@@ -291,7 +291,7 @@ const codeLines = computed(() => snippetCode.value.split('\n'))
 
 .help-setup-snippet-card__code-label {
   color: rgb(var(--app-shell-text-muted));
-  font-family: monospace;
+  font-family: var(--app-font-mono);
   font-size: 0.78rem;
   font-weight: 700;
 }
@@ -308,7 +308,7 @@ const codeLines = computed(() => snippetCode.value.split('\n'))
 
 .help-setup-snippet-card__body code {
   display: grid;
-  font-family: monospace;
+  font-family: var(--app-font-mono);
 }
 
 .help-setup-snippet-card__line {

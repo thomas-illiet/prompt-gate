@@ -6,7 +6,9 @@ const search = shallowRef('')
 const normalizedSearch = computed(() => search.value.trim().toLocaleLowerCase())
 const filteredEntries = computed(() => {
   if (!normalizedSearch.value) return props.entries
-  return props.entries.filter((entry) => entry.question.toLocaleLowerCase().includes(normalizedSearch.value))
+  return props.entries.filter((entry) =>
+    entry.question.toLocaleLowerCase().includes(normalizedSearch.value),
+  )
 })
 const questionsSubtitle = computed(() => {
   if (props.loading) return 'Loading published documentation…'
@@ -23,7 +25,7 @@ const questionsSubtitle = computed(() => {
 
 <template>
   <div class="faq-list">
-    <AppSectionCard
+    <AppFilterCard
       icon="mdi-magnify"
       title="Search the FAQ"
       subtitle="Quickly find documentation by question."
@@ -35,7 +37,7 @@ const questionsSubtitle = computed(() => {
           :total-count="props.entries.length"
         />
       </div>
-    </AppSectionCard>
+    </AppFilterCard>
 
     <AppSectionCard
       icon="mdi-frequently-asked-questions"
@@ -43,21 +45,22 @@ const questionsSubtitle = computed(() => {
       :subtitle="questionsSubtitle"
     >
       <div class="faq-list__questions">
-        <v-skeleton-loader
-          v-if="props.loading"
-          type="list-item-three-line@4"
-        />
+        <v-skeleton-loader v-if="props.loading" type="list-item-three-line@4" />
         <AppEmptyState
           v-else-if="filteredEntries.length === 0"
           icon="mdi-text-search"
-          :title="props.entries.length ? 'No matching questions' : 'No FAQ entries yet'"
-          :text="props.entries.length ? 'Try a different search.' : 'Published documentation will appear here.'"
+          :title="
+            props.entries.length
+              ? 'No matching questions'
+              : 'The field manual is still being stocked'
+          "
+          :text="
+            props.entries.length
+              ? 'Try a different search or fewer keywords.'
+              : 'Published guidance will appear here as soon as it is ready.'
+          "
         />
-        <v-expansion-panels
-          v-else
-          class="faq-list__panels"
-          multiple
-        >
+        <v-expansion-panels v-else class="faq-list__panels" multiple>
           <v-expansion-panel
             v-for="entry in filteredEntries"
             :key="entry.id"

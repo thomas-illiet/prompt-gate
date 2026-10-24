@@ -45,17 +45,29 @@ const modelSelectMode = computed<ModelSelectMode>(() => {
       <v-col cols="12">
         <AppPageHero
           icon="mdi-help-circle-outline"
-          kicker="Clients"
+          kicker="Launch sequence"
           title="Setup guide"
-          copy="Configure curl, SDKs, shell scripts, Cline, Continue, Claude Code, and OpenCode with your PromptGate endpoint."
+          copy="Choose your route. We’ll wire the snippet. Configure curl, SDKs, shell scripts, Cline, Continue, Claude Code, and OpenCode with your PromptGate endpoint."
+          visual="cables"
           stat-label="Providers"
-          :stat-value="String(providers.length)"
+          :stat-value="helpSetup.loading.value ? '…' : String(providers.length)"
         />
       </v-col>
 
       <v-col v-if="helpSetup.error.value" cols="12">
         <v-alert type="warning" variant="tonal" rounded="lg">
-          {{ helpSetup.error.value }}
+          <div class="help-page__error">
+            <span>{{ helpSetup.error.value }}</span>
+            <v-btn
+              data-test="help-setup-retry"
+              prepend-icon="mdi-refresh"
+              size="small"
+              variant="text"
+              @click="helpSetup.reload"
+            >
+              Retry
+            </v-btn>
+          </div>
         </v-alert>
       </v-col>
 
@@ -74,8 +86,8 @@ const modelSelectMode = computed<ModelSelectMode>(() => {
         >
           <AppEmptyState
             icon="mdi-cloud-question-outline"
-            title="No accessible setup provider yet"
-            text="Once your groups grant access to a supported provider, client snippets appear here ready to copy."
+            title="The launchpad is waiting for a route"
+            text="No setup provider is accessible yet. Once your groups grant access to a supported provider, client snippets appear here ready to copy."
           />
         </AppSectionCard>
       </v-col>
@@ -111,3 +123,19 @@ const modelSelectMode = computed<ModelSelectMode>(() => {
     </v-row>
   </v-container>
 </template>
+
+<style scoped>
+.help-page__error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+@media (max-width: 600px) {
+  .help-page__error {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+</style>

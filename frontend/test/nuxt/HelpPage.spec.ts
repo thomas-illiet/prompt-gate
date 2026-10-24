@@ -38,7 +38,10 @@ function mountPage() {
           props: ['text', 'title'],
           template: '<div data-test="empty-state">{{ title }} {{ text }}</div>',
         },
-        AppPageHero: true,
+        AppPageHero: {
+          props: ['statValue'],
+          template: '<div data-test="hero-stat">{{ statValue }}</div>',
+        },
         AppSectionCard: {
           template: '<section><slot /></section>',
         },
@@ -53,6 +56,7 @@ function mountPage() {
         },
         HelpSetupProviderLoadingCard: true,
         VAlert: { template: '<div><slot /></div>' },
+        VBtn: { template: '<button><slot /></button>' },
         VCol: { template: '<div><slot /></div>' },
         VContainer: { template: '<div><slot /></div>' },
         VRow: { template: '<div><slot /></div>' },
@@ -82,7 +86,7 @@ describe('HelpPage', () => {
     const wrapper = mountPage()
 
     expect(wrapper.get('[data-test="empty-state"]').text()).toContain(
-      'No accessible setup provider yet',
+      'The launchpad is waiting for a route',
     )
     expect(wrapper.get('[data-test="empty-state"]').text()).toContain(
       'groups grant access',
@@ -130,5 +134,21 @@ describe('HelpPage', () => {
     expect(wrapper.find('[data-test="documentation-panel"]').exists()).toBe(
       true,
     )
+  })
+
+  it('shows an indeterminate provider count and retries loading failures', async () => {
+    const reload = vi.fn()
+    useHelpSetupMock.mockReturnValue({
+      error: shallowRef('Setup routes are unavailable.'),
+      loading: shallowRef(true),
+      reload,
+      setup: shallowRef(null),
+    })
+
+    const wrapper = mountPage()
+
+    expect(wrapper.get('[data-test="hero-stat"]').text()).toBe('…')
+    await wrapper.get('[data-test="help-setup-retry"]').trigger('click')
+    expect(reload).toHaveBeenCalledOnce()
   })
 })
