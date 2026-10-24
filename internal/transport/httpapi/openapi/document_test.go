@@ -13,7 +13,7 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 )
 
-const expectedOperationCount = 112
+const expectedOperationCount = 114
 
 var expectedTagOrder = []string{
 	"Current account",
@@ -294,6 +294,10 @@ func TestResponseSchemasAcceptRepresentativePayloads(t *testing.T) {
 		{
 			name:    "DashboardBreakdown",
 			payload: `{"window":"30d","startsAt":"2026-09-01T00:00:00Z","endsAt":"2026-10-01T00:00:00Z","items":[]}`,
+		},
+		{
+			name:    "DashboardTopTools",
+			payload: `{"window":"7d","startsAt":"2026-09-24T00:00:00Z","endsAt":"2026-10-01T00:00:00Z","totalCalls":4,"attributedCalls":3,"items":[{"name":"linear.list","calls":3}]}`,
 		},
 		{
 			name:    "DashboardAdoption",

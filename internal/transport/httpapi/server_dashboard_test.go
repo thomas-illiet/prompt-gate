@@ -27,6 +27,7 @@ func TestAdminUsageRoutesRequireAdminRole(t *testing.T) {
 	})
 	for _, path := range []string{
 		"/api/v1/admin/dashboard/tokens",
+		"/api/v1/admin/dashboard/top-tools",
 		"/api/v1/admin/users/11111111-1111-1111-1111-111111111111/statistics",
 		"/api/v1/admin/service-accounts/11111111-1111-1111-1111-111111111111/statistics",
 		"/api/v1/admin/groups/11111111-1111-1111-1111-111111111111/statistics",

@@ -168,6 +168,21 @@ func (s server) handleCurrentUserDashboardTopProviderTypes(w http.ResponseWriter
 	writeJSON(w, http.StatusOK, response)
 }
 
+// handleCurrentUserDashboardTopTools returns the authenticated user's most
+// frequently observed model tool calls for one dashboard window.
+func (s server) handleCurrentUserDashboardTopTools(w http.ResponseWriter, r *http.Request) {
+	user, window, ok := s.currentUserDashboardRequest(w, r)
+	if !ok {
+		return
+	}
+
+	response, err := s.proxyService.DashboardTopTools(r.Context(), user.ID, window, time.Now().UTC())
+	if writeDashboardError(w, err) {
+		return
+	}
+	writeJSON(w, http.StatusOK, response)
+}
+
 // handleCurrentUserGroups returns the authenticated user's access groups.
 func (s server) handleCurrentUserGroups(w http.ResponseWriter, r *http.Request) {
 	user, ok := auth.UserFromContext(r.Context())

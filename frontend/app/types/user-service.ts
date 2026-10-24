@@ -184,6 +184,17 @@ export interface DashboardBreakdownResponse extends UsageWindowMeta {
   items: UsageBreakdown[]
 }
 
+export interface DashboardToolUsage {
+  name: string
+  calls: number
+}
+
+export interface DashboardTopToolsResponse extends UsageWindowMeta {
+  totalCalls: number
+  attributedCalls: number
+  items: DashboardToolUsage[]
+}
+
 export interface DashboardAdoptionResponse extends UsageWindowMeta {
   activeUsers: number
   activeServiceAccounts: number

@@ -309,6 +309,13 @@ function parseBreakdown(value: unknown): DashboardBreakdown {
         :window="selectedWindow"
       />
 
+      <DashboardTopTools
+        class="dashboard-page__section"
+        :refresh-version="refreshVersion"
+        :scope="dashboardScope"
+        :window="selectedWindow"
+      />
+
       <DashboardAnnualActivity
         v-if="dashboardScope === 'self'"
         class="dashboard-page__section"

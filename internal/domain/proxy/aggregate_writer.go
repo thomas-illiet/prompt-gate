@@ -54,10 +54,20 @@ func aggregateInterceptionDuration(tx *gorm.DB, interception Interception) error
 }
 
 func aggregateToolUsage(tx *gorm.DB, interception Interception, usage ToolUsage) error {
-	return upsertDailyUsageKPI(tx, ProxyDailyUsageKPI{
-		Day:         dayStart(usage.CreatedAt),
+	day := dayStart(usage.CreatedAt)
+	if err := upsertDailyUsageKPI(tx, ProxyDailyUsageKPI{
+		Day:         day,
 		InitiatorID: interception.InitiatorID,
 		ToolCalls:   1,
+	}); err != nil {
+		return err
+	}
+	return upsertDailyUsageBreakdown(tx, ProxyDailyUsageBreakdown{
+		Day:         day,
+		InitiatorID: interception.InitiatorID,
+		Dimension:   string(dashboardBreakdownTools),
+		Name:        usage.Tool,
+		Requests:    1,
 	})
 }
 

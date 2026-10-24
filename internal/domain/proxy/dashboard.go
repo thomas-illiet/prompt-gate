@@ -498,6 +498,51 @@ func (s *Service) AdminDashboardTopProviderTypes(ctx context.Context, window Usa
 	return s.dashboardBreakdown(ctx, globalDashboardScope(), window, now, dashboardBreakdownProviderTypes, metric)
 }
 
+// DashboardTopTools returns the authenticated identity's most frequently
+// observed model tool calls for one dashboard window.
+func (s *Service) DashboardTopTools(ctx context.Context, userID string, window UsageWindow, now time.Time) (DashboardTopToolsResponse, error) {
+	return s.dashboardTopTools(ctx, currentUserDashboardScope(userID), window, now)
+}
+
+// AdminDashboardTopTools returns the most frequently observed model tool calls
+// across all identities for one dashboard window.
+func (s *Service) AdminDashboardTopTools(ctx context.Context, window UsageWindow, now time.Time) (DashboardTopToolsResponse, error) {
+	return s.dashboardTopTools(ctx, globalDashboardScope(), window, now)
+}
+
+func (s *Service) dashboardTopTools(ctx context.Context, scope dashboardUsageScope, window UsageWindow, now time.Time) (DashboardTopToolsResponse, error) {
+	resolved, err := s.resolveDashboardWindow(ctx, scope, window, now)
+	if err != nil {
+		return DashboardTopToolsResponse{}, err
+	}
+
+	totals, err := s.aggregatedUsageTotals(ctx, scope, resolved.StartsAt, resolved.EndsAt)
+	if err != nil {
+		return DashboardTopToolsResponse{}, err
+	}
+	values, err := s.aggregatedBreakdowns(ctx, scope, resolved.StartsAt, resolved.EndsAt, dashboardBreakdownTools)
+	if err != nil {
+		return DashboardTopToolsResponse{}, err
+	}
+
+	attributedCalls := int64(0)
+	for _, value := range values {
+		attributedCalls += value.Requests
+	}
+	ranked := sortedBreakdownsByMetric(values, DashboardBreakdownRequests, 5)
+	items := make([]ToolUsageBreakdown, 0, len(ranked))
+	for _, item := range ranked {
+		items = append(items, ToolUsageBreakdown{Name: item.Name, Calls: item.Requests})
+	}
+
+	return DashboardTopToolsResponse{
+		UsageWindowMeta: resolved.UsageWindowMeta,
+		TotalCalls:      totals.ToolCalls,
+		AttributedCalls: attributedCalls,
+		Items:           items,
+	}, nil
+}
+
 // dashboardBreakdown returns top models, provider names, or provider types for a dashboard scope.
 func (s *Service) dashboardBreakdown(ctx context.Context, scope dashboardUsageScope, window UsageWindow, now time.Time, target dashboardBreakdownTarget, metric DashboardBreakdownMetric) (DashboardBreakdownResponse, error) {
 	resolved, err := s.resolveDashboardWindow(ctx, scope, window, now)

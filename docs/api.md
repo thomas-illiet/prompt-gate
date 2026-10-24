@@ -65,6 +65,7 @@ routes require `user` or `admin`.
 | `GET` | `/api/v1/me/dashboard/top-models` | Model usage breakdown. |
 | `GET` | `/api/v1/me/dashboard/top-provider-names` | Provider-name usage breakdown. |
 | `GET` | `/api/v1/me/dashboard/top-provider-types` | Provider-type usage breakdown. |
+| `GET` | `/api/v1/me/dashboard/top-tools` | Top model-requested tool calls observed for the current user. |
 | `GET` | `/api/v1/monitoring/status` | Current user-visible monitoring status and degraded service names. |
 | `GET` | `/api/v1/faq` | Published frequently asked questions. |
 
@@ -82,6 +83,11 @@ Dashboard overview responses always include `costCoverage`. A value of
 `complete` means retained raw usage covers the requested estimate period;
 `partial` reports the retained bounds, and `unavailable` omits
 `totals.estimatedCost` instead of presenting an incomplete zero value.
+Top-tools responses rank invocation names by observed call count. They expose
+`totalCalls` from the durable usage KPI and `attributedCalls` from the durable
+per-tool breakdown so clients can identify historical periods that predate
+name-level aggregation. Tool arguments, server URLs, errors, and metadata are
+never included.
 
 ### Model Lab
 
@@ -180,6 +186,7 @@ curl --fail-with-body \
 | `GET` | `/api/v1/admin/dashboard/top-models` | Global model usage breakdown. |
 | `GET` | `/api/v1/admin/dashboard/top-provider-names` | Global provider-name usage breakdown. |
 | `GET` | `/api/v1/admin/dashboard/top-provider-types` | Global provider-type usage breakdown. |
+| `GET` | `/api/v1/admin/dashboard/top-tools` | Top model-requested tool calls observed across all identities. |
 | `GET` | `/api/v1/admin/dashboard/adoption` | Active users, active service accounts, and currently valid virtual keys. |
 | `GET` | `/api/v1/admin/dashboard/top-identities` | Top users and service accounts by token volume. |
 

@@ -250,6 +250,49 @@ func TestHandleAdminDashboardTopIdentitiesRanksByRequests(t *testing.T) {
 	}
 }
 
+func TestHandleAdminDashboardTopToolsReturnsGlobalCalls(t *testing.T) {
+	handler, db := newDashboardTestHandler(t)
+	now := time.Now().UTC()
+	day := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	userID := "11111111-1111-1111-1111-111111111111"
+	serviceID := "22222222-2222-2222-2222-222222222222"
+	for _, row := range []proxy.ProxyDailyUsageKPI{
+		{Day: day, InitiatorID: userID, ToolCalls: 2, CreatedAt: now, UpdatedAt: now},
+		{Day: day, InitiatorID: serviceID, ToolCalls: 5, CreatedAt: now, UpdatedAt: now},
+	} {
+		if err := db.Create(&row).Error; err != nil {
+			t.Fatalf("seed tool total: %v", err)
+		}
+	}
+	for _, row := range []proxy.ProxyDailyUsageBreakdown{
+		{Day: day, InitiatorID: userID, Dimension: "tools", Name: "github.search", Requests: 2, CreatedAt: now, UpdatedAt: now},
+		{Day: day, InitiatorID: serviceID, Dimension: "tools", Name: "linear.list", Requests: 4, CreatedAt: now, UpdatedAt: now},
+		{Day: day, InitiatorID: serviceID, Dimension: "tools", Name: "github.search", Requests: 1, CreatedAt: now, UpdatedAt: now},
+	} {
+		if err := db.Create(&row).Error; err != nil {
+			t.Fatalf("seed tool breakdown: %v", err)
+		}
+	}
+
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/dashboard/top-tools?window=7d", nil)
+	handler.HandleAdminDashboardTopTools(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", recorder.Code, recorder.Body.String())
+	}
+	var body proxy.DashboardTopToolsResponse
+	if err := json.NewDecoder(recorder.Body).Decode(&body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if body.TotalCalls != 7 || body.AttributedCalls != 7 || len(body.Items) != 2 {
+		t.Fatalf("unexpected global tool response: %#v", body)
+	}
+	if body.Items[0].Name != "linear.list" || body.Items[0].Calls != 4 || body.Items[1].Name != "github.search" || body.Items[1].Calls != 3 {
+		t.Fatalf("unexpected global tool ranking: %#v", body.Items)
+	}
+}
+
 // TestHandleAdminDashboardBreakdownRejectsInvalidMetric verifies clients get a
 // stable, explicit 400 rather than an arbitrary fallback.
 func TestHandleAdminDashboardBreakdownRejectsInvalidMetric(t *testing.T) {

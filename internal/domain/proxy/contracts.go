@@ -169,6 +169,24 @@ type DashboardBreakdownResponse struct {
 	Items []UsageBreakdown `json:"items"`
 }
 
+// ToolUsageBreakdown reports observed model tool calls by tool name. Calls are
+// counted independently from API requests because one request can invoke more
+// than one tool.
+type ToolUsageBreakdown struct {
+	Name  string `json:"name"`
+	Calls int64  `json:"calls"`
+}
+
+// DashboardTopToolsResponse exposes the top observed tool calls and enough
+// totals for clients to identify periods whose older named history predates
+// durable per-tool aggregation.
+type DashboardTopToolsResponse struct {
+	UsageWindowMeta
+	TotalCalls      int64                `json:"totalCalls"`
+	AttributedCalls int64                `json:"attributedCalls"`
+	Items           []ToolUsageBreakdown `json:"items"`
+}
+
 type DashboardAdoptionResponse struct {
 	UsageWindowMeta
 	ActiveUsers           int64 `json:"activeUsers"`

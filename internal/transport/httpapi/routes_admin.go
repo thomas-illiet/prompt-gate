@@ -7,7 +7,7 @@ import (
 )
 
 func adminRoutes(handler *admin.Handler, openAPIHandler http.HandlerFunc) []routeDefinition {
-	routes := make([]routeDefinition, 0, 89)
+	routes := make([]routeDefinition, 0, 90)
 	routes = append(routes, adminUserRoutes(handler)...)
 	routes = append(routes, adminDashboardRoutes(handler)...)
 	routes = append(routes, adminServiceAccountRoutes(handler)...)
@@ -60,6 +60,7 @@ func adminDashboardRoutes(handler *admin.Handler) []routeDefinition {
 		{pattern: "GET /api/v1/admin/dashboard/top-models", handler: handler.HandleAdminDashboardTopModels},
 		{pattern: "GET /api/v1/admin/dashboard/top-provider-names", handler: handler.HandleAdminDashboardTopProviderNames},
 		{pattern: "GET /api/v1/admin/dashboard/top-provider-types", handler: handler.HandleAdminDashboardTopProviderTypes},
+		{pattern: "GET /api/v1/admin/dashboard/top-tools", handler: handler.HandleAdminDashboardTopTools},
 		{pattern: "GET /api/v1/admin/dashboard/adoption", handler: handler.HandleAdminDashboardAdoption},
 		{pattern: "GET /api/v1/admin/dashboard/top-identities", handler: handler.HandleAdminDashboardTopIdentities},
 	}

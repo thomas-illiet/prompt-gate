@@ -82,6 +82,7 @@ const (
 	dashboardBreakdownModels        dashboardBreakdownTarget = "models"
 	dashboardBreakdownProviderNames dashboardBreakdownTarget = "provider-names"
 	dashboardBreakdownProviderTypes dashboardBreakdownTarget = "provider-types"
+	dashboardBreakdownTools         dashboardBreakdownTarget = "tools"
 )
 
 type dashboardUsageScope struct {

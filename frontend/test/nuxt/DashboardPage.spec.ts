@@ -105,6 +105,11 @@ function mountPage() {
           props: ['modelValue'],
           template: '<div data-test="window-select">{{ modelValue }}</div>',
         },
+        DashboardTopTools: {
+          props: ['scope', 'window', 'refreshVersion'],
+          template:
+            '<div data-test="top-tools" :data-scope="scope" :data-window="window" :data-refresh="refreshVersion" />',
+        },
         DashboardTrend: { template: '<div data-test="trend" />' },
         VAlert: { template: '<div><slot /></div>' },
         VBtn: {
@@ -146,6 +151,9 @@ describe('DashboardPage', () => {
 
     expect(wrapper.get('h1').text()).toBe('Organization overview')
     expect(wrapper.get('[data-test="current-state"]').attributes('data-scope')).toBe('global')
+    expect(
+      wrapper.get('[data-test="top-tools"]').attributes('data-scope'),
+    ).toBe('global')
     expect(wrapper.find('[data-test="annual"]').exists()).toBe(false)
     await vi.waitFor(() =>
       expect(useRouter().currentRoute.value.query.scope).toBe('global'),
@@ -172,6 +180,9 @@ describe('DashboardPage', () => {
 
     expect(wrapper.get('[data-test="window-select"]').text()).toBe('30d')
     expect(wrapper.get('[data-test="breakdown"]').attributes('data-tab')).toBe('providers')
+    expect(
+      wrapper.get('[data-test="top-tools"]').attributes('data-window'),
+    ).toBe('30d')
     expect(useDashboardOverviewMock).toHaveBeenCalled()
   })
 
@@ -186,6 +197,9 @@ describe('DashboardPage', () => {
 
     expect(overviewReloadMock).toHaveBeenCalledTimes(1)
     expect(wrapper.get('[data-test="current-state"]').attributes('data-refresh')).toBe('1')
+    expect(
+      wrapper.get('[data-test="top-tools"]').attributes('data-refresh'),
+    ).toBe('1')
     expect(wrapper.get('[data-test="annual"]').attributes('data-refresh')).toBe('1')
   })
 

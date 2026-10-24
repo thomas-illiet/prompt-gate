@@ -225,6 +225,19 @@ func TestWorkerProcessesEventsIdempotentlyAcrossInstances(t *testing.T) {
 			CreatedAt:             startedAt,
 		},
 	}
+	toolUsage := UsageEvent{
+		EventID:   "event-tool",
+		Type:      UsageEventToolUsage,
+		CreatedAt: startedAt,
+		ToolUsage: &ToolUsageEvent{
+			InterceptionID:     "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+			ProviderResponseID: "response-1",
+			Tool:               "linear.list",
+			Input:              "{}",
+			Metadata:           "{}",
+			CreatedAt:          startedAt,
+		},
+	}
 	ended := UsageEvent{
 		EventID:   "event-ended",
 		Type:      UsageEventInterceptionEnded,
@@ -235,7 +248,7 @@ func TestWorkerProcessesEventsIdempotentlyAcrossInstances(t *testing.T) {
 		},
 	}
 
-	for _, event := range []UsageEvent{started, tokenUsage, ended} {
+	for _, event := range []UsageEvent{started, tokenUsage, toolUsage, ended} {
 		if err := workerOne.ProcessUsageEvent(context.Background(), event, event.EventID+"-redis"); err != nil {
 			t.Fatalf("process %s: %v", event.Type, err)
 		}
@@ -264,6 +277,13 @@ func TestWorkerProcessesEventsIdempotentlyAcrossInstances(t *testing.T) {
 	}
 	if duration.TotalDurationMs != 2000 {
 		t.Fatalf("expected 2000ms duration, got %#v", duration)
+	}
+	tools, err := service.DashboardTopTools(context.Background(), "11111111-1111-1111-1111-111111111111", UsageWindow7Days, now)
+	if err != nil {
+		t.Fatalf("dashboard top tools: %v", err)
+	}
+	if tools.TotalCalls != 1 || tools.AttributedCalls != 1 || len(tools.Items) != 1 || tools.Items[0].Name != "linear.list" || tools.Items[0].Calls != 1 {
+		t.Fatalf("expected one idempotent tool call, got %#v", tools)
 	}
 }
 

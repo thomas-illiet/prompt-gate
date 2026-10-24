@@ -304,6 +304,21 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/me/dashboard/top-tools:
+    get:
+      tags: [Dashboard]
+      operationId: getCurrentUserDashboardTopTools
+      summary: Get the current user's top observed tool calls
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: '#/components/parameters/UsageWindow'
+        - $ref: '#/components/parameters/LegacyUsageDays'
+      responses:
+        '200': { $ref: '#/components/responses/DashboardTopToolsResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        default: { $ref: '#/components/responses/InternalError' }
   /api/v1/monitoring/status:
     get:
       tags: [Monitoring]
@@ -749,6 +764,20 @@ paths:
         - $ref: '#/components/parameters/BreakdownMetric'
       responses:
         '200': { $ref: '#/components/responses/DashboardBreakdownResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/dashboard/top-tools:
+    get:
+      tags: [Dashboard]
+      operationId: getAdminDashboardTopTools
+      summary: Get organization top observed tool calls
+      parameters:
+        - $ref: '#/components/parameters/UsageWindow'
+        - $ref: '#/components/parameters/LegacyUsageDays'
+      responses:
+        '200': { $ref: '#/components/responses/DashboardTopToolsResponse' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -2088,6 +2117,11 @@ components:
       content:
         application/json:
           schema: { $ref: '#/components/schemas/DashboardBreakdown' }
+    DashboardTopToolsResponse:
+      description: Ranked observed tool calls and durable name-attribution coverage for the selected window.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/DashboardTopTools' }
     DashboardAdoptionResponse:
       description: Account and virtual-key adoption counts.
       content:
@@ -2702,6 +2736,29 @@ components:
         items:
           type: array
           items: { $ref: '#/components/schemas/UsageBreakdown' }
+    ToolUsageBreakdown:
+      type: object
+      additionalProperties: false
+      required: [name, calls]
+      properties:
+        name: { type: string }
+        calls: { type: integer, format: int64, minimum: 0 }
+    DashboardTopTools:
+      type: object
+      additionalProperties: false
+      required: [window, startsAt, endsAt, totalCalls, attributedCalls, items]
+      properties:
+        window:
+          type: string
+          enum: [7d, 30d, all]
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        totalCalls: { type: integer, format: int64, minimum: 0 }
+        attributedCalls: { type: integer, format: int64, minimum: 0 }
+        items:
+          type: array
+          maxItems: 5
+          items: { $ref: '#/components/schemas/ToolUsageBreakdown' }
     DashboardAdoption:
       type: object
       additionalProperties: false

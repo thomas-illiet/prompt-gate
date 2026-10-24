@@ -156,6 +156,59 @@ func TestHandleCurrentUserDashboardOverviewReturnsComparison(t *testing.T) {
 	}
 }
 
+func TestHandleCurrentUserDashboardTopToolsReturnsOnlyPersonalCalls(t *testing.T) {
+	_, db := newHTTPGroupService(t)
+	if err := proxy.AutoMigrate(context.Background(), db); err != nil {
+		t.Fatalf("migrate proxy usage: %v", err)
+	}
+	profile := testUserProfile()
+	createHTTPUser(t, db, profile)
+	other := profile
+	other.ID = "22222222-2222-2222-2222-222222222222"
+	other.Sub = "sub-other"
+	other.Email = "other@example.com"
+	other.PreferredUsername = "other"
+	other.Name = "Other"
+	createHTTPUser(t, db, other)
+	now := time.Now().UTC()
+	day := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	for _, row := range []proxy.ProxyDailyUsageKPI{
+		{Day: day, InitiatorID: profile.ID, ToolCalls: 3, CreatedAt: now, UpdatedAt: now},
+		{Day: day, InitiatorID: other.ID, ToolCalls: 8, CreatedAt: now, UpdatedAt: now},
+	} {
+		if err := db.Create(&row).Error; err != nil {
+			t.Fatalf("seed tool total: %v", err)
+		}
+	}
+	for _, row := range []proxy.ProxyDailyUsageBreakdown{
+		{Day: day, InitiatorID: profile.ID, Dimension: "tools", Name: "linear.list", Requests: 3, CreatedAt: now, UpdatedAt: now},
+		{Day: day, InitiatorID: other.ID, Dimension: "tools", Name: "admin.only", Requests: 8, CreatedAt: now, UpdatedAt: now},
+	} {
+		if err := db.Create(&row).Error; err != nil {
+			t.Fatalf("seed tool breakdown: %v", err)
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/me/dashboard/top-tools?window=7d", nil)
+	req = req.WithContext(auth.ContextWithUser(context.Background(), profile))
+	recorder := httptest.NewRecorder()
+	server{proxyService: proxy.NewService(db)}.handleCurrentUserDashboardTopTools(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", recorder.Code, recorder.Body.String())
+	}
+	var body proxy.DashboardTopToolsResponse
+	if err := json.NewDecoder(recorder.Body).Decode(&body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if body.TotalCalls != 3 || body.AttributedCalls != 3 || len(body.Items) != 1 {
+		t.Fatalf("unexpected personal tool response: %#v", body)
+	}
+	if body.Items[0].Name != "linear.list" || body.Items[0].Calls != 3 {
+		t.Fatalf("unexpected personal tool item: %#v", body.Items)
+	}
+}
+
 // TestHandleCurrentUserGroupsReturnsProfileSafeMemberships verifies handle current user groups returns profile safe memberships.
 func TestHandleCurrentUserGroupsReturnsProfileSafeMemberships(t *testing.T) {
 	groupService, db := newHTTPGroupService(t)

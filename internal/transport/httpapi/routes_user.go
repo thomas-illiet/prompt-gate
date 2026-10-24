@@ -22,7 +22,7 @@ func userModelLabRoutes(srv *server) []routeDefinition {
 }
 
 func limitedRoutes(srv *server) []routeDefinition {
-	routes := make([]routeDefinition, 0, 15)
+	routes := make([]routeDefinition, 0, 16)
 	routes = append(routes, currentUserRoutes(srv)...)
 	routes = append(routes, userFAQRoutes(srv)...)
 	return routes
@@ -43,6 +43,7 @@ func currentUserRoutes(srv *server) []routeDefinition {
 		{pattern: "GET /api/v1/me/dashboard/top-models", handler: srv.handleCurrentUserDashboardTopModels},
 		{pattern: "GET /api/v1/me/dashboard/top-provider-names", handler: srv.handleCurrentUserDashboardTopProviderNames},
 		{pattern: "GET /api/v1/me/dashboard/top-provider-types", handler: srv.handleCurrentUserDashboardTopProviderTypes},
+		{pattern: "GET /api/v1/me/dashboard/top-tools", handler: srv.handleCurrentUserDashboardTopTools},
 		{pattern: "GET /api/v1/me/groups", handler: srv.handleCurrentUserGroups},
 	}
 }

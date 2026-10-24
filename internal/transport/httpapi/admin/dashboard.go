@@ -81,6 +81,14 @@ func (h *Handler) HandleAdminDashboardTopProviderTypes(w http.ResponseWriter, r 
 	})
 }
 
+// HandleAdminDashboardTopTools returns the most frequently observed model tool
+// calls across all identities for one dashboard window.
+func (h *Handler) HandleAdminDashboardTopTools(w http.ResponseWriter, r *http.Request) {
+	h.writeDashboardResponse(w, r, func(ctx context.Context, window proxy.UsageWindow, now time.Time) (any, error) {
+		return h.proxy.AdminDashboardTopTools(ctx, window, now)
+	})
+}
+
 // HandleAdminDashboardAdoption returns global adoption KPIs for one dashboard window.
 func (h *Handler) HandleAdminDashboardAdoption(w http.ResponseWriter, r *http.Request) {
 	h.writeDashboardResponse(w, r, func(ctx context.Context, window proxy.UsageWindow, now time.Time) (any, error) {

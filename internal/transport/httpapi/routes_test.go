@@ -21,13 +21,13 @@ func TestRouteInventoryIsCompleteAndUnique(t *testing.T) {
 	}{
 		{name: "public", routes: publicRoutes(srv), want: 5},
 		{name: "session", routes: sessionRoutes(), want: 1},
-		{name: "limited", routes: limitedRoutes(srv), want: 15},
+		{name: "limited", routes: limitedRoutes(srv), want: 16},
 		{name: "user", routes: userRoutes(srv), want: 5},
 		{name: "model-lab", routes: userModelLabRoutes(srv), want: 2},
-		{name: "admin", routes: adminRoutes(adminHandler, openAPIHandler), want: 89},
+		{name: "admin", routes: adminRoutes(adminHandler, openAPIHandler), want: 90},
 	}
 
-	seen := make(map[string]string, 117)
+	seen := make(map[string]string, 119)
 	for _, group := range groups {
 		if len(group.routes) != group.want {
 			t.Errorf("%s routes: got %d, want %d", group.name, len(group.routes), group.want)
@@ -47,8 +47,8 @@ func TestRouteInventoryIsCompleteAndUnique(t *testing.T) {
 		}
 	}
 
-	if len(seen) != 117 {
-		t.Errorf("route inventory: got %d routes, want 117", len(seen))
+	if len(seen) != 119 {
+		t.Errorf("route inventory: got %d routes, want 119", len(seen))
 	}
 	for _, removed := range []string{
 		"GET /api/v1/me/prompts",
@@ -111,6 +111,7 @@ func TestLimitedRouteBoundary(t *testing.T) {
 		"GET /api/v1/me/groups",
 		"GET /api/v1/me/dashboard/overview",
 		"GET /api/v1/me/dashboard/tokens",
+		"GET /api/v1/me/dashboard/top-tools",
 		"GET /api/v1/faq",
 	} {
 		if !limited[allowed] {
