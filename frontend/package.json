@@ -28,13 +28,13 @@
     "@types/swagger-ui": "^5.32.1",
     "@vue/test-utils": "^2.5.0",
     "eslint": "^10.9.1",
-    "happy-dom": "^20.11.12",
+    "happy-dom": "^21.0.4",
     "lightningcss": "^1.33.0",
-    "nuxt": "^4.5.2",
+    "nuxt": "^4.6.2",
     "nuxt-echarts": "^1.0.1",
     "playwright-core": "^1.62.1",
     "prettier": "^3.9.6",
-    "vitest": "^4.1.11",
+    "vitest": "^4.1.12",
     "vue": "^3.5.42",
     "vue-router": "^5.1.0",
     "vue-tsc": "^3.3.11",
@@ -54,8 +54,9 @@
     "vuetify": "^4.1.12"
   },
   "overrides": {
-    "brace-expansion": "^5.0.9",
+    "brace-expansion": "^5.0.12",
     "glob": "^13.0.6",
-    "js-yaml": "^4.3.2"
+    "js-yaml": "^4.3.2",
+    "postcss-selector-parser": "^7.1.7"
   }
 }
