@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import QuotaExhaustedDialog from '~/components/QuotaExhaustion/QuotaExhaustedDialog.vue'
 import { hasRequiredRole } from '~/utils/auth'
 
 const authStore = useAuthStore()
+const quotaExhaustionDialog = useQuotaExhaustionDialog()
 const canViewMonitoring = computed(() =>
   hasRequiredRole(authStore.user, ['user', 'admin']),
 )
@@ -16,6 +18,18 @@ const canViewMonitoring = computed(() =>
       <slot />
     </v-main>
     <AppFooter />
+    <QuotaExhaustedDialog
+      v-model="quotaExhaustionDialog.isOpen.value"
+      :can-reset="quotaExhaustionDialog.canReset.value"
+      :reset-available="quotaExhaustionDialog.resetAvailable.value"
+      :reset-error="quotaExhaustionDialog.resetError.value"
+      :reset-loading="quotaExhaustionDialog.resetLoading.value"
+      :reset-maximum="quotaExhaustionDialog.resetMaximum.value"
+      :reset-pending="quotaExhaustionDialog.resetPending.value"
+      :reset-using="quotaExhaustionDialog.resetUsing.value"
+      :windows="quotaExhaustionDialog.windows.value"
+      @reset="quotaExhaustionDialog.useReset"
+    />
   </v-app>
 </template>
 

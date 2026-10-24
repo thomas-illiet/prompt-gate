@@ -12,6 +12,10 @@ import { withApiQuery } from '~/utils/api-paths'
 const quotaResetPath = '/api/v1/me/quota-resets'
 const pendingPollIntervalMs = 5_000
 
+interface UseProfileQuotaResetsOptions {
+  immediate?: boolean
+}
+
 const ERROR_MESSAGES = {
   credit_unavailable: 'No quota reset is currently available.',
   load_quota_reset_history_failed: 'Unable to load quota reset history.',
@@ -34,7 +38,7 @@ export function toProfileQuotaResetErrorMessage(error: unknown) {
   )
 }
 
-export function useProfileQuotaResets() {
+function createProfileQuotaResets() {
   const apiFetch = useApiFetch()
   const summary = shallowRef<QuotaResetSummary | null>(null)
   const loading = shallowRef(false)
@@ -53,6 +57,7 @@ export function useProfileQuotaResets() {
   let pendingPollTimer: ReturnType<typeof setTimeout> | null = null
   let pendingPollInFlight = false
   let pendingUseIdempotencyKey: string | null = null
+  let initialSummaryPromise: Promise<QuotaResetSummary | null> | null = null
   let disposed = false
 
   function stopPendingPoll() {
@@ -122,6 +127,19 @@ export function useProfileQuotaResets() {
         loading.value = false
       }
     }
+  }
+
+  // ensureLoaded shares the first summary request between simultaneous consumers.
+  function ensureLoaded() {
+    if (summary.value) {
+      return Promise.resolve(summary.value)
+    }
+    if (!initialSummaryPromise) {
+      initialSummaryPromise = loadSummary().finally(() => {
+        initialSummaryPromise = null
+      })
+    }
+    return initialSummaryPromise
   }
 
   async function loadHistory() {
@@ -219,7 +237,6 @@ export function useProfileQuotaResets() {
     }
   }
 
-  void loadSummary()
   onScopeDispose(() => {
     disposed = true
     stopPendingPoll()
@@ -234,6 +251,7 @@ export function useProfileQuotaResets() {
     historyPage,
     historyPageSize,
     historyTotal,
+    ensureLoaded,
     loadHistory,
     loading,
     openHistory,
@@ -244,4 +262,19 @@ export function useProfileQuotaResets() {
     useReset,
     using,
   }
+}
+
+const useSharedProfileQuotaResets = createSharedComposable(
+  createProfileQuotaResets,
+)
+
+// useProfileQuotaResets exposes one app-scoped reset wallet to every consumer.
+export function useProfileQuotaResets(
+  options: UseProfileQuotaResetsOptions = {},
+) {
+  const state = useSharedProfileQuotaResets()
+  if (options.immediate !== false) {
+    void state.ensureLoaded()
+  }
+  return state
 }

@@ -54,17 +54,34 @@ function apiError(code: string) {
   }) as FetchError
 }
 
-function mountProbe() {
+function mountProbe(options?: Parameters<typeof useProfileQuotaResets>[0]) {
   const holder = {} as { state: ReturnType<typeof useProfileQuotaResets> }
   const Probe = defineComponent({
     setup() {
-      holder.state = useProfileQuotaResets()
+      holder.state = useProfileQuotaResets(options)
       return () => null
     },
   })
 
   const wrapper = mount(Probe)
   return { state: holder.state, wrapper }
+}
+
+function mountSharedProbes() {
+  const states: Array<ReturnType<typeof useProfileQuotaResets>> = []
+  const Probe = defineComponent({
+    setup() {
+      states.push(useProfileQuotaResets())
+      return () => null
+    },
+  })
+  const Host = defineComponent({
+    components: { Probe },
+    template: '<div><Probe /><Probe /></div>',
+  })
+
+  const wrapper = mount(Host)
+  return { states, wrapper }
 }
 
 describe('useProfileQuotaResets', () => {
@@ -113,6 +130,57 @@ describe('useProfileQuotaResets', () => {
       '/api/v1/me/quota-resets/history?page=2&pageSize=20',
     )
     expect(state.historyPage.value).toBe(2)
+    wrapper.unmount()
+  })
+
+  it('supports lazy loading for consumers that only need resets after a quota check', async () => {
+    apiFetch.mockResolvedValueOnce(availableSummary)
+
+    const { state, wrapper } = mountProbe({ immediate: false })
+    await flushPromises()
+
+    expect(apiFetch).not.toHaveBeenCalled()
+
+    await state.ensureLoaded()
+
+    expect(apiFetch).toHaveBeenCalledOnce()
+    expect(state.summary.value).toEqual(availableSummary)
+    wrapper.unmount()
+  })
+
+  it('shares the initial summary and in-flight reset between simultaneous consumers', async () => {
+    let resolveUse: ((value: unknown) => void) | undefined
+    const useResponse = new Promise((resolve) => {
+      resolveUse = resolve
+    })
+    const usedSummary = { ...availableSummary, available: 0 }
+    apiFetch
+      .mockResolvedValueOnce(availableSummary)
+      .mockReturnValueOnce(useResponse)
+
+    const { states, wrapper } = mountSharedProbes()
+    await flushPromises()
+
+    expect(states).toHaveLength(2)
+    expect(states[0]).toBe(states[1])
+    expect(apiFetch).toHaveBeenCalledTimes(1)
+
+    const firstUse = states[0]!.useReset()
+    const duplicateUse = await states[1]!.useReset()
+
+    expect(duplicateUse).toBeNull()
+    expect(states[1]!.using.value).toBe(true)
+    expect(apiFetch).toHaveBeenCalledTimes(2)
+
+    resolveUse?.({
+      status: 'applied',
+      summary: usedSummary,
+      quota: {},
+    })
+    await firstUse
+
+    expect(states[1]!.summary.value).toEqual(usedSummary)
+    expect(states[1]!.using.value).toBe(false)
     wrapper.unmount()
   })
 
