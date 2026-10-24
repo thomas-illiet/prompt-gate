@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"promptgate/backend/internal/platform/clientip"
+	"promptgate/backend/internal/platform/requestprivacy"
 )
 
 type loggingResponseWriter struct {
@@ -41,8 +42,14 @@ func RequestLogger(logger *slog.Logger) Middleware {
 				"path", r.URL.Path,
 				"status", writer.statusCode,
 				"duration_ms", time.Since(startedAt).Milliseconds(),
-				"remote_addr", requestRemoteAddr(r),
-				"user_agent", r.UserAgent(),
+			}
+			if requestprivacy.IsMetadataOnly(r.Context()) {
+				attributes = append(attributes, "privacy_mode", "metadata_only")
+			} else {
+				attributes = append(attributes,
+					"remote_addr", requestRemoteAddr(r),
+					"user_agent", r.UserAgent(),
+				)
 			}
 
 			switch {

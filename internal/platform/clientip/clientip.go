@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"net/netip"
 	"strings"
+
+	"promptgate/backend/internal/platform/requestprivacy"
 )
 
 type contextKey struct{}
@@ -151,7 +153,7 @@ func MiddlewareWithOptions(options Options) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			resolved := resolveWithOptions(r, options)
-			if options.Debug {
+			if options.Debug && !requestprivacy.IsMetadataOnly(r.Context()) {
 				logger := options.Logger
 				if logger == nil {
 					logger = slog.Default()

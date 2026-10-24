@@ -10,8 +10,10 @@ import (
 	"time"
 
 	"promptgate/backend/internal/platform/config"
+	"promptgate/backend/internal/platform/requestprivacy"
 
 	"go.opentelemetry.io/otel/attribute"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	collectortrace "go.opentelemetry.io/proto/otlp/collector/trace/v1"
 	commonv1 "go.opentelemetry.io/proto/otlp/common/v1"
 	"google.golang.org/protobuf/proto"
@@ -123,5 +125,19 @@ func TestProviderDisabledIsNoop(t *testing.T) {
 	}
 	if provider.tracerProvider != nil {
 		t.Fatal("disabled provider must not install an SDK tracer provider")
+	}
+}
+
+func TestMetadataOnlySamplerDropsModelLabSpans(t *testing.T) {
+	sampler := metadataOnlySampler{fallback: sdktrace.AlwaysSample()}
+	standard := sampler.ShouldSample(sdktrace.SamplingParameters{ParentContext: context.Background()})
+	if standard.Decision != sdktrace.RecordAndSample {
+		t.Fatalf("standard request decision = %v", standard.Decision)
+	}
+	private := sampler.ShouldSample(sdktrace.SamplingParameters{
+		ParentContext: requestprivacy.MarkMetadataOnly(context.Background()),
+	})
+	if private.Decision != sdktrace.Drop {
+		t.Fatalf("metadata-only request decision = %v", private.Decision)
 	}
 }

@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 
+	"promptgate/backend/internal/platform/requestprivacy"
+
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -33,6 +35,7 @@ type outputCapture struct {
 	buffer          bytes.Buffer
 	overflow        bool
 	published       bool
+	contentAllowed  func() bool
 }
 
 // OutputCaptureMiddleware observes the client-visible provider response without
@@ -45,6 +48,9 @@ func OutputCaptureMiddleware(maxBytes int64, captureOutput, captureThinking bool
 				maxBytes:        maxBytes,
 				captureOutput:   captureOutput,
 				captureThinking: captureThinking,
+				contentAllowed: func() bool {
+					return !requestprivacy.IsMetadataOnly(r.Context())
+				},
 			}
 			ctx := context.WithValue(r.Context(), outputCaptureContextKey{}, capture)
 			next.ServeHTTP(&outputCaptureResponseWriter{ResponseWriter: w, capture: capture}, r.WithContext(ctx))
@@ -94,6 +100,11 @@ func (c *outputCapture) writeHeader(statusCode int, contentType string) {
 func (c *outputCapture) write(body []byte, contentType string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if !c.canCaptureContent() {
+		c.buffer.Reset()
+		c.overflow = false
+		return
+	}
 	if c.statusCode == 0 {
 		c.statusCode = http.StatusOK
 		c.contentType = contentType
@@ -117,7 +128,8 @@ func (c *outputCapture) publish() {
 		return
 	}
 	c.published = true
-	if c.span == nil || !c.span.IsRecording() || c.overflow || c.statusCode < 200 || c.statusCode >= 300 {
+	if !c.canCaptureContent() || c.span == nil || !c.span.IsRecording() || c.overflow || c.statusCode < 200 || c.statusCode >= 300 {
+		c.buffer.Reset()
 		return
 	}
 	output, thinking := extractAssistantContent(c.buffer.Bytes(), c.contentType)
@@ -141,6 +153,10 @@ func (c *outputCapture) publish() {
 	if len(attrs) > 0 {
 		c.span.SetAttributes(attrs...)
 	}
+}
+
+func (c *outputCapture) canCaptureContent() bool {
+	return c.contentAllowed == nil || c.contentAllowed()
 }
 
 type outputCaptureResponseWriter struct {

@@ -7,12 +7,14 @@ import (
 
 	"promptgate/backend/internal/domain/auth"
 	"promptgate/backend/internal/domain/groups"
+	"promptgate/backend/internal/domain/modellab"
 	"promptgate/backend/internal/domain/policy"
 	"promptgate/backend/internal/domain/subscriptions"
 	"promptgate/backend/internal/domain/tokens"
 	"promptgate/backend/internal/domain/users"
 	"promptgate/backend/internal/platform/clientip"
 	"promptgate/backend/internal/platform/config"
+	"promptgate/backend/internal/platform/requestprivacy"
 	proxyruntime "promptgate/backend/internal/runtime/proxy"
 	httpmiddleware "promptgate/backend/internal/transport/httpmiddleware"
 )
@@ -26,6 +28,7 @@ func (p *ProxyRuntime) buildHandler(
 	opaClient *policy.Client,
 	accessSnapshot *groups.SnapshotStore,
 	denialRecorder policy.DenialRecorder,
+	modelLabService *modellab.Service,
 	debugRequestWriter *httpmiddleware.JSONLineWriter,
 ) http.Handler {
 	mux := http.NewServeMux()
@@ -44,6 +47,7 @@ func (p *ProxyRuntime) buildHandler(
 			auth.ActorMiddleware(proxyruntime.SessionContextMiddleware(p.manager)),
 		),
 	)
+	protectedHandler = stripModelLabClientHeaders(protectedHandler)
 	if cfg.OPAEnabled {
 		protectedHandler = policy.Middleware(policyEvaluator, accessSnapshot, denialRecorder, p.logger)(protectedHandler)
 	}
@@ -55,6 +59,7 @@ func (p *ProxyRuntime) buildHandler(
 	})(
 		clientip.MiddlewareWithOptions(clientIPOptions)(protectedHandler),
 	)
+	proxyHandler = modelLabTicketMiddleware(cfg.ModelLab, modelLabService, userService)(proxyHandler)
 	if len(cfg.CORSAllowedOrigins) > 0 {
 		proxyHandler = httpmiddleware.CORS(cfg.CORSAllowedOrigins)(proxyHandler)
 	}
@@ -71,7 +76,7 @@ func (p *ProxyRuntime) buildHandler(
 		proxyHandler = debugRequestWriter.DebugRequests(cfg.ProxyMaxBufferedRequestBytes)(proxyHandler)
 	}
 	mux.Handle("/", proxyHandler)
-	return httpmiddleware.SecurityHeaders()(mux)
+	return requestprivacy.Middleware(httpmiddleware.SecurityHeaders()(mux))
 }
 
 func proxyHealth(opaEnabled bool, opaClient *policy.Client) http.HandlerFunc {

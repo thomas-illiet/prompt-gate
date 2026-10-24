@@ -44,6 +44,10 @@ its name. It must contain:
 - `PROMPTGATE_SECRETS_KEY`
 - `PROMPTGATE_KEYCLOAK_CLIENT_SECRET` when the OIDC client requires it
 
+Model Lab is always enabled for `user` and `admin` roles. API and proxy use the
+same `PROMPTGATE_SECRETS_KEY` value unchanged to sign and verify its short-lived
+tickets; the chart does not create or mount a second Model Lab secret.
+
 ## Quota Reset Scheduling
 
 The scheduler distributes monthly reset credits immediately on startup and then

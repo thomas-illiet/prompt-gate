@@ -8,6 +8,8 @@ import (
 	"net/netip"
 	"strings"
 	"testing"
+
+	"promptgate/backend/internal/platform/requestprivacy"
 )
 
 func mustPrefix(t *testing.T, value string) netip.Prefix {
@@ -197,6 +199,27 @@ func TestMiddlewareClientIPDebugLogsOnlyResolutionMetadata(t *testing.T) {
 		if strings.Contains(logged, secret) {
 			t.Fatalf("diagnostic log exposed %q: %s", secret, logged)
 		}
+	}
+}
+
+func TestMiddlewareClientIPDebugSuppressesMetadataOnlyRequests(t *testing.T) {
+	var output bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&output, nil))
+	req := httptest.NewRequest(http.MethodPost, "/provider/v1/messages", nil)
+	req.RemoteAddr = "198.51.100.77:4242"
+	req = req.WithContext(requestprivacy.MarkMetadataOnly(req.Context()))
+
+	handler := MiddlewareWithOptions(Options{Debug: true, Logger: logger})(
+		http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+			if FromContext(r.Context()) != "198.51.100.77" {
+				t.Fatal("client IP must remain available to authorization")
+			}
+		}),
+	)
+	handler.ServeHTTP(httptest.NewRecorder(), req)
+
+	if output.Len() != 0 {
+		t.Fatalf("metadata-only request logged client IP: %s", output.String())
 	}
 }
 

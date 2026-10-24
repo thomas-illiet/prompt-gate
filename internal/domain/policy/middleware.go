@@ -10,6 +10,7 @@ import (
 	"promptgate/backend/internal/domain/auth"
 	"promptgate/backend/internal/domain/groups"
 	"promptgate/backend/internal/platform/clientip"
+	"promptgate/backend/internal/platform/requestprivacy"
 )
 
 // DenialRecorder persists authenticated policy denials without coupling policy
@@ -45,12 +46,20 @@ func Middleware(evaluator *Evaluator, snapshot *groups.SnapshotStore, denialReco
 			}
 			decision, err := evaluator.Evaluate(r.Context(), input)
 			if err != nil {
-				logger.Error("policy decision unavailable", "error", err)
+				if requestprivacy.IsMetadataOnly(r.Context()) {
+					logger.Error("policy decision unavailable", "privacy_mode", "metadata_only")
+				} else {
+					logger.Error("policy decision unavailable", "error", err)
+				}
 				writeJSON(w, http.StatusServiceUnavailable, "policy_unavailable")
 				return
 			}
 			if !decision.Allow {
-				logger.Warn("request denied by policy", "reason", decision.Reason)
+				if requestprivacy.IsMetadataOnly(r.Context()) {
+					logger.Warn("request denied by policy", "privacy_mode", "metadata_only")
+				} else {
+					logger.Warn("request denied by policy", "reason", decision.Reason)
+				}
 				if denialRecorder != nil {
 					if err := denialRecorder.RecordPolicyDenial(r.Context(), principal.User.ID, input.Request.ClientIP, decision.Reason, time.Now().UTC()); err != nil {
 						logger.Error("failed to record policy denial", "error", err)

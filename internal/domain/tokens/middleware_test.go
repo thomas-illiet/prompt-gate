@@ -73,6 +73,31 @@ func TestMiddlewareRejectsMissingBearer(t *testing.T) {
 	}
 }
 
+func TestMiddlewareAcceptsPreauthenticatedPrincipal(t *testing.T) {
+	user := auth.UserProfile{ID: "model-lab-user", Role: auth.RoleUser, IsActive: true}
+	principal := auth.Principal{User: user, CredentialID: "model-lab", CredentialName: "Model Lab"}
+	handler := MiddlewareWithOptions(MiddlewareOptions{})(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got, ok := auth.PrincipalFromContext(r.Context())
+		if !ok || got != principal {
+			t.Fatalf("unexpected preauthenticated principal: %#v", got)
+		}
+		if r.Header.Get("Authorization") != "" {
+			t.Fatal("expected ephemeral credential to be stripped")
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	req := httptest.NewRequest(http.MethodPost, "/provider/v1/chat/completions", nil)
+	req.Header.Set("Authorization", "Bearer pgml_ephemeral")
+	req = req.WithContext(auth.ContextWithPrincipal(req.Context(), principal))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", rec.Code)
+	}
+}
+
 // TestMiddlewareUsesCacheAndStripsProviderCredentials verifies auth cache hits and upstream credential stripping.
 func TestMiddlewareUsesCacheAndStripsProviderCredentials(t *testing.T) {
 	tokenService, userService, _, user := newTokenTestServices(t)

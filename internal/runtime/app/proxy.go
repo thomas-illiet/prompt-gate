@@ -7,11 +7,13 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"time"
 
 	cdrslog "cdr.dev/slog/v3"
 	"go.opentelemetry.io/otel"
 
 	"promptgate/backend/internal/domain/groups"
+	"promptgate/backend/internal/domain/modellab"
 	"promptgate/backend/internal/domain/policy"
 	localprovider "promptgate/backend/internal/domain/provider"
 	localproxy "promptgate/backend/internal/domain/proxy"
@@ -63,7 +65,6 @@ func NewProxy(ctx context.Context, cfg config.ProxyConfig, logger *slog.Logger, 
 	if err != nil {
 		return nil, fmt.Errorf("initialize secret cipher: %w", err)
 	}
-
 	logger.Info("initializing redis connection")
 	redisStore, err := redisstore.NewRequired(ctx, cfg.RedisURL, cfg.RedisCacheTTL, logger)
 	if err != nil {
@@ -82,6 +83,19 @@ func NewProxy(ctx context.Context, cfg config.ProxyConfig, logger *slog.Logger, 
 	groupService := groups.NewService(db)
 	subscriptionService := subscriptions.NewService(db)
 	providerService := localprovider.NewService(db, secretCipher)
+	modelLabService, err := modellab.NewService(providerService, nil, redisStore, modellab.Options{
+		TicketSecret:    cfg.SecretsKey,
+		ProxyBaseURL:    cfg.ProxyBaseURL,
+		TicketTTL:       cfg.ModelLab.TicketTTL,
+		LeaseTTL:        cfg.ProxyUpstreamTimeout + 30*time.Second,
+		MaxTargets:      cfg.ModelLab.MaxTargets,
+		MaxConcurrent:   cfg.ModelLab.MaxConcurrent,
+		MaxPromptBytes:  cfg.ModelLab.MaxPromptBytes,
+		MaxOutputTokens: cfg.ModelLab.MaxOutputTokens,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("initialize model lab: %w", err)
+	}
 	subscriptionStore := subscriptions.NewRedisStore(redisStore, subscriptionService, cfg.RedisCacheTTL, logger)
 	subscriptionStore.SyncVersion(ctx)
 	if err := subscriptionStore.WarmSnapshot(ctx); err != nil {
@@ -94,7 +108,7 @@ func NewProxy(ctx context.Context, cfg config.ProxyConfig, logger *slog.Logger, 
 	if cfg.UsageCost.Enabled {
 		usageRecorder.WithEstimatedCosts(cfg.UsageCost.Input, cfg.UsageCost.Output, cfg.UsageCost.Embedding)
 	}
-	recorder := subscriptions.NewQuotaRecorder(usageRecorder, subscriptionStore, logger)
+	recorder := subscriptions.NewQuotaRecorder(localproxy.NewPrivacyRecorder(usageRecorder), subscriptionStore, logger)
 	proxyHTTPClient := &http.Client{Timeout: cfg.ProxyUpstreamTimeout}
 	caHTTPClient, err := platformhttp.NewWithCAFile(cfg.CAFile, cfg.ProxyUpstreamTimeout)
 	if err != nil {
@@ -156,7 +170,7 @@ func NewProxy(ctx context.Context, cfg config.ProxyConfig, logger *slog.Logger, 
 		debugRequestWriter = httpmiddleware.NewJSONLineWriter(os.Stdout)
 		_ = debugRequestWriter.WriteStartupWarning()
 	}
-	runtime.Handler = runtime.buildHandler(cfg, tokenService, userService, authCache, policyEvaluator, opaClient, accessSnapshot, redisRecorder, debugRequestWriter)
+	runtime.Handler = runtime.buildHandler(cfg, tokenService, userService, authCache, policyEvaluator, opaClient, accessSnapshot, redisRecorder, modelLabService, debugRequestWriter)
 	success = true
 	telemetryReady = true
 	return runtime, nil

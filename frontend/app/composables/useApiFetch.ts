@@ -4,6 +4,7 @@ import { BLOCKED_ROUTE_PATH, resolveRuntimeApiBaseUrl } from '~/utils/auth'
 
 type ApiFetchOptions = NonNullable<Parameters<typeof $fetch>[1]> & {
   headers?: HeadersInit
+  redirectOnAccessError?: boolean
 }
 
 // useApiFetch returns an authenticated API fetcher with access redirects.
@@ -17,6 +18,7 @@ export function useApiFetch() {
     request: string,
     options: ApiFetchOptions = {},
   ) {
+    const { redirectOnAccessError = true, ...fetchOptions } = options
     await authStore.waitUntilReady()
 
     if (!authStore.isAuthenticated) {
@@ -33,7 +35,7 @@ export function useApiFetch() {
 
     try {
       return await $fetch<T>(request, {
-        ...options,
+        ...fetchOptions,
         baseURL: resolveRuntimeApiBaseUrl(runtimeConfig.public.apiBaseUrl),
         credentials: 'include',
       } as Parameters<typeof $fetch>[1])
@@ -47,7 +49,11 @@ export function useApiFetch() {
         })
       }
 
-      if (error instanceof FetchError && error.response?.status === 403) {
+      if (
+        redirectOnAccessError &&
+        error instanceof FetchError &&
+        error.response?.status === 403
+      ) {
         const stillAuthenticated = await authStore.refresh()
 
         if (!stillAuthenticated) {

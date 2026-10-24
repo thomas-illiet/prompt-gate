@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	"promptgate/backend/internal/platform/requestprivacy"
 )
 
 const debugRequestEvent = "proxy_request_debug"
@@ -35,6 +37,7 @@ func (w *JSONLineWriter) WriteStartupWarning() error {
 func (w *JSONLineWriter) DebugRequests(maxBodyBytes int64) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+			privacyContext := request.Context()
 			info := debugRequestInfo{
 				method:     request.Method,
 				scheme:     requestScheme(request),
@@ -45,13 +48,20 @@ func (w *JSONLineWriter) DebugRequests(maxBodyBytes int64) Middleware {
 				remoteAddr: request.RemoteAddr,
 				headers:    request.Header.Clone(),
 			}
-			capture := &boundedCapture{limit: maxBodyBytes}
+			capture := &boundedCapture{
+				limit: maxBodyBytes,
+				contentAllowed: func() bool {
+					return !requestprivacy.IsMetadataOnly(privacyContext)
+				},
+			}
 			body := request.Body
 			if body != nil {
 				body = &mirroredReadCloser{Reader: io.TeeReader(body, capture), Closer: body}
 				request.Body = body
 			}
-			defer func() { _ = w.writeRequest(info, capture) }()
+			defer func() {
+				_ = w.writeRequest(info, capture, requestprivacy.IsMetadataOnly(privacyContext))
+			}()
 
 			next.ServeHTTP(response, request)
 		})
@@ -75,12 +85,18 @@ type mirroredReadCloser struct {
 }
 
 type boundedCapture struct {
-	data      []byte
-	limit     int64
-	truncated bool
+	data           []byte
+	limit          int64
+	truncated      bool
+	contentAllowed func() bool
 }
 
 func (capture *boundedCapture) Write(data []byte) (int, error) {
+	if capture.contentAllowed != nil && !capture.contentAllowed() {
+		capture.data = nil
+		capture.truncated = false
+		return len(data), nil
+	}
 	remaining := capture.limit - int64(len(capture.data))
 	if remaining > 0 {
 		kept := int64(len(data))
@@ -95,21 +111,25 @@ func (capture *boundedCapture) Write(data []byte) (int, error) {
 	return len(data), nil
 }
 
-func (w *JSONLineWriter) writeRequest(info debugRequestInfo, capture *boundedCapture) error {
+func (w *JSONLineWriter) writeRequest(info debugRequestInfo, capture *boundedCapture, metadataOnly bool) error {
 	event := map[string]any{
-		"timestamp":   time.Now().UTC().Format(time.RFC3339Nano),
-		"level":       "DEBUG",
-		"event":       debugRequestEvent,
-		"method":      info.method,
-		"scheme":      info.scheme,
-		"host":        info.host,
-		"path":        info.path,
-		"raw_query":   info.rawQuery,
-		"protocol":    info.protocol,
-		"remote_addr": info.remoteAddr,
-		"headers":     info.headers,
-		"body":        debugRequestBody(capture.data, capture.truncated),
+		"timestamp": time.Now().UTC().Format(time.RFC3339Nano),
+		"level":     "DEBUG",
+		"event":     debugRequestEvent,
+		"method":    info.method,
+		"path":      info.path,
+		"protocol":  info.protocol,
 	}
+	if metadataOnly {
+		event["privacy_mode"] = "metadata_only"
+		return w.write(event)
+	}
+	event["scheme"] = info.scheme
+	event["host"] = info.host
+	event["remote_addr"] = info.remoteAddr
+	event["raw_query"] = info.rawQuery
+	event["headers"] = info.headers
+	event["body"] = debugRequestBody(capture.data, capture.truncated)
 	if capture.truncated {
 		event["body_truncated"] = true
 	}

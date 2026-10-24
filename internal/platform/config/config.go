@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 	"math"
@@ -118,6 +119,19 @@ type UsageCostConfig struct {
 	Embedding float64
 }
 
+// ModelLabConfig controls the user-facing model catalog and ephemeral playground.
+// The same values are loaded by the API and proxy processes so tickets issued by
+// the API can be validated and constrained by the proxy.
+type ModelLabConfig struct {
+	TicketTTL       time.Duration
+	MaxPromptBytes  int64
+	MaxOutputTokens int
+	MaxTargets      int
+	MaxConcurrent   int
+	CatalogFreshTTL time.Duration
+	CatalogStaleTTL time.Duration
+}
+
 // OTelConfig controls OpenTelemetry trace export from the proxy process.
 type OTelConfig struct {
 	Enabled            bool
@@ -151,6 +165,7 @@ type APIConfig struct {
 	APIHTTPConfig
 	ScheduleIntervals
 	ProxyRuntimeConfig
+	ModelLab  ModelLabConfig
 	UsageCost UsageCostConfig
 }
 
@@ -180,6 +195,7 @@ type ProxyConfig struct {
 	SecretsConfig
 	PublicURLConfig
 	ProxyRuntimeConfig
+	ModelLab  ModelLabConfig
 	OTel      OTelConfig
 	UsageCost UsageCostConfig
 }
@@ -252,6 +268,65 @@ func loadSecretsConfig(v *viper.Viper) SecretsConfig {
 		JWTSecret:  strings.TrimSpace(v.GetString("jwt_secret")),
 		SecretsKey: strings.TrimSpace(v.GetString("secrets_key")),
 	}
+}
+
+func setModelLabDefaults(v *viper.Viper) {
+	v.SetDefault("model_lab_ticket_ttl", "60s")
+	v.SetDefault("model_lab_max_prompt_bytes", 32*1024)
+	v.SetDefault("model_lab_max_output_tokens", 4096)
+	v.SetDefault("model_lab_max_targets", 3)
+	v.SetDefault("model_lab_max_concurrent", 3)
+	v.SetDefault("model_lab_catalog_fresh_ttl", "5m")
+	v.SetDefault("model_lab_catalog_stale_ttl", "24h")
+}
+
+func loadModelLabConfig(v *viper.Viper) ModelLabConfig {
+	return ModelLabConfig{
+		TicketTTL:       v.GetDuration("model_lab_ticket_ttl"),
+		MaxPromptBytes:  v.GetInt64("model_lab_max_prompt_bytes"),
+		MaxOutputTokens: v.GetInt("model_lab_max_output_tokens"),
+		MaxTargets:      v.GetInt("model_lab_max_targets"),
+		MaxConcurrent:   v.GetInt("model_lab_max_concurrent"),
+		CatalogFreshTTL: v.GetDuration("model_lab_catalog_fresh_ttl"),
+		CatalogStaleTTL: v.GetDuration("model_lab_catalog_stale_ttl"),
+	}
+}
+
+func validateModelLabConfig(cfg ModelLabConfig) error {
+	if cfg.TicketTTL <= 0 || cfg.TicketTTL > 5*time.Minute {
+		return errors.New("PROMPTGATE_MODEL_LAB_TICKET_TTL must be greater than zero and at most 5m")
+	}
+	if cfg.MaxPromptBytes <= 0 {
+		return errors.New("PROMPTGATE_MODEL_LAB_MAX_PROMPT_BYTES must be greater than zero")
+	}
+	if cfg.MaxOutputTokens <= 0 {
+		return errors.New("PROMPTGATE_MODEL_LAB_MAX_OUTPUT_TOKENS must be greater than zero")
+	}
+	if cfg.MaxTargets <= 0 || cfg.MaxTargets > 3 {
+		return errors.New("PROMPTGATE_MODEL_LAB_MAX_TARGETS must be between 1 and 3")
+	}
+	if cfg.MaxConcurrent <= 0 || cfg.MaxConcurrent > 3 {
+		return errors.New("PROMPTGATE_MODEL_LAB_MAX_CONCURRENT must be between 1 and 3")
+	}
+	if cfg.CatalogFreshTTL <= 0 {
+		return errors.New("PROMPTGATE_MODEL_LAB_CATALOG_FRESH_TTL must be greater than zero")
+	}
+	if cfg.CatalogStaleTTL < cfg.CatalogFreshTTL {
+		return errors.New("PROMPTGATE_MODEL_LAB_CATALOG_STALE_TTL must be greater than or equal to the fresh TTL")
+	}
+	return nil
+}
+
+func validateModelLabProxyBaseURL(value string) error {
+	parsed, err := url.Parse(value)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") ||
+		parsed.Host == "" || parsed.User != nil || parsed.RawPath != "" ||
+		parsed.EscapedPath() != parsed.Path ||
+		(parsed.Path != "" && path.Clean(parsed.Path) != parsed.Path) ||
+		parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" {
+		return errors.New("PROMPTGATE_PROXY_BASE_URL must be an HTTP(S) public URL with an optional normalized path and without credentials, encoded path, query, or fragment")
+	}
+	return nil
 }
 
 // loadUsageCostConfig reads dashboard-only usage cost settings.

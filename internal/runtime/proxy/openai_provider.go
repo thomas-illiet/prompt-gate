@@ -111,7 +111,7 @@ func (p *openAIProvider) CircuitBreakerConfig() *config.CircuitBreaker {
 	return p.inner.CircuitBreakerConfig()
 }
 
-// APIDumpDir returns the wrapped provider API dump directory.
-func (p *openAIProvider) APIDumpDir() string {
-	return p.inner.APIDumpDir()
+// APIDumpDir disables raw provider API dumps in Prompt Gate.
+func (*openAIProvider) APIDumpDir() string {
+	return ""
 }

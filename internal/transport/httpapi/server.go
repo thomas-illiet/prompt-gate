@@ -7,6 +7,7 @@ import (
 	"promptgate/backend/internal/domain/auth"
 	"promptgate/backend/internal/domain/faq"
 	"promptgate/backend/internal/domain/groups"
+	"promptgate/backend/internal/domain/modellab"
 	"promptgate/backend/internal/domain/monitoring"
 	"promptgate/backend/internal/domain/pricing"
 	"promptgate/backend/internal/domain/provider"
@@ -31,6 +32,7 @@ type Dependencies struct {
 	Groups        *groups.Service
 	Providers     *provider.Service
 	Monitoring    *monitoring.Service
+	ModelLab      *modellab.Service
 	Pricing       *pricing.Service
 	Proxy         *proxy.Service
 	Subscriptions *subscriptions.Service
@@ -54,6 +56,7 @@ func NewHandler(deps Dependencies) http.Handler {
 		proxyService:  deps.Proxy,
 		providers:     deps.Providers,
 		monitoring:    deps.Monitoring,
+		modelLab:      deps.ModelLab,
 		pricing:       deps.Pricing,
 		subscriptions: deps.Subscriptions,
 		setupGuides:   deps.SetupGuides,
@@ -79,6 +82,7 @@ func NewHandler(deps Dependencies) http.Handler {
 	registerRoutes(mux, sessionRoutes(), sessionAccessMiddlewares(deps.Sessions, deps.Config)...)
 	registerRoutes(mux, limitedRoutes(srv), limitedAccessMiddlewares(deps.Sessions, deps.Config)...)
 	registerRoutes(mux, userRoutes(srv), userAccessMiddlewares(deps.Sessions, deps.Config)...)
+	registerRoutes(mux, userModelLabRoutes(srv), modelLabAccessMiddlewares(deps.Sessions, deps.Config)...)
 	registerRoutes(mux, adminRoutes(adminHandler, openAPIHandler), adminAccessMiddlewares(deps.Sessions, deps.Config)...)
 
 	if deps.Config.StaticAssetsDir != "" {

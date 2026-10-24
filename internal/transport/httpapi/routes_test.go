@@ -23,10 +23,11 @@ func TestRouteInventoryIsCompleteAndUnique(t *testing.T) {
 		{name: "session", routes: sessionRoutes(), want: 1},
 		{name: "limited", routes: limitedRoutes(srv), want: 15},
 		{name: "user", routes: userRoutes(srv), want: 5},
+		{name: "model-lab", routes: userModelLabRoutes(srv), want: 2},
 		{name: "admin", routes: adminRoutes(adminHandler, openAPIHandler), want: 89},
 	}
 
-	seen := make(map[string]string, 115)
+	seen := make(map[string]string, 117)
 	for _, group := range groups {
 		if len(group.routes) != group.want {
 			t.Errorf("%s routes: got %d, want %d", group.name, len(group.routes), group.want)
@@ -46,8 +47,8 @@ func TestRouteInventoryIsCompleteAndUnique(t *testing.T) {
 		}
 	}
 
-	if len(seen) != 115 {
-		t.Errorf("route inventory: got %d routes, want 115", len(seen))
+	if len(seen) != 117 {
+		t.Errorf("route inventory: got %d routes, want 117", len(seen))
 	}
 	for _, removed := range []string{
 		"GET /api/v1/me/prompts",
@@ -96,6 +97,10 @@ func TestLimitedRouteBoundary(t *testing.T) {
 	for _, route := range userRoutes(srv) {
 		standard[route.pattern] = true
 	}
+	modelLab := make(map[string]bool)
+	for _, route := range userModelLabRoutes(srv) {
+		modelLab[route.pattern] = true
+	}
 
 	for _, allowed := range []string{
 		"GET /api/v1/me/usage",
@@ -121,6 +126,14 @@ func TestLimitedRouteBoundary(t *testing.T) {
 	} {
 		if limited[forbidden] || !standard[forbidden] {
 			t.Errorf("expected standard-only route %q", forbidden)
+		}
+	}
+	for _, restricted := range []string{
+		"GET /api/v1/me/models",
+		"POST /api/v1/me/model-lab/tickets",
+	} {
+		if limited[restricted] || standard[restricted] || !modelLab[restricted] {
+			t.Errorf("expected metadata-only Model Lab route %q", restricted)
 		}
 	}
 }

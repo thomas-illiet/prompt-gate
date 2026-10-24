@@ -54,6 +54,8 @@ routes require `user` or `admin`.
 | `POST` | `/api/v1/me/quota-resets/use` | Spend one credit to clear both live quota windows. Requires a non-blank `Idempotency-Key` of at most 512 characters. |
 | `GET` | `/api/v1/me/quota-resets/history` | List applied credit grants and uses, newest first, with `page` and `pageSize`. |
 | `GET` | `/api/v1/me/groups` | Access groups assigned to the current user. |
+| `GET` | `/api/v1/me/models` | Group-filtered Model Lab catalog with discovery freshness, price provenance, and metadata-only availability state. Requires role `user` or `admin`. |
+| `POST` | `/api/v1/me/model-lab/tickets` | Issues one short-lived, single-use proxy ticket per selected Model Lab target. Requires role `user` or `admin`. |
 | `GET` | `/api/v1/me/help/setup` | Provider setup helper with proxy base URLs and available models. |
 | `GET` | `/api/v1/me/dashboard/overview` | Current usage overview, optional previous-period comparison, and cost-coverage state. |
 | `GET` | `/api/v1/me/dashboard/tokens` | Token totals for a dashboard window. |
@@ -80,6 +82,41 @@ Dashboard overview responses always include `costCoverage`. A value of
 `complete` means retained raw usage covers the requested estimate period;
 `partial` reports the retained bounds, and `unavailable` omits
 `totals.estimatedCost` instead of presenting an incomplete zero value.
+
+### Model Lab
+
+Model Lab is always available to `user` and `admin` roles. Its catalog only
+contains providers and models allowed by the current user's groups. Discovery
+is concurrent and cached in Redis; a failed refresh can return the last known
+good catalog as `stale`, while a provider without usable metadata is reported
+as `unavailable`. `observedAvailability.state` remains `unknown` in this MVP:
+catalog discovery is not treated as evidence of successful generation traffic.
+Discovery uses the provider's OpenAI-compatible `/models` endpoint or
+Anthropic `/v1/models`. Administrators can set `config.modelLabModels` to an
+array of model IDs as an explicit fallback when live discovery is unavailable.
+The response `limits` object exposes the effective target, prompt-byte, and
+output-token limits so the playground can enforce the deployed configuration.
+
+Ticket requests contain one to three distinct `{providerName, model}` targets.
+The API chooses each exact proxy path and protocol, binds the ticket to the
+current account and browser origin, and returns it only once. Tickets expire
+after `PROMPTGATE_MODEL_LAB_TICKET_TTL` and cannot be replayed. Responses from
+both Model Lab endpoints use `Cache-Control: private, no-store`.
+A Redis-backed per-account budget atomically bounds unused outstanding tickets;
+consuming a ticket releases its slot, while abandoned slots expire with it.
+
+The chat accepts a text-only `messages` history with `stream: true`, an
+optional temperature from 0 through 1, and a bounded `max_tokens`. Messages
+must alternate strictly between `user` and `assistant`, start with `user`, and
+end with the current `user` message. The prompt-byte limit applies to the
+complete serialized request, not only the newest message. System messages,
+tools, files, audio, images, multimodal content, arbitrary paths, and automatic
+retries are rejected.
+
+Conversation history exists only in the current browser tab. Each generation
+uses a new ticket and the normal governed proxy path. Comparing a completed
+turn sends the same history snapshot to each selected alternative; every
+alternative is a separate request and consumes quota independently.
 
 ## Token Routes
 

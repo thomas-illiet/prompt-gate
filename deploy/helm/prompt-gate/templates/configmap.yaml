@@ -43,6 +43,13 @@ data:
   PROMPTGATE_PROXY_MAX_BUFFERED_REQUEST_BYTES: {{ .Values.config.proxyMaxBufferedRequestBytes | quote }}
   PROMPTGATE_PROXY_MAX_BUFFERED_RESPONSE_BYTES: {{ .Values.config.proxyMaxBufferedResponseBytes | quote }}
   PROMPTGATE_PROXY_UPSTREAM_TIMEOUT: {{ .Values.config.proxyUpstreamTimeout | quote }}
+  PROMPTGATE_MODEL_LAB_TICKET_TTL: {{ .Values.config.modelLabTicketTtl | quote }}
+  PROMPTGATE_MODEL_LAB_MAX_PROMPT_BYTES: {{ .Values.config.modelLabMaxPromptBytes | quote }}
+  PROMPTGATE_MODEL_LAB_MAX_OUTPUT_TOKENS: {{ .Values.config.modelLabMaxOutputTokens | quote }}
+  PROMPTGATE_MODEL_LAB_MAX_TARGETS: {{ .Values.config.modelLabMaxTargets | quote }}
+  PROMPTGATE_MODEL_LAB_MAX_CONCURRENT: {{ .Values.config.modelLabMaxConcurrent | quote }}
+  PROMPTGATE_MODEL_LAB_CATALOG_FRESH_TTL: {{ .Values.config.modelLabCatalogFreshTtl | quote }}
+  PROMPTGATE_MODEL_LAB_CATALOG_STALE_TTL: {{ .Values.config.modelLabCatalogStaleTtl | quote }}
   PROMPTGATE_WORKER_BATCH_SIZE: {{ .Values.config.workerBatchSize | quote }}
   PROMPTGATE_WORKER_BLOCK_TIMEOUT: {{ .Values.config.workerBlockTimeout | quote }}
   PROMPTGATE_WORKER_PENDING_IDLE_TIMEOUT: {{ .Values.config.workerPendingIdleTimeout | quote }}

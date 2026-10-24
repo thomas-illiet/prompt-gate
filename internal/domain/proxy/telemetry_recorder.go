@@ -11,6 +11,7 @@ import (
 	aibtracing "github.com/coder/aibridge/tracing"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
+	"promptgate/backend/internal/platform/requestprivacy"
 	proxyruntime "promptgate/backend/internal/runtime/proxy"
 )
 
@@ -63,7 +64,7 @@ func (r *TelemetryRecorder) RecordInterception(ctx context.Context, req *aibreco
 			attribute.String("promptgate.user_agent", req.UserAgent),
 			attribute.String("promptgate.credential.kind", req.CredentialKind),
 		)
-		if session, ok := proxyruntime.NativeSessionFromContext(ctx); ok {
+		if session, ok := proxyruntime.NativeSessionFromContext(ctx); ok && !requestprivacy.IsMetadataOnly(ctx) {
 			if session.SessionID != "" {
 				attrs = append(attrs,
 					attribute.String("session.id", session.SessionID),
@@ -77,7 +78,7 @@ func (r *TelemetryRecorder) RecordInterception(ctx context.Context, req *aibreco
 			if session.MessageID != "" {
 				attrs = append(attrs, attribute.String("promptgate.message.id", session.MessageID))
 			}
-		} else if req.ClientSessionID != nil {
+		} else if req.ClientSessionID != nil && !requestprivacy.IsMetadataOnly(ctx) {
 			attrs = append(attrs,
 				attribute.String("session.id", *req.ClientSessionID),
 				attribute.String(genAIConversationID, *req.ClientSessionID),

@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"promptgate/backend/internal/platform/clientip"
+	"promptgate/backend/internal/platform/requestprivacy"
 )
 
 // TestRequestLoggerOmitsQuery verifies credentials and OAuth parameters never reach request logs.
@@ -47,6 +48,36 @@ func TestRequestLoggerOmitsQuery(t *testing.T) {
 		if strings.Contains(output.String(), secret) {
 			t.Errorf("request log contains sensitive query value %q", secret)
 		}
+	}
+}
+
+func TestRequestLoggerOmitsClientMetadataForMetadataOnlyRequests(t *testing.T) {
+	var output bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&output, nil))
+	handler := requestprivacy.Middleware(RequestLogger(logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestprivacy.MarkMetadataOnly(r.Context())
+		w.WriteHeader(http.StatusNoContent)
+	})))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/me/model-lab/tickets", nil)
+	req.RemoteAddr = "203.0.113.10:4312"
+	req.Header.Set("User-Agent", "canary-user-agent")
+
+	handler.ServeHTTP(httptest.NewRecorder(), req)
+
+	var entry map[string]any
+	if err := json.NewDecoder(&output).Decode(&entry); err != nil {
+		t.Fatalf("decode request log: %v", err)
+	}
+	if entry["privacy_mode"] != "metadata_only" {
+		t.Fatalf("unexpected privacy event: %#v", entry)
+	}
+	for _, key := range []string{"remote_addr", "user_agent"} {
+		if _, exists := entry[key]; exists {
+			t.Fatalf("metadata-only request log contains %q: %#v", key, entry)
+		}
+	}
+	if strings.Contains(output.String(), "203.0.113.10") || strings.Contains(output.String(), "canary-user-agent") {
+		t.Fatalf("metadata-only request log leaked client metadata: %s", output.String())
 	}
 }
 

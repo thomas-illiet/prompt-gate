@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"promptgate/backend/internal/platform/config"
+	"promptgate/backend/internal/platform/requestprivacy"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -70,7 +71,7 @@ func NewProvider(ctx context.Context, cfg config.OTelConfig, logger *slog.Logger
 		return nil, fmt.Errorf("initialize OpenTelemetry resource: %w", err)
 	}
 	provider.tracerProvider = sdktrace.NewTracerProvider(
-		sdktrace.WithSampler(sdktrace.AlwaysSample()),
+		sdktrace.WithSampler(metadataOnlySampler{fallback: sdktrace.AlwaysSample()}),
 		sdktrace.WithResource(res),
 		sdktrace.WithBatcher(exporter,
 			sdktrace.WithBatchTimeout(cfg.BatchTimeout),
@@ -84,6 +85,21 @@ func NewProvider(ctx context.Context, cfg config.OTelConfig, logger *slog.Logger
 		logger.Error("OpenTelemetry export failed", "error", err)
 	}))
 	return provider, nil
+}
+
+type metadataOnlySampler struct {
+	fallback sdktrace.Sampler
+}
+
+func (s metadataOnlySampler) ShouldSample(parameters sdktrace.SamplingParameters) sdktrace.SamplingResult {
+	if requestprivacy.IsMetadataOnly(parameters.ParentContext) {
+		return sdktrace.SamplingResult{Decision: sdktrace.Drop}
+	}
+	return s.fallback.ShouldSample(parameters)
+}
+
+func (s metadataOnlySampler) Description() string {
+	return "PromptGateMetadataOnly{" + s.fallback.Description() + "}"
 }
 
 func serviceVersion() string {

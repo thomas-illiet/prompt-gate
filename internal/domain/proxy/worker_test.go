@@ -12,6 +12,7 @@ import (
 
 	"promptgate/backend/internal/platform/clientip"
 	"promptgate/backend/internal/platform/redisstore"
+	"promptgate/backend/internal/platform/requestprivacy"
 
 	"github.com/alicebob/miniredis/v2"
 	aibrecorder "github.com/coder/aibridge/recorder"
@@ -103,6 +104,24 @@ func TestRedisRecorderDoesNotEnqueuePrompts(t *testing.T) {
 	}
 	if srv.Exists(UsageEventsStream) {
 		t.Fatal("expected prompt recording to leave Redis untouched")
+	}
+}
+
+func TestRedisRecorderDoesNotPersistMetadataOnlyPolicyDenialIP(t *testing.T) {
+	srv := miniredis.RunT(t)
+	store, err := redisstore.NewRequired(context.Background(), "redis://"+srv.Addr(), time.Minute, nil)
+	if err != nil {
+		t.Fatalf("new redis store: %v", err)
+	}
+	defer store.Close()
+
+	recorder := NewRedisRecorder(store, nil)
+	ctx := requestprivacy.MarkMetadataOnly(context.Background())
+	if err := recorder.RecordPolicyDenial(ctx, "account-id", "198.51.100.77", "canary-reason", time.Now()); err != nil {
+		t.Fatalf("record policy denial: %v", err)
+	}
+	if srv.Exists(UsageEventsStream) {
+		t.Fatal("metadata-only policy denial must not create a PII-bearing Redis event")
 	}
 }
 

@@ -14,6 +14,7 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+	"promptgate/backend/internal/platform/requestprivacy"
 	proxyruntime "promptgate/backend/internal/runtime/proxy"
 )
 
@@ -177,6 +178,29 @@ func TestTelemetryRecorderMapsNativeSession(t *testing.T) {
 	} {
 		if got := attrs[key]; got != want {
 			t.Errorf("attribute %s: got %#v, want %#v", key, got, want)
+		}
+	}
+}
+
+func TestTelemetryRecorderSuppressesSessionMetadataForMetadataOnlyRequests(t *testing.T) {
+	spans := tracetest.NewSpanRecorder()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spans))
+	ctx := proxyruntime.WithNativeSession(context.Background(), proxyruntime.NativeSession{
+		SessionID: "prompt-shaped-secret", SessionSource: "x-session-id",
+		ParentSessionID: "parent-secret", MessageID: "message-secret",
+	})
+	ctx = requestprivacy.MarkMetadataOnly(ctx)
+	ctx, span := provider.Tracer("test").Start(ctx, "interception")
+	fallback := "fallback-secret"
+	recorder := NewTelemetryRecorder(noopTelemetryRecorder{}, false)
+	if err := recorder.RecordInterception(ctx, &aibrecorder.InterceptionRecord{ID: "id", ClientSessionID: &fallback}); err != nil {
+		t.Fatalf("record interception: %v", err)
+	}
+	span.End()
+	attrs := spanAttributes(spans.Ended()[0])
+	for _, key := range []string{"session.id", "gen_ai.conversation.id", "promptgate.session.source", "promptgate.parent_session.id", "promptgate.message.id"} {
+		if _, ok := attrs[key]; ok {
+			t.Fatalf("metadata-only request exported %s: %#v", key, attrs[key])
 		}
 	}
 }

@@ -44,6 +44,28 @@ completions, embeddings, Anthropic messages, and Responses API operations. A
 quota reset advances a per-account Redis barrier and clears both live rolling
 windows without deleting PostgreSQL usage, interception, or dashboard KPI data.
 
+### Model Lab ticket path
+
+The proxy recognizes Model Lab bearer tokens prefixed
+with `pgml_`. These are dedicated, short-lived browser tickets, not regular
+Prompt Gate API tokens. The proxy verifies their signature and exact method,
+path, model, provider, protocol, account, expiry, and browser origin; validates
+and canonicalizes the bounded text-only conversation history; then atomically
+consumes the Redis record. Messages must alternate between `user` and
+`assistant`, start with `user`, and end with the current `user` message. Replays
+and expired tickets return the same generic `401`.
+If `PROMPTGATE_PROXY_BASE_URL` contains a public routing prefix, the edge must
+strip it before forwarding. The ticket is bound to the canonical post-rewrite
+path seen by the proxy, while the browser receives the prefixed public URL.
+
+An account can hold at most `PROMPTGATE_MODEL_LAB_MAX_CONCURRENT` active Model
+Lab leases. After ticket authentication, the request rejoins the canonical
+client-IP, OPA, group, subscription/quota, AIBridge, provider, and accounting
+pipeline. Each target therefore receives an independent authorization and
+quota decision. Redis failure is fail-closed and no provider request is made.
+Individual SSE frames and the cumulative stream are bounded; over-limit streams
+end with a generic event before their rejected bytes can reach the browser.
+
 ## Request Debug Mode
 
 Set `PROMPTGATE_PROXY_DEBUG_REQUESTS=true` only for short-lived diagnostics. The
@@ -61,6 +83,13 @@ body stream. Its diagnostic copy is bounded by
 `PROMPTGATE_PROXY_MAX_BUFFERED_REQUEST_BYTES`; only oversized requests include
 `body_truncated: true`, and their normal processing or rejection is unchanged.
 Responses are never logged.
+
+Model Lab requests are an enforced exception to the content behavior above.
+Once the `pgml_` prefix is recognized, debug output is reduced to method,
+path, protocol, and `privacy_mode=metadata_only`. It omits the origin/host,
+remote address, query, every header (including the ticket), and the body even
+when debug mode is globally enabled. Client-IP diagnostics and AI Bridge
+diagnostics are also suppressed for these requests.
 
 **Warning:** this mode writes passwords, JWTs, cookies, provider keys, prompts,
 and personal data to stdout in cleartext. Never leave it enabled in production,
@@ -142,6 +171,13 @@ create interceptions. Authenticated OPA denials still update the account IP
 history with the latest denial reason and timestamp for that account and IP.
 Allowed OPA decision reasons are not persisted.
 
+Model Lab records keep only the accounting metadata needed by these same
+controls: local account ID, provider/model, timestamps, token counts, cost,
+status, and duration/TTFT when available. Prompt text, response text, thinking,
+tool arguments, browser session IDs, names, email addresses, user agents, and
+the raw ticket are not persisted or exported. The stored credential provenance
+is the stable value `model_lab_ticket`, never a per-ticket identifier.
+
 ## Phoenix tracing
 
 Set `PROMPTGATE_OTEL_ENABLED=true` and configure
@@ -163,6 +199,13 @@ OpenInference reasoning message content. Disabling
 content capture does not make traces PII-free: textual
 account identity and tool arguments are still exported. Telemetry failures are
 fail-open and do not change proxy or quota behavior.
+
+The per-request Model Lab metadata-only policy overrides all three global
+content-capture switches. It drops Model Lab spans and AI Bridge diagnostic
+logs, and suppresses prompt, output, thinking, tool, session, IP, and personal
+identity content before Redis/PostgreSQL recorders, while retaining token and
+cost accounting. Provider error bodies and streaming error events are replaced
+with bounded generic errors before they reach the browser.
 
 Attribute families remain deliberately distinct during the migration:
 
@@ -233,6 +276,8 @@ The proxy uses Redis for:
 - config version counters
 - config reload pub/sub
 - asynchronous proxy usage and account IP events
+- Model Lab catalog last-known-good entries, one-time ticket records, and
+  per-account active-stream leases
 
 `PROMPTGATE_REDIS_CACHE_TTL` controls the default TTL for snapshots and cached
 auth records. Cached auth entries also never outlive the token's expiration.

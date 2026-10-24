@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 
@@ -107,6 +108,51 @@ func TestRebuildConstructsBridgeFromProvidersOnly(t *testing.T) {
 	}
 	if err := manager.Rebuild(ctx); err != nil {
 		t.Fatalf("rebuild bridge: %v", err)
+	}
+}
+
+func TestBuildProvidersDisableRawAPIDumps(t *testing.T) {
+	t.Setenv("BRIDGE_DUMP_DIR", t.TempDir())
+
+	ctx := context.Background()
+	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	cipher, err := secrets.NewCipher(base64.StdEncoding.EncodeToString(bytes.Repeat([]byte{2}, 32)))
+	if err != nil {
+		t.Fatalf("new cipher: %v", err)
+	}
+	providerService := provider.NewService(db, cipher)
+	if err := providerService.AutoMigrate(ctx); err != nil {
+		t.Fatalf("migrate providers: %v", err)
+	}
+	for _, input := range []provider.CreateProviderInput{
+		{Name: "openai-no-dump", Type: provider.ProviderTypeOpenAI, BaseURL: "https://api.openai.com/v1", APIKey: "openai-key", Enabled: true},
+		{Name: "anthropic-no-dump", Type: provider.ProviderTypeAnthropic, BaseURL: "https://api.anthropic.com", APIKey: "anthropic-key", Enabled: true},
+	} {
+		if _, err := providerService.CreateProvider(ctx, input); err != nil {
+			t.Fatalf("create provider %q: %v", input.Name, err)
+		}
+	}
+
+	manager := &Manager{opts: Options{Providers: providerService, Logger: slog.Default()}}
+	manager.buildBridge = func(_ context.Context, providers []coderbridge.Provider) (managedBridge, error) {
+		if len(providers) != 2 {
+			t.Fatalf("providers: got %d, want 2", len(providers))
+		}
+		for _, built := range providers {
+			if dumpDir := built.APIDumpDir(); dumpDir != "" {
+				t.Fatalf("provider %q retained raw API dump directory %q", built.Name(), dumpDir)
+			}
+		}
+		return &fakeManagedBridge{}, nil
+	}
+	if err := manager.Rebuild(ctx); err != nil {
+		t.Fatalf("rebuild bridge: %v", err)
+	}
+	if _, present := os.LookupEnv("BRIDGE_DUMP_DIR"); present {
+		t.Fatal("legacy AI Bridge dump environment variable was not cleared")
 	}
 }
 

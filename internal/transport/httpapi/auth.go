@@ -9,6 +9,7 @@ import (
 	"promptgate/backend/internal/domain/auth"
 	"promptgate/backend/internal/domain/faq"
 	"promptgate/backend/internal/domain/groups"
+	"promptgate/backend/internal/domain/modellab"
 	"promptgate/backend/internal/domain/monitoring"
 	"promptgate/backend/internal/domain/pricing"
 	"promptgate/backend/internal/domain/provider"
@@ -32,6 +33,7 @@ type server struct {
 	proxyService  *proxy.Service
 	providers     *provider.Service
 	monitoring    *monitoring.Service
+	modelLab      *modellab.Service
 	pricing       *pricing.Service
 	subscriptions *subscriptions.Service
 	setupGuides   *setupguide.Service

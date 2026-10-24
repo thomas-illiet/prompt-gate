@@ -29,6 +29,7 @@ func LoadApi() (APIConfig, error) {
 	v.SetDefault("usage_cost_input", "5.00")
 	v.SetDefault("usage_cost_output", "30.00")
 	v.SetDefault("usage_cost_embedding", "0.02")
+	setModelLabDefaults(v)
 
 	usageCost, err := loadUsageCostConfig(v)
 	if err != nil {
@@ -66,6 +67,7 @@ func LoadApi() (APIConfig, error) {
 		ProxyRuntimeConfig: ProxyRuntimeConfig{
 			ProxyReloadDebounce: v.GetDuration("proxy_reload_debounce"),
 		},
+		ModelLab:  loadModelLabConfig(v),
 		UsageCost: usageCost,
 	}
 
@@ -100,6 +102,9 @@ func LoadApi() (APIConfig, error) {
 	if cfg.ProxyBaseURL == "" {
 		cfg.ProxyBaseURL = deriveProxyBaseURL(cfg.BackendBaseURL, v.GetString("proxy_port"))
 	}
+	if err := validateModelLabProxyBaseURL(cfg.ProxyBaseURL); err != nil {
+		return APIConfig{}, err
+	}
 
 	if cfg.SessionTTL <= 0 {
 		return APIConfig{}, errors.New("PROMPTGATE_SESSION_TTL must be greater than zero")
@@ -115,6 +120,9 @@ func LoadApi() (APIConfig, error) {
 
 	if cfg.SecretsKey == "" {
 		return APIConfig{}, errors.New("PROMPTGATE_SECRETS_KEY is required")
+	}
+	if err := validateModelLabConfig(cfg.ModelLab); err != nil {
+		return APIConfig{}, err
 	}
 
 	if cfg.RedisURL == "" {

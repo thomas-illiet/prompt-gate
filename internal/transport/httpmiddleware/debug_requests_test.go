@@ -8,6 +8,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"promptgate/backend/internal/platform/requestprivacy"
 )
 
 func TestDebugRequestsLogsJSONBodyAndOriginalRequestMetadata(t *testing.T) {
@@ -134,6 +136,36 @@ func TestDebugRequestsLogsJSONArrayAsStructuredData(t *testing.T) {
 	body := event["body"].([]any)
 	if len(body) != 2 || body[0] != float64(1) || body[1] != "two" {
 		t.Fatalf("JSON array was not structured: %#v", body)
+	}
+}
+
+func TestDebugRequestsOmitsMetadataOnlyHeadersQueryAndBody(t *testing.T) {
+	var output bytes.Buffer
+	logger := NewJSONLineWriter(&output)
+	handler := requestprivacy.Middleware(logger.DebugRequests(1024)(http.HandlerFunc(func(_ http.ResponseWriter, request *http.Request) {
+		request = request.WithContext(requestprivacy.MarkMetadataOnly(request.Context()))
+		_, _ = io.Copy(io.Discard, request.Body)
+	})))
+
+	request := httptest.NewRequest(http.MethodPost, "https://proxy.example/provider/v1/messages?canary-query-secret=true", strings.NewReader(`{"prompt":"canary-body-secret"}`))
+	request.RemoteAddr = "198.51.100.77:4242"
+	request.Header.Set("Authorization", "Bearer pgml_canary-ticket-secret")
+	request.Header.Set("X-Canary", "canary-header-secret")
+	handler.ServeHTTP(httptest.NewRecorder(), request)
+
+	event := decodeDebugEvent(t, output.Bytes())
+	if event["privacy_mode"] != "metadata_only" || event["path"] != "/provider/v1/messages" {
+		t.Fatalf("unexpected metadata-only event: %#v", event)
+	}
+	for _, key := range []string{"scheme", "host", "remote_addr", "raw_query", "headers", "body", "body_truncated"} {
+		if _, present := event[key]; present {
+			t.Fatalf("metadata-only event contains %q: %#v", key, event)
+		}
+	}
+	for _, secret := range []string{"canary-query-secret", "canary-body-secret", "canary-ticket-secret", "canary-header-secret"} {
+		if bytes.Contains(output.Bytes(), []byte(secret)) {
+			t.Fatalf("metadata-only debug event leaked %q: %s", secret, output.String())
+		}
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"os"
 
 	coderbridge "github.com/coder/aibridge"
 
@@ -50,6 +51,14 @@ func (m *Manager) buildProviders(ctx context.Context) ([]coderbridge.Provider, e
 }
 
 func (m *Manager) buildProvider(record localprovider.Provider, opts providerRuntimeOptions) (coderbridge.Provider, error) {
+	// AI Bridge historically enables raw request/response dumps from this
+	// environment variable when no explicit directory is supplied. Prompt Gate
+	// never exposes raw API dumps, so clear the legacy upstream switch before
+	// every initial build and hot reload.
+	if err := os.Unsetenv("BRIDGE_DUMP_DIR"); err != nil {
+		return nil, fmt.Errorf("disable AI Bridge API dumps: %w", err)
+	}
+
 	apiKey, err := m.opts.Providers.DecryptAPIKey(record)
 	if err != nil {
 		return nil, fmt.Errorf("decrypt provider %q api key: %w", record.Name, err)

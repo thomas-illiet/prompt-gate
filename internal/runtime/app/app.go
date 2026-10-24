@@ -13,6 +13,7 @@ import (
 	"promptgate/backend/internal/domain/auth"
 	"promptgate/backend/internal/domain/faq"
 	"promptgate/backend/internal/domain/groups"
+	"promptgate/backend/internal/domain/modellab"
 	"promptgate/backend/internal/domain/monitoring"
 	"promptgate/backend/internal/domain/pricing"
 	"promptgate/backend/internal/domain/provider"
@@ -39,6 +40,7 @@ type App struct {
 	Groups        *groups.Service
 	Providers     *provider.Service
 	Monitoring    *monitoring.Service
+	ModelLab      *modellab.Service
 	Pricing       *pricing.Service
 	Proxy         *proxy.Service
 	Subscriptions *subscriptions.Service
@@ -160,6 +162,29 @@ func newServices(ctx context.Context, cfg serviceConfig, apiCfg *config.APIConfi
 		return nil, fmt.Errorf("warm subscription snapshot: %w", err)
 	}
 
+	var modelLabService *modellab.Service
+	if apiCfg != nil {
+		catalogHTTPClient := &http.Client{Timeout: 3 * time.Second}
+		if caHTTPClient != nil {
+			catalogHTTPClient.Transport = caHTTPClient.Transport
+		}
+		modelLabService, err = modellab.NewService(providerService, pricingService, redisStore, modellab.Options{
+			TicketSecret:       apiCfg.SecretsKey,
+			ProxyBaseURL:       apiCfg.ProxyBaseURL,
+			TicketTTL:          apiCfg.ModelLab.TicketTTL,
+			CatalogFreshFor:    apiCfg.ModelLab.CatalogFreshTTL,
+			CatalogLastGoodFor: apiCfg.ModelLab.CatalogStaleTTL,
+			MaxTargets:         apiCfg.ModelLab.MaxTargets,
+			MaxConcurrent:      apiCfg.ModelLab.MaxConcurrent,
+			MaxPromptBytes:     apiCfg.ModelLab.MaxPromptBytes,
+			MaxOutputTokens:    apiCfg.ModelLab.MaxOutputTokens,
+			HTTPClient:         catalogHTTPClient,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("initialize model lab: %w", err)
+		}
+	}
+
 	var sessionStore *auth.SessionStore
 	var oidcService *auth.OIDCService
 	if apiCfg != nil && (apiCfg.KeycloakIssuerURL != "" || apiCfg.KeycloakJWKSURL != "") {
@@ -196,6 +221,7 @@ func newServices(ctx context.Context, cfg serviceConfig, apiCfg *config.APIConfi
 		Groups:        groupService,
 		Providers:     providerService,
 		Monitoring:    monitoringService,
+		ModelLab:      modelLabService,
 		Pricing:       pricingService,
 		Proxy:         proxyService,
 		Subscriptions: subscriptionService,

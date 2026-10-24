@@ -14,6 +14,13 @@ func userRoutes(srv *server) []routeDefinition {
 	return routes
 }
 
+func userModelLabRoutes(srv *server) []routeDefinition {
+	return []routeDefinition{
+		{pattern: "GET /api/v1/me/models", handler: srv.handleModelLabCatalog},
+		{pattern: "POST /api/v1/me/model-lab/tickets", handler: srv.handleIssueModelLabTickets},
+	}
+}
+
 func limitedRoutes(srv *server) []routeDefinition {
 	routes := make([]routeDefinition, 0, 15)
 	routes = append(routes, currentUserRoutes(srv)...)

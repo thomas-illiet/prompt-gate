@@ -10,6 +10,7 @@ import (
 
 	"promptgate/backend/internal/platform/clientip"
 	"promptgate/backend/internal/platform/redisstore"
+	"promptgate/backend/internal/platform/requestprivacy"
 
 	aibrecorder "github.com/coder/aibridge/recorder"
 	"github.com/google/uuid"
@@ -60,6 +61,9 @@ func (r *RedisRecorder) RecordInterception(ctx context.Context, req *aibrecorder
 
 // RecordPolicyDenial enqueues the latest authenticated OPA denial for an account IP.
 func (r *RedisRecorder) RecordPolicyDenial(ctx context.Context, accountID, clientIP, reason string, deniedAt time.Time) error {
+	if requestprivacy.IsMetadataOnly(ctx) {
+		return nil
+	}
 	event := newUsageEvent(UsageEventPolicyDenied)
 	event.PolicyDenied = &PolicyDeniedEvent{
 		AccountID: accountID,

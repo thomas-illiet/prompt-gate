@@ -49,6 +49,7 @@ func setRequiredProxyEnv(t *testing.T) {
 	t.Setenv("PROMPTGATE_JWT_SECRET", "0123456789abcdef0123456789abcdef")
 	t.Setenv("PROMPTGATE_SECRETS_KEY", "0123456789abcdef0123456789abcdef")
 	t.Setenv("PROMPTGATE_OPA_URL", "http://opa:8181")
+	t.Setenv("PROMPTGATE_PROXY_BASE_URL", "https://proxy.example.com")
 }
 
 // TestLoadProxyOTelDefaults verifies telemetry is safely disabled by default.
@@ -63,6 +64,74 @@ func TestLoadProxyOTelDefaults(t *testing.T) {
 	}
 	if cfg.OTel.ProjectName != "prompt-gate" || cfg.OTel.ServiceName != "promptgate-proxy" {
 		t.Fatalf("unexpected telemetry defaults: %#v", cfg.OTel)
+	}
+}
+
+func TestModelLabDefaults(t *testing.T) {
+	setRequiredAPIEnv(t)
+	apiCfg, err := LoadApi()
+	if err != nil {
+		t.Fatalf("load api config: %v", err)
+	}
+	if apiCfg.ModelLab.TicketTTL != time.Minute || apiCfg.ModelLab.MaxTargets != 3 || apiCfg.ModelLab.MaxConcurrent != 3 {
+		t.Fatalf("unexpected Model Lab defaults: %#v", apiCfg.ModelLab)
+	}
+}
+
+func TestLoadModelLabConfiguration(t *testing.T) {
+	setRequiredProxyEnv(t)
+	t.Setenv("PROMPTGATE_MODEL_LAB_TICKET_TTL", "90s")
+	t.Setenv("PROMPTGATE_MODEL_LAB_MAX_PROMPT_BYTES", "16384")
+	t.Setenv("PROMPTGATE_MODEL_LAB_MAX_OUTPUT_TOKENS", "2048")
+	t.Setenv("PROMPTGATE_MODEL_LAB_MAX_TARGETS", "2")
+	t.Setenv("PROMPTGATE_MODEL_LAB_MAX_CONCURRENT", "2")
+
+	cfg, err := LoadProxy()
+	if err != nil {
+		t.Fatalf("load proxy config: %v", err)
+	}
+	if cfg.ModelLab.TicketTTL != 90*time.Second || cfg.ModelLab.MaxPromptBytes != 16384 || cfg.ModelLab.MaxOutputTokens != 2048 || cfg.ModelLab.MaxTargets != 2 || cfg.ModelLab.MaxConcurrent != 2 {
+		t.Fatalf("unexpected Model Lab config: %#v", cfg.ModelLab)
+	}
+}
+
+func TestModelLabRejectsUnsafeProxyPublicURL(t *testing.T) {
+	for _, load := range []struct {
+		name    string
+		prepare func(*testing.T)
+		call    func() error
+	}{
+		{name: "api", prepare: setRequiredAPIEnv, call: func() error { _, err := LoadApi(); return err }},
+		{name: "proxy", prepare: setRequiredProxyEnv, call: func() error { _, err := LoadProxy(); return err }},
+	} {
+		t.Run(load.name, func(t *testing.T) {
+			load.prepare(t)
+			t.Setenv("PROMPTGATE_PROXY_BASE_URL", "https://proxy.example.com/remote?token=secret")
+
+			if err := load.call(); err == nil || !strings.Contains(err.Error(), "without credentials, encoded path, query, or fragment") {
+				t.Fatalf("expected Model Lab public URL validation, got %v", err)
+			}
+		})
+	}
+}
+
+func TestModelLabAllowsStrippedPublicProxyRoutingPrefix(t *testing.T) {
+	for _, load := range []struct {
+		name    string
+		prepare func(*testing.T)
+		call    func() error
+	}{
+		{name: "api", prepare: setRequiredAPIEnv, call: func() error { _, err := LoadApi(); return err }},
+		{name: "proxy", prepare: setRequiredProxyEnv, call: func() error { _, err := LoadProxy(); return err }},
+	} {
+		t.Run(load.name, func(t *testing.T) {
+			load.prepare(t)
+			t.Setenv("PROMPTGATE_PROXY_BASE_URL", "https://proxy.example.com/remote")
+
+			if err := load.call(); err != nil {
+				t.Fatalf("expected stripped public routing prefix to be accepted, got %v", err)
+			}
+		})
 	}
 }
 
@@ -538,9 +607,11 @@ func TestLoadProxyReadsSessionAndCORSConfig(t *testing.T) {
 	t.Setenv("PROMPTGATE_SECRETS_KEY", "0123456789abcdef0123456789abcdef")
 	t.Setenv("PROMPTGATE_REDIS_URL", "redis://localhost:6379/0")
 	t.Setenv("PROMPTGATE_FRONTEND_BASE_URL", "http://localhost:3000")
+	t.Setenv("PROMPTGATE_PROXY_BASE_URL", "https://proxy.example.com")
 	t.Setenv("PROMPTGATE_SESSION_COOKIE_NAME", "custom_session")
 	t.Setenv("PROMPTGATE_SESSION_TTL", "12h")
 	t.Setenv("PROMPTGATE_PROXY_MAX_BUFFERED_REQUEST_BYTES", "1024")
+	t.Setenv("PROMPTGATE_MODEL_LAB_MAX_PROMPT_BYTES", "512")
 	t.Setenv("PROMPTGATE_PROXY_MAX_BUFFERED_RESPONSE_BYTES", "2048")
 	t.Setenv("PROMPTGATE_PROXY_UPSTREAM_TIMEOUT", "3m")
 	t.Setenv("PROMPTGATE_PROXY_CLIENT_IP_DEBUG", "true")
@@ -583,6 +654,7 @@ func TestLoadProxyReadsTrustedProxies(t *testing.T) {
 	t.Setenv("PROMPTGATE_JWT_SECRET", "0123456789abcdef0123456789abcdef")
 	t.Setenv("PROMPTGATE_SECRETS_KEY", "0123456789abcdef0123456789abcdef")
 	t.Setenv("PROMPTGATE_REDIS_URL", "redis://localhost:6379/0")
+	t.Setenv("PROMPTGATE_PROXY_BASE_URL", "https://proxy.example.com")
 	t.Setenv("PROMPTGATE_PROXY_TRUSTED_PROXIES", "10.0.0.0/8, 192.168.0.0/16")
 	t.Setenv("PROMPTGATE_OPA_URL", "http://opa:8181")
 

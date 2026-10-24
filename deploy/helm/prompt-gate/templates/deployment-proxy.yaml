@@ -61,11 +61,13 @@ spec:
           {{- include "prompt-gate.envFrom" . | nindent 10 }}
           {{- if or (ne (include "prompt-gate.otelApiKeyValue" .) "") (ne (default "" .Values.otelApiKey.existingSecret.name | toString | trim) "") }}
           env:
+            {{- if or (ne (include "prompt-gate.otelApiKeyValue" .) "") (ne (default "" .Values.otelApiKey.existingSecret.name | toString | trim) "") }}
             - name: PROMPTGATE_OTEL_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: {{ include "prompt-gate.otelApiKeySecretName" . }}
                   key: {{ include "prompt-gate.otelApiKeySecretKey" . }}
+            {{- end }}
           {{- end }}
           securityContext:
             {{- include "prompt-gate.containerSecurityContext" . | nindent 12 }}

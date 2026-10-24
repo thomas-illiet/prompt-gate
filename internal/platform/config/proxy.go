@@ -50,6 +50,7 @@ func LoadProxy() (ProxyConfig, error) {
 	v.SetDefault("usage_cost_input", "5.00")
 	v.SetDefault("usage_cost_output", "30.00")
 	v.SetDefault("usage_cost_embedding", "0.02")
+	setModelLabDefaults(v)
 
 	trustedProxies, err := parseCIDRList(
 		v.GetString("proxy_trusted_proxies"),
@@ -73,6 +74,8 @@ func LoadProxy() (ProxyConfig, error) {
 		SecretsConfig:     loadSecretsConfig(v),
 		PublicURLConfig: PublicURLConfig{
 			FrontendBaseURL: strings.TrimRight(strings.TrimSpace(v.GetString("frontend_base_url")), "/"),
+			BackendBaseURL:  strings.TrimRight(strings.TrimSpace(v.GetString("backend_base_url")), "/"),
+			ProxyBaseURL:    strings.TrimRight(strings.TrimSpace(v.GetString("proxy_base_url")), "/"),
 		},
 		ProxyRuntimeConfig: ProxyRuntimeConfig{
 			ProxyTrustForwardHeaders:      v.GetBool("proxy_trust_forward_headers"),
@@ -89,6 +92,7 @@ func LoadProxy() (ProxyConfig, error) {
 			OPATimeout:                    v.GetDuration("opa_timeout"),
 			OPACacheTTL:                   v.GetDuration("opa_cache_ttl"),
 		},
+		ModelLab: loadModelLabConfig(v),
 		OTel: OTelConfig{
 			Enabled:            v.GetBool("otel_enabled"),
 			Endpoint:           strings.TrimSpace(v.GetString("otel_endpoint")),
@@ -121,11 +125,20 @@ func LoadProxy() (ProxyConfig, error) {
 	if cfg.SecretsKey == "" {
 		return ProxyConfig{}, errors.New("PROMPTGATE_SECRETS_KEY is required")
 	}
+	if err := validateModelLabConfig(cfg.ModelLab); err != nil {
+		return ProxyConfig{}, err
+	}
 	if cfg.SessionTTL <= 0 {
 		return ProxyConfig{}, errors.New("PROMPTGATE_SESSION_TTL must be greater than zero")
 	}
 	if cfg.RedisURL == "" {
 		return ProxyConfig{}, errors.New("PROMPTGATE_REDIS_URL is required")
+	}
+	if cfg.ProxyBaseURL == "" {
+		return ProxyConfig{}, errors.New("PROMPTGATE_PROXY_BASE_URL is required")
+	}
+	if err := validateModelLabProxyBaseURL(cfg.ProxyBaseURL); err != nil {
+		return ProxyConfig{}, err
 	}
 	if err := validateOptionalFile("PROMPTGATE_CA_FILE", cfg.CAFile); err != nil {
 		return ProxyConfig{}, err
@@ -135,6 +148,9 @@ func LoadProxy() (ProxyConfig, error) {
 	}
 	if cfg.ProxyMaxBufferedRequestBytes <= 0 {
 		return ProxyConfig{}, errors.New("PROMPTGATE_PROXY_MAX_BUFFERED_REQUEST_BYTES must be greater than zero")
+	}
+	if cfg.ModelLab.MaxPromptBytes > cfg.ProxyMaxBufferedRequestBytes {
+		return ProxyConfig{}, errors.New("PROMPTGATE_MODEL_LAB_MAX_PROMPT_BYTES must not exceed PROMPTGATE_PROXY_MAX_BUFFERED_REQUEST_BYTES")
 	}
 	if cfg.ProxyMaxBufferedResponseBytes <= 0 {
 		return ProxyConfig{}, errors.New("PROMPTGATE_PROXY_MAX_BUFFERED_RESPONSE_BYTES must be greater than zero")

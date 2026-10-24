@@ -42,6 +42,7 @@ func assembledAPIRoutes(t *testing.T) map[string]struct{} {
 		sessionRoutes(),
 		limitedRoutes(srv),
 		userRoutes(srv),
+		userModelLabRoutes(srv),
 		adminRoutes(adminHandler, openAPIHandler),
 	}
 

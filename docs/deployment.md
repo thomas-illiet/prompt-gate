@@ -65,7 +65,8 @@ reference.
 3. Create runtime secrets:
    `PROMPTGATE_JWT_SECRET`, `PROMPTGATE_SECRETS_KEY`, database credentials,
    Redis credentials, OIDC client secret when needed, and
-   `PROMPTGATE_ADMIN_API_KEY` when enabling non-browser administration.
+   `PROMPTGATE_ADMIN_API_KEY` when enabling non-browser administration. API and
+   proxy reuse the same `PROMPTGATE_SECRETS_KEY` value for Model Lab tickets.
 4. Run migrations with `/app/promptgate migrate`.
 5. Start the API with `/app/promptgate api`.
 6. Start the proxy with `/app/promptgate proxy`.
@@ -73,6 +74,22 @@ reference.
 8. Start the scheduler with `/app/promptgate schedule`.
 9. Configure providers, users, service accounts, tokens, and the external OPA policy
    through the admin API or frontend.
+
+Model Lab is always enabled for `user` and `admin` roles. Configure the same
+browser-visible HTTP(S) URL in `PROMPTGATE_PROXY_BASE_URL` on API and proxy. If
+that URL contains a routing prefix such as the
+Helm chart's `/remote`, the edge must strip it before forwarding to the proxy.
+Control exposure through roles and access groups. Verify that tickets are one-time,
+three-stream limits hold, quota/accounting are exact, and a unique canary prompt
+is absent from logs, Redis event payloads, PostgreSQL content, OTel spans,
+browser storage, URLs, and error responses before broadening access. Rolling
+back the release invalidates no durable Model Lab state; outstanding tickets
+expire after their configured short TTL.
+
+When upgrading from the one-turn playground to multi-turn chat, deploy the API
+and proxy before the frontend. The expanded validator remains compatible with
+old one-message requests, while the new frontend requires the backend to accept
+alternating conversation history.
 
 The user pre-creation migration makes the OIDC subject and last-login columns
 nullable. During an upgrade to the first version that supports pre-creation,

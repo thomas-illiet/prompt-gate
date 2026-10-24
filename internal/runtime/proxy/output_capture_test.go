@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"promptgate/backend/internal/platform/requestprivacy"
+
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
@@ -86,6 +88,51 @@ func TestOutputCaptureMiddlewareOmitsUnsafeResponses(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestOutputCaptureMiddlewareDoesNotBufferMetadataOnlyResponses(t *testing.T) {
+	const secret = `{"choices":[{"message":{"content":"canary-output-secret","reasoning_content":"canary-thinking-secret"}}]}`
+	spans := tracetest.NewSpanRecorder()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spans))
+	handler := requestprivacy.Middleware(OutputCaptureMiddleware(4096, true, true)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r = r.WithContext(requestprivacy.MarkMetadataOnly(r.Context()))
+		_, span := provider.Tracer("test").Start(r.Context(), "interception")
+		BindOutputSpan(r.Context(), span)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(secret))
+		PublishOutput(context.WithoutCancel(r.Context()))
+		capture := outputCaptureFromContext(r.Context())
+		capture.mu.Lock()
+		buffered := capture.buffer.Len()
+		capture.mu.Unlock()
+		if buffered != 0 {
+			t.Fatalf("metadata-only response retained %d bytes", buffered)
+		}
+		span.End()
+	})))
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/", nil))
+	if recorder.Body.String() != secret {
+		t.Fatalf("client-visible response changed: %q", recorder.Body.String())
+	}
+	attrs := spanAttributesForOutputCapture(spans.Ended()[0])
+	for _, key := range []string{
+		openInferenceOutputValue,
+		"llm.output_messages.0.message.contents.0.message_content.text",
+	} {
+		if _, exists := attrs[key]; exists {
+			t.Fatalf("metadata-only response exported %s: %#v", key, attrs)
+		}
+	}
+}
+
+func spanAttributesForOutputCapture(span sdktrace.ReadOnlySpan) map[string]any {
+	attrs := make(map[string]any)
+	for _, attr := range span.Attributes() {
+		attrs[string(attr.Key)] = attr.Value.AsInterface()
+	}
+	return attrs
 }
 
 func captureHandlerOutput(t *testing.T, contentType string, chunks []string, maxBytes int64, statusCode int, captureOutput, captureThinking bool) (string, map[string]any) {

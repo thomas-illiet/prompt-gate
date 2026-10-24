@@ -62,12 +62,14 @@ spec:
           {{- include "prompt-gate.envFrom" . | nindent 10 }}
           {{- if or (ne $adminApiKeyValue "") (ne $adminApiKeyExistingSecretName "") }}
           env:
+            {{- if or (ne $adminApiKeyValue "") (ne $adminApiKeyExistingSecretName "") }}
             - name: PROMPTGATE_ADMIN_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: {{ include "prompt-gate.adminApiKeySecretName" . | quote }}
                   key: {{ include "prompt-gate.adminApiKeySecretKey" . | quote }}
                   optional: false
+            {{- end }}
           {{- end }}
           securityContext:
             {{- include "prompt-gate.containerSecurityContext" . | nindent 12 }}

@@ -64,7 +64,8 @@ secret:
   # Existing Secret name. When set, the chart does not render its own Secret.
   # The Secret must contain PROMPTGATE_DATABASE_URL, PROMPTGATE_REDIS_URL,
   # PROMPTGATE_JWT_SECRET, PROMPTGATE_SECRETS_KEY, and optionally
-  # PROMPTGATE_KEYCLOAK_CLIENT_SECRET.
+  # PROMPTGATE_KEYCLOAK_CLIENT_SECRET. Model Lab signs its short-lived tickets
+  # with the same PROMPTGATE_SECRETS_KEY value already used by API and proxy.
   existingSecret: ""
 
   # Extra annotations added to the generated Secret.
@@ -173,6 +174,16 @@ config:
   proxyMaxBufferedRequestBytes: "33554432"
   proxyMaxBufferedResponseBytes: "67108864"
   proxyUpstreamTimeout: 2m
+
+  # Model Lab is always available to user/admin roles and uses the shared
+  # PROMPTGATE_SECRETS_KEY already loaded by API and proxy.
+  modelLabTicketTtl: 60s
+  modelLabMaxPromptBytes: "32768"
+  modelLabMaxOutputTokens: "4096"
+  modelLabMaxTargets: "3"
+  modelLabMaxConcurrent: "3"
+  modelLabCatalogFreshTtl: 5m
+  modelLabCatalogStaleTtl: 24h
 
   # Worker Redis stream consumer settings.
   workerBatchSize: "100"

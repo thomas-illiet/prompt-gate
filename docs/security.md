@@ -139,6 +139,56 @@ cached principal can remain usable for at most its remaining auth-cache TTL.
 Treat the corresponding Redis warning as security-relevant and restore Redis
 promptly; `PROMPTGATE_REDIS_CACHE_TTL` bounds this residual stale-cache window.
 
+## Model Lab tickets and privacy
+
+Model Lab uses a separate ticket type from normal API tokens. The API signs
+`pgml_` tickets with the exact `PROMPTGATE_SECRETS_KEY` value already used to
+encrypt stored provider credentials; API and proxy must therefore share that
+value. It remains unrelated to `PROMPTGATE_JWT_SECRET`. Each ticket is bound to one account, role, provider,
+model, protocol, operation, method, exact proxy path, comparison, browser
+origin, issue time, expiry, and unique ID. Redis stores only its SHA-256 hash
+and signed binding summary. Atomic `GETDEL` makes it single-use, and a Redis
+failure fails closed.
+An atomic per-account reservation ZSET bounds tickets issued but not yet
+consumed; reservations are released on consumption or expire with the ticket.
+
+`PROMPTGATE_PROXY_BASE_URL` may include a browser-visible routing prefix such
+as `/remote` only when the edge removes it before forwarding. The signed path
+is the canonical post-rewrite path observed by the proxy; mixed-case method
+variants are rejected before quota or provider middleware can run.
+
+Provider model discovery never follows HTTP redirects, preventing provider
+credentials from being forwarded to a redirected origin.
+
+The browser cannot choose an arbitrary upstream path. The proxy rejects query
+strings, unknown JSON fields, non-streaming requests, empty text, system,
+tool, function, and multimodal content, malformed role sequences, models
+different from the ticket, and values outside configured bounds. Text chat
+history must alternate strictly between `user` and `assistant`, start with
+`user`, and end with the current `user` message. The request-size limit covers
+the complete serialized history. The proxy re-encodes the validated message
+list, reloads the account, and runs the normal client-IP, OPA, group, quota,
+provider, and accounting controls. A Redis lease limits concurrent streams per
+account and expires automatically after a crashed request.
+
+Model Lab is metadata-only by construction. A request-scoped policy suppresses
+prompts, outputs, reasoning, tool data, browser/client session identifiers,
+personal identity fields, user-agent strings, raw tickets, and upstream error
+bodies across request debugging, Redis events, PostgreSQL records, and OTel
+spans. Token counts, provider/model, local account ID, timing, status, and cost
+may remain for quota and operational accounting. This override applies even
+when global OTel content capture is enabled. The provider necessarily receives
+the prompt selected by the user; metadata-only means Prompt Gate does not
+retain or export that content, not that it is hidden from the provider. The
+conversation itself exists only in the browser tab. A comparison deliberately
+sends the same history snapshot to every provider selected by the user; its
+alternative responses are not added to later chat context.
+
+Model Lab is always enabled for `user` and `admin` roles and has no runtime
+feature flag. Before deploying a release that includes it, verify a canary
+prompt is absent from application logs, Redis payloads, PostgreSQL content
+tables, traces, browser storage, URLs, and returned errors.
+
 ## Service Accounts
 
 Service accounts are stored as users with type `service`. They can receive

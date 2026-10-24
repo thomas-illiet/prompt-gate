@@ -8,6 +8,13 @@ management, API token issuance, a provider-aware LLM proxy,
 external OPA policy checks, usage recording, quota enforcement, and scheduled
 maintenance jobs.
 
+Model Lab provides a group-filtered model catalog and an ephemeral, text-only
+multi-turn chat. A completed response can be compared on demand with up to two
+alternative models. It uses short-lived, single-use browser tickets while
+keeping every run on the existing OPA, group, quota, provider, and accounting
+path. Prompt and response content is excluded from Prompt Gate persistence and
+telemetry for these runs.
+
 The product is designed as a small set of deployable processes built from one
 binary:
 

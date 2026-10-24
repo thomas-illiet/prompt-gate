@@ -16,6 +16,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"promptgate/backend/internal/platform/config"
+	"promptgate/backend/internal/platform/requestprivacy"
 	"promptgate/backend/internal/runtime/app"
 )
 
@@ -43,7 +44,9 @@ func runProxy() error {
 
 	stdLogger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: cfg.SlogLevel()}))
 	slog.SetDefault(stdLogger)
-	bridgeLogger := cdrslog.Make(sloghuman.Sink(os.Stdout)).Leveled(cdrLevel(cfg.LogLevel))
+	bridgeLogger := cdrslog.Make(
+		requestprivacy.NewMetadataOnlySink(sloghuman.Sink(os.Stdout)),
+	).Leveled(cdrLevel(cfg.LogLevel))
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

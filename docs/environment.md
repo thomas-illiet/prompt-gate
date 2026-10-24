@@ -15,7 +15,7 @@ dotenv file.
 | `PROMPTGATE_DATABASE_URL` | API, proxy, worker, schedule, migrate | none | Yes | PostgreSQL connection string. Example: `postgres://postgres:postgres@localhost:5432/promptgate?sslmode=disable`. |
 | `PROMPTGATE_REDIS_URL` | API, proxy, worker, schedule | none | Yes | Redis connection URL. Example: `redis://localhost:6379/0`. |
 | `PROMPTGATE_JWT_SECRET` | API, proxy, schedule | none | Yes | Secret used for Prompt Gate API token signing and validation. Must be at least 32 characters. |
-| `PROMPTGATE_SECRETS_KEY` | API, proxy, schedule | none | Yes | Base64-encoded 32-byte key used for stored provider secrets. Keep stable across restarts and deployments. |
+| `PROMPTGATE_SECRETS_KEY` | API, proxy, schedule | none | Yes | Base64-encoded 32-byte key used for stored provider secrets and, unchanged, for Model Lab ticket signing/verification. Keep stable across restarts and deployments. |
 | `PROMPTGATE_KEYCLOAK_ISSUER_URL` | API | none | API only | OIDC issuer URL. Example: `https://keycloak.example.com/realms/promptgate`. |
 | `PROMPTGATE_KEYCLOAK_JWKS_URL` | API | none | API only | JWKS URL used to validate OIDC access tokens. |
 | `PROMPTGATE_KEYCLOAK_CLIENT_ID` | API | none | API only | OIDC client ID used for browser login and ID token verification. |
@@ -32,11 +32,18 @@ dotenv file.
 | `PROMPTGATE_KEYCLOAK_CLIENT_SECRET` | API | empty | Optional OIDC client secret. Set it when the OIDC client is confidential. |
 | `PROMPTGATE_ADMIN_API_KEY` | API | empty (disabled) | Optional global credential accepted in `X-Admin-API-Key` for `/api/v1/admin/**` routes. Intended only for trusted CLI and server-to-server administration. Empty or whitespace-only values disable it; any other trimmed value is accepted. |
 | `PROMPTGATE_CA_FILE` | API, proxy, schedule | empty | Optional path to a PEM-encoded CA certificate file. API uses it for Keycloak and monitoring, proxy for upstream providers, and schedule for monitoring checks. |
-| `PROMPTGATE_PROXY_BASE_URL` | API | derived from `PROMPTGATE_BACKEND_BASE_URL` and `PROMPTGATE_PROXY_PORT` | Public proxy origin shown to clients. Set it explicitly when the proxy is served from a different host, path, or externally mapped port. |
+| `PROMPTGATE_PROXY_BASE_URL` | API, proxy | API: derived from `PROMPTGATE_BACKEND_BASE_URL` and `PROMPTGATE_PROXY_PORT`; proxy: empty | Browser-visible proxy base URL. Set the same HTTP(S) URL on API and proxy for Model Lab; credentials, encoded paths, queries, and fragments are rejected. An optional path is a public routing prefix that must be removed before the request reaches the proxy. |
 | `PROMPTGATE_STATIC_ASSETS_DIR` | API | empty | Optional directory containing frontend static assets. When set, the API serves files from this directory and falls back to the SPA shell for frontend routes. |
 | `PROMPTGATE_SESSION_COOKIE_NAME` | API, proxy | `promptgate_session` | Browser session cookie name. |
 | `PROMPTGATE_SESSION_TTL` | API, proxy | `8h` | Browser session lifetime. Must be greater than zero. |
 | `PROMPTGATE_CORS_ALLOWED_ORIGINS` | API, proxy | API: `PROMPTGATE_FRONTEND_BASE_URL`; proxy: `PROMPTGATE_FRONTEND_BASE_URL` when present | Allowed browser origins for CORS. Loopback origins are expanded across `localhost`, `127.0.0.1`, and `::1` when possible. |
+| `PROMPTGATE_MODEL_LAB_TICKET_TTL` | API, proxy | `60s` | One-time ticket lifetime. Must be greater than zero and at most `5m`. |
+| `PROMPTGATE_MODEL_LAB_MAX_PROMPT_BYTES` | API, proxy | `32768` | Maximum Model Lab request body size in bytes; cannot exceed the proxy request-buffer limit. |
+| `PROMPTGATE_MODEL_LAB_MAX_OUTPUT_TOKENS` | API, proxy | `4096` | Maximum requested output tokens accepted by the Model Lab payload validator. |
+| `PROMPTGATE_MODEL_LAB_MAX_TARGETS` | API, proxy | `3` | Maximum distinct targets in one ticket batch, from 1 through 3. |
+| `PROMPTGATE_MODEL_LAB_MAX_CONCURRENT` | API, proxy | `3` | Maximum active Model Lab streams per account, from 1 through 3. |
+| `PROMPTGATE_MODEL_LAB_CATALOG_FRESH_TTL` | API, proxy | `5m` | Time during which a discovered provider catalog is fresh. |
+| `PROMPTGATE_MODEL_LAB_CATALOG_STALE_TTL` | API, proxy | `24h` | Retention for the last known good catalog; must be at least the fresh TTL. |
 | `PROMPTGATE_TOKEN_CLEANUP_INTERVAL` | API, schedule | `1h` | Interval for expired token cleanup. |
 | `PROMPTGATE_USER_ACCESS_EXPIRATION_INTERVAL` | API, schedule | `1h` | Interval for user access expiration jobs. |
 | `PROMPTGATE_PROXY_TRUST_FORWARD_HEADERS` | proxy | `false` | Whether the proxy trusts `X-Forwarded-For` and `X-Real-IP`. Enable only behind trusted infrastructure. |
@@ -106,6 +113,10 @@ PROMPTGATE_JWT_SECRET
 PROMPTGATE_SECRETS_KEY
 ```
 
+Model Lab is always enabled for `user` and `admin` roles. The proxy therefore
+requires an explicit `PROMPTGATE_PROXY_BASE_URL`; API and proxy use their
+existing shared `PROMPTGATE_SECRETS_KEY` directly for its tickets.
+
 `promptgate schedule` requires:
 
 ```sh
@@ -149,6 +160,13 @@ PROMPTGATE_STATIC_ASSETS_DIR=
 PROMPTGATE_SESSION_COOKIE_NAME=promptgate_session
 PROMPTGATE_SESSION_TTL=8h
 PROMPTGATE_CORS_ALLOWED_ORIGINS=http://localhost:3000
+PROMPTGATE_MODEL_LAB_TICKET_TTL=60s
+PROMPTGATE_MODEL_LAB_MAX_PROMPT_BYTES=32768
+PROMPTGATE_MODEL_LAB_MAX_OUTPUT_TOKENS=4096
+PROMPTGATE_MODEL_LAB_MAX_TARGETS=3
+PROMPTGATE_MODEL_LAB_MAX_CONCURRENT=3
+PROMPTGATE_MODEL_LAB_CATALOG_FRESH_TTL=5m
+PROMPTGATE_MODEL_LAB_CATALOG_STALE_TTL=24h
 PROMPTGATE_JWT_SECRET=change-me-change-me-change-me-32
 PROMPTGATE_SECRETS_KEY=MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
 PROMPTGATE_TOKEN_CLEANUP_INTERVAL=1h
@@ -202,6 +220,9 @@ PROMPTGATE_OTEL_INSECURE=false
   OIDC callback URL is computed as `<backend-base-url>/auth/callback`.
 - `PROMPTGATE_PROXY_BASE_URL` is optional for the API. When omitted, the API
   derives it from `PROMPTGATE_BACKEND_BASE_URL` and `PROMPTGATE_PROXY_PORT`.
+  For Model Lab, an optional path is treated only as a browser-visible
+  routing prefix. The edge must strip it before forwarding, as the Helm
+  `/remote` Ingress does; tickets bind the canonical path seen by the proxy.
 - `PROMPTGATE_CORS_ALLOWED_ORIGINS` should contain origins only, without paths
   or trailing slashes.
 - `PROMPTGATE_CA_FILE` must point to a readable PEM file. Mount the file into
@@ -211,8 +232,10 @@ PROMPTGATE_OTEL_INSECURE=false
   grants full access to every admin endpoint, including destructive actions.
   Keep it out of frontend code, browser storage, URLs, logs, and version
   control, and send it only over HTTPS.
-- `PROMPTGATE_SECRETS_KEY` protects stored downstream provider credentials.
-  Rotating it requires a deliberate secret migration plan.
+- `PROMPTGATE_SECRETS_KEY` protects stored downstream provider credentials and
+  is used unchanged to sign and verify Model Lab tickets. Rotating it requires
+  a deliberate secret migration plan and immediately invalidates outstanding
+  Model Lab tickets; their Redis records then expire naturally.
 - `PROMPTGATE_JWT_SECRET` must be shared by API, proxy, and scheduler
   processes so issued tokens can be validated and revoked consistently.
 - Dashboard usage cost fields are indicative estimates only. They are

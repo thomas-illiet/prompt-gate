@@ -26,28 +26,31 @@ func MiddlewareWithOptions(opts MiddlewareOptions) func(http.Handler) http.Handl
 	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			principal, authenticated := auth.Principal{}, false
-			if rawToken, ok := bearerToken(r.Header.Get("Authorization")); ok {
-				tokenHash := sha256hex(rawToken)
-				var expiresAt time.Time
-				var generation int64
-				var cacheErr error
-				principal, generation, authenticated, cacheErr = cache.Get(r.Context(), tokenHash)
-				if cacheErr != nil {
-					principal = auth.Principal{}
-					authenticated = false
-				}
-				if !authenticated {
-					var err error
-					principal, expiresAt, err = opts.TokenService.ValidatePrincipalWithExpiry(r.Context(), rawToken, opts.UserResolver)
-					if err != nil {
-						writeAuthError(w, err)
-						return
+			principal, authenticated := auth.PrincipalFromContext(r.Context())
+			if !authenticated {
+				rawToken, ok := bearerToken(r.Header.Get("Authorization"))
+				if ok {
+					tokenHash := sha256hex(rawToken)
+					var expiresAt time.Time
+					var generation int64
+					var cacheErr error
+					principal, generation, authenticated, cacheErr = cache.Get(r.Context(), tokenHash)
+					if cacheErr != nil {
+						principal = auth.Principal{}
+						authenticated = false
 					}
-					if cacheErr == nil {
-						cache.Set(r.Context(), generation, tokenHash, principal, time.Until(expiresAt))
+					if !authenticated {
+						var err error
+						principal, expiresAt, err = opts.TokenService.ValidatePrincipalWithExpiry(r.Context(), rawToken, opts.UserResolver)
+						if err != nil {
+							writeAuthError(w, err)
+							return
+						}
+						if cacheErr == nil {
+							cache.Set(r.Context(), generation, tokenHash, principal, time.Until(expiresAt))
+						}
+						authenticated = true
 					}
-					authenticated = true
 				}
 			}
 
