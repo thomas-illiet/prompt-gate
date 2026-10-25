@@ -78,6 +78,13 @@ fi
 assert_ingress_route "${ingress_render}" '/remote' 'audit-prompt-gate-proxy'
 assert_ingress_route "${ingress_render}" '/' 'audit-prompt-gate-api'
 
+oidc_redirect_render="${tmp_dir}/oidc-redirect.yaml"
+helm template audit "${chart_dir}" "${required_values[@]}" \
+  --set ingress.tls.enabled=false \
+  --set-string config.api.oidc.redirect_url=https://promptgate.example.com/auth/callback >"${oidc_redirect_render}"
+assert_contains "${oidc_redirect_render}" 'backend: http://promptgate.example.com'
+assert_contains "${oidc_redirect_render}" 'redirect_url: https://promptgate.example.com/auth/callback'
+
 custom_path_render="${tmp_dir}/custom-path.yaml"
 helm template audit "${chart_dir}" "${required_values[@]}" \
   --set-string ingress.proxyPath=/gateway/v1 >"${custom_path_render}"

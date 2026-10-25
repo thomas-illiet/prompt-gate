@@ -230,10 +230,51 @@ config:
       - "YOUR_HAPROXY_PEER_CIDR"
 ```
 
+The OIDC callback defaults to
+`<common.public_urls.backend>/auth/callback`. Set an exact callback only when
+the provider-facing URL uses a different origin or an externally rewritten
+path:
+
+```yaml
+config:
+  api:
+    oidc:
+      redirect_url: https://promptgate.example.com/auth/callback
+```
+
+Keep `redirect_url` empty to use the derived callback. The explicit value must
+exactly match a redirect URI registered with the OIDC provider. It changes only
+the OIDC callback; the frontend return URL and secure-cookie behavior still
+follow `common.public_urls.frontend` and `common.public_urls.backend`.
+
+When TLS terminates at an upstream load balancer but the chart-managed Ingress
+receives plain HTTP, set the complete browser-visible URL configuration to
+HTTPS even though Ingress TLS is disabled:
+
+```yaml
+config:
+  common:
+    public_urls:
+      frontend: https://promptgate.example.com
+      backend: https://promptgate.example.com
+      proxy: https://promptgate.example.com/remote
+  api:
+    oidc:
+      redirect_url: https://promptgate.example.com/auth/callback
+ingress:
+  tls:
+    enabled: false
+```
+
+The explicit `redirect_url` is optional in that example because it matches the
+derived callback, but keeping it visible makes the identity-provider contract
+unambiguous.
+
 Replace the placeholder only after observing the actual direct peer. The chart
 does not guess trusted networks. When `configSecret.existingSecret` is used,
 the external runtime file must set `proxy.base_path: /remote` and
-`common.public_urls.proxy: https://promptgate.example.com/remote` itself.
+`common.public_urls.proxy: https://promptgate.example.com/remote` itself. Any
+custom `api.oidc.redirect_url` must also be set in that external file.
 
 For F5 -> HAProxy Ingress, require the F5 to overwrite or sanitize inbound
 `X-Forwarded-For`. HAProxy appends the TCP source it actually observes as the

@@ -50,11 +50,15 @@ func NewOIDCService(ctx context.Context, cfg config.Config, validator *Validator
 		return nil, fmt.Errorf("read OIDC metadata: %w", err)
 	}
 
+	redirectURL := strings.TrimSpace(cfg.OIDCRedirectURL)
+	if redirectURL == "" {
+		redirectURL = cfg.OIDCCallbackURL()
+	}
 	oauthConfig := oauth2.Config{
 		ClientID:     cfg.KeycloakClientID,
 		ClientSecret: cfg.KeycloakClientSecret,
 		Endpoint:     provider.Endpoint(),
-		RedirectURL:  cfg.OIDCCallbackURL(),
+		RedirectURL:  redirectURL,
 		Scopes:       []string{oidc.ScopeOpenID, "profile", "email"},
 	}
 

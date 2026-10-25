@@ -85,6 +85,57 @@ func TestLoadRuntimeConfigsFromYAML(t *testing.T) {
 	if api.ConnMaxLifetime != 30*time.Minute || api.MaxIdleConnections != 5 || api.MaxOpenConnections != 10 {
 		t.Fatalf("unexpected database pool defaults: %#v", api.DatabaseURLConfig)
 	}
+	if api.OIDCRedirectURL != "http://localhost:8080/auth/callback" {
+		t.Fatalf("unexpected default OIDC redirect URL %q", api.OIDCRedirectURL)
+	}
+}
+
+func TestLoadApiOIDCRedirectURL(t *testing.T) {
+	contents := strings.Replace(
+		validConfigYAML,
+		"    client_id: promptgate-backend\n",
+		"    client_id: promptgate-backend\n    redirect_url: \"  https://login.example.com/custom/callback  \"\n",
+		1,
+	)
+
+	cfg, err := LoadApi(writeConfig(t, contents))
+	if err != nil {
+		t.Fatalf("load api: %v", err)
+	}
+	if cfg.OIDCRedirectURL != "https://login.example.com/custom/callback" {
+		t.Fatalf("unexpected configured OIDC redirect URL %q", cfg.OIDCRedirectURL)
+	}
+}
+
+func TestLoadApiRejectsInvalidOIDCRedirectURL(t *testing.T) {
+	invalidURLs := []string{
+		"/auth/callback",
+		"ftp://api.example.com/auth/callback",
+		"https://",
+		"https://:443/auth/callback",
+		"https://user:password@api.example.com/auth/callback",
+		"https://api.example.com/auth%2Fcallback",
+		"https://api.example.com/auth callback",
+		"https://api.example.com/auth/../callback",
+		"https://api.example.com/auth/callback?source=oidc",
+		"https://api.example.com/auth/callback#complete",
+	}
+
+	for _, redirectURL := range invalidURLs {
+		t.Run(redirectURL, func(t *testing.T) {
+			contents := strings.Replace(
+				validConfigYAML,
+				"    client_id: promptgate-backend\n",
+				"    client_id: promptgate-backend\n    redirect_url: "+strconv.Quote(redirectURL)+"\n",
+				1,
+			)
+
+			_, err := LoadApi(writeConfig(t, contents))
+			if err == nil || !strings.Contains(err.Error(), "api.oidc.redirect_url") {
+				t.Fatalf("expected invalid OIDC redirect URL error, got %v", err)
+			}
+		})
+	}
 }
 
 func TestShippedConfigsLoadForEveryRuntime(t *testing.T) {

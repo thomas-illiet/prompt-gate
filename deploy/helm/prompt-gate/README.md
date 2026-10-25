@@ -51,6 +51,39 @@ ingress:
     haproxy.org/forwarded-for: "true"
 ```
 
+By default, the OIDC callback URL is derived from
+`config.common.public_urls.backend` by appending `/auth/callback`. Set an exact
+callback URL only when the provider-facing callback uses a different origin or
+an externally rewritten path:
+
+```yaml
+config:
+  api:
+    oidc:
+      redirect_url: https://promptgate.example.com/auth/callback
+```
+
+Keep the value empty to use the derived callback. The explicit URL must exactly
+match a redirect URI registered with the OIDC provider. It changes only the
+OIDC `redirect_uri`; public frontend/backend URLs and session-cookie security
+remain controlled by `config.common.public_urls`.
+
+When TLS terminates at an upstream load balancer, configure all public URLs
+with their browser-visible HTTPS values even if the downstream Ingress uses
+plain HTTP:
+
+```yaml
+config:
+  common:
+    public_urls:
+      frontend: https://promptgate.example.com
+      backend: https://promptgate.example.com
+      proxy: https://promptgate.example.com/remote
+ingress:
+  tls:
+    enabled: false
+```
+
 For a chart-managed configuration Secret, the chart sets
 `config.proxy.base_path` from `ingress.proxyPath`. If `existingSecret` is used,
 the YAML stored in that Secret must set the same base path. `/health` remains

@@ -67,6 +67,7 @@ type KeycloakConfig struct {
 	KeycloakJWKSURL      string
 	KeycloakClientID     string
 	KeycloakClientSecret string
+	OIDCRedirectURL      string
 }
 
 // PublicURLConfig contains externally visible application URLs.
@@ -360,6 +361,29 @@ func (c ServerConfig) ListenAddress() string {
 // OIDCCallbackURL returns the full OIDC redirect callback URL.
 func (c PublicURLConfig) OIDCCallbackURL() string {
 	return c.BackendBaseURL + "/auth/callback"
+}
+
+func validateOIDCRedirectURL(value string) error {
+	parsed, err := url.Parse(value)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") ||
+		parsed.Hostname() == "" || parsed.User != nil || parsed.Opaque != "" ||
+		parsed.RawPath != "" || parsed.EscapedPath() != parsed.Path ||
+		!isNormalizedOIDCRedirectPath(parsed.Path) ||
+		parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" {
+		return errors.New("api.oidc.redirect_url must be an absolute HTTP(S) URL with a host and without credentials, an encoded or non-normalized path, query, or fragment")
+	}
+	return nil
+}
+
+func isNormalizedOIDCRedirectPath(value string) bool {
+	if value == "" || value == "/" {
+		return true
+	}
+	cleaned := path.Clean(value)
+	if strings.HasSuffix(value, "/") {
+		cleaned += "/"
+	}
+	return cleaned == value
 }
 
 // deriveProxyBaseURL returns the API origin with the configured proxy port.

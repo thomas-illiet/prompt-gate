@@ -59,6 +59,7 @@ api:
     jwks_url: http://127.0.0.1:8082/realms/promptgate/protocol/openid-connect/certs
     client_id: promptgate-integration
     client_secret: ""
+    redirect_url: http://127.0.0.1:8080/auth/callback
 
 proxy:
   port: 8081

@@ -38,6 +38,7 @@ func LoadApi(configPath string) (APIConfig, error) {
 			KeycloakJWKSURL:      strings.TrimSpace(file.API.OIDC.JWKSURL),
 			KeycloakClientID:     strings.TrimSpace(file.API.OIDC.ClientID),
 			KeycloakClientSecret: strings.TrimSpace(file.API.OIDC.ClientSecret),
+			OIDCRedirectURL:      strings.TrimSpace(file.API.OIDC.RedirectURL),
 		},
 		PublicURLConfig: file.publicURLConfig(),
 		APIHTTPConfig: APIHTTPConfig{
@@ -84,6 +85,12 @@ func LoadApi(configPath string) (APIConfig, error) {
 	}
 	if cfg.BackendBaseURL == "" {
 		return APIConfig{}, errors.New("common.public_urls.backend is required")
+	}
+	if cfg.OIDCRedirectURL == "" {
+		cfg.OIDCRedirectURL = cfg.OIDCCallbackURL()
+	}
+	if err := validateOIDCRedirectURL(cfg.OIDCRedirectURL); err != nil {
+		return APIConfig{}, err
 	}
 	if cfg.ProxyBaseURL == "" {
 		cfg.ProxyBaseURL = deriveProxyBaseURL(cfg.BackendBaseURL, string(file.Proxy.Port))

@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -12,6 +13,8 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/oauth2"
+
+	"promptgate/backend/internal/platform/config"
 )
 
 func TestOIDCAuthorizationRequestLifecycle(t *testing.T) {
@@ -60,6 +63,57 @@ func TestOIDCAuthorizationRequestLifecycle(t *testing.T) {
 	service.DeleteSession(session.ID)
 	if _, ok := store.Session(context.Background(), session.ID); ok {
 		t.Fatal("expected OIDC service to delete the session")
+	}
+}
+
+func TestNewOIDCServiceUsesConfiguredRedirectURL(t *testing.T) {
+	const issuerURL = "https://issuer.example.com"
+	providerMetadata := `{
+		"issuer":"https://issuer.example.com",
+		"authorization_endpoint":"https://issuer.example.com/authorize",
+		"token_endpoint":"https://issuer.example.com/token",
+		"jwks_uri":"https://issuer.example.com/jwks",
+		"id_token_signing_alg_values_supported":["RS256"]
+	}`
+	client := &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(providerMetadata)),
+			Request:    request,
+		}, nil
+	})}
+
+	const redirectURL = "https://public.example.com/oidc/complete"
+	service, err := NewOIDCService(
+		context.Background(),
+		config.Config{
+			KeycloakConfig: config.KeycloakConfig{
+				KeycloakIssuerURL: issuerURL,
+				KeycloakClientID:  "prompt-gate",
+				OIDCRedirectURL:   redirectURL,
+			},
+			PublicURLConfig: config.PublicURLConfig{FrontendBaseURL: "https://app.example.com"},
+		},
+		nil,
+		NewSessionStore(nil, time.Hour),
+		nil,
+		client,
+	)
+	if err != nil {
+		t.Fatalf("create OIDC service: %v", err)
+	}
+
+	authorizationURL, err := service.AuthorizationURL("", "")
+	if err != nil {
+		t.Fatalf("authorization URL: %v", err)
+	}
+	parsed, err := url.Parse(authorizationURL)
+	if err != nil {
+		t.Fatalf("parse authorization URL: %v", err)
+	}
+	if got := parsed.Query().Get("redirect_uri"); got != redirectURL {
+		t.Fatalf("redirect_uri = %q, want %q", got, redirectURL)
 	}
 }
 

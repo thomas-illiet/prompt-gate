@@ -142,6 +142,9 @@ config:
       jwks_url: "https://keycloak.example.com/realms/promptgate/protocol/openid-connect/certs"
       client_id: promptgate-backend
       client_secret: ""
+      # Optional exact callback URL registered with the OIDC provider. Empty
+      # falls back to <common.public_urls.backend>/auth/callback.
+      redirect_url: ""
 
   proxy:
     port: 8081

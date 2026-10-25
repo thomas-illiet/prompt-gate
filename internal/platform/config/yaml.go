@@ -165,6 +165,7 @@ type oidcFileConfig struct {
 	JWKSURL      string `yaml:"jwks_url"`
 	ClientID     string `yaml:"client_id"`
 	ClientSecret string `yaml:"client_secret"`
+	RedirectURL  string `yaml:"redirect_url"`
 }
 
 type proxyFileConfig struct {

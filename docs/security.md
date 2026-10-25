@@ -52,7 +52,9 @@ provider.
 Browser sessions are stored in Redis when Redis is configured. Session cookies
 are HTTP-only, use `common.session.cookie_name`, and inherit secure-cookie
 behavior from `common.public_urls.backend`: HTTPS backend URLs produce secure
-cookies.
+cookies. An explicit `api.oidc.redirect_url` changes only the callback sent to
+the identity provider; it does not make the session cookie secure when the
+configured public backend URL is HTTP.
 
 ## Roles
 

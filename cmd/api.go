@@ -55,6 +55,8 @@ func runAPI(configPath string) error {
 		cfg.BackendBaseURL,
 		"frontend_base_url",
 		cfg.FrontendBaseURL,
+		"oidc_redirect_url",
+		cfg.OIDCRedirectURL,
 		"database",
 		cfg.DatabaseLogValue(),
 		"cors_allowed_origins",

@@ -74,6 +74,14 @@ All default to `1h` and must be positive.
 | `api.oidc.jwks_url` | none | Required JWKS URL. |
 | `api.oidc.client_id` | none | Required OIDC client ID. |
 | `api.oidc.client_secret` | empty | Optional confidential-client secret. |
+| `api.oidc.redirect_url` | `<common.public_urls.backend>/auth/callback` | Optional exact OIDC callback URL. |
+
+`api.oidc.redirect_url` must be an absolute HTTP(S) URL without credentials,
+an encoded or non-normalized path, query, or fragment. Leave it empty to derive
+the callback from the public backend URL. This override changes only the
+OAuth/OIDC `redirect_uri`; it does not change the frontend return URL or
+secure-cookie behavior, which continue to follow `common.public_urls.frontend` and
+`common.public_urls.backend`.
 
 When `api.admin_contact_email` is set, the API exposes it only in the
 authenticated session response. The frontend turns it into the contact link in
