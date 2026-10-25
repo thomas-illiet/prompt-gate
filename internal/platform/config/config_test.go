@@ -176,6 +176,7 @@ func TestLoadYAMLOverridesAndLists(t *testing.T) {
 `, `api:
   port: 9080
   admin_api_key: admin-test-key
+  admin_contact_email: " admin@example.com "
   oidc:
 `, 1)
 	contents = strings.Replace(contents, `    client_id: promptgate-backend
@@ -244,7 +245,7 @@ schedule:
 	if err != nil {
 		t.Fatalf("load migration: %v", err)
 	}
-	if api.Port != "9080" || api.AdminAPIKey != "admin-test-key" || api.KeycloakClientSecret != "oidc-test-secret" {
+	if api.Port != "9080" || api.AdminAPIKey != "admin-test-key" || api.AdminContactEmail != "admin@example.com" || api.KeycloakClientSecret != "oidc-test-secret" {
 		t.Fatalf("unexpected API overrides: %#v", api)
 	}
 	if api.SessionCookieName != "custom_session" || api.SessionTTL != 9*time.Hour || api.TokenCleanupInterval != 2*time.Hour || api.UserAccessExpirationInterval != 3*time.Hour || api.QuotaResetDistributionInterval != 4*time.Hour {
@@ -276,6 +277,53 @@ schedule:
 	}
 	if migration.DatabaseURL != "postgres://custom:custom@db.example.com:5432/custom" || migration.ConnMaxLifetime != 45*time.Minute || migration.MaxIdleConnections != 7 || migration.MaxOpenConnections != 12 {
 		t.Fatalf("unexpected migration overrides: %#v", migration)
+	}
+}
+
+func TestLoadAPIValidatesAdminContactEmail(t *testing.T) {
+	tests := []struct {
+		name  string
+		value string
+	}{
+		{name: "invalid", value: "not-an-email"},
+		{name: "display name", value: "Prompt Gate Admin <admin@example.com>"},
+		{name: "multiple addresses", value: "first@example.com, second@example.com"},
+		{name: "too long", value: strings.Repeat("a", 243) + "@example.com"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			contents := strings.Replace(
+				validConfigYAML,
+				"api:\n  oidc:\n",
+				"api:\n  admin_contact_email: "+strconv.Quote(test.value)+"\n  oidc:\n",
+				1,
+			)
+			_, err := LoadApi(writeConfig(t, contents))
+			if err == nil || !strings.Contains(err.Error(), "api.admin_contact_email") {
+				t.Fatalf("expected admin contact email validation error, got %v", err)
+			}
+		})
+	}
+}
+
+func TestLoadAPIAcceptsMaximumAdminContactEmailLength(t *testing.T) {
+	value := strings.Repeat("a", 64) + "@" + strings.Repeat("b", 63) + "." + strings.Repeat("c", 63) + "." + strings.Repeat("d", 61)
+	if len(value) != maxAdminContactEmailBytes {
+		t.Fatalf("test email length = %d, want %d", len(value), maxAdminContactEmailBytes)
+	}
+	contents := strings.Replace(
+		validConfigYAML,
+		"api:\n  oidc:\n",
+		"api:\n  admin_contact_email: "+strconv.Quote(value)+"\n  oidc:\n",
+		1,
+	)
+	cfg, err := LoadApi(writeConfig(t, contents))
+	if err != nil {
+		t.Fatalf("load maximum-length admin contact email: %v", err)
+	}
+	if cfg.AdminContactEmail != value {
+		t.Fatalf("admin contact email = %q, want %q", cfg.AdminContactEmail, value)
 	}
 }
 

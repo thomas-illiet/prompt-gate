@@ -18,7 +18,10 @@ const {
   const apiFetch = vi.fn()
   return {
     apiFetch,
-    authStore: { user: null as unknown },
+    authStore: {
+      adminContactEmail: null as string | null,
+      user: null as unknown,
+    },
     navigateToMock: vi.fn(),
     useApiFetchMock: vi.fn(() => apiFetch),
     useQuotaExhaustionDialogMock: vi.fn(),
@@ -96,6 +99,7 @@ function mountLayout() {
 
 describe('DefaultLayout', () => {
   beforeEach(() => {
+    authStore.adminContactEmail = null
     authStore.user = null
     apiFetch.mockReset()
     apiFetch.mockResolvedValue({ status: 'ok', services: [] })
@@ -106,12 +110,15 @@ describe('DefaultLayout', () => {
   })
 
   it('does not mount or load monitoring for a limited user', async () => {
+    authStore.adminContactEmail = 'admin@example.com'
     authStore.user = authenticatedUser('limited')
 
     const wrapper = mountLayout()
     await flushPromises()
 
-    expect(wrapper.findComponent(AppLimitedAccessBanner).exists()).toBe(true)
+    const banner = wrapper.findComponent(AppLimitedAccessBanner)
+    expect(banner.exists()).toBe(true)
+    expect(banner.props('contactEmail')).toBe('admin@example.com')
     expect(wrapper.findComponent(AppMonitoringBanner).exists()).toBe(false)
     expect(useApiFetchMock).not.toHaveBeenCalled()
     expect(apiFetch).not.toHaveBeenCalled()

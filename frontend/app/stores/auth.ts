@@ -46,7 +46,9 @@ function toErrorMessage(error: unknown) {
   return 'Unexpected authentication error.'
 }
 
-type SessionResponse = AuthUser
+type SessionResponse = AuthUser & {
+  adminContactEmail?: string | null
+}
 
 // apiBaseUrl returns the normalized backend API base URL.
 function apiBaseUrl() {
@@ -54,6 +56,7 @@ function apiBaseUrl() {
 }
 
 export const useAuthStore = defineStore('auth', () => {
+  const adminContactEmail = shallowRef<string | null>(null)
   const isReady = shallowRef(false)
   const isConfigured = shallowRef(true)
   const isAuthenticated = shallowRef(false)
@@ -64,6 +67,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   // resetSessionState clears local auth state and stores an optional error.
   function resetSessionState(errorMessage: string | null = null) {
+    adminContactEmail.value = null
     isAuthenticated.value = false
     user.value = null
     initializationError.value = errorMessage
@@ -91,7 +95,14 @@ export const useAuthStore = defineStore('auth', () => {
         )
       }
 
-      user.value = session
+      const { adminContactEmail: sessionAdminContactEmail, ...sessionUser } =
+        session
+      const contactEmail =
+        typeof sessionAdminContactEmail === 'string'
+          ? sessionAdminContactEmail.trim()
+          : ''
+      adminContactEmail.value = contactEmail || null
+      user.value = sessionUser
       isAuthenticated.value = true
       initializationError.value = null
     } catch (error) {
@@ -197,6 +208,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   return {
+    adminContactEmail,
     clearSession,
     initialize,
     initializationError,

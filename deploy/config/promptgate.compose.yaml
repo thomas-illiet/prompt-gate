@@ -54,6 +54,7 @@ api:
   port: 8080
   static_assets_dir: /app/public
   admin_api_key: ""
+  admin_contact_email: admin@promptgate.local
   oidc:
     issuer_url: http://keycloak.localhost:8082/realms/promptgate
     jwks_url: http://keycloak.localhost:8082/realms/promptgate/protocol/openid-connect/certs

@@ -17,7 +17,10 @@ const canViewMonitoring = computed(() =>
     <AppDrawer />
     <AppBar />
     <v-main class="default-layout-main">
-      <AppLimitedAccessBanner v-if="isLimited" />
+      <AppLimitedAccessBanner
+        v-if="isLimited"
+        :contact-email="authStore.adminContactEmail"
+      />
       <AppMonitoringBanner v-if="canViewMonitoring" />
       <slot />
     </v-main>

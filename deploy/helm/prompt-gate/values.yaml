@@ -134,6 +134,9 @@ config:
     port: 8080
     static_assets_dir: /app/public
     admin_api_key: ""
+    # Optional address shown to authenticated limited users as the
+    # administrator contact in the persistent access banner.
+    admin_contact_email: ""
     oidc:
       issuer_url: "https://keycloak.example.com/realms/promptgate"
       jwks_url: "https://keycloak.example.com/realms/promptgate/protocol/openid-connect/certs"

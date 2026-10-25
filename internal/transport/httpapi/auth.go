@@ -40,6 +40,11 @@ type server struct {
 	quotaRedis    *subscriptions.RedisStore
 }
 
+type sessionResponse struct {
+	auth.UserProfile
+	AdminContactEmail string `json:"adminContactEmail"`
+}
+
 // handleLogin initiates the OIDC authorization flow and redirects to the provider.
 func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	slog.Info(
@@ -216,7 +221,10 @@ func (s *server) handleSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	slog.Debug("session lookup succeeded", "user_id", session.User.ID, "user_role", session.User.Role)
-	writeJSON(w, http.StatusOK, session.User)
+	writeJSON(w, http.StatusOK, sessionResponse{
+		UserProfile:       session.User,
+		AdminContactEmail: s.config.AdminContactEmail,
+	})
 }
 
 // setSessionCookie writes the session ID as an HTTP-only cookie.

@@ -20,6 +20,10 @@ by `common.session.cookie_name`.
 | `GET` | `/auth/logout` | Clears the local session and redirects through OIDC logout when available. |
 | `GET` | `/auth/session` | Returns the current browser session state. |
 
+Successful session responses also include `adminContactEmail`. It contains the
+trimmed `api.admin_contact_email` value, or an empty string when no contact is
+configured. The frontend uses it only for the persistent limited-access banner.
+
 If `api.static_assets_dir` is set, the API also serves static frontend
 assets from `/` and falls back to the SPA shell for frontend routes.
 

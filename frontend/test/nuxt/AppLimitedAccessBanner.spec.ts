@@ -3,8 +3,9 @@ import { describe, expect, it } from 'vitest'
 
 import AppLimitedAccessBanner from '../../app/components/App/AppLimitedAccessBanner.vue'
 
-function mountBanner() {
+function mountBanner(props: { contactEmail?: string | null } = {}) {
   return mount(AppLimitedAccessBanner, {
+    props,
     global: {
       stubs: {
         VAlert: {
@@ -36,6 +37,24 @@ describe('AppLimitedAccessBanner', () => {
     expect(banner.text()).toContain('Contact a site administrator')
     expect(banner.attributes('data-type')).toBe('info')
     expect(banner.attributes('data-closable')).toBe('false')
+    expect(wrapper.find('a').exists()).toBe(false)
+  })
+
+  it('links the configured administrator contact email', () => {
+    const wrapper = mountBanner({ contactEmail: ' admin@example.com ' })
+    const link = wrapper.get('a')
+
+    expect(wrapper.text()).toContain('Contact the site administrator at')
+    expect(link.text()).toBe('admin@example.com')
+    expect(link.attributes('href')).toBe('mailto:admin@example.com')
+  })
+
+  it('URI-encodes reserved characters in the email local part', () => {
+    const wrapper = mountBanner({ contactEmail: 'admin?ops@example.com' })
+
+    expect(wrapper.get('a').attributes('href')).toBe(
+      'mailto:admin%3Fops@example.com',
+    )
   })
 
   it('announces the persistent information without using an urgent alert', () => {

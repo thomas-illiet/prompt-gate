@@ -69,10 +69,17 @@ All default to `1h` and must be positive.
 | `api.port` | `8080` | API listen port. |
 | `api.static_assets_dir` | empty | Optional frontend asset directory. |
 | `api.admin_api_key` | empty | Optional global credential for `/api/v1/admin/**`. |
+| `api.admin_contact_email` | empty | Optional administrator contact address shown in the limited-access banner. |
 | `api.oidc.issuer_url` | none | Required OIDC issuer URL. |
 | `api.oidc.jwks_url` | none | Required JWKS URL. |
 | `api.oidc.client_id` | none | Required OIDC client ID. |
 | `api.oidc.client_secret` | empty | Optional confidential-client secret. |
+
+When `api.admin_contact_email` is set, the API exposes it only in the
+authenticated session response. The frontend turns it into the contact link in
+the persistent banner shown to active `limited` users. An empty value keeps the
+generic administrator message. Restart every API replica after changing this
+setting.
 
 ## Proxy Settings
 

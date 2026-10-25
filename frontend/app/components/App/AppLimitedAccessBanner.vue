@@ -1,3 +1,23 @@
+<script setup lang="ts">
+const props = defineProps<{
+  contactEmail?: string | null
+}>()
+
+const contactEmail = computed(() => props.contactEmail?.trim() || null)
+const contactHref = computed(() => {
+  if (!contactEmail.value) return undefined
+
+  const separatorIndex = contactEmail.value.lastIndexOf('@')
+  if (separatorIndex < 1) return undefined
+
+  const localPart = encodeURIComponent(
+    contactEmail.value.slice(0, separatorIndex),
+  )
+  const domain = contactEmail.value.slice(separatorIndex + 1)
+  return `mailto:${localPart}@${domain}`
+})
+</script>
+
 <template>
   <v-alert
     class="app-limited-access-banner"
@@ -10,8 +30,18 @@
     aria-live="polite"
   >
     <strong>Limited access.</strong>
-    Your account can only use a restricted set of PromptGate features. Contact a
-    site administrator to request additional permissions.
+    Your account can only use a restricted set of PromptGate features.
+    <template v-if="contactEmail">
+      Contact the site administrator at
+      <a
+        class="app-limited-access-banner__contact"
+        :href="contactHref"
+      >
+        {{ contactEmail }}
+      </a>
+    </template>
+    <template v-else>Contact a site administrator</template>
+    to request additional permissions.
   </v-alert>
 </template>
 
@@ -41,6 +71,11 @@
 .app-limited-access-banner strong {
   font-family: var(--app-font-display);
   font-weight: 800;
+}
+
+.app-limited-access-banner__contact {
+  color: inherit;
+  font-weight: 700;
 }
 
 @media (max-width: 599px) {

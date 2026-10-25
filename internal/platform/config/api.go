@@ -3,10 +3,13 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net/mail"
 	"os"
 	"strings"
 	"time"
 )
+
+const maxAdminContactEmailBytes = 254
 
 // LoadApi reads the management API configuration from a strict YAML file.
 func LoadApi(configPath string) (APIConfig, error) {
@@ -38,8 +41,9 @@ func LoadApi(configPath string) (APIConfig, error) {
 		},
 		PublicURLConfig: file.publicURLConfig(),
 		APIHTTPConfig: APIHTTPConfig{
-			StaticAssetsDir: file.API.StaticAssetsDir,
-			AdminAPIKey:     strings.TrimSpace(file.API.AdminAPIKey),
+			StaticAssetsDir:   file.API.StaticAssetsDir,
+			AdminAPIKey:       strings.TrimSpace(file.API.AdminAPIKey),
+			AdminContactEmail: strings.TrimSpace(file.API.AdminContactEmail),
 		},
 		ScheduleIntervals: ScheduleIntervals{
 			TokenCleanupInterval:           time.Duration(file.Common.Maintenance.TokenCleanupInterval),
@@ -68,6 +72,9 @@ func LoadApi(configPath string) (APIConfig, error) {
 	}
 	if cfg.KeycloakClientID == "" {
 		return APIConfig{}, errors.New("api.oidc.client_id is required")
+	}
+	if err := validateAdminContactEmail(cfg.AdminContactEmail); err != nil {
+		return APIConfig{}, err
 	}
 	if err := validateOptionalFile("common.tls.ca_file", cfg.CAFile); err != nil {
 		return APIConfig{}, err
@@ -121,4 +128,18 @@ func LoadApi(configPath string) (APIConfig, error) {
 	}
 	cfg.CORSAllowedOrigins = expandLoopbackOrigins(cfg.CORSAllowedOrigins)
 	return cfg, nil
+}
+
+func validateAdminContactEmail(value string) error {
+	if value == "" {
+		return nil
+	}
+	if len(value) > maxAdminContactEmailBytes {
+		return errors.New("api.admin_contact_email must be at most 254 bytes")
+	}
+	address, err := mail.ParseAddress(value)
+	if err != nil || address.Name != "" || address.Address != value {
+		return errors.New("api.admin_contact_email must be one valid email address without a display name")
+	}
+	return nil
 }

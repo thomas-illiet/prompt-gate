@@ -78,8 +78,9 @@ type PublicURLConfig struct {
 
 // APIHTTPConfig contains settings specific to the management API transport.
 type APIHTTPConfig struct {
-	StaticAssetsDir string
-	AdminAPIKey     string
+	StaticAssetsDir   string
+	AdminAPIKey       string
+	AdminContactEmail string
 }
 
 // ScheduleIntervals contains intervals used by scheduled background jobs.

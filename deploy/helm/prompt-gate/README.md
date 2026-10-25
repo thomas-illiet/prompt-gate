@@ -99,6 +99,22 @@ Change `rolloutToken` after replacing the Secret so all workloads restart.
 Because the selected design uses one complete file, every Prompt Gate process
 can read every secret in it; restrict Secret and values-file access accordingly.
 
+## Limited-Access Administrator Contact
+
+Set `config.api.admin_contact_email` to show a clickable administrator address
+in the persistent banner seen by authenticated `limited` users:
+
+```yaml
+config:
+  api:
+    admin_contact_email: admin@example.com
+```
+
+The value is optional and is exposed in the authenticated session response, so
+it is contact information rather than a secret. An empty value keeps the
+generic contact message. Restart or roll out all API replicas after changing
+it.
+
 ## Quota Reset Scheduling
 
 The scheduler distributes monthly reset credits immediately on startup and then

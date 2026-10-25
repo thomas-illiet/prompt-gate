@@ -107,6 +107,11 @@ helm template audit "${chart_dir}" "${required_values[@]}" \
 assert_contains "${public_url_override}" 'base_path: /remote'
 assert_contains "${public_url_override}" 'proxy: https://proxy.example.test/remote'
 
+admin_contact_render="${tmp_dir}/admin-contact.yaml"
+helm template audit "${chart_dir}" "${required_values[@]}" \
+  --set-string config.api.admin_contact_email=admin@example.test >"${admin_contact_render}"
+assert_contains "${admin_contact_render}" 'admin_contact_email: admin@example.test'
+
 invalid_path_render="${tmp_dir}/invalid-path.txt"
 if helm template audit "${chart_dir}" "${required_values[@]}" \
   --set-string ingress.proxyPath=/remote/ >"${invalid_path_render}" 2>&1; then

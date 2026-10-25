@@ -153,10 +153,11 @@ type maintenanceFileConfig struct {
 }
 
 type apiFileConfig struct {
-	Port            portValue      `yaml:"port"`
-	StaticAssetsDir string         `yaml:"static_assets_dir"`
-	AdminAPIKey     string         `yaml:"admin_api_key"`
-	OIDC            oidcFileConfig `yaml:"oidc"`
+	Port              portValue      `yaml:"port"`
+	StaticAssetsDir   string         `yaml:"static_assets_dir"`
+	AdminAPIKey       string         `yaml:"admin_api_key"`
+	AdminContactEmail string         `yaml:"admin_contact_email"`
+	OIDC              oidcFileConfig `yaml:"oidc"`
 }
 
 type oidcFileConfig struct {
