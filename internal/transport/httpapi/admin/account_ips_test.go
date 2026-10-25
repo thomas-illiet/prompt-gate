@@ -136,3 +136,48 @@ func TestHandleAdminClearUserIPAddresses(t *testing.T) {
 		t.Fatalf("expected cleared addresses, got %d", count)
 	}
 }
+
+func TestHandleAdminClearServiceAccountIPAddresses(t *testing.T) {
+	handler, db := newAccountIPsHandler(t)
+	serviceAccountID := "22222222-2222-2222-2222-222222222222"
+	userID := "11111111-1111-1111-1111-111111111111"
+	for _, address := range []proxy.AccountIPAddress{
+		{UserID: serviceAccountID, IP: "2001:db8::10", LastSeen: time.Now().UTC()},
+		{UserID: userID, IP: "192.0.2.10", LastSeen: time.Now().UTC()},
+	} {
+		if err := db.Create(&address).Error; err != nil {
+			t.Fatalf("seed address: %v", err)
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/admin/service-accounts/id/ips", nil)
+	req.SetPathValue("id", serviceAccountID)
+	recorder := httptest.NewRecorder()
+	handler.HandleAdminClearServiceAccountIPAddresses(recorder, req)
+	if recorder.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d: %s", recorder.Code, recorder.Body.String())
+	}
+
+	var serviceCount int64
+	if err := db.Model(&proxy.AccountIPAddress{}).Where("user_id = ?", serviceAccountID).Count(&serviceCount).Error; err != nil {
+		t.Fatalf("count service account addresses: %v", err)
+	}
+	if serviceCount != 0 {
+		t.Fatalf("expected cleared service account addresses, got %d", serviceCount)
+	}
+	var userCount int64
+	if err := db.Model(&proxy.AccountIPAddress{}).Where("user_id = ?", userID).Count(&userCount).Error; err != nil {
+		t.Fatalf("count user addresses: %v", err)
+	}
+	if userCount != 1 {
+		t.Fatalf("expected user address to remain, got %d", userCount)
+	}
+
+	req = httptest.NewRequest(http.MethodDelete, "/api/v1/admin/service-accounts/id/ips", nil)
+	req.SetPathValue("id", userID)
+	recorder = httptest.NewRecorder()
+	handler.HandleAdminClearServiceAccountIPAddresses(recorder, req)
+	if recorder.Code != http.StatusNotFound || !strings.Contains(recorder.Body.String(), "service_account_not_found") {
+		t.Fatalf("expected service account not found, got %d: %s", recorder.Code, recorder.Body.String())
+	}
+}

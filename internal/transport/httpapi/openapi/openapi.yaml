@@ -908,6 +908,16 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         default: { $ref: '#/components/responses/InternalError' }
+    delete:
+      tags: [Service accounts]
+      operationId: clearAdminServiceAccountIPAddresses
+      summary: Clear observed client IP addresses for a service account
+      responses:
+        '204': { $ref: '#/components/responses/NoContent' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/InternalError' }
   /api/v1/admin/service-accounts/{id}/tokens:
     parameters:
       - $ref: '#/components/parameters/ID'

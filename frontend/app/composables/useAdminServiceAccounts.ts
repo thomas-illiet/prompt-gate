@@ -169,6 +169,25 @@ export function useAdminServiceAccounts() {
     }
   }
 
+  // clearIPAddresses removes the complete proxy IP history for one service account.
+  async function clearIPAddresses(accountId: string) {
+    await runApiMutation(
+      {
+        loading: saving,
+        successMessage: 'IP address history cleared.',
+        toErrorMessage: toAdminServiceAccountErrorMessage,
+      },
+      async () => {
+        await apiFetch(adminServiceAccountPath(accountId, 'ips'), {
+          method: 'DELETE',
+        })
+        ipAddresses.value = []
+        ipTotal.value = 0
+        ipPage.value = 1
+      },
+    )
+  }
+
   function setIPPage(value: number) { ipPage.value = value }
   function setIPPageSize(value: number) { ipPageSize.value = value }
   function setIPSort(sortBy: string, sortDir: 'asc' | 'desc') {
@@ -386,6 +405,7 @@ export function useAdminServiceAccounts() {
     accounts: accountList.items,
     activeAccountsCount,
     assignServiceAccountSubscriptionPlan,
+    clearIPAddresses,
     createAccount,
     createAccountWithSubscription,
     createdToken,

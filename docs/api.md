@@ -309,6 +309,7 @@ cover the durable request count for the selected window.
 | `DELETE` | `/api/v1/admin/service-accounts/{id}` | Attempt to delete one service account, subject to the retained-usage constraint described above. |
 | `GET` | `/api/v1/admin/service-accounts/{id}/tokens` | List service-account tokens. |
 | `GET` | `/api/v1/admin/service-accounts/{id}/ips` | List client IP addresses observed for a service account, paginated and sortable by `ip` or `lastSeen`. |
+| `DELETE` | `/api/v1/admin/service-accounts/{id}/ips` | Clear all recorded client IP addresses for a service account. |
 | `POST` | `/api/v1/admin/service-accounts/{id}/tokens` | Create a service-account token. |
 | `DELETE` | `/api/v1/admin/service-accounts/{id}/tokens/{tokenId}` | Revoke a service-account token. |
 | `PUT` | `/api/v1/admin/service-accounts/{id}/subscription-plan` | Assign or clear the service account's subscription plan. |

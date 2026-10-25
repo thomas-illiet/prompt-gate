@@ -161,6 +161,19 @@ func (h *Handler) HandleAdminListServiceAccountIPAddresses(w http.ResponseWriter
 	writeJSON(w, http.StatusOK, list)
 }
 
+// HandleAdminClearServiceAccountIPAddresses clears client IP addresses observed for a service account.
+func (h *Handler) HandleAdminClearServiceAccountIPAddresses(w http.ResponseWriter, r *http.Request) {
+	if err := h.proxy.ClearAccountIPAddresses(r.Context(), r.PathValue("id"), auth.UserTypeService); err != nil {
+		if errors.Is(err, users.ErrUserNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "service_account_not_found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // HandleAdminListServiceAccountTokens lists tokens for a service account.
 func (h *Handler) HandleAdminListServiceAccountTokens(w http.ResponseWriter, r *http.Request) {
 	account, err := h.users.ServiceAccountProfile(r.Context(), r.PathValue("id"))

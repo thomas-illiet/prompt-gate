@@ -33,6 +33,7 @@ function createAdminServiceAccountsMock() {
   return {
     accounts: shallowRef([account]),
     activeAccountsCount: shallowRef(1),
+    clearIPAddresses: vi.fn().mockResolvedValue(undefined),
     createAccountWithSubscription: vi.fn(),
     createToken: vi.fn(),
     createdToken: shallowRef(null),
@@ -46,7 +47,7 @@ function createAdminServiceAccountsMock() {
     ipTotal: shallowRef(0),
     listError: shallowRef(null),
     loadAccount: vi.fn(),
-    loadIPAddresses: vi.fn(),
+    loadIPAddresses: vi.fn().mockResolvedValue([]),
     loadTokens: vi.fn(),
     loading: shallowRef(false),
     page: shallowRef(1),
@@ -89,14 +90,59 @@ const ServiceAccountsTableStub = defineComponent({
       required: true,
     },
   },
-  emits: ['usageStatistics'],
+  emits: ['manageIps', 'usageStatistics'],
   template: `
-    <button
-      data-test="open-usage"
-      @click="$emit('usageStatistics', items[0])"
-    >
-      Usage statistics
-    </button>
+    <div>
+      <button data-test="open-ips" @click="$emit('manageIps', items[0])">
+        IP addresses
+      </button>
+      <button
+        data-test="open-usage"
+        @click="$emit('usageStatistics', items[0])"
+      >
+        Usage statistics
+      </button>
+    </div>
+  `,
+})
+
+const IPAddressesDialogStub = defineComponent({
+  props: {
+    accountName: String,
+    modelValue: Boolean,
+  },
+  emits: ['clear', 'refresh', 'update:modelValue'],
+  template: `
+    <section v-if="modelValue" data-test="ip-addresses-dialog">
+      {{ accountName }} IP addresses
+      <button data-test="refresh-ips" @click="$emit('refresh')">Refresh</button>
+      <button data-test="clear-ips" @click="$emit('clear')">Clear history</button>
+      <button
+        data-test="close-ips"
+        @click="$emit('update:modelValue', false)"
+      >
+        Close
+      </button>
+    </section>
+  `,
+})
+
+const ConfirmDialogStub = defineComponent({
+  props: {
+    confirmLabel: String,
+    message: String,
+    modelValue: Boolean,
+    title: String,
+  },
+  emits: ['cancel', 'confirm', 'update:modelValue'],
+  template: `
+    <section v-if="modelValue" data-test="confirm-dialog">
+      <h2>{{ title }}</h2>
+      <p>{{ message }}</p>
+      <button data-test="confirm-action" @click="$emit('confirm')">
+        {{ confirmLabel }}
+      </button>
+    </section>
   `,
 })
 
@@ -130,14 +176,14 @@ function mountPage() {
   return mount(AdminServiceAccountsPage, {
     global: {
       stubs: {
-        AdminAccountIPAddressesDialog: true,
+        AdminAccountIPAddressesDialog: IPAddressesDialogStub,
         AdminAccountNoteDialog: true,
         AdminServiceAccountDialog: true,
         AdminServiceAccountsTable: ServiceAccountsTableStub,
         AdminServiceAccountTokenCreatedDialog: true,
         AdminServiceAccountTokensDialog: true,
         AdminServiceAccountUsageDialog: UsageDialogStub,
-        AppConfirmDialog: true,
+        AppConfirmDialog: ConfirmDialogStub,
         AppFilterCard: { template: '<section><slot /></section>' },
         AppPageHeader: true,
         AppTokenCreateDialog: true,
@@ -151,7 +197,7 @@ function mountPage() {
   })
 }
 
-describe('Admin service accounts page usage statistics dialog', () => {
+describe('Admin service accounts page', () => {
   beforeEach(() => {
     usageDialogMounts = 0
     useAdminServiceAccountsMock.mockReset()
@@ -186,5 +232,60 @@ describe('Admin service accounts page usage statistics dialog', () => {
 
     expect(wrapper.find('[data-test="usage-dialog"]').exists()).toBe(true)
     expect(usageDialogMounts).toBe(2)
+  })
+
+  it('refreshes IP history manually and every ten seconds while open', async () => {
+    vi.useFakeTimers()
+    const adminServiceAccounts = createAdminServiceAccountsMock()
+    useAdminServiceAccountsMock.mockReturnValue(adminServiceAccounts)
+    const wrapper = mountPage()
+
+    try {
+      await wrapper.get('[data-test="open-ips"]').trigger('click')
+
+      expect(adminServiceAccounts.loadIPAddresses).toHaveBeenCalledTimes(1)
+      expect(adminServiceAccounts.loadIPAddresses).toHaveBeenLastCalledWith(
+        account.id,
+      )
+
+      await wrapper.get('[data-test="refresh-ips"]').trigger('click')
+      expect(adminServiceAccounts.loadIPAddresses).toHaveBeenCalledTimes(2)
+
+      await vi.advanceTimersByTimeAsync(10_000)
+      expect(adminServiceAccounts.loadIPAddresses).toHaveBeenCalledTimes(3)
+      expect(adminServiceAccounts.loadIPAddresses).toHaveBeenLastCalledWith(
+        account.id,
+      )
+
+      await wrapper.get('[data-test="close-ips"]').trigger('click')
+      await vi.advanceTimersByTimeAsync(10_000)
+      expect(adminServiceAccounts.loadIPAddresses).toHaveBeenCalledTimes(3)
+    } finally {
+      wrapper.unmount()
+      vi.useRealTimers()
+    }
+  })
+
+  it('confirms and clears IP history for the selected service account', async () => {
+    const adminServiceAccounts = createAdminServiceAccountsMock()
+    useAdminServiceAccountsMock.mockReturnValue(adminServiceAccounts)
+    const wrapper = mountPage()
+
+    await wrapper.get('[data-test="open-ips"]').trigger('click')
+    await wrapper.get('[data-test="clear-ips"]').trigger('click')
+
+    const dialog = wrapper.get('[data-test="confirm-dialog"]')
+    expect(dialog.text()).toContain('Clear IP address history')
+    expect(dialog.text()).toContain('CI runner')
+
+    await dialog.get('[data-test="confirm-action"]').trigger('click')
+
+    expect(adminServiceAccounts.clearIPAddresses).toHaveBeenCalledWith(
+      account.id,
+    )
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-test="confirm-dialog"]').exists()).toBe(false)
+    })
+    wrapper.unmount()
   })
 })

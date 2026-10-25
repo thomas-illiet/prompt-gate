@@ -172,6 +172,36 @@ describe('useAdminServiceAccounts', () => {
     expect(adminServiceAccounts.ipAddresses.value).toEqual(addresses)
   })
 
+  it('clears all IP addresses for a service account', async () => {
+    apiFetch
+      .mockResolvedValueOnce(accountResponse([account]))
+      .mockResolvedValueOnce(undefined)
+    const adminServiceAccounts = useAdminServiceAccounts()
+    await vi.waitFor(() =>
+      expect(adminServiceAccounts.loading.value).toBe(false),
+    )
+    adminServiceAccounts.ipAddresses.value = [
+      {
+        ip: '192.0.2.1',
+        lastSeen: '2026-09-15T08:00:00Z',
+        lastDeniedReason: null,
+        lastDeniedAt: null,
+      },
+    ]
+    adminServiceAccounts.ipTotal.value = 1
+
+    await adminServiceAccounts.clearIPAddresses(account.id)
+
+    expect(apiFetch).toHaveBeenNthCalledWith(
+      2,
+      `/api/v1/admin/service-accounts/${account.id}/ips`,
+      { method: 'DELETE' },
+    )
+    expect(adminServiceAccounts.ipAddresses.value).toEqual([])
+    expect(adminServiceAccounts.ipTotal.value).toBe(0)
+    expect(adminServiceAccounts.ipPage.value).toBe(1)
+  })
+
   it('creates, updates, loads, and deletes service accounts', async () => {
     apiFetch
       .mockResolvedValueOnce(accountResponse([]))

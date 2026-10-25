@@ -7,7 +7,7 @@ import (
 )
 
 func adminRoutes(handler *admin.Handler, openAPIHandler http.HandlerFunc) []routeDefinition {
-	routes := make([]routeDefinition, 0, 90)
+	routes := make([]routeDefinition, 0, 91)
 	routes = append(routes, adminUserRoutes(handler)...)
 	routes = append(routes, adminDashboardRoutes(handler)...)
 	routes = append(routes, adminServiceAccountRoutes(handler)...)
@@ -77,6 +77,7 @@ func adminServiceAccountRoutes(handler *admin.Handler) []routeDefinition {
 		{pattern: "DELETE /api/v1/admin/service-accounts/{id}", handler: handler.HandleAdminDeleteServiceAccount},
 		{pattern: "GET /api/v1/admin/service-accounts/{id}/tokens", handler: handler.HandleAdminListServiceAccountTokens},
 		{pattern: "GET /api/v1/admin/service-accounts/{id}/ips", handler: handler.HandleAdminListServiceAccountIPAddresses},
+		{pattern: "DELETE /api/v1/admin/service-accounts/{id}/ips", handler: handler.HandleAdminClearServiceAccountIPAddresses},
 		{pattern: "POST /api/v1/admin/service-accounts/{id}/tokens", handler: handler.HandleAdminCreateServiceAccountToken},
 		{pattern: "DELETE /api/v1/admin/service-accounts/{id}/tokens/{tokenId}", handler: handler.HandleAdminRevokeServiceAccountToken},
 		{pattern: "PUT /api/v1/admin/service-accounts/{id}/subscription-plan", handler: handler.HandleAdminAssignServiceAccountSubscriptionPlan},

@@ -13,7 +13,7 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 )
 
-const expectedOperationCount = 114
+const expectedOperationCount = 115
 
 var expectedTagOrder = []string{
 	"Current account",

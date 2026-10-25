@@ -31,8 +31,10 @@ const noteDialog = useTargetDialog<ServiceAccount>()
 const statusDialog = useTargetDialog<ServiceAccount>()
 const usageDialog = useTargetDialog<ServiceAccount>()
 const ipDialog = useTargetDialog<ServiceAccount>()
+const ipClearDialog = useTargetDialog<ServiceAccount>()
 const tokenAccount = shallowRef<ServiceAccount | null>(null)
 const showRevokedTokens = shallowRef(false)
+let ipRefreshTimer: ReturnType<typeof setInterval> | null = null
 const statusConfirm = useToggleConfirmDialog(statusDialog.target, {
   disableIcon: 'mdi-account-cancel-outline',
   enableIcon: 'mdi-account-check-outline',
@@ -107,8 +109,30 @@ function openIPDialog(account: ServiceAccount) {
 }
 
 async function refreshIPAddresses() {
-  if (ipDialog.target.value)
+  if (ipDialog.target.value && !adminServiceAccounts.ipLoading.value)
     await adminServiceAccounts.loadIPAddresses(ipDialog.target.value.id)
+}
+
+watch(ipDialog.isOpen, (isOpen) => {
+  if (ipRefreshTimer) {
+    clearInterval(ipRefreshTimer)
+    ipRefreshTimer = null
+  }
+  if (isOpen) {
+    ipRefreshTimer = setInterval(() => {
+      void refreshIPAddresses().catch(() => {})
+    }, 10_000)
+  }
+})
+
+onUnmounted(() => {
+  if (ipRefreshTimer) clearInterval(ipRefreshTimer)
+})
+
+async function confirmClearIPAddresses() {
+  if (!ipClearDialog.target.value) return
+  await adminServiceAccounts.clearIPAddresses(ipClearDialog.target.value.id)
+  ipClearDialog.close()
 }
 
 async function updateIPPage(value: number) {
@@ -369,10 +393,25 @@ async function confirmToggleStatus() {
       :sort-by="adminServiceAccounts.ipSortBy.value"
       :sort-dir="adminServiceAccounts.ipSortDir.value"
       :total="adminServiceAccounts.ipTotal.value"
+      @clear="
+        ipDialog.target.value && ipClearDialog.open(ipDialog.target.value)
+      "
       @refresh="refreshIPAddresses"
       @update:page="updateIPPage"
       @update:page-size="updateIPPageSize"
       @update:sort="updateIPSort"
+    />
+
+    <AppConfirmDialog
+      v-model="ipClearDialog.isOpen.value"
+      confirm-color="error"
+      confirm-label="Clear history"
+      icon="mdi-delete-sweep-outline"
+      :loading="adminServiceAccounts.saving.value"
+      :message="`Clear all recorded proxy IP addresses for ${ipClearDialog.target.value?.name ?? 'this service account'}? This action cannot be undone.`"
+      title="Clear IP address history"
+      @cancel="ipClearDialog.close"
+      @confirm="confirmClearIPAddresses"
     />
 
     <AppConfirmDialog
