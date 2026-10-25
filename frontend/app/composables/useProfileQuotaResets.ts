@@ -1,6 +1,7 @@
 import type {
   QuotaResetHistoryItem,
   QuotaResetHistoryResponse,
+  QuotaResetHistorySortBy,
   QuotaResetSummary,
   UseQuotaResetResponse,
 } from '~/types/quota-resets'
@@ -18,6 +19,7 @@ interface UseProfileQuotaResetsOptions {
 
 const ERROR_MESSAGES = {
   credit_unavailable: 'No quota reset is currently available.',
+  invalid_sort: 'Selected quota reset history sort is invalid.',
   load_quota_reset_history_failed: 'Unable to load quota reset history.',
   load_quota_resets_failed: 'Unable to load quota resets.',
   missing_idempotency_key: 'Unable to safely submit the reset. Try again.',
@@ -50,6 +52,8 @@ function createProfileQuotaResets() {
   const historyError = shallowRef<string | null>(null)
   const historyPage = shallowRef(1)
   const historyPageSize = shallowRef(20)
+  const historySortBy = shallowRef<QuotaResetHistorySortBy>('createdAt')
+  const historySortDir = shallowRef<'asc' | 'desc'>('desc')
   const historyTotal = shallowRef(0)
 
   let summaryRequestVersion = 0
@@ -150,6 +154,8 @@ function createProfileQuotaResets() {
     const params = new URLSearchParams({
       page: historyPage.value.toString(),
       pageSize: historyPageSize.value.toString(),
+      sortBy: historySortBy.value,
+      sortDir: historySortDir.value,
     })
 
     try {
@@ -185,6 +191,16 @@ function createProfileQuotaResets() {
 
   async function setHistoryPageSize(value: number) {
     historyPageSize.value = value
+    historyPage.value = 1
+    await loadHistory()
+  }
+
+  async function setHistorySort(
+    sortBy: QuotaResetHistorySortBy,
+    sortDir: 'asc' | 'desc',
+  ) {
+    historySortBy.value = sortBy
+    historySortDir.value = sortDir
     historyPage.value = 1
     await loadHistory()
   }
@@ -250,6 +266,8 @@ function createProfileQuotaResets() {
     historyOpen,
     historyPage,
     historyPageSize,
+    historySortBy,
+    historySortDir,
     historyTotal,
     ensureLoaded,
     loadHistory,
@@ -258,6 +276,7 @@ function createProfileQuotaResets() {
     reload: loadSummary,
     setHistoryPage,
     setHistoryPageSize,
+    setHistorySort,
     summary,
     useReset,
     using,

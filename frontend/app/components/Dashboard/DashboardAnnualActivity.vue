@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useLocalTableSort } from '~/composables/useLocalTableSort'
 import { downloadDailyUsageCsv } from '~/utils/daily-usage-csv'
 import {
   formatCompactNumber,
@@ -6,11 +7,26 @@ import {
   formatNumber,
 } from '~/utils/formatters'
 
+type AnnualTableSortKey = 'date' | 'requests' | 'totalTokens'
+
 const props = defineProps<{
   refreshVersion: number
 }>()
 
 const annual = useProfileTokenUsage()
+
+const annualDays = computed(() => annual.summary.value.days)
+const {
+  isSortedBy: isTableSortedBy,
+  sortedItems: tableDays,
+  sortDir: tableSortDir,
+  toggleSort: toggleTableSort,
+} = useLocalTableSort(annualDays, {
+  firstSortDir: (key) => (key === 'date' ? 'asc' : 'desc'),
+  getValue: (day, key) => day[key],
+  initialSortBy: 'date' as AnnualTableSortKey,
+  initialSortDir: 'asc',
+})
 
 watch(
   () => props.refreshVersion,
@@ -137,13 +153,31 @@ function exportDailyData() {
                 </caption>
                 <thead>
                   <tr>
-                    <th scope="col">Date</th>
-                    <th scope="col">API requests</th>
-                    <th scope="col">Tokens</th>
+                    <AppTableSortHeader
+                      :active="isTableSortedBy('date')"
+                      align="center"
+                      :direction="tableSortDir"
+                      label="Date"
+                      @sort="toggleTableSort('date')"
+                    />
+                    <AppTableSortHeader
+                      :active="isTableSortedBy('requests')"
+                      align="center"
+                      :direction="tableSortDir"
+                      label="API requests"
+                      @sort="toggleTableSort('requests')"
+                    />
+                    <AppTableSortHeader
+                      :active="isTableSortedBy('totalTokens')"
+                      align="center"
+                      :direction="tableSortDir"
+                      label="Tokens"
+                      @sort="toggleTableSort('totalTokens')"
+                    />
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="day in annual.summary.value.days" :key="day.date">
+                  <tr v-for="day in tableDays" :key="day.date">
                     <th scope="row">{{ day.date }}</th>
                     <td>{{ formatNumber(day.requests) }}</td>
                     <td>{{ formatNumber(day.totalTokens) }}</td>
@@ -271,7 +305,8 @@ function exportDailyData() {
 .dashboard-annual-activity td {
   padding: 8px 10px;
   border-bottom: 1px solid rgba(var(--app-shell-border), 0.36);
-  text-align: left;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 
 @media (min-width: 600px) {

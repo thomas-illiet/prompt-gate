@@ -172,6 +172,27 @@ describe('useAdminServiceAccounts', () => {
     expect(adminServiceAccounts.ipAddresses.value).toEqual(addresses)
   })
 
+  it('returns IP history to the first page when its page size or sort changes', async () => {
+    apiFetch.mockResolvedValueOnce(accountResponse([account]))
+    const adminServiceAccounts = useAdminServiceAccounts()
+    await vi.waitFor(() =>
+      expect(adminServiceAccounts.loading.value).toBe(false),
+    )
+
+    adminServiceAccounts.setIPPage(4)
+    adminServiceAccounts.setIPPageSize(50)
+
+    expect(adminServiceAccounts.ipPage.value).toBe(1)
+    expect(adminServiceAccounts.ipPageSize.value).toBe(50)
+
+    adminServiceAccounts.setIPPage(3)
+    adminServiceAccounts.setIPSort('lastDeniedReason', 'desc')
+
+    expect(adminServiceAccounts.ipPage.value).toBe(1)
+    expect(adminServiceAccounts.ipSortBy.value).toBe('lastDeniedReason')
+    expect(adminServiceAccounts.ipSortDir.value).toBe('desc')
+  })
+
   it('clears all IP addresses for a service account', async () => {
     apiFetch
       .mockResolvedValueOnce(accountResponse([account]))

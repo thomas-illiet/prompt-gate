@@ -8,6 +8,7 @@ import type {
   AdminQuotaWindow,
 } from '~/types/quota-resets'
 import { formatDateTime, formatNumber } from '~/utils/formatters'
+import { appTableCenteredColumn } from '~/utils/table'
 
 const props = defineProps<{
   accountType: AdminQuotaAccountTypeFilter
@@ -36,11 +37,19 @@ const emit = defineEmits<{
 
 const headers: DataTableHeader[] = [
   { title: 'Account', key: 'displayName' },
-  { title: 'Status', key: 'saturation' },
-  { title: '5-hour window', key: 'window5h', sortable: false },
-  { title: '7-day window', key: 'window7d', sortable: false },
-  { title: 'Next reset', key: 'resetAt' },
-  { title: 'Projection freshness', key: 'syncedAt' },
+  appTableCenteredColumn({ title: 'Status', key: 'saturation' }),
+  appTableCenteredColumn({
+    title: '5-hour window',
+    key: 'window5h',
+    sortable: false,
+  }),
+  appTableCenteredColumn({
+    title: '7-day window',
+    key: 'window7d',
+    sortable: false,
+  }),
+  appTableCenteredColumn({ title: 'Next reset', key: 'resetAt' }),
+  appTableCenteredColumn({ title: 'Projection freshness', key: 'syncedAt' }),
 ]
 
 const accountTypeOptions = [

@@ -35,6 +35,8 @@ function createProfileQuotaResetsMock() {
     historyOpen,
     historyPage: shallowRef(1),
     historyPageSize: shallowRef(20),
+    historySortBy: shallowRef('createdAt'),
+    historySortDir: shallowRef<'asc' | 'desc'>('desc'),
     historyTotal: shallowRef(0),
     loadHistory: vi.fn(),
     loading: shallowRef(false),
@@ -44,6 +46,7 @@ function createProfileQuotaResetsMock() {
     reload: vi.fn(),
     setHistoryPage: vi.fn(),
     setHistoryPageSize: vi.fn(),
+    setHistorySort: vi.fn(),
     summary: shallowRef({
       available: 1,
       maximum: 2,

@@ -185,6 +185,59 @@ describe('DashboardBreakdownPanel', () => {
     expect(rows[1]?.text()).toContain('Token-heavy')
   })
 
+  it('sorts every ranked-data column without changing the chart ranking', async () => {
+    apiFetch.mockResolvedValueOnce({
+      ...response('unused'),
+      items: [
+        {
+          name: 'Zeta',
+          requests: 10,
+          totalTokens: 20,
+          estimatedCost: { totalUsd: 0.02 },
+        },
+        {
+          name: 'Alpha',
+          requests: 1,
+          totalTokens: 100,
+          estimatedCost: { totalUsd: 0.1 },
+        },
+        { name: 'No price', requests: 5, totalTokens: 50 },
+      ],
+    })
+    const wrapper = mountPanel('requests')
+
+    await vi.waitFor(() => expect(wrapper.findAll('tbody tr')).toHaveLength(3))
+
+    const headers = wrapper.findAll('thead th')
+    expect(headers.map((header) => header.attributes('aria-sort'))).toEqual([
+      undefined,
+      'descending',
+      undefined,
+      undefined,
+    ])
+    expect(
+      headers
+        .slice(1)
+        .every((header) =>
+          header.classes().includes('app-table-sort-header--center'),
+        ),
+    ).toBe(true)
+    expect(wrapper.findAll('tbody tr')[0]?.text()).toContain('Zeta')
+
+    await wrapper.get('button[aria-label="Sort by Name"]').trigger('click')
+    expect(wrapper.findAll('tbody tr')[0]?.text()).toContain('Alpha')
+    expect(wrapper.findAll('thead th')[0]?.attributes('aria-sort')).toBe(
+      'ascending',
+    )
+
+    await wrapper
+      .get('button[aria-label="Sort by Estimated cost"]')
+      .trigger('click')
+    const costRows = wrapper.findAll('tbody tr')
+    expect(costRows[0]?.text()).toContain('Alpha')
+    expect(costRows[2]?.text()).toContain('No price')
+  })
+
   it('refetches the active breakdown when the metric changes', async () => {
     apiFetch
       .mockResolvedValueOnce(response('Token leader'))

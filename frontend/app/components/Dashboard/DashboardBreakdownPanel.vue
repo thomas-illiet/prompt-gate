@@ -7,8 +7,12 @@ import type {
   UsageBreakdown,
   UsageWindow,
 } from '~/types/user-service'
+import { useLocalTableSort } from '~/composables/useLocalTableSort'
 import { promptGateChartColors } from '~/theme/palette'
 import { formatCurrencyUsd, formatNumber } from '~/utils/formatters'
+
+type BreakdownTableSortKey =
+  'estimatedCost' | 'name' | 'requests' | 'totalTokens'
 
 const props = withDefaults(
   defineProps<{
@@ -24,6 +28,7 @@ const props = withDefaults(
   {
     allowedBreakdowns: undefined,
     icon: 'mdi-chart-bar',
+    subtitle: '',
     title: 'What explains it',
   },
 )
@@ -93,6 +98,24 @@ const currentKey = computed(
   () => `${props.scope}:${props.window}:${props.metric}:${selectedTab.value}`,
 )
 
+const defaultTableSortBy = computed<BreakdownTableSortKey>(() => {
+  if (props.metric === 'requests') return 'requests'
+  if (props.metric === 'cost') return 'estimatedCost'
+  return 'totalTokens'
+})
+
+const {
+  isSortedBy: isTableSortedBy,
+  sortedItems: tableItems,
+  sortDir: tableSortDir,
+  toggleSort: toggleTableSort,
+} = useLocalTableSort(items, {
+  firstSortDir: (key) => (key === 'name' ? 'asc' : 'desc'),
+  getValue: breakdownTableSortValue,
+  initialSortBy: defaultTableSortBy,
+  initialSortDir: 'desc',
+})
+
 const rankedItems = computed(() =>
   [...items.value].sort((left, right) => {
     const leftValue = metricValue(left)
@@ -124,7 +147,7 @@ const tabLabel = computed(
 )
 const cardSubtitle = computed(
   () =>
-    props.subtitle ??
+    props.subtitle ||
     `${metricLabel(props.metric)} by ${tabLabel.value.toLowerCase()}`,
 )
 
@@ -234,6 +257,14 @@ function metricValue(item: UsageBreakdown) {
   return item.totalTokens
 }
 
+function breakdownTableSortValue(
+  item: UsageBreakdown,
+  key: BreakdownTableSortKey,
+) {
+  if (key === 'estimatedCost') return item.estimatedCost?.totalUsd
+  return item[key]
+}
+
 function metricLabel(selectedMetric: DashboardMetric) {
   if (selectedMetric === 'requests') return 'API requests'
   if (selectedMetric === 'cost') return 'Estimated cost'
@@ -337,14 +368,37 @@ function formatMetric(value: number | null) {
               </caption>
               <thead>
                 <tr>
-                  <th scope="col">Name</th>
-                  <th scope="col">API requests</th>
-                  <th scope="col">Tokens</th>
-                  <th scope="col">Estimated cost</th>
+                  <AppTableSortHeader
+                    :active="isTableSortedBy('name')"
+                    :direction="tableSortDir"
+                    label="Name"
+                    @sort="toggleTableSort('name')"
+                  />
+                  <AppTableSortHeader
+                    :active="isTableSortedBy('requests')"
+                    align="center"
+                    :direction="tableSortDir"
+                    label="API requests"
+                    @sort="toggleTableSort('requests')"
+                  />
+                  <AppTableSortHeader
+                    :active="isTableSortedBy('totalTokens')"
+                    align="center"
+                    :direction="tableSortDir"
+                    label="Tokens"
+                    @sort="toggleTableSort('totalTokens')"
+                  />
+                  <AppTableSortHeader
+                    :active="isTableSortedBy('estimatedCost')"
+                    align="center"
+                    :direction="tableSortDir"
+                    label="Estimated cost"
+                    @sort="toggleTableSort('estimatedCost')"
+                  />
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="item in rankedItems" :key="item.name">
+                <tr v-for="item in tableItems" :key="item.name">
                   <th scope="row">{{ item.name }}</th>
                   <td>{{ formatNumber(item.requests) }}</td>
                   <td>{{ formatNumber(item.totalTokens) }}</td>
@@ -459,7 +513,15 @@ function formatMetric(value: number | null) {
 .dashboard-breakdown-panel td {
   padding: 8px 10px;
   border-bottom: 1px solid rgba(var(--app-shell-border), 0.36);
+}
+
+.dashboard-breakdown-panel tbody th {
   text-align: left;
+}
+
+.dashboard-breakdown-panel td {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 
 @media (max-width: 599px) {

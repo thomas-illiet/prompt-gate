@@ -13,8 +13,10 @@ import (
 )
 
 var accountIPSortColumns = map[string]string{
-	"ip":       "ip",
-	"lastSeen": "last_seen",
+	"ip":               "ip",
+	"lastSeen":         "last_seen",
+	"lastDeniedAt":     "last_denied_at",
+	"lastDeniedReason": "last_denied_reason",
 }
 
 // ListAccountIPAddresses returns the client IP addresses observed for one account.
@@ -51,7 +53,14 @@ func (s *Service) ListAccountIPAddresses(ctx context.Context, userID string, use
 		return AccountIPAddressListResult{}, fmt.Errorf("count account IP addresses: %w", err)
 	}
 	items := make([]AccountIPAddress, 0)
-	if err := query.Order(column + " " + direction).
+	if column == "last_denied_at" || column == "last_denied_reason" {
+		query = query.Order("CASE WHEN " + column + " IS NULL THEN 1 ELSE 0 END ASC")
+	}
+	query = query.Order(column + " " + direction)
+	if column != "ip" {
+		query = query.Order("ip ASC")
+	}
+	if err := query.
 		Offset((params.Page - 1) * params.PageSize).
 		Limit(params.PageSize).
 		Find(&items).Error; err != nil {

@@ -122,10 +122,12 @@ type QuotaResetHistoryItem struct {
 	CreatedAt    time.Time           `json:"createdAt"`
 }
 
-// QuotaResetHistoryParams controls personal reset-history pagination.
+// QuotaResetHistoryParams controls personal reset-history pagination and sorting.
 type QuotaResetHistoryParams struct {
 	Page     int
 	PageSize int
+	SortBy   string
+	SortDir  string
 }
 
 // QuotaResetHistoryResult is a paginated reset ledger response.

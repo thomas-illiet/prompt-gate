@@ -214,4 +214,37 @@ func TestCurrentUserQuotaResetHistoryHTTPPaginatesNewestFirst(t *testing.T) {
 		!history.Items[len(history.Items)-1].CreatedAt.Equal(base.Add(5*time.Minute)) {
 		t.Fatalf("history is not ordered newest first on page two: %#v", history.Items)
 	}
+
+	ascendingRequest := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/me/quota-resets/history?page=1&pageSize=10&sortBy=createdAt&sortDir=asc",
+		nil,
+	)
+	ascendingRequest = ascendingRequest.WithContext(auth.ContextWithUser(ascendingRequest.Context(), profile))
+	ascendingRecorder := httptest.NewRecorder()
+	srv.handleCurrentUserQuotaResetHistory(ascendingRecorder, ascendingRequest)
+	if ascendingRecorder.Code != http.StatusOK {
+		t.Fatalf("expected ascending history 200, got %d: %s", ascendingRecorder.Code, ascendingRecorder.Body.String())
+	}
+	var ascending subscriptions.QuotaResetHistoryResult
+	if err := json.NewDecoder(ascendingRecorder.Body).Decode(&ascending); err != nil {
+		t.Fatalf("decode ascending history: %v", err)
+	}
+	if !ascending.Items[0].CreatedAt.Equal(base) ||
+		!ascending.Items[len(ascending.Items)-1].CreatedAt.Equal(base.Add(9*time.Minute)) {
+		t.Fatalf("history did not honor ascending date sort: %#v", ascending.Items)
+	}
+
+	for _, path := range []string{
+		"/api/v1/me/quota-resets/history?sortBy=actor",
+		"/api/v1/me/quota-resets/history?sortDir=sideways",
+	} {
+		invalidRequest := httptest.NewRequest(http.MethodGet, path, nil)
+		invalidRequest = invalidRequest.WithContext(auth.ContextWithUser(invalidRequest.Context(), profile))
+		invalidRecorder := httptest.NewRecorder()
+		srv.handleCurrentUserQuotaResetHistory(invalidRecorder, invalidRequest)
+		if invalidRecorder.Code != http.StatusBadRequest || !strings.Contains(invalidRecorder.Body.String(), "invalid_sort") {
+			t.Fatalf("expected invalid sort 400 for %q, got %d: %s", path, invalidRecorder.Code, invalidRecorder.Body.String())
+		}
+	}
 }

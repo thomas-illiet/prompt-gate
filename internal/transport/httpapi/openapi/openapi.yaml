@@ -120,8 +120,11 @@ paths:
       parameters:
         - $ref: '#/components/parameters/Page'
         - $ref: '#/components/parameters/QuotaResetPageSize'
+        - $ref: '#/components/parameters/QuotaResetHistorySortBy'
+        - $ref: '#/components/parameters/QuotaResetHistorySortDir'
       responses:
         '200': { $ref: '#/components/responses/QuotaResetHistoryResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -505,7 +508,7 @@ paths:
       parameters:
         - $ref: '#/components/parameters/Page'
         - $ref: '#/components/parameters/PageSize'
-        - $ref: '#/components/parameters/SortBy'
+        - $ref: '#/components/parameters/AccountIPAddressSortBy'
         - $ref: '#/components/parameters/SortDir'
       responses:
         '200': { $ref: '#/components/responses/AccountIPAddressListResponse' }
@@ -958,7 +961,7 @@ paths:
       parameters:
         - $ref: '#/components/parameters/Page'
         - $ref: '#/components/parameters/PageSize'
-        - $ref: '#/components/parameters/SortBy'
+        - $ref: '#/components/parameters/AccountIPAddressSortBy'
         - $ref: '#/components/parameters/SortDir'
       responses:
         '200': { $ref: '#/components/responses/AccountIPAddressListResponse' }
@@ -1741,6 +1744,22 @@ components:
         minimum: 1
         maximum: 100
         default: 20
+    QuotaResetHistorySortBy:
+      name: sortBy
+      in: query
+      description: Field used to order the current account's quota-reset history.
+      schema:
+        type: string
+        enum: [createdAt, type, delta, balanceAfter]
+        default: createdAt
+    QuotaResetHistorySortDir:
+      name: sortDir
+      in: query
+      description: Sort direction for the current account's quota-reset history.
+      schema:
+        type: string
+        enum: [asc, desc]
+        default: desc
     AdminQuotaPageSize:
       name: pageSize
       in: query
@@ -1836,6 +1855,14 @@ components:
       description: Case-insensitive free-text search.
       schema:
         type: string
+    AccountIPAddressSortBy:
+      name: sortBy
+      in: query
+      description: Field used to order observed client IP addresses.
+      schema:
+        type: string
+        enum: [ip, lastSeen, lastDeniedAt, lastDeniedReason]
+        default: lastSeen
     SortBy:
       name: sortBy
       in: query

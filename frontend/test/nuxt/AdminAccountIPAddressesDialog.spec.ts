@@ -40,7 +40,8 @@ describe('AdminAccountIPAddressesDialog', () => {
               '<button data-test="close" @click="$emit(\'click\')">Close</button>',
           },
           AppServerDataTable: {
-            props: ['items'],
+            name: 'AppServerDataTable',
+            props: ['headers', 'items'],
             emits: ['update:page', 'update:page-size', 'update:sort'],
             template:
               '<div><button data-test="page" @click="$emit(\'update:page\', 2)" /><div v-for="item in items" :key="item.ip"><slot name="item.ip" :item="item" /><slot name="item.lastSeen" :item="item" /><slot name="item.lastDeniedAt" :item="item" /><slot name="item.lastDeniedReason" :item="item" /></div></div>',
@@ -58,6 +59,22 @@ describe('AdminAccountIPAddressesDialog', () => {
     expect(wrapper.text()).toContain('Sep 15, 2026')
     expect(wrapper.text()).toContain('network_not_allowed')
     expect(wrapper.text()).toContain('—')
+
+    const table = wrapper.findComponent({ name: 'AppServerDataTable' })
+    const headers = table.props('headers') as Array<{
+      align?: string
+      key: string
+      sortable?: boolean
+    }>
+    expect(headers.find(({ key }) => key === 'lastSeen')).toMatchObject({
+      align: 'center',
+    })
+    expect(headers.find(({ key }) => key === 'lastDeniedAt')).toMatchObject({
+      align: 'center',
+    })
+    expect(headers.find(({ key }) => key === 'lastDeniedAt')?.sortable).not.toBe(false)
+    expect(headers.find(({ key }) => key === 'lastDeniedReason')?.sortable).not.toBe(false)
+
     await wrapper.get('[data-test="refresh"]').trigger('click')
     await wrapper.get('[data-test="clear"]').trigger('click')
     await wrapper.get('[data-test="page"]').trigger('click')

@@ -31,9 +31,12 @@ const items: QuotaResetHistoryItem[] = [
 
 const ServerTableStub = defineComponent({
   props: {
+    headers: { type: Array, required: true },
     items: { type: Array, required: true },
+    sortBy: { type: String, required: true },
+    sortDir: { type: String, required: true },
   },
-  emits: ['update:page', 'update:page-size'],
+  emits: ['update:page', 'update:page-size', 'update:sort'],
   template: `
     <div>
       <div v-for="item in items" :key="item.id">
@@ -47,6 +50,9 @@ const ServerTableStub = defineComponent({
       </button>
       <button data-test="change-history-page-size" @click="$emit('update:page-size', 50)">
         50 rows
+      </button>
+      <button data-test="sort-history" @click="$emit('update:sort', 'delta', 'asc')">
+        Sort
       </button>
     </div>
   `,
@@ -62,6 +68,8 @@ function mountDialog(overrides: Record<string, unknown> = {}) {
       modelValue: true,
       page: 1,
       pageSize: 20,
+      sortBy: 'createdAt',
+      sortDir: 'desc',
       total: 3,
       ...overrides,
     },
@@ -100,14 +108,35 @@ describe('ProfileQuotaResetHistoryDialog', () => {
     expect(wrapper.text()).toContain('1 / 2')
   })
 
-  it('forwards server pagination changes', async () => {
+  it('makes every data column sortable and centered', () => {
+    const wrapper = mountDialog()
+    const table = wrapper.findComponent(ServerTableStub)
+
+    expect(table.props('headers')).toEqual([
+      expect.objectContaining({ key: 'createdAt', align: 'center' }),
+      expect.objectContaining({ key: 'type', align: 'center' }),
+      expect.objectContaining({ key: 'delta', align: 'center' }),
+      expect.objectContaining({ key: 'balanceAfter', align: 'center' }),
+    ])
+    expect(
+      (table.props('headers') as Array<{ sortable?: boolean }>).every(
+        (header) => header.sortable !== false,
+      ),
+    ).toBe(true)
+    expect(table.props('sortBy')).toBe('createdAt')
+    expect(table.props('sortDir')).toBe('desc')
+  })
+
+  it('forwards server pagination and sorting changes', async () => {
     const wrapper = mountDialog()
 
     await wrapper.get('[data-test="next-history-page"]').trigger('click')
     await wrapper.get('[data-test="change-history-page-size"]').trigger('click')
+    await wrapper.get('[data-test="sort-history"]').trigger('click')
 
     expect(wrapper.emitted('update:page')).toEqual([[2]])
     expect(wrapper.emitted('update:page-size')).toEqual([[50]])
+    expect(wrapper.emitted('update:sort')).toEqual([['delta', 'asc']])
   })
 
   it('shows history errors and emits refresh', async () => {

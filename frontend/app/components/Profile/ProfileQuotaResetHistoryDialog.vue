@@ -3,9 +3,11 @@ import type { DataTableHeader } from 'vuetify'
 
 import type {
   QuotaResetHistoryItem,
+  QuotaResetHistorySortBy,
   QuotaResetHistoryType,
 } from '~/types/quota-resets'
 import { formatDateTime } from '~/utils/formatters'
+import { appTableCenteredColumn } from '~/utils/table'
 
 const props = defineProps<{
   error: string | null
@@ -14,6 +16,8 @@ const props = defineProps<{
   maximum: number
   page: number
   pageSize: number
+  sortBy: QuotaResetHistorySortBy
+  sortDir: 'asc' | 'desc'
   total: number
 }>()
 
@@ -21,20 +25,19 @@ const emit = defineEmits<{
   refresh: []
   'update:page': [value: number]
   'update:page-size': [value: number]
+  'update:sort': [sortBy: QuotaResetHistorySortBy, sortDir: 'asc' | 'desc']
 }>()
 
 const isOpen = defineModel<boolean>({ default: false })
 
 const headers: DataTableHeader[] = [
-  { title: 'Date', key: 'createdAt', sortable: false },
-  { title: 'Operation', key: 'type', sortable: false },
-  { title: 'Change', key: 'delta', sortable: false, align: 'center' },
-  {
+  appTableCenteredColumn({ title: 'Date', key: 'createdAt' }),
+  appTableCenteredColumn({ title: 'Operation', key: 'type' }),
+  appTableCenteredColumn({ title: 'Change', key: 'delta' }),
+  appTableCenteredColumn({
     title: 'Balance',
     key: 'balanceAfter',
-    sortable: false,
-    align: 'center',
-  },
+  }),
 ]
 
 const subtitle = computed(() => {
@@ -61,6 +64,17 @@ function typeColor(type: QuotaResetHistoryType) {
 
 function deltaLabel(delta: number) {
   return delta > 0 ? `+${delta}` : String(delta)
+}
+
+function updateSort(sortBy: string, sortDir: 'asc' | 'desc') {
+  if (
+    sortBy === 'createdAt' ||
+    sortBy === 'type' ||
+    sortBy === 'delta' ||
+    sortBy === 'balanceAfter'
+  ) {
+    emit('update:sort', sortBy, sortDir)
+  }
 }
 </script>
 
@@ -98,27 +112,33 @@ function deltaLabel(delta: number) {
       :items="props.items"
       :items-per-page-options="[20, 50, 100]"
       :loading="props.loading"
-      :must-sort="false"
       :page="props.page"
       :page-size="props.pageSize"
-      sort-by="createdAt"
-      sort-dir="desc"
+      :sort-by="props.sortBy"
+      :sort-dir="props.sortDir"
       :total="props.total"
       @update:page="emit('update:page', $event)"
       @update:page-size="emit('update:page-size', $event)"
+      @update:sort="updateSort"
     >
       <template #item.createdAt="{ item }">
-        <span class="app-table-text">{{ formatDateTime(item.createdAt) }}</span>
+        <div class="app-table-center">
+          <span class="app-table-text">{{
+            formatDateTime(item.createdAt)
+          }}</span>
+        </div>
       </template>
       <template #item.type="{ item }">
-        <v-chip
-          :color="typeColor(item.type)"
-          label
-          size="small"
-          variant="tonal"
-        >
-          {{ typeLabel(item.type) }}
-        </v-chip>
+        <div class="app-table-center">
+          <v-chip
+            :color="typeColor(item.type)"
+            label
+            size="small"
+            variant="tonal"
+          >
+            {{ typeLabel(item.type) }}
+          </v-chip>
+        </div>
       </template>
       <template #item.delta="{ item }">
         <div class="app-table-center">

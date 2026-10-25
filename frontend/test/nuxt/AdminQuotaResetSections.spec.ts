@@ -10,7 +10,10 @@ import type {
 } from '../../app/types/quota-resets'
 
 const ServerTableStub = defineComponent({
-  props: { items: { type: Array, required: true } },
+  props: {
+    headers: { type: Array, required: true },
+    items: { type: Array, required: true },
+  },
   setup(props, { slots }) {
     return () =>
       h(
@@ -163,6 +166,40 @@ describe('admin quota reset list sections', () => {
     expect(wrapper.get('[data-test="error"]').text()).toContain(
       'Latest projection refresh failed.',
     )
+
+    const headers = wrapper
+      .getComponent(ServerTableStub)
+      .props('headers') as Array<{
+      align?: string
+      cellProps?: { class?: string }
+      headerProps?: { class?: string }
+      key: string
+      sortable?: boolean
+    }>
+
+    expect(
+      headers.map((header) => ({
+        centered: header.align === 'center',
+        key: header.key,
+        sortable: header.sortable !== false,
+      })),
+    ).toEqual([
+      { centered: false, key: 'displayName', sortable: true },
+      { centered: true, key: 'saturation', sortable: true },
+      { centered: true, key: 'window5h', sortable: false },
+      { centered: true, key: 'window7d', sortable: false },
+      { centered: true, key: 'resetAt', sortable: true },
+      { centered: true, key: 'syncedAt', sortable: true },
+    ])
+    expect(
+      headers
+        .slice(1)
+        .every(
+          (header) =>
+            header.cellProps?.class === 'text-center' &&
+            header.headerProps?.class === 'text-center',
+        ),
+    ).toBe(true)
   })
 
   it('links event targets and labels deleted sessions separately from API keys', () => {
@@ -198,5 +235,42 @@ describe('admin quota reset list sections', () => {
     expect(wrapper.text()).toContain('Deleted administrator')
     expect(wrapper.text()).toContain('Administrator API key')
     expect(wrapper.text()).not.toContain('idempotency')
+
+    const headers = wrapper
+      .getComponent(ServerTableStub)
+      .props('headers') as Array<{
+      align?: string
+      cellProps?: { class?: string }
+      headerProps?: { class?: string }
+      key: string
+      sortable?: boolean
+    }>
+
+    expect(
+      headers.map((header) => ({
+        centered: header.align === 'center',
+        key: header.key,
+        sortable: header.sortable !== false,
+      })),
+    ).toEqual([
+      { centered: false, key: 'user', sortable: true },
+      { centered: true, key: 'type', sortable: true },
+      { centered: true, key: 'status', sortable: true },
+      { centered: true, key: 'balance', sortable: false },
+      { centered: false, key: 'actor', sortable: false },
+      { centered: true, key: 'context', sortable: false },
+      { centered: true, key: 'createdAt', sortable: true },
+      { centered: true, key: 'appliedAt', sortable: true },
+      { centered: true, key: 'reconciliation', sortable: false },
+    ])
+    expect(
+      headers
+        .filter((header) => header.align === 'center')
+        .every(
+          (header) =>
+            header.cellProps?.class === 'text-center' &&
+            header.headerProps?.class === 'text-center',
+        ),
+    ).toBe(true)
   })
 })

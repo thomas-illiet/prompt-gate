@@ -605,6 +605,48 @@ func TestAdminQuotaResetListContractsDocumentDefaultsAndErrors(t *testing.T) {
 	}
 }
 
+func TestAccountIPAddressListsDocumentSupportedSortFields(t *testing.T) {
+	_, document := loadSourceDocument(t)
+	wantEnum := []string{"ip", "lastSeen", "lastDeniedAt", "lastDeniedReason"}
+	for _, path := range []string{
+		"/api/v1/admin/users/{id}/ips",
+		"/api/v1/admin/service-accounts/{id}/ips",
+	} {
+		t.Run(path, func(t *testing.T) {
+			pathItem := document.Paths.Map()[path]
+			if pathItem == nil || pathItem.Get == nil {
+				t.Fatalf("missing GET %s", path)
+			}
+
+			var sortByRef *openapi3.ParameterRef
+			for _, parameterRef := range pathItem.Get.Parameters {
+				if parameterRef != nil && parameterRef.Value != nil && parameterRef.Value.Name == "sortBy" {
+					sortByRef = parameterRef
+					break
+				}
+			}
+			if sortByRef == nil || sortByRef.Value.Schema == nil || sortByRef.Value.Schema.Value == nil {
+				t.Fatal("missing sortBy parameter schema")
+			}
+			if sortByRef.Ref != "#/components/parameters/AccountIPAddressSortBy" {
+				t.Errorf("sortBy ref = %q, want account IP sort parameter", sortByRef.Ref)
+			}
+
+			schema := sortByRef.Value.Schema.Value
+			if got := fmt.Sprint(schema.Default); got != "lastSeen" {
+				t.Errorf("sortBy default = %s, want lastSeen", got)
+			}
+			gotEnum := make([]string, len(schema.Enum))
+			for index, value := range schema.Enum {
+				gotEnum[index] = fmt.Sprint(value)
+			}
+			if !slices.Equal(gotEnum, wantEnum) {
+				t.Errorf("sortBy enum = %v, want %v", gotEnum, wantEnum)
+			}
+		})
+	}
+}
+
 func TestDashboardOverviewSchemasRequireCostCoverage(t *testing.T) {
 	_, document := loadSourceDocument(t)
 	for _, name := range []string{"DashboardOverview", "DashboardOverviewPeriod"} {

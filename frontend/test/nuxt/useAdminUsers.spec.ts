@@ -350,6 +350,25 @@ describe('useAdminUsers', () => {
     expect(adminUsers.ipAddresses.value).toEqual(addresses)
   })
 
+  it('returns IP history to the first page when its page size or sort changes', async () => {
+    apiFetch.mockResolvedValueOnce(userResponse([user]))
+    const adminUsers = useAdminUsers()
+    await vi.waitFor(() => expect(adminUsers.loading.value).toBe(false))
+
+    adminUsers.setIPPage(4)
+    adminUsers.setIPPageSize(50)
+
+    expect(adminUsers.ipPage.value).toBe(1)
+    expect(adminUsers.ipPageSize.value).toBe(50)
+
+    adminUsers.setIPPage(3)
+    adminUsers.setIPSort('lastDeniedAt', 'asc')
+
+    expect(adminUsers.ipPage.value).toBe(1)
+    expect(adminUsers.ipSortBy.value).toBe('lastDeniedAt')
+    expect(adminUsers.ipSortDir.value).toBe('asc')
+  })
+
   it('clears all IP addresses for a user', async () => {
     apiFetch
       .mockResolvedValueOnce(userResponse([user]))

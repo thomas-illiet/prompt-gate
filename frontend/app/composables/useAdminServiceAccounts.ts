@@ -189,10 +189,14 @@ export function useAdminServiceAccounts() {
   }
 
   function setIPPage(value: number) { ipPage.value = value }
-  function setIPPageSize(value: number) { ipPageSize.value = value }
+  function setIPPageSize(value: number) {
+    ipPageSize.value = value
+    ipPage.value = 1
+  }
   function setIPSort(sortBy: string, sortDir: 'asc' | 'desc') {
     ipSortBy.value = sortBy
     ipSortDir.value = sortDir
+    ipPage.value = 1
   }
 
   // updateAccount patches a service account and keeps the selected copy fresh.

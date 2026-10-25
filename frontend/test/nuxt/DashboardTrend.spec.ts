@@ -90,4 +90,40 @@ describe('DashboardTrend', () => {
       'promptgate-daily-requests-2026-10-23-to-2026-10-24.csv',
     )
   })
+
+  it('sorts the daily table by date or the selected metric', async () => {
+    const wrapper = mountTrend()
+
+    expect(wrapper.findAll('tbody tr').map((row) => row.text())).toEqual([
+      '2026-10-234',
+      '2026-10-246',
+    ])
+    const headers = wrapper.findAll('thead th')
+    expect(headers[0]?.attributes('aria-sort')).toBe('ascending')
+    expect(headers[1]?.attributes('aria-sort')).toBeUndefined()
+    expect(
+      headers.every((header) =>
+        header.classes().includes('app-table-sort-header--center'),
+      ),
+    ).toBe(true)
+
+    await wrapper
+      .get('button[aria-label="Sort by API requests"]')
+      .trigger('click')
+    expect(wrapper.findAll('tbody tr').map((row) => row.text())).toEqual([
+      '2026-10-246',
+      '2026-10-234',
+    ])
+    expect(wrapper.findAll('thead th')[1]?.attributes('aria-sort')).toBe(
+      'descending',
+    )
+
+    await wrapper
+      .get('button[aria-label="Sort by API requests"]')
+      .trigger('click')
+    expect(wrapper.findAll('tbody tr').map((row) => row.text())).toEqual([
+      '2026-10-234',
+      '2026-10-246',
+    ])
+  })
 })

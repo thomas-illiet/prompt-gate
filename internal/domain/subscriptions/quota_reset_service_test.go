@@ -532,6 +532,83 @@ func TestQuotaResetHistoryIsStrictlyScoped(t *testing.T) {
 	}
 }
 
+func TestQuotaResetHistorySupportsEveryPublicSort(t *testing.T) {
+	service, _, user := newSubscriptionTestStore(t)
+	ctx := context.Background()
+	base := time.Date(2026, 10, 20, 8, 0, 0, 0, time.UTC)
+	events := []QuotaResetEvent{
+		{
+			ID: "10000000-0000-4000-8000-000000000001", UserID: user.ID,
+			Type: QuotaResetEventMonthlyGrant, Status: QuotaResetEventApplied,
+			Delta: 1, BalanceAfter: 1, ActorType: QuotaResetActorSystem,
+			AppliedAt: quotaResetTimePtr(base), CreatedAt: base,
+		},
+		{
+			ID: "10000000-0000-4000-8000-000000000002", UserID: user.ID,
+			Type: QuotaResetEventAdminGrant, Status: QuotaResetEventApplied,
+			Delta: 1, BalanceAfter: 2, ActorType: QuotaResetActorAdminAPIKey,
+			AppliedAt: quotaResetTimePtr(base.Add(time.Minute)), CreatedAt: base.Add(time.Minute),
+		},
+		{
+			ID: "10000000-0000-4000-8000-000000000003", UserID: user.ID,
+			Type: QuotaResetEventUsed, Status: QuotaResetEventApplied,
+			Delta: -1, BalanceAfter: 0, ActorType: QuotaResetActorUser,
+			AppliedAt: quotaResetTimePtr(base.Add(2 * time.Minute)), CreatedAt: base.Add(2 * time.Minute),
+		},
+		{
+			ID: "10000000-0000-4000-8000-000000000004", UserID: user.ID,
+			Type: QuotaResetEventMonthlyGrant, Status: QuotaResetEventApplied,
+			Delta: 1, BalanceAfter: 2, ActorType: QuotaResetActorSystem,
+			AppliedAt: quotaResetTimePtr(base.Add(3 * time.Minute)), CreatedAt: base.Add(3 * time.Minute),
+		},
+	}
+	if err := service.db.Create(&events).Error; err != nil {
+		t.Fatalf("create sortable reset history: %v", err)
+	}
+
+	tests := []struct {
+		name    string
+		sortBy  string
+		sortDir string
+		wantIDs []string
+	}{
+		{name: "date ascending", sortBy: "createdAt", sortDir: "asc", wantIDs: []string{events[0].ID, events[1].ID, events[2].ID, events[3].ID}},
+		{name: "date descending", sortBy: "createdAt", sortDir: "desc", wantIDs: []string{events[3].ID, events[2].ID, events[1].ID, events[0].ID}},
+		{name: "type ascending", sortBy: "type", sortDir: "asc", wantIDs: []string{events[1].ID, events[3].ID, events[0].ID, events[2].ID}},
+		{name: "type descending", sortBy: "type", sortDir: "desc", wantIDs: []string{events[2].ID, events[3].ID, events[0].ID, events[1].ID}},
+		{name: "change ascending", sortBy: "delta", sortDir: "asc", wantIDs: []string{events[2].ID, events[3].ID, events[1].ID, events[0].ID}},
+		{name: "change descending", sortBy: "delta", sortDir: "desc", wantIDs: []string{events[3].ID, events[1].ID, events[0].ID, events[2].ID}},
+		{name: "balance ascending", sortBy: "balanceAfter", sortDir: "asc", wantIDs: []string{events[2].ID, events[0].ID, events[3].ID, events[1].ID}},
+		{name: "balance descending", sortBy: "balanceAfter", sortDir: "desc", wantIDs: []string{events[3].ID, events[1].ID, events[0].ID, events[2].ID}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			history, err := service.ListQuotaResetHistory(ctx, user.ID, QuotaResetHistoryParams{
+				Page: 1, PageSize: 10, SortBy: test.sortBy, SortDir: test.sortDir,
+			})
+			if err != nil {
+				t.Fatalf("list sorted reset history: %v", err)
+			}
+			gotIDs := make([]string, len(history.Items))
+			for index, item := range history.Items {
+				gotIDs[index] = item.ID
+			}
+			if strings.Join(gotIDs, ",") != strings.Join(test.wantIDs, ",") {
+				t.Fatalf("unexpected sorted IDs: got %v, want %v", gotIDs, test.wantIDs)
+			}
+		})
+	}
+
+	for _, params := range []QuotaResetHistoryParams{
+		{SortBy: "actor"},
+		{SortBy: "createdAt", SortDir: "sideways"},
+	} {
+		if _, err := service.ListQuotaResetHistory(ctx, user.ID, params); !errors.Is(err, ErrInvalidSort) {
+			t.Fatalf("expected invalid sort for %#v, got %v", params, err)
+		}
+	}
+}
+
 func TestGrantQuotaResetCreditSupportsInactiveHumanWithoutPlanAndRejectsServiceAccount(t *testing.T) {
 	service, _, human := newSubscriptionTestStore(t)
 	ctx := context.Background()

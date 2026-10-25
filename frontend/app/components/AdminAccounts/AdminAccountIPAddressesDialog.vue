@@ -3,6 +3,7 @@ import type { DataTableHeader } from 'vuetify'
 
 import type { AccountIPAddress } from '~/types/account-ips'
 import { formatDateTime } from '~/utils/formatters'
+import { appTableCenteredColumn } from '~/utils/table'
 
 const props = defineProps<{
   accountName: string
@@ -27,9 +28,9 @@ const isOpen = defineModel<boolean>({ default: false })
 
 const headers: DataTableHeader[] = [
   { title: 'IP address', key: 'ip' },
-  { title: 'Last seen', key: 'lastSeen' },
-  { title: 'Last OPA denial', key: 'lastDeniedAt', sortable: false },
-  { title: 'Reason', key: 'lastDeniedReason', sortable: false },
+  appTableCenteredColumn({ title: 'Last seen', key: 'lastSeen' }),
+  appTableCenteredColumn({ title: 'Last OPA denial', key: 'lastDeniedAt' }),
+  { title: 'Reason', key: 'lastDeniedReason' },
 ]
 
 const subtitle = computed(() => {
@@ -115,10 +116,14 @@ const subtitle = computed(() => {
         <code class="admin-account-ips-dialog__ip">{{ item.ip }}</code>
       </template>
       <template #item.lastSeen="{ item }">
-        <span class="app-table-text">{{ formatDateTime(item.lastSeen) }}</span>
+        <div class="app-table-center">
+          <span class="app-table-text">{{ formatDateTime(item.lastSeen) }}</span>
+        </div>
       </template>
       <template #item.lastDeniedAt="{ item }">
-        <span class="app-table-text">{{ item.lastDeniedAt ? formatDateTime(item.lastDeniedAt) : '—' }}</span>
+        <div class="app-table-center">
+          <span class="app-table-text">{{ item.lastDeniedAt ? formatDateTime(item.lastDeniedAt) : '—' }}</span>
+        </div>
       </template>
       <template #item.lastDeniedReason="{ item }">
         <span class="app-table-text admin-account-ips-dialog__reason">{{ item.lastDeniedReason || '—' }}</span>

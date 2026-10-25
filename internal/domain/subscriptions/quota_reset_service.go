@@ -37,12 +37,14 @@ func (s *Service) QuotaResetSummary(ctx context.Context, userID string, _ time.T
 	return summary, err
 }
 
-// ListQuotaResetHistory returns one user's reset balance ledger in reverse chronological order.
+// ListQuotaResetHistory returns one user's reset balance ledger.
 func (s *Service) ListQuotaResetHistory(ctx context.Context, userID string, params QuotaResetHistoryParams) (QuotaResetHistoryResult, error) {
 	if _, err := quotaResetUser(ctx, s.db, userID); err != nil {
 		return QuotaResetHistoryResult{}, err
 	}
-	normalizeQuotaResetHistoryParams(&params)
+	if err := normalizeQuotaResetHistoryParams(&params); err != nil {
+		return QuotaResetHistoryResult{}, err
+	}
 	query := s.db.WithContext(ctx).
 		Model(&QuotaResetEvent{}).
 		Where("user_id = ? AND status = ?", strings.TrimSpace(userID), QuotaResetEventApplied)
@@ -52,9 +54,11 @@ func (s *Service) ListQuotaResetHistory(ctx context.Context, userID string, para
 		return QuotaResetHistoryResult{}, fmt.Errorf("count quota reset history: %w", err)
 	}
 	var records []QuotaResetEvent
+	query, err := applyQuotaResetHistorySort(query, params.SortBy, params.SortDir)
+	if err != nil {
+		return QuotaResetHistoryResult{}, err
+	}
 	if err := query.
-		Order("created_at DESC").
-		Order("id DESC").
 		Offset((params.Page - 1) * params.PageSize).
 		Limit(params.PageSize).
 		Find(&records).Error; err != nil {
@@ -610,7 +614,7 @@ func quotaResetSummaryWithWallet(ctx context.Context, tx *gorm.DB, wallet QuotaR
 	}, nil
 }
 
-func normalizeQuotaResetHistoryParams(params *QuotaResetHistoryParams) {
+func normalizeQuotaResetHistoryParams(params *QuotaResetHistoryParams) error {
 	if params.Page <= 0 {
 		params.Page = 1
 	}
@@ -620,6 +624,53 @@ func normalizeQuotaResetHistoryParams(params *QuotaResetHistoryParams) {
 	if params.PageSize > 100 {
 		params.PageSize = 100
 	}
+	params.SortBy = strings.TrimSpace(params.SortBy)
+	if params.SortBy == "" {
+		params.SortBy = "createdAt"
+	}
+	params.SortDir = strings.ToLower(strings.TrimSpace(params.SortDir))
+	if params.SortDir == "" {
+		params.SortDir = "desc"
+	}
+	if _, err := quotaResetHistorySortColumn(params.SortBy); err != nil {
+		return err
+	}
+	if _, err := normalizeSortDir(params.SortDir); err != nil {
+		return err
+	}
+	return nil
+}
+
+// applyQuotaResetHistorySort applies a validated deterministic ledger order.
+func applyQuotaResetHistorySort(query *gorm.DB, sortBy, sortDir string) (*gorm.DB, error) {
+	direction, err := normalizeSortDir(sortDir)
+	if err != nil {
+		return nil, err
+	}
+	column, err := quotaResetHistorySortColumn(sortBy)
+	if err != nil {
+		return nil, err
+	}
+
+	query = query.Order(column + " " + direction)
+	if sortBy != "createdAt" {
+		query = query.Order("created_at DESC")
+	}
+	return query.Order("id DESC"), nil
+}
+
+func quotaResetHistorySortColumn(sortBy string) (string, error) {
+	columns := map[string]string{
+		"createdAt":    "created_at",
+		"type":         "type",
+		"delta":        "delta",
+		"balanceAfter": "balance_after",
+	}
+	column, ok := columns[sortBy]
+	if !ok {
+		return "", ErrInvalidSort
+	}
+	return column, nil
 }
 
 func normalizeQuotaResetActor(actor QuotaResetActor) (QuotaResetActor, error) {

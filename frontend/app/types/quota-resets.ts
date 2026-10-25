@@ -2,6 +2,8 @@ import type { CurrentQuotaStatus } from '~/types/subscriptions'
 
 export type QuotaResetHistoryType =
   'monthly_grant' | 'admin_grant' | 'quota_reset_used'
+export type QuotaResetHistorySortBy =
+  'createdAt' | 'type' | 'delta' | 'balanceAfter'
 
 export type AdminQuotaAccountType = 'user' | 'service'
 export type AdminQuotaAccountTypeFilter = 'all' | AdminQuotaAccountType

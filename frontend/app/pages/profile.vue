@@ -169,10 +169,13 @@ async function confirmQuotaReset() {
       :maximum="profileQuotaResets.summary.value?.maximum ?? 2"
       :page="profileQuotaResets.historyPage.value"
       :page-size="profileQuotaResets.historyPageSize.value"
+      :sort-by="profileQuotaResets.historySortBy.value"
+      :sort-dir="profileQuotaResets.historySortDir.value"
       :total="profileQuotaResets.historyTotal.value"
       @refresh="profileQuotaResets.loadHistory"
       @update:page="profileQuotaResets.setHistoryPage"
       @update:page-size="profileQuotaResets.setHistoryPageSize"
+      @update:sort="profileQuotaResets.setHistorySort"
     />
 
     <AppConfirmDialog

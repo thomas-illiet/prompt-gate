@@ -9,6 +9,7 @@ import type {
   AdminQuotaResetEventWindow,
 } from '~/types/quota-resets'
 import { formatDateTime, formatNumber } from '~/utils/formatters'
+import { appTableCenteredColumn } from '~/utils/table'
 
 const props = defineProps<{
   error: string | null
@@ -38,14 +39,26 @@ const emit = defineEmits<{
 
 const headers: DataTableHeader[] = [
   { title: 'Target', key: 'user' },
-  { title: 'Event', key: 'type' },
-  { title: 'Status', key: 'status' },
-  { title: 'Credit balance', key: 'balance', sortable: false },
+  appTableCenteredColumn({ title: 'Event', key: 'type' }),
+  appTableCenteredColumn({ title: 'Status', key: 'status' }),
+  appTableCenteredColumn({
+    title: 'Credit balance',
+    key: 'balance',
+    sortable: false,
+  }),
   { title: 'Actor', key: 'actor', sortable: false },
-  { title: 'Distribution / cutoff', key: 'context', sortable: false },
-  { title: 'Created', key: 'createdAt' },
-  { title: 'Applied', key: 'appliedAt' },
-  { title: 'Reconciliation', key: 'reconciliation', sortable: false },
+  appTableCenteredColumn({
+    title: 'Distribution / cutoff',
+    key: 'context',
+    sortable: false,
+  }),
+  appTableCenteredColumn({ title: 'Created', key: 'createdAt' }),
+  appTableCenteredColumn({ title: 'Applied', key: 'appliedAt' }),
+  appTableCenteredColumn({
+    title: 'Reconciliation',
+    key: 'reconciliation',
+    sortable: false,
+  }),
 ]
 
 const typeOptions = [

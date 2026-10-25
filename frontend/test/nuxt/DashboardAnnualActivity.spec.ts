@@ -43,14 +43,14 @@ const annualSummary: ProfileTokenUsageSummary = {
   totalTokens: 1_000,
 }
 
-function mountAnnualActivity() {
+function mountAnnualActivity(summary = annualSummary) {
   const reload = vi.fn()
   useProfileTokenUsageMock.mockReturnValue({
     activity: shallowRef({}),
     error: shallowRef(null),
     loading: shallowRef(false),
     reload,
-    summary: shallowRef(annualSummary),
+    summary: shallowRef(summary),
   })
 
   const wrapper = mount(DashboardAnnualActivity, {
@@ -71,6 +71,7 @@ function mountAnnualActivity() {
           emits: ['click'],
           template: '<button @click="$emit(\'click\')"><slot /></button>',
         },
+        VIcon: true,
       },
     },
   })
@@ -124,5 +125,49 @@ describe('DashboardAnnualActivity', () => {
       'annual',
       'promptgate-annual-activity-2026-10-24-to-2026-10-24.csv',
     )
+  })
+
+  it('sorts every annual data column and centers compact values', async () => {
+    const earlierDay = {
+      ...usageDay,
+      date: '2026-10-23',
+      requests: 2,
+      totalTokens: 500,
+    }
+    const { wrapper } = mountAnnualActivity({
+      ...annualSummary,
+      activeDays: 2,
+      days: [usageDay, earlierDay],
+    })
+
+    expect(wrapper.findAll('tbody tr').map((row) => row.text())).toEqual([
+      '2026-10-232500',
+      '2026-10-2441,000',
+    ])
+    const headers = wrapper.findAll('thead th')
+    expect(headers.map((header) => header.attributes('aria-sort'))).toEqual([
+      'ascending',
+      undefined,
+      undefined,
+    ])
+    expect(
+      headers.every((header) =>
+        header.classes().includes('app-table-sort-header--center'),
+      ),
+    ).toBe(true)
+
+    await wrapper
+      .get('button[aria-label="Sort by API requests"]')
+      .trigger('click')
+    expect(wrapper.findAll('tbody tr').map((row) => row.text())).toEqual([
+      '2026-10-2441,000',
+      '2026-10-232500',
+    ])
+
+    await wrapper.get('button[aria-label="Sort by Tokens"]').trigger('click')
+    expect(wrapper.findAll('tbody tr').map((row) => row.text())).toEqual([
+      '2026-10-2441,000',
+      '2026-10-232500',
+    ])
   })
 })

@@ -4,9 +4,12 @@ import type {
   DashboardCostCoverage,
   DashboardMetric,
 } from '~/types/user-service'
+import { useLocalTableSort } from '~/composables/useLocalTableSort'
 import { promptGateChartColors } from '~/theme/palette'
 import { downloadDailyUsageCsv } from '~/utils/daily-usage-csv'
 import { formatCurrencyUsd, formatNumber } from '~/utils/formatters'
+
+type TrendTableSortKey = 'date' | 'value'
 
 const props = defineProps<{
   costCoverage: DashboardCostCoverage
@@ -22,6 +25,18 @@ const points = computed(() =>
     value: metricValue(day, metric.value),
   })),
 )
+
+const {
+  isSortedBy: isTableSortedBy,
+  sortedItems: tablePoints,
+  sortDir: tableSortDir,
+  toggleSort: toggleTableSort,
+} = useLocalTableSort(points, {
+  firstSortDir: (key) => (key === 'date' ? 'asc' : 'desc'),
+  getValue: (point, key) => point[key],
+  initialSortBy: 'date' as TrendTableSortKey,
+  initialSortDir: 'asc',
+})
 
 const availablePoints = computed(() =>
   points.value.filter(
@@ -178,13 +193,27 @@ function exportDailyData() {
             </caption>
             <thead>
               <tr>
-                <th scope="col">Date</th>
-                <th scope="col">{{ metricLabel(metric) }}</th>
+                <AppTableSortHeader
+                  :active="isTableSortedBy('date')"
+                  align="center"
+                  :direction="tableSortDir"
+                  label="Date"
+                  @sort="toggleTableSort('date')"
+                />
+                <AppTableSortHeader
+                  :active="isTableSortedBy('value')"
+                  align="center"
+                  :direction="tableSortDir"
+                  :label="metricLabel(metric)"
+                  @sort="toggleTableSort('value')"
+                />
               </tr>
             </thead>
             <tbody>
-              <tr v-for="point in points" :key="point.date">
-                <th scope="row">{{ point.date }}</th>
+              <tr v-for="point in tablePoints" :key="point.date">
+                <th class="dashboard-trend__centered-cell" scope="row">
+                  {{ point.date }}
+                </th>
                 <td>
                   {{
                     point.value == null
@@ -260,7 +289,8 @@ function exportDailyData() {
 .dashboard-trend td {
   padding: 8px 10px;
   border-bottom: 1px solid rgba(var(--app-shell-border), 0.36);
-  text-align: left;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 
 @media (max-width: 599px) {

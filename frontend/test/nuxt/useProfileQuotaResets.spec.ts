@@ -96,7 +96,7 @@ describe('useProfileQuotaResets', () => {
     vi.useRealTimers()
   })
 
-  it('loads the summary immediately and keeps history lazy and paginated', async () => {
+  it('loads the summary immediately and keeps history lazy, paginated, and sortable', async () => {
     apiFetch
       .mockResolvedValueOnce(availableSummary)
       .mockResolvedValueOnce(historyResponse)
@@ -106,6 +106,7 @@ describe('useProfileQuotaResets', () => {
         page: 2,
         total: 11,
       })
+      .mockResolvedValueOnce(historyResponse)
 
     const { state, wrapper } = mountProbe()
     await flushPromises()
@@ -119,7 +120,7 @@ describe('useProfileQuotaResets', () => {
     expect(state.historyOpen.value).toBe(true)
     expect(apiFetch).toHaveBeenNthCalledWith(
       2,
-      '/api/v1/me/quota-resets/history?page=1&pageSize=20',
+      '/api/v1/me/quota-resets/history?page=1&pageSize=20&sortBy=createdAt&sortDir=desc',
     )
     expect(state.history.value).toEqual(historyResponse.items)
 
@@ -127,9 +128,19 @@ describe('useProfileQuotaResets', () => {
 
     expect(apiFetch).toHaveBeenNthCalledWith(
       3,
-      '/api/v1/me/quota-resets/history?page=2&pageSize=20',
+      '/api/v1/me/quota-resets/history?page=2&pageSize=20&sortBy=createdAt&sortDir=desc',
     )
     expect(state.historyPage.value).toBe(2)
+
+    await state.setHistorySort('delta', 'asc')
+
+    expect(apiFetch).toHaveBeenNthCalledWith(
+      4,
+      '/api/v1/me/quota-resets/history?page=1&pageSize=20&sortBy=delta&sortDir=asc',
+    )
+    expect(state.historyPage.value).toBe(1)
+    expect(state.historySortBy.value).toBe('delta')
+    expect(state.historySortDir.value).toBe('asc')
     wrapper.unmount()
   })
 
@@ -274,7 +285,7 @@ describe('useProfileQuotaResets', () => {
     expect(apiFetch).toHaveBeenNthCalledWith(4, '/api/v1/me/quota-resets')
     expect(apiFetch).toHaveBeenNthCalledWith(
       5,
-      '/api/v1/me/quota-resets/history?page=1&pageSize=20',
+      '/api/v1/me/quota-resets/history?page=1&pageSize=20&sortBy=createdAt&sortDir=desc',
     )
     expect(state.summary.value).toEqual(appliedSummary)
     expect(state.historyTotal.value).toBe(2)
@@ -377,5 +388,8 @@ describe('useProfileQuotaResets', () => {
     expect(
       toProfileQuotaResetErrorMessage(apiError('missing_idempotency_key')),
     ).toBe('Unable to safely submit the reset. Try again.')
+    expect(toProfileQuotaResetErrorMessage(apiError('invalid_sort'))).toBe(
+      'Selected quota reset history sort is invalid.',
+    )
   })
 })

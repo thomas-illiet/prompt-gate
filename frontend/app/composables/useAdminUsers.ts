@@ -305,10 +305,12 @@ export function useAdminUsers() {
   }
   function setIPPageSize(value: number) {
     ipPageSize.value = value
+    ipPage.value = 1
   }
   function setIPSort(sortBy: string, sortDir: 'asc' | 'desc') {
     ipSortBy.value = sortBy
     ipSortDir.value = sortDir
+    ipPage.value = 1
   }
 
   // loadGroups fetches group options for user membership management.

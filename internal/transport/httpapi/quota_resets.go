@@ -81,6 +81,8 @@ func (s server) handleCurrentUserQuotaResetHistory(w http.ResponseWriter, r *htt
 	history, err := s.subscriptions.ListQuotaResetHistory(r.Context(), user.ID, subscriptions.QuotaResetHistoryParams{
 		Page:     positiveQueryInt(r, "page", 1, 0),
 		PageSize: positiveQueryInt(r, "pageSize", 20, 100),
+		SortBy:   r.URL.Query().Get("sortBy"),
+		SortDir:  r.URL.Query().Get("sortDir"),
 	})
 	if err != nil {
 		writeQuotaResetError(w, err)
@@ -107,6 +109,9 @@ func writeQuotaResetError(w http.ResponseWriter, err error) {
 	case errors.Is(err, subscriptions.ErrInvalidQuotaResetIdempotencyKey):
 		status = http.StatusBadRequest
 		code = "missing_idempotency_key"
+	case errors.Is(err, subscriptions.ErrInvalidSort):
+		status = http.StatusBadRequest
+		code = "invalid_sort"
 	case errors.Is(err, subscriptions.ErrQuotaResetUserNotFound):
 		status = http.StatusNotFound
 		code = "user_not_found"

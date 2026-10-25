@@ -107,6 +107,76 @@ func TestListAccountIPAddressesValidatesAccountTypeAndSort(t *testing.T) {
 	}
 }
 
+func TestListAccountIPAddressesSortsByDenialFields(t *testing.T) {
+	db, service := newProxyServiceTestDB(t)
+	ctx := context.Background()
+	accountID := "11111111-1111-1111-1111-111111111111"
+	base := time.Date(2026, 10, 17, 8, 0, 0, 0, time.UTC)
+
+	for index, seed := range []struct {
+		ip     string
+		reason string
+		denied time.Time
+	}{
+		{ip: "192.0.2.1", reason: "quota_exhausted", denied: base.Add(time.Minute)},
+		{ip: "192.0.2.2", reason: "account_disabled", denied: base.Add(3 * time.Minute)},
+		{ip: "192.0.2.3", reason: "network_not_allowed", denied: base.Add(2 * time.Minute)},
+		{ip: "192.0.2.4"},
+		{ip: "192.0.2.5", reason: "network_not_allowed", denied: base.Add(2 * time.Minute)},
+		{ip: "192.0.2.6"},
+	} {
+		var reason *string
+		var denied *time.Time
+		if seed.reason != "" {
+			reasonValue := seed.reason
+			deniedValue := seed.denied
+			reason = &reasonValue
+			denied = &deniedValue
+		}
+		address := AccountIPAddress{
+			UserID:           accountID,
+			IP:               seed.ip,
+			LastSeen:         base.Add(time.Duration(index) * time.Minute),
+			LastDeniedReason: reason,
+			LastDeniedAt:     denied,
+		}
+		if err := db.Create(&address).Error; err != nil {
+			t.Fatalf("seed address %s: %v", seed.ip, err)
+		}
+	}
+
+	tests := []struct {
+		name    string
+		sortBy  string
+		sortDir string
+		wantIPs []string
+	}{
+		{name: "denial time ascending", sortBy: "lastDeniedAt", sortDir: "asc", wantIPs: []string{"192.0.2.1", "192.0.2.3", "192.0.2.5", "192.0.2.2", "192.0.2.4", "192.0.2.6"}},
+		{name: "denial time descending", sortBy: "lastDeniedAt", sortDir: "desc", wantIPs: []string{"192.0.2.2", "192.0.2.3", "192.0.2.5", "192.0.2.1", "192.0.2.4", "192.0.2.6"}},
+		{name: "denial reason ascending", sortBy: "lastDeniedReason", sortDir: "asc", wantIPs: []string{"192.0.2.2", "192.0.2.3", "192.0.2.5", "192.0.2.1", "192.0.2.4", "192.0.2.6"}},
+		{name: "denial reason descending", sortBy: "lastDeniedReason", sortDir: "desc", wantIPs: []string{"192.0.2.1", "192.0.2.3", "192.0.2.5", "192.0.2.2", "192.0.2.4", "192.0.2.6"}},
+		{name: "IP descending", sortBy: "ip", sortDir: "desc", wantIPs: []string{"192.0.2.6", "192.0.2.5", "192.0.2.4", "192.0.2.3", "192.0.2.2", "192.0.2.1"}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result, err := service.ListAccountIPAddresses(ctx, accountID, auth.UserTypeUser, AccountIPAddressListParams{
+				Page: 1, PageSize: 10, SortBy: test.sortBy, SortDir: test.sortDir,
+			})
+			if err != nil {
+				t.Fatalf("list addresses: %v", err)
+			}
+			if len(result.Items) != len(test.wantIPs) {
+				t.Fatalf("got %d items, want %d", len(result.Items), len(test.wantIPs))
+			}
+			for index, wantIP := range test.wantIPs {
+				if result.Items[index].IP != wantIP {
+					t.Fatalf("item %d IP = %q, want %q", index, result.Items[index].IP, wantIP)
+				}
+			}
+		})
+	}
+}
+
 func TestClearAccountIPAddressesDeletesOnlyTargetAccount(t *testing.T) {
 	db, service := newProxyServiceTestDB(t)
 	ctx := context.Background()

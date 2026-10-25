@@ -19,8 +19,16 @@ const emit = defineEmits<{
 const headers: DataTableHeader[] = [
   appTableCenteredColumn({ title: 'Order', key: 'position', sortable: false }),
   { title: 'Guide', key: 'title', sortable: false },
-  { title: 'Compatibility', key: 'compatibility', sortable: false },
-  { title: 'Models', key: 'modelMode', sortable: false },
+  appTableCenteredColumn({
+    title: 'Compatibility',
+    key: 'compatibility',
+    sortable: false,
+  }),
+  appTableCenteredColumn({
+    title: 'Models',
+    key: 'modelMode',
+    sortable: false,
+  }),
   appTableCenteredColumn({ title: 'Status', key: 'enabled', sortable: false }),
   appTableCenteredColumn({ title: 'Actions', key: 'actions', sortable: false }),
 ]
@@ -118,15 +126,19 @@ function move(index: number, delta: number) {
     </template>
 
     <template #item.compatibility="{ item }">
-      <span class="app-table-text app-table-text--secondary">
-        {{ item.compatibility }}
-      </span>
+      <div class="app-table-center">
+        <span class="app-table-text app-table-text--secondary">
+          {{ item.compatibility }}
+        </span>
+      </div>
     </template>
 
     <template #item.modelMode="{ item }">
-      <span class="app-table-text app-table-text--secondary">
-        {{ item.modelMode }}
-      </span>
+      <div class="app-table-center">
+        <span class="app-table-text app-table-text--secondary">
+          {{ item.modelMode }}
+        </span>
+      </div>
     </template>
 
     <template #item.enabled="{ item }">
