@@ -179,12 +179,18 @@ describe('AppDrawer', () => {
       .map((section) => section.text())
     const contextSwitch = wrapper.get('[data-test="drawer-context-switch"]')
 
-    expect(routeNames[0]).toBe('admin-dashboard')
+    expect(routeNames.slice(0, 4)).toEqual([
+      'admin-dashboard',
+      'admin-usage',
+      'admin-activity',
+      'admin-quota-resets',
+    ])
     expect(routeNames).toContain('admin-users')
     expect(routeNames).toContain('admin-monitoring')
     expect(routeNames).not.toContain('admin-documentation')
     expect(routeNames).not.toContain('dashboard')
     expect(sections).toEqual([
+      'Dashboards',
       'Content',
       'Identities',
       'Access',

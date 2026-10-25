@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type {
   DashboardCockpitOverviewResponse,
+  DashboardKpiMetric,
   DashboardPreviousPeriod,
 } from '~/types/user-service'
 import {
@@ -11,9 +12,22 @@ import {
   formatNumber,
 } from '~/utils/formatters'
 
-const props = defineProps<{
-  overview: DashboardCockpitOverviewResponse
-}>()
+const props = withDefaults(
+  defineProps<{
+    overview: DashboardCockpitOverviewResponse
+    visibleMetrics?: DashboardKpiMetric[]
+  }>(),
+  {
+    visibleMetrics: () => [
+      'requests',
+      'tokens',
+      'cost',
+      'tool-calls',
+      'tokens-per-request',
+      'latency',
+    ],
+  },
+)
 
 interface KpiView {
   caption: string
@@ -22,89 +36,103 @@ interface KpiView {
   label: string
   tone: string
   value: string
+  metric: DashboardKpiMetric
 }
 
 const previous = computed<DashboardPreviousPeriod | null>(
   () => props.overview.previous ?? null,
 )
-const costCoverage = computed(() =>
-  props.overview.costCoverage ??
-  (props.overview.totals.estimatedCost
-    ? ({ status: 'complete' } as const)
-    : ({ status: 'unavailable' } as const)),
+const costCoverage = computed(
+  () =>
+    props.overview.costCoverage ??
+    (props.overview.totals.estimatedCost
+      ? ({ status: 'complete' } as const)
+      : ({ status: 'unavailable' } as const)),
 )
 const showDeltas = computed(
   () => props.overview.window !== 'all' && previous.value != null,
 )
 
-const primaryKpis = computed<KpiView[]>(() => [
-  {
-    caption: 'Completed API traffic',
-    delta: deltaLabel(
-      props.overview.totals.requests,
-      previous.value?.totals.requests,
-    ),
-    icon: 'mdi-api',
-    label: 'API requests',
-    tone: 'primary',
-    value: formatCompactNumber(props.overview.totals.requests),
-  },
-  {
-    caption: `${formatNumber(props.overview.totals.totalTokens)} total tokens`,
-    delta: deltaLabel(
-      props.overview.totals.totalTokens,
-      previous.value?.totals.totalTokens,
-    ),
-    icon: 'mdi-counter',
-    label: 'Tokens',
-    tone: 'warning',
-    value: formatCompactNumber(props.overview.totals.totalTokens),
-  },
-  {
-    caption: costCaption.value,
-    delta: costDelta.value,
-    icon: 'mdi-currency-usd',
-    label: 'Estimated cost',
-    tone: 'success',
-    value: costValue.value,
-  },
-])
+const primaryKpis = computed<KpiView[]>(() => {
+  const kpis: KpiView[] = [
+    {
+      caption: 'Completed API traffic',
+      delta: deltaLabel(
+        props.overview.totals.requests,
+        previous.value?.totals.requests,
+      ),
+      icon: 'mdi-api',
+      label: 'API requests',
+      tone: 'primary',
+      value: formatCompactNumber(props.overview.totals.requests),
+      metric: 'requests',
+    },
+    {
+      caption: `${formatNumber(props.overview.totals.totalTokens)} total tokens`,
+      delta: deltaLabel(
+        props.overview.totals.totalTokens,
+        previous.value?.totals.totalTokens,
+      ),
+      icon: 'mdi-counter',
+      label: 'Tokens',
+      tone: 'warning',
+      value: formatCompactNumber(props.overview.totals.totalTokens),
+      metric: 'tokens',
+    },
+    {
+      caption: costCaption.value,
+      delta: costDelta.value,
+      icon: 'mdi-currency-usd',
+      label: 'Estimated cost',
+      tone: 'success',
+      value: costValue.value,
+      metric: 'cost',
+    },
+  ]
+  return kpis.filter((kpi) => props.visibleMetrics.includes(kpi.metric))
+})
 
-const secondaryKpis = computed<KpiView[]>(() => [
-  {
-    caption: 'Calls reported by model responses',
-    delta: deltaLabel(
-      props.overview.totals.toolCalls,
-      previous.value?.totals.toolCalls,
-    ),
-    icon: 'mdi-tools',
-    label: 'Tool calls',
-    tone: 'info',
-    value: formatCompactNumber(props.overview.totals.toolCalls),
-  },
-  {
-    caption: 'Average across API requests',
-    delta: tokensPerRequestDelta.value,
-    icon: 'mdi-chart-donut',
-    label: 'Tokens per request',
-    tone: 'primary',
-    value: tokensPerRequestLabel(
-      props.overview.totals.totalTokens,
-      props.overview.totals.requests,
-    ),
-  },
-  {
-    caption: 'Completed requests only',
-    delta: durationDelta.value,
-    icon: 'mdi-timer-outline',
-    label: 'Average completed request duration',
-    tone: 'secondary',
-    value:
-      props.overview.averageDurationMs == null
-        ? '—'
-        : formatDurationMs(props.overview.averageDurationMs),
-  },
-])
+const secondaryKpis = computed<KpiView[]>(() => {
+  const kpis: KpiView[] = [
+    {
+      caption: 'Calls reported by model responses',
+      delta: deltaLabel(
+        props.overview.totals.toolCalls,
+        previous.value?.totals.toolCalls,
+      ),
+      icon: 'mdi-tools',
+      label: 'Tool calls',
+      tone: 'info',
+      value: formatCompactNumber(props.overview.totals.toolCalls),
+      metric: 'tool-calls',
+    },
+    {
+      caption: 'Average across API requests',
+      delta: tokensPerRequestDelta.value,
+      icon: 'mdi-chart-donut',
+      label: 'Tokens per request',
+      tone: 'primary',
+      value: tokensPerRequestLabel(
+        props.overview.totals.totalTokens,
+        props.overview.totals.requests,
+      ),
+      metric: 'tokens-per-request',
+    },
+    {
+      caption: 'Completed requests only',
+      delta: durationDelta.value,
+      icon: 'mdi-timer-outline',
+      label: 'Average completed request duration',
+      tone: 'secondary',
+      value:
+        props.overview.averageDurationMs == null
+          ? '—'
+          : formatDurationMs(props.overview.averageDurationMs),
+      metric: 'latency',
+    },
+  ]
+  return kpis.filter((kpi) => props.visibleMetrics.includes(kpi.metric))
+})
 
 const costValue = computed(() => {
   if (
@@ -145,14 +173,8 @@ const costDelta = computed(() => {
 
 const tokensPerRequestDelta = computed(() =>
   deltaLabel(
-    ratio(
-      props.overview.totals.totalTokens,
-      props.overview.totals.requests,
-    ),
-    ratio(
-      previous.value?.totals.totalTokens,
-      previous.value?.totals.requests,
-    ),
+    ratio(props.overview.totals.totalTokens, props.overview.totals.requests),
+    ratio(previous.value?.totals.totalTokens, previous.value?.totals.requests),
   ),
 )
 
@@ -184,7 +206,10 @@ function deltaLabel(
   prior: number | null | undefined,
 ) {
   if (!showDeltas.value || current == null || prior == null) return null
-  if (prior === 0) return current === 0 ? 'No change vs previous period' : 'New vs previous period'
+  if (prior === 0)
+    return current === 0
+      ? 'No change vs previous period'
+      : 'New vs previous period'
 
   const percent = ((current - prior) / Math.abs(prior)) * 100
   const formatted = new Intl.NumberFormat('en-US', {
@@ -202,10 +227,15 @@ function deltaLabel(
         <p class="dashboard-period-kpis__eyebrow">Selected period</p>
         <h2 id="period-kpis-title">What you consumed</h2>
       </div>
-      <span v-if="showDeltas">Compared with the preceding period of equal length</span>
+      <span v-if="showDeltas"
+        >Compared with the preceding period of equal length</span
+      >
     </div>
 
-    <div class="dashboard-period-kpis__grid dashboard-period-kpis__grid--primary">
+    <div
+      v-if="primaryKpis.length"
+      class="dashboard-period-kpis__grid dashboard-period-kpis__grid--primary"
+    >
       <article
         v-for="kpi in primaryKpis"
         :key="kpi.label"
@@ -225,7 +255,10 @@ function deltaLabel(
       </article>
     </div>
 
-    <div class="dashboard-period-kpis__grid dashboard-period-kpis__grid--secondary">
+    <div
+      v-if="secondaryKpis.length"
+      class="dashboard-period-kpis__grid dashboard-period-kpis__grid--secondary"
+    >
       <article
         v-for="kpi in secondaryKpis"
         :key="kpi.label"

@@ -12,6 +12,8 @@ tags:
     description: Current account profile, quota, groups, and usage.
   - name: Dashboard
     description: Personal and organization usage dashboards.
+  - name: Quota resets
+    description: Administrator quota projections and quota-reset ledger observability.
   - name: Tokens
     description: Prompt Gate virtual-key lifecycle.
   - name: Users
@@ -641,6 +643,54 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/QuotaResetConflict' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/quota-resets/quota-states:
+    get:
+      tags: [Quota resets]
+      operationId: listAdminQuotaStates
+      summary: List projected account quota states
+      description: |
+        Returns active PostgreSQL quota projections for human and service
+        accounts. The default view contains accounts whose most saturated
+        finite window is at least 80 percent; `view=all` contains every active
+        projection, not every registered account.
+      parameters:
+        - $ref: '#/components/parameters/AdminQuotaStateView'
+        - $ref: '#/components/parameters/AdminQuotaAccountType'
+        - $ref: '#/components/parameters/AdminQuotaStateSearch'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/AdminQuotaPageSize'
+        - $ref: '#/components/parameters/AdminQuotaStateSortBy'
+        - $ref: '#/components/parameters/AdminQuotaSortDir'
+      responses:
+        '200': { $ref: '#/components/responses/AdminQuotaStateListResponse' }
+        '400': { $ref: '#/components/responses/AdminQuotaStateBadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/quota-resets/events:
+    get:
+      tags: [Quota resets]
+      operationId: listAdminQuotaResetEvents
+      summary: List quota-reset ledger events
+      description: |
+        Returns the operational quota-reset ledger without idempotency keys.
+        Period summary counters follow the selected UTC window, while
+        `pendingResetUsesTotal` always reports the complete pending backlog.
+      parameters:
+        - $ref: '#/components/parameters/AdminQuotaResetEventWindow'
+        - $ref: '#/components/parameters/AdminQuotaResetEventType'
+        - $ref: '#/components/parameters/AdminQuotaResetEventStatus'
+        - $ref: '#/components/parameters/AdminQuotaResetEventSearch'
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/AdminQuotaPageSize'
+        - $ref: '#/components/parameters/AdminQuotaResetEventSortBy'
+        - $ref: '#/components/parameters/AdminQuotaSortDir'
+      responses:
+        '200': { $ref: '#/components/responses/AdminQuotaResetEventListResponse' }
+        '400': { $ref: '#/components/responses/AdminQuotaResetEventBadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         default: { $ref: '#/components/responses/InternalError' }
   /api/v1/admin/dashboard/overview:
     get:
@@ -1691,6 +1741,85 @@ components:
         minimum: 1
         maximum: 100
         default: 20
+    AdminQuotaPageSize:
+      name: pageSize
+      in: query
+      description: Number of quota dashboard rows per page, capped at 100.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    AdminQuotaStateView:
+      name: view
+      in: query
+      description: Select accounts at or above 80 percent of a finite quota, or every active SQL projection.
+      schema:
+        type: string
+        enum: [at-risk, all]
+        default: at-risk
+    AdminQuotaAccountType:
+      name: accountType
+      in: query
+      description: Filter projected accounts by identity type.
+      schema:
+        $ref: '#/components/schemas/UserType'
+    AdminQuotaStateSearch:
+      name: search
+      in: query
+      description: Case-insensitive search over projected account identity fields.
+      schema:
+        type: string
+    AdminQuotaStateSortBy:
+      name: sortBy
+      in: query
+      description: Field used to order projected accounts.
+      schema:
+        type: string
+        enum: [saturation, displayName, resetAt, syncedAt]
+        default: saturation
+    AdminQuotaResetEventWindow:
+      name: window
+      in: query
+      description: UTC creation-time window used for ledger rows and period counters.
+      schema:
+        type: string
+        enum: [7d, 30d, all]
+        default: 30d
+    AdminQuotaResetEventType:
+      name: type
+      in: query
+      description: Filter ledger rows by event type.
+      schema:
+        $ref: '#/components/schemas/QuotaResetEventType'
+    AdminQuotaResetEventStatus:
+      name: status
+      in: query
+      description: Filter ledger rows by reconciliation status.
+      schema:
+        $ref: '#/components/schemas/QuotaResetEventStatus'
+    AdminQuotaResetEventSearch:
+      name: search
+      in: query
+      description: Case-insensitive search over target account identity fields.
+      schema:
+        type: string
+    AdminQuotaResetEventSortBy:
+      name: sortBy
+      in: query
+      description: Field used to order ledger rows.
+      schema:
+        type: string
+        enum: [createdAt, appliedAt, user, type, status]
+        default: createdAt
+    AdminQuotaSortDir:
+      name: sortDir
+      in: query
+      description: Sort direction for quota dashboard rows.
+      schema:
+        type: string
+        enum: [asc, desc]
+        default: desc
     IdempotencyKey:
       name: Idempotency-Key
       in: header
@@ -1999,6 +2128,16 @@ components:
       content:
         application/json:
           schema: { $ref: '#/components/schemas/QuotaResetConflictError' }
+    AdminQuotaStateBadRequest:
+      description: A quota-state view, account type, or sort value is invalid.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/AdminQuotaStateBadRequestError' }
+    AdminQuotaResetEventBadRequest:
+      description: A quota-reset event window, type, status, or sort value is invalid.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/AdminQuotaResetEventBadRequestError' }
     InternalError:
       description: The server could not complete the operation.
       content:
@@ -2048,6 +2187,16 @@ components:
       content:
         application/json:
           schema: { $ref: '#/components/schemas/QuotaResetHistory' }
+    AdminQuotaStateListResponse:
+      description: Paginated active SQL quota projections and global projection counters.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/AdminQuotaStateList' }
+    AdminQuotaResetEventListResponse:
+      description: Paginated administrator-visible quota-reset ledger and operational counters.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/AdminQuotaResetEventList' }
     ProfileGroupsResponse:
       description: Access groups assigned to the current user.
       content:
@@ -2306,6 +2455,22 @@ components:
             - quota_reset_not_applicable
             - quota_reset_balance_full
             - quota_reset_pending
+    AdminQuotaStateBadRequestError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: string
+          enum: [invalid_quota_view, invalid_account_type, invalid_sort]
+    AdminQuotaResetEventBadRequestError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          type: string
+          enum: [invalid_usage_window, invalid_quota_reset_type, invalid_quota_reset_status, invalid_sort]
     AppRole:
       type: string
       enum: [none, limited, user, admin]
@@ -2867,6 +3032,9 @@ components:
     QuotaResetEventType:
       type: string
       enum: [monthly_grant, admin_grant, quota_reset_used]
+    QuotaResetEventStatus:
+      type: string
+      enum: [pending, applied]
     QuotaResetHistoryItem:
       type: object
       additionalProperties: false
@@ -2885,6 +3053,188 @@ components:
         items:
           type: array
           items: { $ref: '#/components/schemas/QuotaResetHistoryItem' }
+        page: { type: integer, minimum: 1 }
+        pageSize: { type: integer, minimum: 1, maximum: 100 }
+        total: { type: integer, format: int64, minimum: 0 }
+    AdminQuotaStateSummary:
+      type: object
+      additionalProperties: false
+      required: [projectedAccounts, atRiskAccounts, exhaustedAccounts]
+      properties:
+        projectedAccounts:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Number of active account projections currently stored in PostgreSQL.
+        atRiskAccounts:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Projected accounts at or above 80 percent of a finite quota window.
+        exhaustedAccounts:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Projected accounts at or above 100 percent of a finite quota window.
+    AdminQuotaStateWindow:
+      type: object
+      additionalProperties: false
+      required: [window, usedTokens, quotaTokens, remainingTokens, percent, resetAt]
+      properties:
+        window: { type: string, enum: [5h, 7d] }
+        usedTokens: { type: integer, format: int64, minimum: 0 }
+        quotaTokens:
+          type: integer
+          format: int64
+          minimum: 0
+          nullable: true
+          description: Finite quota, or null for an unlimited or unassigned window.
+        remainingTokens:
+          type: integer
+          format: int64
+          minimum: 0
+          nullable: true
+          description: Remaining finite quota, or null for an unlimited or unassigned window.
+        percent:
+          type: number
+          format: double
+          minimum: 0
+          nullable: true
+          description: Finite-window saturation percentage, or null when no finite quota applies.
+        resetAt: { type: string, format: date-time, nullable: true }
+    AdminQuotaState:
+      type: object
+      additionalProperties: false
+      required: [accountId, accountType, displayName, hasSubscription, planName, status, maximumPercent, mostSaturatedWindow, nextResetAt, windows, syncedAt]
+      properties:
+        accountId: { type: string, format: uuid }
+        accountType: { $ref: '#/components/schemas/UserType' }
+        displayName: { type: string }
+        hasSubscription: { type: boolean }
+        planName: { type: string }
+        status:
+          type: string
+          enum: [unassigned, unlimited, healthy, warning, critical]
+          description: Warning begins at 80 percent and critical begins at 100 percent of a finite window.
+        maximumPercent: { type: number, format: double, minimum: 0, nullable: true }
+        mostSaturatedWindow: { type: string, enum: [5h, 7d], nullable: true }
+        nextResetAt: { type: string, format: date-time, nullable: true }
+        windows:
+          type: array
+          minItems: 2
+          maxItems: 2
+          description: The 5-hour window followed by the 7-day window.
+          items: { $ref: '#/components/schemas/AdminQuotaStateWindow' }
+        syncedAt: { type: string, format: date-time }
+    AdminQuotaStateList:
+      type: object
+      additionalProperties: false
+      required: [generatedAt, projectionSyncedAt, summary, items, page, pageSize, total]
+      properties:
+        generatedAt: { type: string, format: date-time }
+        projectionSyncedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Freshest synchronization timestamp among active projections, or null when none exist.
+        summary: { $ref: '#/components/schemas/AdminQuotaStateSummary' }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/AdminQuotaState' }
+        page: { type: integer, minimum: 1 }
+        pageSize: { type: integer, minimum: 1, maximum: 100 }
+        total: { type: integer, format: int64, minimum: 0 }
+    AdminQuotaResetActorType:
+      type: string
+      enum: [system, user, admin_session, admin_api_key]
+    AdminQuotaResetActor:
+      type: object
+      additionalProperties: false
+      required: [type, userId, displayName]
+      properties:
+        type: { $ref: '#/components/schemas/AdminQuotaResetActorType' }
+        userId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Null for system and API-key actors, or when the administrator was deleted.
+        displayName:
+          type: string
+          nullable: true
+          description: Null for system and API-key actors, or when the administrator was deleted.
+    AdminQuotaResetEventTarget:
+      type: object
+      additionalProperties: false
+      required: [accountId, accountType, displayName]
+      properties:
+        accountId: { type: string, format: uuid }
+        accountType: { $ref: '#/components/schemas/UserType' }
+        displayName: { type: string }
+    AdminQuotaResetEventSummary:
+      type: object
+      additionalProperties: false
+      required: [monthlyGrants, adminGrants, appliedResetUses, pendingResetUsesTotal]
+      properties:
+        monthlyGrants:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Applied monthly grants created in the selected window.
+        adminGrants:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Applied administrator grants created in the selected window.
+        appliedResetUses:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Applied reset uses created in the selected window.
+        pendingResetUsesTotal:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Complete current pending-use backlog, independent of the selected window.
+    AdminQuotaResetEvent:
+      type: object
+      additionalProperties: false
+      required: [id, target, type, status, delta, balanceAfter, actor, grantMonth, resetCutoffAt, reconcileAttempts, lastReconcileAttemptAt, appliedAt, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        target: { $ref: '#/components/schemas/AdminQuotaResetEventTarget' }
+        type: { $ref: '#/components/schemas/QuotaResetEventType' }
+        status: { $ref: '#/components/schemas/QuotaResetEventStatus' }
+        delta: { type: integer, minimum: -1, maximum: 1 }
+        balanceAfter: { type: integer, minimum: 0, maximum: 2 }
+        actor: { $ref: '#/components/schemas/AdminQuotaResetActor' }
+        grantMonth:
+          type: string
+          pattern: '^\d{4}-(0[1-9]|1[0-2])$'
+          nullable: true
+        resetCutoffAt: { type: string, format: date-time, nullable: true }
+        reconcileAttempts: { type: integer, format: int64, minimum: 0 }
+        lastReconcileAttemptAt: { type: string, format: date-time, nullable: true }
+        appliedAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+    AdminQuotaResetEventList:
+      type: object
+      additionalProperties: false
+      required: [window, startsAt, endsAt, summary, items, page, pageSize, total]
+      properties:
+        window: { type: string, enum: [7d, 30d, all] }
+        startsAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Inclusive UTC lower bound, or null for the all-time window.
+        endsAt:
+          type: string
+          format: date-time
+          description: Inclusive UTC upper bound used for the query.
+        summary: { $ref: '#/components/schemas/AdminQuotaResetEventSummary' }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/AdminQuotaResetEvent' }
         page: { type: integer, minimum: 1 }
         pageSize: { type: integer, minimum: 1, maximum: 100 }
         total: { type: integer, format: int64, minimum: 0 }

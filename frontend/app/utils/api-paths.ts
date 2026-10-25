@@ -20,6 +20,8 @@ export function withApiQuery(path: string, params: URLSearchParams) {
 }
 
 export const adminGroupsPath = '/api/v1/admin/groups'
+export const adminQuotaResetEventsPath = '/api/v1/admin/quota-resets/events'
+export const adminQuotaStatesPath = '/api/v1/admin/quota-resets/quota-states'
 export const adminServiceAccountsPath = '/api/v1/admin/service-accounts'
 export const adminUsersPath = '/api/v1/admin/users'
 

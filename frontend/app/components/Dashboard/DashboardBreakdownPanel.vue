@@ -10,12 +10,18 @@ import type {
 import { promptGateChartColors } from '~/theme/palette'
 import { formatCurrencyUsd, formatNumber } from '~/utils/formatters'
 
-const props = defineProps<{
-  metric: DashboardMetric
-  refreshVersion: number
-  scope: DashboardScope
-  window: UsageWindow
-}>()
+const props = withDefaults(
+  defineProps<{
+    allowedBreakdowns?: DashboardBreakdown[]
+    metric: DashboardMetric
+    refreshVersion: number
+    scope: DashboardScope
+    window: UsageWindow
+  }>(),
+  {
+    allowedBreakdowns: undefined,
+  },
+)
 
 const activeTab = defineModel<DashboardBreakdown>({ required: true })
 const apiFetch = useApiFetch()
@@ -36,17 +42,26 @@ const baseTabs: { icon: string; label: string; value: DashboardBreakdown }[] = [
   },
 ]
 
-const tabs = computed(() =>
-  props.scope === 'global'
-    ? [
-        ...baseTabs,
-        {
-          icon: 'mdi-account-multiple-outline',
-          label: 'Identities',
-          value: 'identities' as const,
-        },
-      ]
-    : baseTabs,
+const tabs = computed(() => {
+  const available =
+    props.scope === 'global'
+      ? [
+          ...baseTabs,
+          {
+            icon: 'mdi-account-multiple-outline',
+            label: 'Identities',
+            value: 'identities' as const,
+          },
+        ]
+      : baseTabs
+  const allowedBreakdowns = props.allowedBreakdowns
+  if (!allowedBreakdowns) return available
+  return available.filter((tab) => allowedBreakdowns.includes(tab.value))
+})
+const selectedTab = computed(() =>
+  tabs.value.some((tab) => tab.value === activeTab.value)
+    ? activeTab.value
+    : (tabs.value[0]?.value ?? 'models'),
 )
 
 const endpoint = computed(() => {
@@ -55,18 +70,18 @@ const endpoint = computed(() => {
       ? '/api/v1/admin/dashboard'
       : '/api/v1/me/dashboard'
   const suffix =
-    activeTab.value === 'identities'
+    selectedTab.value === 'identities'
       ? 'top-identities'
-      : activeTab.value === 'provider-types'
+      : selectedTab.value === 'provider-types'
         ? 'top-provider-types'
-        : activeTab.value === 'providers'
+        : selectedTab.value === 'providers'
           ? 'top-provider-names'
           : 'top-models'
   return `${prefix}/${suffix}`
 })
 
 const currentKey = computed(
-  () => `${props.scope}:${props.window}:${props.metric}:${activeTab.value}`,
+  () => `${props.scope}:${props.window}:${props.metric}:${selectedTab.value}`,
 )
 
 const rankedItems = computed(() =>
@@ -95,7 +110,7 @@ const summary = computed(() => {
 
 const tabLabel = computed(
   () =>
-    tabs.value.find((tab) => tab.value === activeTab.value)?.label ??
+    tabs.value.find((tab) => tab.value === selectedTab.value)?.label ??
     'Breakdown',
 )
 
@@ -225,7 +240,7 @@ function formatMetric(value: number | null) {
     title="What explains it"
     :subtitle="`${metricLabel(props.metric)} by ${tabLabel.toLowerCase()}`"
   >
-    <template #actions>
+    <template v-if="tabs.length > 1" #actions>
       <v-btn-toggle
         v-model="activeTab"
         aria-label="Usage breakdown"

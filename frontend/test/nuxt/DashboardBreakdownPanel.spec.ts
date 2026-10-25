@@ -53,6 +53,9 @@ function response(name: string) {
 function mountPanel(
   metric: 'requests' | 'tokens' | 'cost' = 'tokens',
   scope: 'global' | 'self' = 'self',
+  allowedBreakdowns?: Array<
+    'models' | 'providers' | 'provider-types' | 'identities'
+  >,
 ) {
   return mount(DashboardBreakdownPanel, {
     props: {
@@ -61,6 +64,7 @@ function mountPanel(
       refreshVersion: 0,
       scope,
       window: '7d',
+      allowedBreakdowns,
     },
     global: {
       stubs: {
@@ -196,5 +200,19 @@ describe('DashboardBreakdownPanel', () => {
     expect(chart.attributes('data-axis-overflow')).toBe('truncate')
     expect(chart.attributes('data-axis-width')).toBe('120')
     expect(wrapper.get('tbody').text()).toContain(longName)
+  })
+
+  it('limits tabs to the allowed thematic breakdowns', async () => {
+    apiFetch.mockResolvedValueOnce(response('alice@example.com'))
+    const wrapper = mountPanel('cost', 'global', ['identities'])
+
+    await vi.waitFor(() => expect(apiFetch).toHaveBeenCalledOnce())
+
+    expect(wrapper.find('[data-test="breakdown-selector"]').exists()).toBe(
+      false,
+    )
+    expect(apiFetch.mock.calls[0]?.[0]).toBe(
+      '/api/v1/admin/dashboard/top-identities?window=7d&metric=cost',
+    )
   })
 })

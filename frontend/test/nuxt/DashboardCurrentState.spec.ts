@@ -17,8 +17,7 @@ function quotaResponse(used5h: number, quota5h: number | null, used7d: number) {
     plan: { id: 'plan', name: 'Builder' },
     used5hTokens: used5h,
     quota5hTokens: quota5h,
-    remaining5hTokens:
-      quota5h == null ? null : Math.max(0, quota5h - used5h),
+    remaining5hTokens: quota5h == null ? null : Math.max(0, quota5h - used5h),
     reset5hAt: '2026-10-22T12:00:00Z',
     used7dTokens: used7d,
     quota7dTokens: 1000,
@@ -27,18 +26,13 @@ function quotaResponse(used5h: number, quota5h: number | null, used7d: number) {
   }
 }
 
-function mountState(scope: 'self' | 'global' = 'self') {
+function mountState(refreshVersion = 0) {
   return mount(DashboardCurrentState, {
-    props: { refreshVersion: 0, scope },
+    props: { refreshVersion },
     global: {
       stubs: {
         AppSectionCard: {
           template: '<section><slot name="actions" /><slot /></section>',
-        },
-        NuxtLink: {
-          props: ['to'],
-          template:
-            '<a data-test="risk-link" :data-to="to.path + \'?search=\' + to.query.search"><slot /></a>',
         },
         VAlert: { template: '<div><slot /></div>' },
         VBtn: { template: '<button><slot /></button>' },
@@ -87,43 +81,19 @@ describe('DashboardCurrentState', () => {
     )
   })
 
-  it('links quota risk rows to the matching filtered admin list', async () => {
-    apiFetch.mockResolvedValueOnce({
-      generatedAt: '2026-10-22T10:00:00Z',
-      projectionSyncedAt: '2026-10-22T09:58:00Z',
-      atRiskCount: 1,
-      exhaustedCount: 1,
-      items: [
-        {
-          accountId: 'service-account-id',
-          accountType: 'service',
-          displayName: 'Build bot',
-          planName: 'Automation',
-          window: '5h',
-          usedTokens: 110,
-          quotaTokens: 100,
-          remainingTokens: 0,
-          percent: 110,
-          resetAt: '2026-10-22T12:00:00Z',
-          syncedAt: '2026-10-22T09:58:00Z',
-          status: 'critical',
-        },
-      ],
-    })
-    const wrapper = mountState('global')
+  it('keeps the widget personal and reloads only the personal quota', async () => {
+    apiFetch
+      .mockResolvedValueOnce(quotaResponse(100, 1000, 200))
+      .mockResolvedValueOnce(quotaResponse(200, 1000, 300))
+    const wrapper = mountState()
 
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Build bot'))
+    await vi.waitFor(() => expect(apiFetch).toHaveBeenCalledOnce())
+    await wrapper.setProps({ refreshVersion: 1 })
+    await vi.waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(2))
 
-    expect(wrapper.get('[data-test="risk-link"]').attributes('data-to')).toBe(
-      '/admin/service-accounts?search=service-account-id',
-    )
-    expect(wrapper.get('.dashboard-current-state__risk-chip').text()).toBe(
-      'Critical · 110%',
-    )
-    expect(wrapper.text()).toContain('0 tokens left')
-    expect(wrapper.text()).toContain('Resets')
-    expect(apiFetch.mock.calls[0]?.[0]).toBe(
-      '/api/v1/admin/dashboard/quota-risk',
-    )
+    expect(apiFetch.mock.calls.map(([path]) => path)).toEqual([
+      '/api/v1/me/quota',
+      '/api/v1/me/quota',
+    ])
   })
 })

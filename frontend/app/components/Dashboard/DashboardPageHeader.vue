@@ -1,14 +1,30 @@
 <script setup lang="ts">
 import type { UsageWindow } from '~/types/user-service'
+import type { AppSignalVisualName } from '~/types/theme'
 import { formatDateTime } from '~/utils/formatters'
 
-const props = defineProps<{
-  copy: string
-  loading: boolean
-  periodLabel: string
-  title: string
-  updatedAt?: string | null
-}>()
+const props = withDefaults(
+  defineProps<{
+    copy: string
+    controlsLabel?: string
+    icon?: string
+    kicker?: string
+    loading: boolean
+    periodLabel: string
+    refreshLabel?: string
+    title: string
+    updatedAt?: string | null
+    visual?: AppSignalVisualName
+  }>(),
+  {
+    controlsLabel: 'Dashboard controls',
+    icon: 'mdi-monitor-dashboard',
+    kicker: 'Usage cockpit',
+    refreshLabel: 'Refresh all dashboard data',
+    updatedAt: null,
+    visual: 'radar',
+  },
+)
 
 const emit = defineEmits<{
   refresh: []
@@ -21,10 +37,10 @@ const window = defineModel<UsageWindow>('window', { required: true })
   <AppPageHeader
     :copy="props.copy"
     density="compact"
-    icon="mdi-monitor-dashboard"
-    kicker="Usage cockpit"
+    :icon="props.icon"
+    :kicker="props.kicker"
     :title="props.title"
-    visual="radar"
+    :visual="props.visual"
   >
     <template #meta>
       <div class="dashboard-page-header__period" aria-live="polite">
@@ -40,7 +56,7 @@ const window = defineModel<UsageWindow>('window', { required: true })
     <template #footer>
       <div
         class="dashboard-page-header__controls"
-        aria-label="Dashboard controls"
+        :aria-label="props.controlsLabel"
       >
         <DashboardTimeRangeSelect v-model="window" />
         <v-btn
@@ -50,7 +66,7 @@ const window = defineModel<UsageWindow>('window', { required: true })
           variant="outlined"
           rounded="lg"
           :loading="props.loading"
-          aria-label="Refresh all dashboard data"
+          :aria-label="props.refreshLabel"
           @click="emit('refresh')"
         >
           Refresh

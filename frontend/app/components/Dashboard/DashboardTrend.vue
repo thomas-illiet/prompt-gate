@@ -16,13 +16,6 @@ const props = defineProps<{
 const metric = defineModel<DashboardMetric>({ required: true })
 const reducedMotion = shallowRef(false)
 
-const metricOptions: { icon: string; label: string; value: DashboardMetric }[] =
-  [
-    { icon: 'mdi-api', label: 'Requests', value: 'requests' },
-    { icon: 'mdi-counter', label: 'Tokens', value: 'tokens' },
-    { icon: 'mdi-currency-usd', label: 'Cost', value: 'cost' },
-  ]
-
 const points = computed(() =>
   props.daily.map((day) => ({
     date: day.date,
@@ -143,25 +136,7 @@ function exportDailyData() {
     subtitle="How consumption changed day by day"
   >
     <template #actions>
-      <v-btn-toggle
-        v-model="metric"
-        aria-label="Trend metric"
-        color="primary"
-        density="compact"
-        mandatory
-        variant="outlined"
-      >
-        <v-btn
-          v-for="optionItem in metricOptions"
-          :key="optionItem.value"
-          :aria-label="`Show ${optionItem.label.toLowerCase()} trend`"
-          :value="optionItem.value"
-          size="small"
-        >
-          <v-icon :icon="optionItem.icon" start />
-          {{ optionItem.label }}
-        </v-btn>
-      </v-btn-toggle>
+      <DashboardMetricSelect v-model="metric" aria-label="Trend metric" />
     </template>
 
     <div class="dashboard-trend">

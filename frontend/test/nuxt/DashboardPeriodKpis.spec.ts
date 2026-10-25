@@ -66,7 +66,9 @@ function mountKpis(data: DashboardCockpitOverviewResponse) {
         VAvatar: { template: '<span><slot /></span>' },
         VBtn: true,
         VIcon: true,
-        VTooltip: { template: '<span><slot name="activator" :props="{}" /></span>' },
+        VTooltip: {
+          template: '<span><slot name="activator" :props="{}" /></span>',
+        },
       },
     },
   })
@@ -122,5 +124,34 @@ describe('DashboardPeriodKpis', () => {
     )
 
     expect(help.classes()).toContain('dashboard-period-kpis__help')
+  })
+
+  it('supports a focused metric contract without changing personal defaults', () => {
+    const focused = mount(DashboardPeriodKpis, {
+      props: {
+        overview: overview('7d', true),
+        visibleMetrics: [
+          'requests',
+          'tokens',
+          'cost',
+          'tokens-per-request',
+          'latency',
+        ],
+      },
+      global: {
+        stubs: {
+          VAvatar: { template: '<span><slot /></span>' },
+          VBtn: true,
+          VIcon: true,
+          VTooltip: {
+            template: '<span><slot name="activator" :props="{}" /></span>',
+          },
+        },
+      },
+    })
+
+    expect(focused.text()).not.toContain('Tool calls')
+    expect(focused.text()).toContain('Tokens per request')
+    expect(mountKpis(overview('7d', true)).text()).toContain('Tool calls')
   })
 })

@@ -3,6 +3,7 @@ package openapi
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"regexp"
 	"slices"
@@ -13,11 +14,12 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 )
 
-const expectedOperationCount = 116
+const expectedOperationCount = 118
 
 var expectedTagOrder = []string{
 	"Current account",
 	"Dashboard",
+	"Quota resets",
 	"Tokens",
 	"Users",
 	"Service accounts",
@@ -304,6 +306,50 @@ func TestResponseSchemasAcceptRepresentativePayloads(t *testing.T) {
 			payload: `{"window":"7d","startsAt":"2026-10-01T00:00:00Z","endsAt":"2026-10-08T00:00:00Z","activeUsers":1,"activeServiceAccounts":2,"activeVirtualKeys":3}`,
 		},
 		{
+			name: "AdminQuotaStateList",
+			payload: `{
+				"generatedAt":"2026-10-25T12:00:00Z","projectionSyncedAt":"2026-10-25T11:59:00Z",
+				"summary":{"projectedAccounts":1,"atRiskAccounts":0,"exhaustedAccounts":0},
+				"items":[{
+					"accountId":"11111111-1111-4111-8111-111111111111","accountType":"user","displayName":"Unassigned user",
+					"hasSubscription":false,"planName":"","status":"unassigned","maximumPercent":null,
+					"mostSaturatedWindow":null,"nextResetAt":null,
+					"windows":[
+						{"window":"5h","usedTokens":0,"quotaTokens":null,"remainingTokens":null,"percent":null,"resetAt":null},
+						{"window":"7d","usedTokens":0,"quotaTokens":null,"remainingTokens":null,"percent":null,"resetAt":null}
+					],
+					"syncedAt":"2026-10-25T11:59:00Z"
+				}],
+				"page":1,"pageSize":20,"total":1
+			}`,
+		},
+		{
+			name: "AdminQuotaResetEventList",
+			payload: `{
+				"window":"all","startsAt":null,"endsAt":"2026-10-25T12:00:00Z",
+				"summary":{"monthlyGrants":0,"adminGrants":1,"appliedResetUses":0,"pendingResetUsesTotal":1},
+				"items":[
+					{
+						"id":"11111111-1111-4111-8111-111111111111",
+						"target":{"accountId":"22222222-2222-4222-8222-222222222222","accountType":"user","displayName":"Ada"},
+						"type":"quota_reset_used","status":"pending","delta":-1,"balanceAfter":0,
+						"actor":{"type":"user","userId":"22222222-2222-4222-8222-222222222222","displayName":"Ada"},
+						"grantMonth":null,"resetCutoffAt":"2026-10-25T11:58:00Z","reconcileAttempts":2,
+						"lastReconcileAttemptAt":"2026-10-25T11:59:00Z","appliedAt":null,"createdAt":"2026-10-25T11:58:00Z"
+					},
+					{
+						"id":"33333333-3333-4333-8333-333333333333",
+						"target":{"accountId":"22222222-2222-4222-8222-222222222222","accountType":"user","displayName":"Ada"},
+						"type":"admin_grant","status":"applied","delta":1,"balanceAfter":1,
+						"actor":{"type":"admin_session","userId":null,"displayName":null},
+						"grantMonth":null,"resetCutoffAt":null,"reconcileAttempts":0,
+						"lastReconcileAttemptAt":null,"appliedAt":"2026-10-24T09:00:00Z","createdAt":"2026-10-24T09:00:00Z"
+					}
+				],
+				"page":1,"pageSize":20,"total":2
+			}`,
+		},
+		{
 			name: "GroupListItem",
 			payload: `{
 				"id":"11111111-1111-4111-8111-111111111111","name":"platform","displayName":"Platform","description":"Platform team",
@@ -460,6 +506,102 @@ func TestQuotaResetUseResponsesAreStrictlyDiscriminated(t *testing.T) {
 	pending["quota"] = quota
 	if err := pendingSchema.VisitJSON(pending, openapi3.VisitAsResponse()); err == nil {
 		t.Fatal("pending quota reset response accepts a live quota")
+	}
+}
+
+func TestAdminQuotaResetEventSchemaNeverExposesIdempotencyKey(t *testing.T) {
+	_, document := loadSourceDocument(t)
+	schema := requiredComponentSchema(t, document, "AdminQuotaResetEvent")
+	if _, exposed := schema.Properties["idempotencyKey"]; exposed {
+		t.Fatal("AdminQuotaResetEvent exposes idempotencyKey")
+	}
+
+	payload := map[string]any{
+		"id": "11111111-1111-4111-8111-111111111111",
+		"target": map[string]any{
+			"accountId":   "22222222-2222-4222-8222-222222222222",
+			"accountType": "user",
+			"displayName": "Ada",
+		},
+		"type":         "quota_reset_used",
+		"status":       "pending",
+		"delta":        -1,
+		"balanceAfter": 0,
+		"actor": map[string]any{
+			"type":        "user",
+			"userId":      "22222222-2222-4222-8222-222222222222",
+			"displayName": "Ada",
+		},
+		"grantMonth":             nil,
+		"resetCutoffAt":          "2026-10-25T11:58:00Z",
+		"reconcileAttempts":      1,
+		"lastReconcileAttemptAt": nil,
+		"appliedAt":              nil,
+		"createdAt":              "2026-10-25T11:58:00Z",
+	}
+	if err := schema.VisitJSON(payload, openapi3.VisitAsResponse()); err != nil {
+		t.Fatalf("valid pending admin event is rejected: %v", err)
+	}
+	payload["idempotencyKey"] = "never-return-this"
+	if err := schema.VisitJSON(payload, openapi3.VisitAsResponse()); err == nil {
+		t.Fatal("AdminQuotaResetEvent accepts an idempotency key")
+	}
+}
+
+func TestAdminQuotaResetListContractsDocumentDefaultsAndErrors(t *testing.T) {
+	_, document := loadSourceDocument(t)
+	tests := []struct {
+		path               string
+		badRequestResponse string
+		defaults           map[string]string
+	}{
+		{
+			path:               "/api/v1/admin/quota-resets/quota-states",
+			badRequestResponse: "#/components/responses/AdminQuotaStateBadRequest",
+			defaults: map[string]string{
+				"view": "at-risk", "page": "1", "pageSize": "20", "sortBy": "saturation", "sortDir": "desc",
+			},
+		},
+		{
+			path:               "/api/v1/admin/quota-resets/events",
+			badRequestResponse: "#/components/responses/AdminQuotaResetEventBadRequest",
+			defaults: map[string]string{
+				"window": "30d", "page": "1", "pageSize": "20", "sortBy": "createdAt", "sortDir": "desc",
+			},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.path, func(t *testing.T) {
+			pathItem := document.Paths.Map()[test.path]
+			if pathItem == nil || pathItem.Get == nil {
+				t.Fatalf("missing GET %s", test.path)
+			}
+			response := pathItem.Get.Responses.Map()["400"]
+			if response == nil || response.Ref != test.badRequestResponse {
+				t.Fatalf("400 response = %#v, want %s", response, test.badRequestResponse)
+			}
+
+			parameters := make(map[string]*openapi3.Parameter)
+			for _, parameterRef := range pathItem.Get.Parameters {
+				if parameterRef != nil && parameterRef.Value != nil {
+					parameters[parameterRef.Value.Name] = parameterRef.Value
+				}
+			}
+			for name, want := range test.defaults {
+				parameter := parameters[name]
+				if parameter == nil || parameter.Schema == nil || parameter.Schema.Value == nil {
+					t.Fatalf("missing %s parameter schema", name)
+				}
+				if got := fmt.Sprint(parameter.Schema.Value.Default); got != want {
+					t.Errorf("%s default = %s, want %s", name, got, want)
+				}
+			}
+			pageSize := parameters["pageSize"].Schema.Value
+			if pageSize.Max == nil || *pageSize.Max != 100 {
+				t.Errorf("pageSize maximum = %v, want 100", pageSize.Max)
+			}
+		})
 	}
 }
 

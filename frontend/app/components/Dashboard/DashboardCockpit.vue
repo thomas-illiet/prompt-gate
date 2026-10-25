@@ -172,12 +172,12 @@ function normalizeBreakdown(
       {{ overview.staleWarning.value }}
     </v-alert>
 
-    <section class="dashboard-page__section" aria-label="Current status">
-      <DashboardCurrentState
-        :adoption="overview.data.value?.adoption"
-        :refresh-version="refreshVersion"
-        :scope="dashboardScope"
-      />
+    <section
+      v-if="dashboardScope === 'self'"
+      class="dashboard-page__section"
+      aria-label="Current status"
+    >
+      <DashboardCurrentState :refresh-version="refreshVersion" />
     </section>
 
     <v-alert

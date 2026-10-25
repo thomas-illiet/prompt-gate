@@ -101,9 +101,9 @@ function mountCockpit(scope: DashboardScope = 'self') {
             '<div data-test="breakdown" :data-scope="scope" :data-window="window" :data-tab="modelValue" />',
         },
         DashboardCurrentState: {
-          props: ['scope', 'refreshVersion'],
+          props: ['refreshVersion'],
           template:
-            '<div data-test="current-state" :data-scope="scope" :data-refresh="refreshVersion" />',
+            '<div data-test="current-state" :data-refresh="refreshVersion" />',
         },
         DashboardPeriodKpis: { template: '<div data-test="kpis" />' },
         DashboardTimeRangeSelect: {
@@ -179,9 +179,7 @@ describe('DashboardPage', () => {
     expect(wrapper.get('h1').text()).toBe('My usage')
     expect(header.props()).toMatchObject({ window: '7d' })
     expect(wrapper.find('[data-test="scope-select"]').exists()).toBe(false)
-    expect(
-      wrapper.get('[data-test="current-state"]').attributes('data-scope'),
-    ).toBe('self')
+    expect(wrapper.get('[data-test="current-state"]')).toBeDefined()
     expect(wrapper.find('[data-test="annual"]').exists()).toBe(true)
 
     await vi.waitFor(() => expect(replace).toHaveBeenCalled())
@@ -203,9 +201,7 @@ describe('DashboardPage', () => {
     const wrapper = mountCockpit('global')
 
     expect(wrapper.get('h1').text()).toBe('Organization overview')
-    expect(
-      wrapper.get('[data-test="current-state"]').attributes('data-scope'),
-    ).toBe('global')
+    expect(wrapper.find('[data-test="current-state"]').exists()).toBe(false)
     expect(wrapper.get('[data-test="breakdown"]').attributes('data-tab')).toBe(
       'identities',
     )

@@ -4,10 +4,14 @@ export type ActivityWindow = UsageWindow | '365d'
 export type DashboardScope = 'self' | 'global'
 export type DashboardMetric = 'requests' | 'tokens' | 'cost'
 export type DashboardBreakdown =
-  | 'models'
-  | 'providers'
-  | 'provider-types'
-  | 'identities'
+  'models' | 'providers' | 'provider-types' | 'identities'
+export type DashboardKpiMetric =
+  | 'requests'
+  | 'tokens'
+  | 'cost'
+  | 'tool-calls'
+  | 'tokens-per-request'
+  | 'latency'
 
 export interface UserToken {
   id: string
@@ -135,7 +139,10 @@ export interface DashboardDurationResponse extends UsageWindowMeta {
   totalDurationMs: number
 }
 
-export interface DashboardActivityResponse extends Omit<UsageWindowMeta, 'window'> {
+export interface DashboardActivityResponse extends Omit<
+  UsageWindowMeta,
+  'window'
+> {
   window: ActivityWindow
   daily: DailyUsage[]
 }

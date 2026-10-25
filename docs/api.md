@@ -208,6 +208,50 @@ show the projection age. The scheduler refreshes it every
 `schedule.subscription_quota_sync_interval` (`5m` by default); inspect those
 timestamps because a scheduler or Redis failure can make it older.
 
+### Quotas and resets
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/v1/admin/quota-resets/quota-states` | Paginated active SQL quota projections, including both 5-hour and 7-day windows per account. |
+| `GET` | `/api/v1/admin/quota-resets/events` | Paginated quota-reset ledger with period counters and the global pending-use backlog. |
+
+Both endpoints are read-only snapshots intended for manual administration
+refreshes. Pagination defaults to `page=1&pageSize=20`; `pageSize` is capped at
+100.
+
+Quota states default to `view=at-risk`, which includes `warning` accounts at or
+above 80% and `critical` accounts at or above 100% of at least one finite
+window. `view=all` means all active rows in the PostgreSQL quota projection,
+not all registered accounts. Optional filters are `accountType=user|service`
+and a case-insensitive `search` over account identity fields. Results default
+to `sortBy=saturation&sortDir=desc`; `sortBy` also accepts `displayName`,
+`resetAt`, and `syncedAt`. The possible account states are `unassigned`,
+`unlimited`, `healthy`, `warning`, and `critical`. Quota, remaining, percentage,
+and reset values are `null` when a window is unlimited or unassigned. An
+invalid view, account type, or sort returns `400` with
+`invalid_quota_view`, `invalid_account_type`, or `invalid_sort`.
+
+Reset events default to `window=30d`, with `window=7d` and `window=all` also
+available. The 7-day and 30-day bounds are computed in UTC; `startsAt` is
+`null` for `all`. Optional filters are
+`type=monthly_grant|admin_grant|quota_reset_used`,
+`status=pending|applied`, and a case-insensitive target-account identity
+`search`.
+Results default to `sortBy=createdAt&sortDir=desc`; `sortBy` also accepts
+`appliedAt`, `user`, `type`, and `status`. Invalid values return `400` with
+`invalid_usage_window`, `invalid_quota_reset_type`,
+`invalid_quota_reset_status`, or `invalid_sort`.
+
+`monthlyGrants`, `adminGrants`, and `appliedResetUses` follow the selected
+window. `pendingResetUsesTotal` is always the complete current backlog so an
+older blocked reset cannot be hidden by a date filter. Actors are classified as
+`system`, `user`, `admin_session`, or `admin_api_key`. An API-key or system
+actor has null identity fields; an administrator deleted after the event also
+has null `actor.userId` and `actor.displayName`, which the administration UI
+renders as `Deleted administrator`. Deleting the target account continues to
+cascade-delete its ledger events. The response never contains an idempotency
+key, including its stored hash.
+
 ### Users
 
 | Method | Path | Purpose |

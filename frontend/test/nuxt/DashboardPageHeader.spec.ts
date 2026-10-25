@@ -74,4 +74,19 @@ describe('DashboardPageHeader', () => {
 
     expect(wrapper.emitted('refresh')).toHaveLength(1)
   })
+
+  it('supports thematic header identity and accessible control labels', () => {
+    const wrapper = mountHeader({
+      controlsLabel: 'Usage dashboard controls',
+      icon: 'mdi-chart-line',
+      kicker: 'Administration · Dashboards',
+      refreshLabel: 'Refresh usage data',
+      title: 'Usage & costs',
+    })
+
+    expect(wrapper.text()).toContain('Administration · Dashboards')
+    expect(wrapper.get('h1').text()).toBe('Usage & costs')
+    expect(wrapper.get('[aria-label="Usage dashboard controls"]')).toBeDefined()
+    expect(wrapper.get('[aria-label="Refresh usage data"]')).toBeDefined()
+  })
 })

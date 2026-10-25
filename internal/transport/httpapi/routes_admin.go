@@ -7,9 +7,10 @@ import (
 )
 
 func adminRoutes(handler *admin.Handler, openAPIHandler http.HandlerFunc) []routeDefinition {
-	routes := make([]routeDefinition, 0, 91)
+	routes := make([]routeDefinition, 0, 93)
 	routes = append(routes, adminUserRoutes(handler)...)
 	routes = append(routes, adminDashboardRoutes(handler)...)
+	routes = append(routes, adminQuotaResetRoutes(handler)...)
 	routes = append(routes, adminServiceAccountRoutes(handler)...)
 	routes = append(routes, adminSubscriptionRoutes(handler)...)
 	routes = append(routes, adminGroupRoutes(handler)...)
@@ -20,6 +21,13 @@ func adminRoutes(handler *admin.Handler, openAPIHandler http.HandlerFunc) []rout
 	routes = append(routes, adminSetupGuideRoutes(handler)...)
 	routes = append(routes, adminDocumentationRoutes(openAPIHandler)...)
 	return routes
+}
+
+func adminQuotaResetRoutes(handler *admin.Handler) []routeDefinition {
+	return []routeDefinition{
+		{pattern: "GET /api/v1/admin/quota-resets/quota-states", handler: handler.HandleAdminListQuotaStates},
+		{pattern: "GET /api/v1/admin/quota-resets/events", handler: handler.HandleAdminListQuotaResetEvents},
+	}
 }
 
 func adminDocumentationRoutes(openAPIHandler http.HandlerFunc) []routeDefinition {

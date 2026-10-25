@@ -5,7 +5,10 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
+	"promptgate/backend/internal/domain/auth"
+	"promptgate/backend/internal/platform/config"
 	"promptgate/backend/internal/transport/httpapi/admin"
 	"promptgate/backend/internal/transport/httpmiddleware"
 )
@@ -24,10 +27,10 @@ func TestRouteInventoryIsCompleteAndUnique(t *testing.T) {
 		{name: "limited", routes: limitedRoutes(srv), want: 16},
 		{name: "user", routes: userRoutes(srv), want: 5},
 		{name: "model-lab", routes: userModelLabRoutes(srv), want: 2},
-		{name: "admin", routes: adminRoutes(adminHandler, openAPIHandler), want: 91},
+		{name: "admin", routes: adminRoutes(adminHandler, openAPIHandler), want: 93},
 	}
 
-	seen := make(map[string]string, 121)
+	seen := make(map[string]string, 123)
 	for _, group := range groups {
 		if len(group.routes) != group.want {
 			t.Errorf("%s routes: got %d, want %d", group.name, len(group.routes), group.want)
@@ -47,8 +50,8 @@ func TestRouteInventoryIsCompleteAndUnique(t *testing.T) {
 		}
 	}
 
-	if len(seen) != 121 {
-		t.Errorf("route inventory: got %d routes, want 121", len(seen))
+	if len(seen) != 123 {
+		t.Errorf("route inventory: got %d routes, want 123", len(seen))
 	}
 	for _, removed := range []string{
 		"GET /api/v1/me/prompts",
@@ -83,6 +86,58 @@ func TestRemovedMCPRoutesReturnNotFound(t *testing.T) {
 		mux.ServeHTTP(recorder, httptest.NewRequest(request.method, request.path, nil))
 		if recorder.Code != http.StatusNotFound {
 			t.Errorf("%s %s: got %d, want %d", request.method, request.path, recorder.Code, http.StatusNotFound)
+		}
+	}
+}
+
+func TestQuotaResetTrackingRoutesRequireAdminAccess(t *testing.T) {
+	const (
+		cookieName = "quota_reset_session"
+		adminKey   = "quota-reset-admin-key"
+	)
+	sessions := auth.NewSessionStore(nil, time.Hour)
+	limitedSession := createOpenAPITestSession(t, sessions, auth.RoleLimited)
+	adminSession := createOpenAPITestSession(t, sessions, auth.RoleAdmin)
+	cfg := config.APIConfig{
+		SessionConfig: config.SessionConfig{SessionCookieName: cookieName},
+		APIHTTPConfig: config.APIHTTPConfig{AdminAPIKey: adminKey},
+	}
+	mux := http.NewServeMux()
+	registerRoutes(
+		mux,
+		adminQuotaResetRoutes(admin.NewHandler(admin.Dependencies{})),
+		adminAccessMiddlewares(sessions, cfg)...,
+	)
+
+	for _, path := range []string{
+		"/api/v1/admin/quota-resets/quota-states",
+		"/api/v1/admin/quota-resets/events",
+	} {
+		for _, test := range []struct {
+			name       string
+			sessionID  string
+			adminKey   string
+			wantStatus int
+		}{
+			{name: "missing credentials", wantStatus: http.StatusUnauthorized},
+			{name: "limited session", sessionID: limitedSession.ID, wantStatus: http.StatusForbidden},
+			{name: "admin session", sessionID: adminSession.ID, wantStatus: http.StatusInternalServerError},
+			{name: "admin API key", adminKey: adminKey, wantStatus: http.StatusInternalServerError},
+		} {
+			t.Run(path+" "+test.name, func(t *testing.T) {
+				request := httptest.NewRequest(http.MethodGet, path, nil)
+				if test.sessionID != "" {
+					request.AddCookie(&http.Cookie{Name: cookieName, Value: test.sessionID})
+				}
+				if test.adminKey != "" {
+					request.Header.Set(middleware.AdminAPIKeyHeader, test.adminKey)
+				}
+				recorder := httptest.NewRecorder()
+				mux.ServeHTTP(recorder, request)
+				if recorder.Code != test.wantStatus {
+					t.Fatalf("expected %d, got %d: %s", test.wantStatus, recorder.Code, recorder.Body.String())
+				}
+			})
 		}
 	}
 }
