@@ -56,6 +56,12 @@ function mountPanel(
   allowedBreakdowns?: Array<
     'models' | 'providers' | 'provider-types' | 'identities'
   >,
+  customCard?: {
+    actions?: string
+    icon?: string
+    subtitle?: string
+    title?: string
+  },
 ) {
   return mount(DashboardBreakdownPanel, {
     props: {
@@ -65,12 +71,17 @@ function mountPanel(
       scope,
       window: '7d',
       allowedBreakdowns,
+      icon: customCard?.icon,
+      subtitle: customCard?.subtitle,
+      title: customCard?.title,
     },
+    slots: customCard?.actions ? { actions: customCard.actions } : {},
     global: {
       stubs: {
         AppSectionCard: {
+          props: ['icon', 'subtitle', 'title'],
           template:
-            '<section><header data-test="card-actions"><slot name="actions" /></header><div data-test="card-content"><slot /></div></section>',
+            '<section data-test="section-card" :data-icon="icon" :data-subtitle="subtitle" :data-title="title"><header data-test="card-actions"><slot name="actions" /></header><div data-test="card-content"><slot /></div></section>',
         },
         VAlert: { template: '<div><slot /></div>' },
         VBtn: VBtnStub,
@@ -214,5 +225,31 @@ describe('DashboardBreakdownPanel', () => {
     expect(apiFetch.mock.calls[0]?.[0]).toBe(
       '/api/v1/admin/dashboard/top-identities?window=7d&metric=cost',
     )
+  })
+
+  it('places custom controls in the card header with thematic copy', async () => {
+    apiFetch.mockResolvedValueOnce(response('alice@example.com'))
+    const wrapper = mountPanel('requests', 'global', ['identities'], {
+      actions:
+        '<div data-test="identity-metric-selector">Requests / Tokens / Cost</div>',
+      icon: 'mdi-account-multiple-outline',
+      subtitle: 'Compare people and services with one metric',
+      title: 'Identity ranking',
+    })
+
+    await vi.waitFor(() => expect(apiFetch).toHaveBeenCalledOnce())
+
+    const card = wrapper.get('[data-test="section-card"]')
+    expect(card.attributes('data-icon')).toBe('mdi-account-multiple-outline')
+    expect(card.attributes('data-title')).toBe('Identity ranking')
+    expect(card.attributes('data-subtitle')).toBe(
+      'Compare people and services with one metric',
+    )
+    expect(
+      card.get(
+        '[data-test="card-actions"] [data-test="identity-metric-selector"]',
+      ),
+    ).toBeDefined()
+    expect(card.find('[data-test="breakdown-selector"]').exists()).toBe(false)
   })
 })

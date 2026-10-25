@@ -13,15 +13,24 @@ import { formatCurrencyUsd, formatNumber } from '~/utils/formatters'
 const props = withDefaults(
   defineProps<{
     allowedBreakdowns?: DashboardBreakdown[]
+    icon?: string
     metric: DashboardMetric
     refreshVersion: number
     scope: DashboardScope
+    subtitle?: string
+    title?: string
     window: UsageWindow
   }>(),
   {
     allowedBreakdowns: undefined,
+    icon: 'mdi-chart-bar',
+    title: 'What explains it',
   },
 )
+
+defineSlots<{
+  actions?(): unknown
+}>()
 
 const activeTab = defineModel<DashboardBreakdown>({ required: true })
 const apiFetch = useApiFetch()
@@ -112,6 +121,11 @@ const tabLabel = computed(
   () =>
     tabs.value.find((tab) => tab.value === selectedTab.value)?.label ??
     'Breakdown',
+)
+const cardSubtitle = computed(
+  () =>
+    props.subtitle ??
+    `${metricLabel(props.metric)} by ${tabLabel.value.toLowerCase()}`,
 )
 
 const option = computed<ECOption>(() => ({
@@ -236,31 +250,33 @@ function formatMetric(value: number | null) {
 
 <template>
   <AppSectionCard
-    icon="mdi-chart-bar"
-    title="What explains it"
-    :subtitle="`${metricLabel(props.metric)} by ${tabLabel.toLowerCase()}`"
+    :icon="props.icon"
+    :title="props.title"
+    :subtitle="cardSubtitle"
   >
-    <template v-if="tabs.length > 1" #actions>
-      <v-btn-toggle
-        v-model="activeTab"
-        aria-label="Usage breakdown"
-        class="dashboard-breakdown-panel__selector"
-        color="primary"
-        density="compact"
-        mandatory
-        variant="outlined"
-      >
-        <v-btn
-          v-for="tab in tabs"
-          :key="tab.value"
-          :aria-label="`Show ${tab.label.toLowerCase()} breakdown`"
-          :value="tab.value"
-          size="small"
+    <template v-if="$slots.actions || tabs.length > 1" #actions>
+      <slot name="actions">
+        <v-btn-toggle
+          v-model="activeTab"
+          aria-label="Usage breakdown"
+          class="dashboard-breakdown-panel__selector"
+          color="primary"
+          density="compact"
+          mandatory
+          variant="outlined"
         >
-          <v-icon :icon="tab.icon" start />
-          {{ tab.label }}
-        </v-btn>
-      </v-btn-toggle>
+          <v-btn
+            v-for="tab in tabs"
+            :key="tab.value"
+            :aria-label="`Show ${tab.label.toLowerCase()} breakdown`"
+            :value="tab.value"
+            size="small"
+          >
+            <v-icon :icon="tab.icon" start />
+            {{ tab.label }}
+          </v-btn>
+        </v-btn-toggle>
+      </slot>
     </template>
 
     <div class="dashboard-breakdown-panel">

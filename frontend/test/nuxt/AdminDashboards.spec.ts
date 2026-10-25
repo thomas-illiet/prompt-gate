@@ -230,17 +230,26 @@ describe('thematic admin dashboard containers', () => {
       global: {
         stubs: {
           ...commonStubs(),
-          DashboardBreakdownPanel: {
-            props: ['allowedBreakdowns', 'refreshVersion'],
+          AdminActivityAdoptionKpis: {
+            props: ['adoption', 'loading'],
             template:
-              '<div data-test="identity-ranking" :data-allowed="allowedBreakdowns.join(\',\')" :data-refresh="refreshVersion" />',
+              '<div data-test="adoption-kpis" :data-active-users="adoption?.activeUsers" :data-active-service-accounts="adoption?.activeServiceAccounts" :data-active-virtual-keys="adoption?.activeVirtualKeys" :data-loading="loading" />',
           },
-          DashboardKpiCard: {
-            props: ['title'],
-            template: '<div data-test="adoption-kpi" :data-title="title" />',
+          DashboardBreakdownPanel: {
+            props: [
+              'allowedBreakdowns',
+              'icon',
+              'refreshVersion',
+              'subtitle',
+              'title',
+            ],
+            template:
+              '<section data-test="identity-ranking" :data-allowed="allowedBreakdowns.join(\',\')" :data-icon="icon" :data-refresh="refreshVersion" :data-subtitle="subtitle" :data-title="title"><header data-test="ranking-actions"><slot name="actions" /></header></section>',
           },
           DashboardMetricSelect: {
-            template: '<div data-test="metric-select" />',
+            props: ['ariaLabel', 'modelValue'],
+            template:
+              '<div data-test="metric-select" :aria-label="ariaLabel" :data-model-value="modelValue" />',
           },
           DashboardTopTools: {
             props: ['refreshVersion'],
@@ -251,19 +260,29 @@ describe('thematic admin dashboard containers', () => {
       },
     })
 
+    const adoption = wrapper.get('[data-test="adoption-kpis"]')
+    expect(adoption.attributes('data-active-users')).toBe('3')
+    expect(adoption.attributes('data-active-service-accounts')).toBe('2')
+    expect(adoption.attributes('data-active-virtual-keys')).toBe('4')
+    expect(adoption.attributes('data-loading')).toBe('false')
+
+    const ranking = wrapper.get('[data-test="identity-ranking"]')
+    expect(ranking.attributes('data-allowed')).toBe('identities')
+    expect(ranking.attributes('data-icon')).toBe('mdi-account-multiple-outline')
+    expect(ranking.attributes('data-title')).toBe('Identity ranking')
+    expect(ranking.attributes('data-subtitle')).toBe(
+      'Compare people and services with one metric',
+    )
+    const metricSelect = ranking.get(
+      '[data-test="ranking-actions"] [data-test="metric-select"]',
+    )
+    expect(metricSelect.attributes('aria-label')).toBe(
+      'Identity ranking metric',
+    )
+    expect(metricSelect.attributes('data-model-value')).toBe('requests')
     expect(
-      wrapper
-        .findAll('[data-test="adoption-kpi"]')
-        .map((card) => card.attributes('data-title')),
-    ).toEqual([
-      'Active users',
-      'Active service accounts',
-      'Active virtual keys',
-    ])
-    expect(
-      wrapper.get('[data-test="identity-ranking"]').attributes('data-allowed'),
-    ).toBe('identities')
-    expect(wrapper.get('[data-test="metric-select"]')).toBeDefined()
+      wrapper.find('.admin-activity-dashboard__ranking-control').exists(),
+    ).toBe(false)
     expect(wrapper.get('[data-test="top-tools"]')).toBeDefined()
     expect(wrapper.findComponent({ name: 'DashboardTrend' }).exists()).toBe(
       false,

@@ -23,6 +23,7 @@ const options: { icon: string; label: string; value: DashboardMetric }[] = [
   <v-btn-toggle
     v-model="metric"
     :aria-label="props.ariaLabel"
+    class="dashboard-metric-select"
     color="primary"
     density="compact"
     mandatory
@@ -40,3 +41,22 @@ const options: { icon: string; label: string; value: DashboardMetric }[] = [
     </v-btn>
   </v-btn-toggle>
 </template>
+
+<style scoped>
+.dashboard-metric-select {
+  display: inline-flex;
+  flex-wrap: nowrap;
+}
+
+@media (max-width: 599px) {
+  .dashboard-metric-select {
+    display: flex;
+    width: 100%;
+  }
+
+  .dashboard-metric-select :deep(.v-btn) {
+    min-width: 0;
+    flex: 1 1 0;
+  }
+}
+</style>
