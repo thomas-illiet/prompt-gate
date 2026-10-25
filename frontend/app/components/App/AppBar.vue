@@ -1,4 +1,8 @@
 <script setup lang="ts">
+const { contextLabel = 'Green room' } = defineProps<{
+  contextLabel?: string
+}>()
+
 const drawer = useState('drawer')
 const route = useRoute()
 const breadcrumbs = computed(() => {
@@ -29,7 +33,7 @@ const currentTitle = computed(() =>
       <div class="app-shell-bar__context">
         <span class="app-shell-bar__eyebrow">
           <span class="app-shell-bar__beacon" aria-hidden="true" />
-          Green room
+          {{ contextLabel }}
         </span>
         <v-breadcrumbs :items="breadcrumbs" class="app-shell-breadcrumbs">
           <template #divider>

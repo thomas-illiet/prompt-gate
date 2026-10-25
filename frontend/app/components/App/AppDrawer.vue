@@ -4,6 +4,10 @@ import type { RouteRecordRaw } from 'vue-router'
 
 import { hasRequiredRole, isBlockedUser } from '~/utils/auth'
 
+const { mode } = defineProps<{
+  mode: 'admin' | 'user'
+}>()
+
 const router = useRouter()
 const authStore = useAuthStore()
 const { user } = storeToRefs(authStore)
@@ -19,6 +23,13 @@ const drawer = computed({
   },
 })
 const rail = computed(() => !drawerState.value && !mobile.value)
+const brandSubtitle = computed(() =>
+  mode === 'admin' ? 'Admin console' : 'Secure model access',
+)
+const navigationLabel = computed(() =>
+  mode === 'admin' ? 'Administration navigation' : 'Primary navigation',
+)
+
 // isImmediateChildRoute catches Nuxt child pages even when getRoutes exposes a flat record list.
 function isImmediateChildRoute(
   parent: RouteRecordRaw,
@@ -57,6 +68,20 @@ function withDrawerChildren(
   return { ...route, children }
 }
 
+function isVisibleDrawerRoute(route: RouteRecordRaw) {
+  return (
+    Boolean(route.meta?.icon) &&
+    route.meta?.auth !== false &&
+    hasRequiredRole(user.value, route.meta?.requiredRoles)
+  )
+}
+
+function sortDrawerRoutes(routes: RouteRecordRaw[]) {
+  return [...routes].sort(
+    (a, b) => (a.meta?.drawerIndex ?? 99) - (b.meta?.drawerIndex ?? 99),
+  )
+}
+
 const routes = computed(() => {
   if (isBlockedUser(user.value)) {
     return []
@@ -64,12 +89,62 @@ const routes = computed(() => {
 
   const allRoutes = router.getRoutes() as RouteRecordRaw[]
 
-  return allRoutes
-    .filter((route) => route.path.lastIndexOf('/') === 0)
-    .filter((route) => route.meta?.icon && route.meta?.auth !== false)
-    .filter((route) => hasRequiredRole(user.value, route.meta?.requiredRoles))
-    .map((route) => withDrawerChildren(route, allRoutes))
-    .sort((a, b) => (a.meta?.drawerIndex ?? 99) - (b.meta?.drawerIndex ?? 98))
+  if (mode === 'admin') {
+    const adminRoute = allRoutes.find((route) => route.path === '/admin')
+    if (!adminRoute) {
+      return []
+    }
+
+    return sortDrawerRoutes(
+      withDrawerChildren(adminRoute, allRoutes)
+        .children?.filter(isVisibleDrawerRoute)
+        .map((route) => withDrawerChildren(route, allRoutes)) ?? [],
+    )
+  }
+
+  return sortDrawerRoutes(
+    allRoutes
+      .filter((route) => route.path.lastIndexOf('/') === 0)
+      .filter((route) => route.path !== '/admin')
+      .filter(isVisibleDrawerRoute)
+      .map((route) => withDrawerChildren(route, allRoutes)),
+  )
+})
+
+const drawerSections = computed(() => {
+  const sections: { routes: RouteRecordRaw[]; title: string }[] = []
+
+  for (const route of routes.value) {
+    const title = mode === 'admin' ? (route.meta?.drawerSection ?? '') : ''
+    const section = sections.find((candidate) => candidate.title === title)
+    if (section) {
+      section.routes.push(route)
+    } else {
+      sections.push({ routes: [route], title })
+    }
+  }
+
+  return sections
+})
+
+const contextSwitch = computed(() => {
+  if (mode === 'admin') {
+    return {
+      icon: 'mdi-arrow-left',
+      title: 'Back to user space',
+      to: '/dashboard',
+    }
+  }
+
+  if (user.value?.role === 'admin' && !isBlockedUser(user.value)) {
+    return {
+      icon: 'mdi-shield-account-outline',
+      title: 'Administration',
+      to: '/admin/dashboard',
+    }
+  }
+
+  return null
 })
 
 drawerState.value = lgAndUp.value && width.value !== 1280
@@ -82,7 +157,7 @@ drawerState.value = lgAndUp.value && width.value !== 1280
     :rail="rail"
     :rail-width="72"
     :width="288"
-    aria-label="Primary navigation"
+    :aria-label="navigationLabel"
     floating
     class="app-shell-drawer"
   >
@@ -104,14 +179,48 @@ drawerState.value = lgAndUp.value && width.value !== 1280
           </v-list-item-title>
           <v-list-item-subtitle class="drawer-brand__subtitle">
             <span class="drawer-brand__beacon" aria-hidden="true" />
-            Secure model access
+            {{ brandSubtitle }}
           </v-list-item-subtitle>
         </v-list-item>
       </v-list>
     </template>
     <v-list nav density="compact" class="drawer-navigation">
-      <AppDrawerItem v-for="route in routes" :key="route.name" :item="route" />
+      <template v-for="section in drawerSections" :key="section.title">
+        <v-list-subheader
+          v-if="section.title"
+          class="drawer-navigation__section"
+        >
+          {{ section.title }}
+        </v-list-subheader>
+        <AppDrawerItem
+          v-for="route in section.routes"
+          :key="route.name ?? route.path"
+          :item="route"
+        />
+      </template>
     </v-list>
+    <template v-if="contextSwitch" #append>
+      <v-list nav density="compact" class="drawer-context-switch">
+        <v-tooltip :text="contextSwitch.title" location="end">
+          <template #activator="{ props: tooltipProps }">
+            <v-list-item
+              v-bind="tooltipProps"
+              :to="contextSwitch.to"
+              :aria-label="contextSwitch.title"
+              class="drawer-context-switch__item"
+              data-test="drawer-context-switch"
+              :title="contextSwitch.title"
+            >
+              <template #prepend>
+                <span class="drawer-context-switch__icon" aria-hidden="true">
+                  <v-icon :icon="contextSwitch.icon" size="20" />
+                </span>
+              </template>
+            </v-list-item>
+          </template>
+        </v-tooltip>
+      </v-list>
+    </template>
   </v-navigation-drawer>
 </template>
 
@@ -269,6 +378,37 @@ drawerState.value = lgAndUp.value && width.value !== 1280
   }
   .drawer-navigation {
     padding: 4px 9px 18px;
+  }
+  .drawer-navigation__section {
+    min-height: 32px;
+    padding-inline: 18px;
+    color: rgb(var(--app-shell-text-muted));
+    font-size: 0.68rem;
+    font-weight: 750;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .drawer-context-switch {
+    padding: 8px 9px 10px;
+    border-top: 1px solid rgba(var(--app-shell-border), 0.48);
+    background: rgba(var(--app-shell-surface), 0.92);
+  }
+  .drawer-context-switch__item {
+    min-height: 48px;
+    color: rgb(var(--app-shell-text-secondary));
+    font-size: 0.87rem;
+    font-weight: 700;
+  }
+  .drawer-context-switch__icon {
+    display: inline-flex;
+    width: 34px;
+    height: 34px;
+    justify-content: center;
+    align-items: center;
+    border: 1px solid rgba(var(--v-theme-primary), 0.2);
+    border-radius: 12px;
+    background: rgba(var(--v-theme-primary), 0.08);
+    color: rgb(var(--v-theme-primary));
   }
   .v-list-item {
     transition:

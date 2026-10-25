@@ -1,10 +1,9 @@
 <script setup lang="ts">
-import type { DashboardScope, UsageWindow } from '~/types/user-service'
+import type { UsageWindow } from '~/types/user-service'
 import { formatDateTime } from '~/utils/formatters'
 
 const props = defineProps<{
   copy: string
-  isAdmin: boolean
   loading: boolean
   periodLabel: string
   title: string
@@ -15,7 +14,6 @@ const emit = defineEmits<{
   refresh: []
 }>()
 
-const scope = defineModel<DashboardScope>('scope', { required: true })
 const window = defineModel<UsageWindow>('window', { required: true })
 </script>
 
@@ -44,7 +42,6 @@ const window = defineModel<UsageWindow>('window', { required: true })
         class="dashboard-page-header__controls"
         aria-label="Dashboard controls"
       >
-        <DashboardScopeSelect v-if="props.isAdmin" v-model="scope" />
         <DashboardTimeRangeSelect v-model="window" />
         <v-btn
           class="dashboard-page-header__refresh"

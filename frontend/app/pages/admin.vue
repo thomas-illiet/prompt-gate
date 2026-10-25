@@ -1,11 +1,9 @@
 <script setup lang="ts">
 definePageMeta({
-  icon: 'mdi-account-group-outline',
+  layout: 'admin',
   title: 'Administration',
-  drawerIndex: 6,
-  drawerGroup: true,
   requiredRoles: ['admin'],
-  redirect: '/admin/users',
+  redirect: '/admin/dashboard',
 })
 </script>
 

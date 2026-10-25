@@ -53,8 +53,9 @@ describe('AppBar', () => {
     })
   })
 
-  function mountBar() {
+  function mountBar(props: { contextLabel?: string } = {}) {
     return mount(AppBar, {
+      props,
       global: {
         stubs: {
           AppUserMenu: { template: '<div data-test="user-menu" />' },
@@ -90,5 +91,12 @@ describe('AppBar', () => {
     expect(breadcrumbs).toHaveLength(2)
     expect(breadcrumbs[0]?.attributes('data-disabled')).toBe('false')
     expect(breadcrumbs[1]?.attributes('data-disabled')).toBe('true')
+  })
+
+  it('shows the supplied administration context', () => {
+    const wrapper = mountBar({ contextLabel: 'Administration' })
+
+    expect(wrapper.text()).toContain('Administration')
+    expect(wrapper.text()).not.toContain('Green room')
   })
 })

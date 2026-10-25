@@ -7,10 +7,8 @@ function mountHeader(props: Record<string, unknown> = {}) {
   return mount(DashboardPageHeader, {
     props: {
       copy: 'Your recent PromptGate activity.',
-      isAdmin: true,
       loading: false,
       periodLabel: 'Oct 15 – Oct 22',
-      scope: 'self',
       title: 'My usage',
       updatedAt: '2026-10-22T10:00:00Z',
       window: '7d',
@@ -19,12 +17,6 @@ function mountHeader(props: Record<string, unknown> = {}) {
     global: {
       stubs: {
         AppSignalVisual: { template: '<span data-test="radar" />' },
-        DashboardScopeSelect: {
-          props: ['modelValue'],
-          emits: ['update:modelValue'],
-          template:
-            '<button data-test="scope" @click="$emit(\'update:modelValue\', \'global\')">{{ modelValue }}</button>',
-        },
         DashboardTimeRangeSelect: {
           props: ['modelValue'],
           emits: ['update:modelValue'],
@@ -61,26 +53,21 @@ describe('DashboardPageHeader', () => {
     expect(wrapper.get('[data-test="radar"]')).toBeDefined()
   })
 
-  it('exposes typed scope and window models through the header controls', async () => {
-    const updateScope = vi.fn()
+  it('exposes the typed window model through the header controls', async () => {
     const updateWindow = vi.fn()
     const wrapper = mountHeader({
-      'onUpdate:scope': updateScope,
       'onUpdate:window': updateWindow,
     })
 
-    await wrapper.get('[data-test="scope"]').trigger('click')
     await wrapper.get('[data-test="window"]').trigger('click')
 
-    expect(updateScope).toHaveBeenCalledWith('global')
     expect(updateWindow).toHaveBeenCalledWith('30d')
   })
 
-  it('hides the scope control for non-admins and emits refresh', async () => {
-    const wrapper = mountHeader({ isAdmin: false, loading: true })
+  it('emits refresh and reflects the loading state', async () => {
+    const wrapper = mountHeader({ loading: true })
     const refresh = wrapper.get('[aria-label="Refresh all dashboard data"]')
 
-    expect(wrapper.find('[data-test="scope"]').exists()).toBe(false)
     expect(refresh.attributes('data-loading')).toBe('true')
 
     await refresh.trigger('click')

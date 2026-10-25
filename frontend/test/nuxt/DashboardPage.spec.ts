@@ -1,9 +1,11 @@
-import { mount } from '@vue/test-utils'
 import { mockNuxtImport } from '@nuxt/test-utils/runtime'
+import { mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import DashboardCockpit from '../../app/components/Dashboard/DashboardCockpit.vue'
 import DashboardPageHeader from '../../app/components/Dashboard/DashboardPageHeader.vue'
 import DashboardPage from '../../app/pages/dashboard.vue'
+import type { DashboardScope } from '../../app/types/user-service'
 
 const {
   authUser,
@@ -77,8 +79,9 @@ function overviewData(requests = 4) {
   }
 }
 
-function mountPage() {
-  return mount(DashboardPage, {
+function mountCockpit(scope: DashboardScope = 'self') {
+  return mount(DashboardCockpit, {
+    props: { scope },
     global: {
       stubs: {
         AppEmptyState: {
@@ -103,12 +106,6 @@ function mountPage() {
             '<div data-test="current-state" :data-scope="scope" :data-refresh="refreshVersion" />',
         },
         DashboardPeriodKpis: { template: '<div data-test="kpis" />' },
-        DashboardScopeSelect: {
-          props: ['modelValue'],
-          emits: ['update:modelValue'],
-          template:
-            '<button data-test="scope-select" @click="$emit(\'update:modelValue\', \'global\')">{{ modelValue }}</button>',
-        },
         DashboardTimeRangeSelect: {
           props: ['modelValue'],
           template: '<div data-test="window-select">{{ modelValue }}</div>',
@@ -153,57 +150,74 @@ describe('DashboardPage', () => {
     useDashboardOverviewMock.mockClear()
   })
 
-  it('shows an admin My usage view by default and switches to organization scope', async () => {
-    authUser.value = { id: 'admin-1', role: 'admin' }
-    const wrapper = mountPage()
-    const header = wrapper.getComponent(DashboardPageHeader)
-
-    expect(wrapper.get('h1').text()).toBe('My usage')
-    expect(header.props()).toMatchObject({
-      isAdmin: true,
-      scope: 'self',
-      window: '7d',
+  it('composes the personal dashboard route with a fixed self scope', () => {
+    const wrapper = mount(DashboardPage, {
+      global: {
+        stubs: {
+          DashboardCockpit: {
+            props: ['scope'],
+            template: '<div data-test="cockpit" :data-scope="scope" />',
+          },
+        },
+      },
     })
-    expect(wrapper.get('[data-test="scope-select"]').text()).toBe('self')
-    expect(
-      wrapper.get('[data-test="current-state"]').attributes('data-scope'),
-    ).toBe('self')
 
-    await wrapper.get('[data-test="scope-select"]').trigger('click')
-
-    expect(wrapper.get('h1').text()).toBe('Organization overview')
-    expect(header.props('scope')).toBe('global')
-    expect(
-      wrapper.get('[data-test="current-state"]').attributes('data-scope'),
-    ).toBe('global')
-    expect(
-      wrapper.get('[data-test="top-tools"]').attributes('data-scope'),
-    ).toBe('global')
-    expect(wrapper.find('[data-test="annual"]').exists()).toBe(false)
-    await vi.waitFor(() =>
-      expect(useRouter().currentRoute.value.query.scope).toBe('global'),
+    expect(wrapper.get('[data-test="cockpit"]').attributes('data-scope')).toBe(
+      'self',
     )
   })
 
-  it('forces non-admin users to self even when the URL requests global scope', async () => {
+  it('keeps an administrator on My usage and removes the legacy global scope', async () => {
+    authUser.value = { id: 'admin-1', role: 'admin' }
     routeQuery.scope = 'global'
-    authUser.value = { id: 'user-1', role: 'user' }
+    const router = useRouter()
+    const replace = vi.spyOn(router, 'replace')
 
-    const wrapper = mountPage()
+    const wrapper = mountCockpit('self')
+    const header = wrapper.getComponent(DashboardPageHeader)
 
+    expect(wrapper.get('h1').text()).toBe('My usage')
+    expect(header.props()).toMatchObject({ window: '7d' })
     expect(wrapper.find('[data-test="scope-select"]').exists()).toBe(false)
     expect(
       wrapper.get('[data-test="current-state"]').attributes('data-scope'),
     ).toBe('self')
-    expect(wrapper.get('h1').text()).toBe('My usage')
+    expect(wrapper.find('[data-test="annual"]').exists()).toBe(true)
+
+    await vi.waitFor(() => expect(replace).toHaveBeenCalled())
+    const lastNavigation = replace.mock.calls.at(-1)?.[0]
+    expect(lastNavigation).toEqual({
+      query: {
+        breakdown: 'models',
+        metric: 'requests',
+        window: '7d',
+      },
+    })
+    replace.mockRestore()
   })
 
-  it('hydrates window, metric, and breakdown from the URL', async () => {
+  it('renders the global cockpit with identities and no personal annual activity', () => {
+    authUser.value = { id: 'admin-1', role: 'admin' }
+    routeQuery.breakdown = 'identities'
+
+    const wrapper = mountCockpit('global')
+
+    expect(wrapper.get('h1').text()).toBe('Organization overview')
+    expect(
+      wrapper.get('[data-test="current-state"]').attributes('data-scope'),
+    ).toBe('global')
+    expect(wrapper.get('[data-test="breakdown"]').attributes('data-tab')).toBe(
+      'identities',
+    )
+    expect(wrapper.find('[data-test="annual"]').exists()).toBe(false)
+  })
+
+  it('hydrates window, metric, and breakdown from the URL', () => {
     routeQuery.window = '30d'
     routeQuery.metric = 'tokens'
     routeQuery.breakdown = 'providers'
 
-    const wrapper = mountPage()
+    const wrapper = mountCockpit()
 
     expect(wrapper.get('[data-test="window-select"]').text()).toBe('30d')
     expect(wrapper.get('[data-test="breakdown"]').attributes('data-tab')).toBe(
@@ -216,7 +230,7 @@ describe('DashboardPage', () => {
   })
 
   it('refreshes the overview and every lazy dashboard area together', async () => {
-    const wrapper = mountPage()
+    const wrapper = mountCockpit()
     const refresh = wrapper
       .findAll('[data-test="button"]')
       .find((button) => button.text().includes('Refresh'))
@@ -240,7 +254,7 @@ describe('DashboardPage', () => {
     authUser.value = { id: 'limited-1', role: 'limited' }
     overviewState.data.value = overviewData(0)
 
-    const wrapper = mountPage()
+    const wrapper = mountCockpit()
 
     const action = wrapper
       .findAll('[data-test="button"]')
