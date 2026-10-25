@@ -334,20 +334,6 @@ func parseDashboardBreakdownMetric(r *http.Request) (proxy.DashboardBreakdownMet
 func parseUsageWindow(r *http.Request) (proxy.UsageWindow, error) {
 	value := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("window")))
 	if value == "" {
-		if days := strings.TrimSpace(r.URL.Query().Get("days")); days != "" {
-			parsed, err := strconv.Atoi(days)
-			if err != nil {
-				return "", err
-			}
-			switch parsed {
-			case 7:
-				return proxy.UsageWindow7Days, nil
-			case 30:
-				return proxy.UsageWindow30Days, nil
-			default:
-				return "", proxy.ErrInvalidUsageWindow
-			}
-		}
 		return proxy.UsageWindow30Days, nil
 	}
 

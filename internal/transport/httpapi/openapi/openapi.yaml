@@ -190,7 +190,6 @@ paths:
         - sessionCookie: []
       parameters:
         - $ref: '#/components/parameters/UsageWindow'
-        - $ref: '#/components/parameters/LegacyUsageDays'
       responses:
         '200': { $ref: '#/components/responses/DashboardOverviewResponse' }
         '400': { $ref: '#/components/responses/BadRequest' }
@@ -205,7 +204,6 @@ paths:
         - sessionCookie: []
       parameters:
         - $ref: '#/components/parameters/UsageWindow'
-        - $ref: '#/components/parameters/LegacyUsageDays'
       responses:
         '200': { $ref: '#/components/responses/DashboardTokensResponse' }
         '400': { $ref: '#/components/responses/BadRequest' }
@@ -220,7 +218,6 @@ paths:
         - sessionCookie: []
       parameters:
         - $ref: '#/components/parameters/UsageWindow'
-        - $ref: '#/components/parameters/LegacyUsageDays'
       responses:
         '200': { $ref: '#/components/responses/DashboardMessagesResponse' }
         '400': { $ref: '#/components/responses/BadRequest' }
@@ -235,7 +232,6 @@ paths:
         - sessionCookie: []
       parameters:
         - $ref: '#/components/parameters/UsageWindow'
-        - $ref: '#/components/parameters/LegacyUsageDays'
       responses:
         '200': { $ref: '#/components/responses/DashboardDurationResponse' }
         '400': { $ref: '#/components/responses/BadRequest' }
@@ -250,7 +246,6 @@ paths:
         - sessionCookie: []
       parameters:
         - $ref: '#/components/parameters/ActivityUsageWindow'
-        - $ref: '#/components/parameters/LegacyUsageDays'
       responses:
         '200': { $ref: '#/components/responses/DashboardActivityResponse' }
         '400': { $ref: '#/components/responses/BadRequest' }
@@ -265,7 +260,6 @@ paths:
         - sessionCookie: []
       parameters:
         - $ref: '#/components/parameters/UsageWindow'
-        - $ref: '#/components/parameters/LegacyUsageDays'
         - $ref: '#/components/parameters/BreakdownMetric'
       responses:
         '200': { $ref: '#/components/responses/DashboardBreakdownResponse' }
@@ -281,7 +275,6 @@ paths:
         - sessionCookie: []
       parameters:
         - $ref: '#/components/parameters/UsageWindow'
-        - $ref: '#/components/parameters/LegacyUsageDays'
         - $ref: '#/components/parameters/BreakdownMetric'
       responses:
         '200': { $ref: '#/components/responses/DashboardBreakdownResponse' }
@@ -297,7 +290,6 @@ paths:
         - sessionCookie: []
       parameters:
         - $ref: '#/components/parameters/UsageWindow'
-        - $ref: '#/components/parameters/LegacyUsageDays'
         - $ref: '#/components/parameters/BreakdownMetric'
       responses:
         '200': { $ref: '#/components/responses/DashboardBreakdownResponse' }
@@ -313,7 +305,6 @@ paths:
         - sessionCookie: []
       parameters:
         - $ref: '#/components/parameters/UsageWindow'
-        - $ref: '#/components/parameters/LegacyUsageDays'
       responses:
         '200': { $ref: '#/components/responses/DashboardTopToolsResponse' }
         '400': { $ref: '#/components/responses/BadRequest' }
@@ -486,7 +477,6 @@ paths:
       summary: Get usage statistics for a human user
       parameters:
         - $ref: '#/components/parameters/UsageWindow'
-        - $ref: '#/components/parameters/LegacyUsageDays'
       responses:
         '200': { $ref: '#/components/responses/DashboardOverviewResponse' }
         '400': { $ref: '#/components/responses/BadRequest' }
@@ -650,7 +640,6 @@ paths:
       summary: Get the organization dashboard overview
       parameters:
         - $ref: '#/components/parameters/UsageWindow'
-        - $ref: '#/components/parameters/LegacyUsageDays'
       responses:
         '200': { $ref: '#/components/responses/DashboardOverviewResponse' }
         '400': { $ref: '#/components/responses/BadRequest' }
@@ -674,7 +663,6 @@ paths:
       summary: Get organization token totals
       parameters:
         - $ref: '#/components/parameters/UsageWindow'
-        - $ref: '#/components/parameters/LegacyUsageDays'
       responses:
         '200': { $ref: '#/components/responses/DashboardTokensResponse' }
         '400': { $ref: '#/components/responses/BadRequest' }
@@ -688,7 +676,6 @@ paths:
       summary: Get the organization message total
       parameters:
         - $ref: '#/components/parameters/UsageWindow'
-        - $ref: '#/components/parameters/LegacyUsageDays'
       responses:
         '200': { $ref: '#/components/responses/DashboardMessagesResponse' }
         '400': { $ref: '#/components/responses/BadRequest' }
@@ -702,7 +689,6 @@ paths:
       summary: Get organization request duration totals
       parameters:
         - $ref: '#/components/parameters/UsageWindow'
-        - $ref: '#/components/parameters/LegacyUsageDays'
       responses:
         '200': { $ref: '#/components/responses/DashboardDurationResponse' }
         '400': { $ref: '#/components/responses/BadRequest' }
@@ -716,7 +702,6 @@ paths:
       summary: Get organization daily activity
       parameters:
         - $ref: '#/components/parameters/UsageWindow'
-        - $ref: '#/components/parameters/LegacyUsageDays'
       responses:
         '200': { $ref: '#/components/responses/DashboardActivityResponse' }
         '400': { $ref: '#/components/responses/BadRequest' }
@@ -730,7 +715,6 @@ paths:
       summary: Get organization top models
       parameters:
         - $ref: '#/components/parameters/UsageWindow'
-        - $ref: '#/components/parameters/LegacyUsageDays'
         - $ref: '#/components/parameters/BreakdownMetric'
       responses:
         '200': { $ref: '#/components/responses/DashboardBreakdownResponse' }
@@ -745,7 +729,6 @@ paths:
       summary: Get organization top provider names
       parameters:
         - $ref: '#/components/parameters/UsageWindow'
-        - $ref: '#/components/parameters/LegacyUsageDays'
         - $ref: '#/components/parameters/BreakdownMetric'
       responses:
         '200': { $ref: '#/components/responses/DashboardBreakdownResponse' }
@@ -760,7 +743,6 @@ paths:
       summary: Get organization top provider types
       parameters:
         - $ref: '#/components/parameters/UsageWindow'
-        - $ref: '#/components/parameters/LegacyUsageDays'
         - $ref: '#/components/parameters/BreakdownMetric'
       responses:
         '200': { $ref: '#/components/responses/DashboardBreakdownResponse' }
@@ -775,7 +757,6 @@ paths:
       summary: Get organization top observed tool calls
       parameters:
         - $ref: '#/components/parameters/UsageWindow'
-        - $ref: '#/components/parameters/LegacyUsageDays'
       responses:
         '200': { $ref: '#/components/responses/DashboardTopToolsResponse' }
         '400': { $ref: '#/components/responses/BadRequest' }
@@ -789,7 +770,6 @@ paths:
       summary: Get organization adoption counts
       parameters:
         - $ref: '#/components/parameters/UsageWindow'
-        - $ref: '#/components/parameters/LegacyUsageDays'
       responses:
         '200': { $ref: '#/components/responses/DashboardAdoptionResponse' }
         '400': { $ref: '#/components/responses/BadRequest' }
@@ -803,7 +783,6 @@ paths:
       summary: Get top users and service accounts
       parameters:
         - $ref: '#/components/parameters/UsageWindow'
-        - $ref: '#/components/parameters/LegacyUsageDays'
         - $ref: '#/components/parameters/BreakdownMetric'
       responses:
         '200': { $ref: '#/components/responses/DashboardBreakdownResponse' }
@@ -887,7 +866,6 @@ paths:
       summary: Get usage statistics for a service account
       parameters:
         - $ref: '#/components/parameters/UsageWindow'
-        - $ref: '#/components/parameters/LegacyUsageDays'
       responses:
         '200': { $ref: '#/components/responses/DashboardOverviewResponse' }
         '400': { $ref: '#/components/responses/BadRequest' }
@@ -1163,7 +1141,6 @@ paths:
       summary: Get usage statistics for an access group
       parameters:
         - $ref: '#/components/parameters/UsageWindow'
-        - $ref: '#/components/parameters/LegacyUsageDays'
       responses:
         '200': { $ref: '#/components/responses/DashboardOverviewResponse' }
         '400': { $ref: '#/components/responses/BadRequest' }
@@ -1759,13 +1736,6 @@ components:
         type: integer
         enum: [7, 30]
         default: 30
-    LegacyUsageDays:
-      name: days
-      in: query
-      description: Legacy alias for a 7-day or 30-day dashboard window. Omit when window is set.
-      schema:
-        type: integer
-        enum: [7, 30]
     UsageWindow:
       name: window
       in: query

@@ -60,8 +60,8 @@ func TestHandleCurrentUserUsageRejectsInvalidWindow(t *testing.T) {
 	}
 }
 
-// TestParseUsageWindowAcceptsDashboardWindowsAndLegacyDays verifies parse usage window accepts dashboard windows and legacy days.
-func TestParseUsageWindowAcceptsDashboardWindowsAndLegacyDays(t *testing.T) {
+// TestParseUsageWindowAcceptsDashboardWindows verifies the dashboard window contract.
+func TestParseUsageWindowAcceptsDashboardWindows(t *testing.T) {
 	for _, test := range []struct {
 		path string
 		want proxy.UsageWindow
@@ -70,7 +70,6 @@ func TestParseUsageWindowAcceptsDashboardWindowsAndLegacyDays(t *testing.T) {
 		{path: "/api/v1/me/dashboard/tokens?window=7d", want: proxy.UsageWindow7Days},
 		{path: "/api/v1/me/dashboard/tokens?window=30d", want: proxy.UsageWindow30Days},
 		{path: "/api/v1/me/dashboard/tokens?window=all", want: proxy.UsageWindowAll},
-		{path: "/api/v1/me/dashboard/tokens?days=7", want: proxy.UsageWindow7Days},
 	} {
 		req := httptest.NewRequest(http.MethodGet, test.path, nil)
 		got, err := parseUsageWindow(req)
