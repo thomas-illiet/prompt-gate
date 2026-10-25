@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import AdminSetupGuidePreview from './AdminSetupGuidePreview.vue'
-import type { SetupGuidePayload } from '~/types/setup-guides'
+import {
+  SETUP_GUIDE_SYNTAX_LANGUAGE_OPTIONS,
+  type SetupGuidePayload,
+  type SetupGuideSyntaxLanguage,
+} from '~/types/setup-guides'
 import { SETUP_GUIDE_VARIABLES } from '~/utils/setup-guide-template'
 
 const props = defineProps<{
@@ -8,6 +12,10 @@ const props = defineProps<{
   templateError: string | null
 }>()
 const filePathsText = defineModel<string>('filePathsText', { required: true })
+const syntaxLanguage = defineModel<SetupGuideSyntaxLanguage>(
+  'syntaxLanguage',
+  { required: true },
+)
 const template = defineModel<string>('template', { required: true })
 const activeTab = shallowRef<'template' | 'preview'>('template')
 const variables = SETUP_GUIDE_VARIABLES.map((value) => `{{${value}}}`)
@@ -28,6 +36,17 @@ const modelLoopHelp = '{{#models}}...{{/models}}'
 
     <div v-show="activeTab === 'template'" class="setup-guide-content__panel">
       <div class="setup-guide-content__editor">
+        <v-select
+          v-model="syntaxLanguage"
+          class="setup-guide-content__language"
+          label="Syntax highlighting"
+          :items="SETUP_GUIDE_SYNTAX_LANGUAGE_OPTIONS"
+          item-title="title"
+          item-value="value"
+          prepend-inner-icon="mdi-code-tags"
+          variant="outlined"
+          hide-details
+        />
         <v-textarea
           v-model="template"
           class="setup-guide-content__textarea"
@@ -177,7 +196,13 @@ const modelLoopHelp = '{{#models}}...{{/models}}'
 }
 
 .setup-guide-content__editor {
+  display: grid;
+  gap: 16px;
   margin-bottom: 24px;
+}
+
+.setup-guide-content__language {
+  max-width: 320px;
 }
 
 .setup-guide-content__textarea :deep(textarea) {

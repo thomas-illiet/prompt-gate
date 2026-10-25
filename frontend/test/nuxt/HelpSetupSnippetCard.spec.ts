@@ -28,6 +28,7 @@ describe('HelpSetupSnippetCard', () => {
     const wrapper = mount(HelpSetupSnippetCard, {
       props: {
         code: 'curl https://proxy.example.com',
+        syntaxLanguage: 'bash',
         subtitle: 'Snippet',
         title: 'curl',
       },
@@ -56,11 +57,14 @@ describe('HelpSetupSnippetCard', () => {
       'curl https://proxy.example.com',
     )
     expect(notifySuccess).toHaveBeenCalledWith('Snippet copied.')
+    expect(wrapper.text()).toContain('Bash')
+    expect(wrapper.find('[class*="__token--"]').exists()).toBe(true)
   })
 
   it('copies slotted snippet content to the clipboard', async () => {
     const wrapper = mount(HelpSetupSnippetCard, {
       props: {
+        syntaxLanguage: 'bash',
         subtitle: 'Snippet',
         title: 'Shell',
       },
@@ -99,6 +103,7 @@ describe('HelpSetupSnippetCard', () => {
       props: {
         code: 'schema: v1',
         filePaths: ['~/.continue/config.yaml'],
+        syntaxLanguage: 'yaml',
         subtitle: 'Snippet',
         title: 'Continue',
       },
@@ -116,5 +121,6 @@ describe('HelpSetupSnippetCard', () => {
 
     expect(wrapper.text()).toContain('Default file path')
     expect(wrapper.text()).toContain('~/.continue/config.yaml')
+    expect(wrapper.text()).toContain('YAML')
   })
 })

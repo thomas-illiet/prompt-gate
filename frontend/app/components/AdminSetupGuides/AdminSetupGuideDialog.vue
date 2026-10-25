@@ -21,6 +21,7 @@ const form = reactive<SetupGuidePayload>({
   icon: 'mdi-file-code-outline',
   compatibility: 'openai',
   modelMode: 'single',
+  syntaxLanguage: 'plaintext',
   filePaths: [],
   template: '',
   enabled: true,
@@ -66,6 +67,7 @@ watch(open, (isOpen) => {
           icon: source.icon,
           compatibility: source.compatibility,
           modelMode: source.modelMode,
+          syntaxLanguage: source.syntaxLanguage ?? 'plaintext',
           filePaths: Array.isArray(source.filePaths)
             ? [...source.filePaths]
             : [],
@@ -80,6 +82,7 @@ watch(open, (isOpen) => {
           icon: 'mdi-file-code-outline',
           compatibility: 'openai',
           modelMode: 'single',
+          syntaxLanguage: 'plaintext',
           filePaths: [],
           template: '',
           enabled: true,
@@ -155,6 +158,7 @@ function submit() {
     <AdminSetupGuideContentStep
       v-else
       v-model:file-paths-text="filePathsText"
+      v-model:syntax-language="form.syntaxLanguage"
       v-model:template="form.template"
       :guide="form"
       :template-error="templateError"

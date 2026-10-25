@@ -29,12 +29,15 @@ const preview = computed(() =>
   <v-alert v-if="validationError" type="error" variant="tonal">{{
     validationError
   }}</v-alert>
-  <div v-else class="admin-setup-preview app-markdown">
+  <div v-else class="admin-setup-preview">
     <div class="admin-setup-preview__header">
       <v-icon icon="mdi-code-tags" size="18" />
       <span>Rendered output</span>
     </div>
-    <pre><code>{{ preview }}</code></pre>
+    <AppSyntaxCodeBlock
+      :code="preview"
+      :language="props.guide.syntaxLanguage ?? 'plaintext'"
+    />
   </div>
 </template>
 
@@ -50,15 +53,7 @@ const preview = computed(() =>
   text-transform: uppercase;
 }
 
-.admin-setup-preview pre {
-  max-height: 420px;
-  margin-block: 12px 0;
-  overflow-x: hidden;
-}
-
-.admin-setup-preview pre code {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  word-break: break-word;
+.admin-setup-preview :deep(.app-syntax-code-block) {
+  margin-top: 12px;
 }
 </style>

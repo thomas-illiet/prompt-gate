@@ -66,6 +66,7 @@ watch(
       <HelpSetupSnippetCard
         :code="renderedCode"
         :file-paths="activeGuide.filePaths"
+        :syntax-language="activeGuide.syntaxLanguage"
         :subtitle="activeGuide.subtitle"
         :title="activeGuide.title"
       />

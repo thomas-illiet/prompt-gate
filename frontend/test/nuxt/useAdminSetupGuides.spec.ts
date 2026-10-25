@@ -15,6 +15,7 @@ const guide: SetupGuide = {
   icon: 'mdi-language-python',
   compatibility: 'openai',
   modelMode: 'single',
+  syntaxLanguage: 'python',
   filePaths: ['main.py'],
   template: 'original {{model}}',
   enabled: true,

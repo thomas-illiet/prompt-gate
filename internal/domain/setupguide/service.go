@@ -16,12 +16,23 @@ import (
 )
 
 const (
-	CompatibilityOpenAI    = "openai"
-	CompatibilityAnthropic = "anthropic"
-	CompatibilityBoth      = "both"
-	ModelModeSingle        = "single"
-	ModelModeAll           = "all"
-	ModelModeNone          = "none"
+	CompatibilityOpenAI      = "openai"
+	CompatibilityAnthropic   = "anthropic"
+	CompatibilityBoth        = "both"
+	ModelModeSingle          = "single"
+	ModelModeAll             = "all"
+	ModelModeNone            = "none"
+	SyntaxLanguagePlaintext  = "plaintext"
+	SyntaxLanguageBash       = "bash"
+	SyntaxLanguagePython     = "python"
+	SyntaxLanguageGo         = "go"
+	SyntaxLanguageJava       = "java"
+	SyntaxLanguageCSharp     = "csharp"
+	SyntaxLanguagePowerShell = "powershell"
+	SyntaxLanguageLua        = "lua"
+	SyntaxLanguageYAML       = "yaml"
+	SyntaxLanguageJSON       = "json"
+	SyntaxLanguageJSON5      = "json5"
 )
 
 var (
@@ -32,6 +43,33 @@ var (
 	allowedVariables  = map[string]bool{
 		"token": true, "baseUrl": true, "openaiBaseUrl": true, "anthropicBaseUrl": true,
 		"model": true, "models": true, "providerName": true, "providerDisplayName": true,
+	}
+	allowedSyntaxLanguages = map[string]bool{
+		SyntaxLanguagePlaintext:  true,
+		SyntaxLanguageBash:       true,
+		SyntaxLanguagePython:     true,
+		SyntaxLanguageGo:         true,
+		SyntaxLanguageJava:       true,
+		SyntaxLanguageCSharp:     true,
+		SyntaxLanguagePowerShell: true,
+		SyntaxLanguageLua:        true,
+		SyntaxLanguageYAML:       true,
+		SyntaxLanguageJSON:       true,
+		SyntaxLanguageJSON5:      true,
+	}
+	defaultSyntaxLanguages = map[string]string{
+		"curl":        SyntaxLanguageBash,
+		"python":      SyntaxLanguagePython,
+		"go":          SyntaxLanguageGo,
+		"java":        SyntaxLanguageJava,
+		"aspnet":      SyntaxLanguageCSharp,
+		"powershell":  SyntaxLanguagePowerShell,
+		"lua":         SyntaxLanguageLua,
+		"cline":       SyntaxLanguagePlaintext,
+		"continue":    SyntaxLanguageYAML,
+		"openclaw":    SyntaxLanguageJSON5,
+		"opencode":    SyntaxLanguageJSON,
+		"claude-code": SyntaxLanguageBash,
 	}
 )
 
@@ -56,19 +94,20 @@ func (s *StringList) Scan(value any) error {
 }
 
 type SetupGuide struct {
-	ID            uuid.UUID  `gorm:"type:uuid;primaryKey" json:"id"`
-	Identifier    string     `gorm:"uniqueIndex;not null" json:"identifier"`
-	Title         string     `gorm:"not null" json:"title"`
-	Subtitle      string     `gorm:"not null" json:"subtitle"`
-	Icon          string     `gorm:"not null" json:"icon"`
-	Compatibility string     `gorm:"not null;index" json:"compatibility"`
-	ModelMode     string     `gorm:"not null" json:"modelMode"`
-	FilePaths     StringList `gorm:"type:jsonb;not null" json:"filePaths"`
-	Template      string     `gorm:"type:text;not null" json:"template"`
-	Enabled       bool       `gorm:"not null;index" json:"enabled"`
-	Position      int        `gorm:"not null;index" json:"position"`
-	CreatedAt     time.Time  `json:"createdAt"`
-	UpdatedAt     time.Time  `json:"updatedAt"`
+	ID             uuid.UUID  `gorm:"type:uuid;primaryKey" json:"id"`
+	Identifier     string     `gorm:"uniqueIndex;not null" json:"identifier"`
+	Title          string     `gorm:"not null" json:"title"`
+	Subtitle       string     `gorm:"not null" json:"subtitle"`
+	Icon           string     `gorm:"not null" json:"icon"`
+	Compatibility  string     `gorm:"not null;index" json:"compatibility"`
+	ModelMode      string     `gorm:"not null" json:"modelMode"`
+	SyntaxLanguage string     `gorm:"not null;default:plaintext" json:"syntaxLanguage"`
+	FilePaths      StringList `gorm:"type:jsonb;not null" json:"filePaths"`
+	Template       string     `gorm:"type:text;not null" json:"template"`
+	Enabled        bool       `gorm:"not null;index" json:"enabled"`
+	Position       int        `gorm:"not null;index" json:"position"`
+	CreatedAt      time.Time  `json:"createdAt"`
+	UpdatedAt      time.Time  `json:"updatedAt"`
 }
 
 func (g *SetupGuide) BeforeCreate(_ *gorm.DB) error {
@@ -79,16 +118,17 @@ func (g *SetupGuide) BeforeCreate(_ *gorm.DB) error {
 }
 
 type Input struct {
-	Identifier    string   `json:"identifier"`
-	Title         string   `json:"title"`
-	Subtitle      string   `json:"subtitle"`
-	Icon          string   `json:"icon"`
-	Compatibility string   `json:"compatibility"`
-	ModelMode     string   `json:"modelMode"`
-	FilePaths     []string `json:"filePaths"`
-	Template      string   `json:"template"`
-	Enabled       bool     `json:"enabled"`
-	Position      int      `json:"position"`
+	Identifier     string   `json:"identifier"`
+	Title          string   `json:"title"`
+	Subtitle       string   `json:"subtitle"`
+	Icon           string   `json:"icon"`
+	Compatibility  string   `json:"compatibility"`
+	ModelMode      string   `json:"modelMode"`
+	SyntaxLanguage string   `json:"syntaxLanguage"`
+	FilePaths      []string `json:"filePaths"`
+	Template       string   `json:"template"`
+	Enabled        bool     `json:"enabled"`
+	Position       int      `json:"position"`
 }
 
 type Service struct{ db *gorm.DB }
@@ -96,10 +136,31 @@ type Service struct{ db *gorm.DB }
 func NewService(db *gorm.DB) *Service { return &Service{db: db} }
 
 func (s *Service) AutoMigrate(ctx context.Context) error {
-	if err := s.db.WithContext(ctx).AutoMigrate(&SetupGuide{}); err != nil {
+	db := s.db.WithContext(ctx)
+	hadSyntaxLanguage := db.Migrator().HasColumn(&SetupGuide{}, "SyntaxLanguage")
+	if err := db.AutoMigrate(&SetupGuide{}); err != nil {
 		return err
 	}
+	if !hadSyntaxLanguage {
+		if err := s.backfillSyntaxLanguages(ctx); err != nil {
+			return err
+		}
+	}
 	return s.seedDefaults(ctx)
+}
+
+// backfillSyntaxLanguages assigns languages to the original guides when the
+// column is introduced. It is deliberately called only for that migration so
+// subsequent administrator choices are never overwritten.
+func (s *Service) backfillSyntaxLanguages(ctx context.Context) error {
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		for identifier, language := range defaultSyntaxLanguages {
+			if err := tx.Model(&SetupGuide{}).Where("identifier = ?", identifier).Update("syntax_language", language).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 func ValidateTemplate(value string) error {
@@ -151,10 +212,21 @@ func validateInput(in Input) error {
 	if in.ModelMode != ModelModeSingle && in.ModelMode != ModelModeAll && in.ModelMode != ModelModeNone {
 		return errors.New("invalid model mode")
 	}
+	if !allowedSyntaxLanguages[normalizeSyntaxLanguage(in.SyntaxLanguage)] {
+		return errors.New("invalid syntax language")
+	}
 	if in.Position < 0 {
 		return errors.New("position must be non-negative")
 	}
 	return ValidateTemplate(in.Template)
+}
+
+func normalizeSyntaxLanguage(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return SyntaxLanguagePlaintext
+	}
+	return value
 }
 
 func fromInput(in Input) SetupGuide {
@@ -164,7 +236,7 @@ func fromInput(in Input) SetupGuide {
 			paths = append(paths, p)
 		}
 	}
-	return SetupGuide{Identifier: strings.TrimSpace(in.Identifier), Title: strings.TrimSpace(in.Title), Subtitle: strings.TrimSpace(in.Subtitle), Icon: strings.TrimSpace(in.Icon), Compatibility: in.Compatibility, ModelMode: in.ModelMode, FilePaths: paths, Template: in.Template, Enabled: in.Enabled, Position: in.Position}
+	return SetupGuide{Identifier: strings.TrimSpace(in.Identifier), Title: strings.TrimSpace(in.Title), Subtitle: strings.TrimSpace(in.Subtitle), Icon: strings.TrimSpace(in.Icon), Compatibility: in.Compatibility, ModelMode: in.ModelMode, SyntaxLanguage: normalizeSyntaxLanguage(in.SyntaxLanguage), FilePaths: paths, Template: in.Template, Enabled: in.Enabled, Position: in.Position}
 }
 
 func (s *Service) List(ctx context.Context, activeOnly bool) ([]SetupGuide, error) {
@@ -197,7 +269,7 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, in Input) (SetupGuid
 	}
 	out := fromInput(in)
 	out.ID = id
-	result := s.db.WithContext(ctx).Model(&SetupGuide{}).Where("id = ?", id).Updates(map[string]any{"identifier": out.Identifier, "title": out.Title, "subtitle": out.Subtitle, "icon": out.Icon, "compatibility": out.Compatibility, "model_mode": out.ModelMode, "file_paths": out.FilePaths, "template": out.Template, "enabled": out.Enabled, "position": out.Position})
+	result := s.db.WithContext(ctx).Model(&SetupGuide{}).Where("id = ?", id).Updates(map[string]any{"identifier": out.Identifier, "title": out.Title, "subtitle": out.Subtitle, "icon": out.Icon, "compatibility": out.Compatibility, "model_mode": out.ModelMode, "syntax_language": out.SyntaxLanguage, "file_paths": out.FilePaths, "template": out.Template, "enabled": out.Enabled, "position": out.Position})
 	if result.Error != nil {
 		return SetupGuide{}, result.Error
 	}
@@ -270,6 +342,7 @@ func defaultGuides() []SetupGuide {
 	}
 	for i := range items {
 		items[i].ID = uuid.New()
+		items[i].SyntaxLanguage = defaultSyntaxLanguages[items[i].Identifier]
 		if items[i].FilePaths == nil {
 			items[i].FilePaths = StringList{}
 		}

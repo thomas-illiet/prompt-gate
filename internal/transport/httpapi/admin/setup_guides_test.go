@@ -41,16 +41,17 @@ func setupGuideRequest(method, target, body, id string) *http.Request {
 
 func setupGuideJSON(identifier, title string, position int) string {
 	payload, _ := json.Marshal(setupguide.Input{
-		Identifier:    identifier,
-		Title:         title,
-		Subtitle:      "A setup example",
-		Icon:          "mdi-code-tags",
-		Compatibility: setupguide.CompatibilityBoth,
-		ModelMode:     setupguide.ModelModeSingle,
-		FilePaths:     []string{" ~/.config/example ", ""},
-		Template:      "{{providerDisplayName}}: {{model}} at {{baseUrl}}",
-		Enabled:       true,
-		Position:      position,
+		Identifier:     identifier,
+		Title:          title,
+		Subtitle:       "A setup example",
+		Icon:           "mdi-code-tags",
+		Compatibility:  setupguide.CompatibilityBoth,
+		ModelMode:      setupguide.ModelModeSingle,
+		SyntaxLanguage: setupguide.SyntaxLanguagePython,
+		FilePaths:      []string{" ~/.config/example ", ""},
+		Template:       "{{providerDisplayName}}: {{model}} at {{baseUrl}}",
+		Enabled:        true,
+		Position:       position,
 	})
 	return string(payload)
 }
@@ -76,7 +77,7 @@ func TestAdminSetupGuideCRUDReorderAndValidation(t *testing.T) {
 	handler, _ := newSetupGuidesTestHandler(t)
 	first := createSetupGuideThroughHandler(t, handler, "first-guide", "First", 0)
 	second := createSetupGuideThroughHandler(t, handler, "second-guide", "Second", 1)
-	if first.ID == uuid.Nil || len(first.FilePaths) != 1 || first.FilePaths[0] != "~/.config/example" {
+	if first.ID == uuid.Nil || first.SyntaxLanguage != setupguide.SyntaxLanguagePython || len(first.FilePaths) != 1 || first.FilePaths[0] != "~/.config/example" {
 		t.Fatalf("unexpected first guide: %#v", first)
 	}
 
@@ -199,6 +200,13 @@ func TestAdminSetupGuideErrorMapping(t *testing.T) {
 			request:    setupGuideRequest(http.MethodPost, "/api/v1/admin/setup-guides", `{"identifier":`, ""),
 			wantStatus: http.StatusBadRequest,
 			wantError:  "invalid_request_body",
+		},
+		{
+			name:       "invalid syntax language",
+			call:       handler.HandleAdminCreateSetupGuide,
+			request:    setupGuideRequest(http.MethodPost, "/api/v1/admin/setup-guides", strings.Replace(setupGuideJSON("invalid-syntax", "Invalid syntax", 1), `"syntaxLanguage":"python"`, `"syntaxLanguage":"brainfuck"`, 1), ""),
+			wantStatus: http.StatusBadRequest,
+			wantError:  "invalid syntax language",
 		},
 		{
 			name:       "duplicate identifier",

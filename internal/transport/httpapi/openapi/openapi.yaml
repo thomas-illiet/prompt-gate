@@ -3407,7 +3407,7 @@ components:
     SetupGuide:
       type: object
       additionalProperties: false
-      required: [id, identifier, title, subtitle, icon, compatibility, modelMode, filePaths, template, enabled, position, createdAt, updatedAt]
+      required: [id, identifier, title, subtitle, icon, compatibility, modelMode, syntaxLanguage, filePaths, template, enabled, position, createdAt, updatedAt]
       properties:
         id: { type: string, format: uuid }
         identifier: { type: string }
@@ -3420,6 +3420,9 @@ components:
         modelMode:
           type: string
           enum: [single, all, none]
+        syntaxLanguage:
+          type: string
+          enum: [plaintext, bash, python, go, java, csharp, powershell, lua, yaml, json, json5]
         filePaths:
           type: array
           items: { type: string }
@@ -3447,6 +3450,10 @@ components:
         modelMode:
           type: string
           enum: [single, all, none]
+        syntaxLanguage:
+          type: string
+          default: plaintext
+          enum: [plaintext, bash, python, go, java, csharp, powershell, lua, yaml, json, json5]
         filePaths:
           type: array
           items: { type: string }

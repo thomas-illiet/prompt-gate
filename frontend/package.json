@@ -48,6 +48,7 @@
     "echarts": "^6.1.0",
     "marked": "^18.1.1",
     "pinia": "^4.0.3",
+    "rangi": "^2.2.0",
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "swagger-ui": "5.34.0",

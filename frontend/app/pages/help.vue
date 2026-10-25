@@ -2,7 +2,6 @@
 import HelpSetupConfigurationCard from '~/components/HelpSetup/HelpSetupConfigurationCard.vue'
 import HelpSetupDocumentationPanel from '~/components/HelpSetup/HelpSetupDocumentationPanel.vue'
 import HelpSetupHero from '~/components/HelpSetup/HelpSetupHero.vue'
-import HelpSetupOperationalNotes from '~/components/HelpSetup/HelpSetupOperationalNotes.vue'
 import HelpSetupProviderLoadingCard from '~/components/HelpSetup/HelpSetupProviderLoadingCard.vue'
 import { availableSetupProviders } from '~/utils/help-setup'
 import { guideSupportsProvider } from '~/utils/setup-guide-template'
@@ -97,10 +96,6 @@ const modelSelectMode = computed<ModelSelectMode>(() => {
           :providers="providers"
           :selected-provider="snippetSelection.selectedProvider.value"
         />
-      </v-col>
-
-      <v-col v-if="providers.length > 0" cols="12">
-        <HelpSetupOperationalNotes />
       </v-col>
 
       <v-col

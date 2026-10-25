@@ -482,6 +482,35 @@ func requiredComponentSchema(t *testing.T, document *openapi3.T, name string) *o
 	return schemaRef.Value
 }
 
+func TestSetupGuideSyntaxLanguageContract(t *testing.T) {
+	_, document := loadSourceDocument(t)
+	responseSchema := requiredComponentSchema(t, document, "SetupGuide")
+	requestSchema := requiredComponentSchema(t, document, "SetupGuideRequest")
+
+	if !slices.Contains(responseSchema.Required, "syntaxLanguage") {
+		t.Fatal("SetupGuide response does not require syntaxLanguage")
+	}
+	if slices.Contains(requestSchema.Required, "syntaxLanguage") {
+		t.Fatal("SetupGuideRequest requires syntaxLanguage instead of accepting legacy clients")
+	}
+	responseLanguage := responseSchema.Properties["syntaxLanguage"]
+	requestLanguage := requestSchema.Properties["syntaxLanguage"]
+	if responseLanguage == nil || responseLanguage.Value == nil || requestLanguage == nil || requestLanguage.Value == nil {
+		t.Fatal("missing setup guide syntaxLanguage schema")
+	}
+	if requestLanguage.Value.Default != "plaintext" {
+		t.Fatalf("syntaxLanguage default = %#v, want plaintext", requestLanguage.Value.Default)
+	}
+	for _, language := range []string{"plaintext", "bash", "python", "go", "java", "csharp", "powershell", "lua", "yaml", "json", "json5"} {
+		if err := responseLanguage.Value.VisitJSON(language, openapi3.VisitAsResponse()); err != nil {
+			t.Fatalf("syntaxLanguage rejects %q: %v", language, err)
+		}
+	}
+	if err := responseLanguage.Value.VisitJSON("brainfuck", openapi3.VisitAsResponse()); err == nil {
+		t.Fatal("syntaxLanguage accepts an unsupported value")
+	}
+}
+
 func TestAdminUserSchemaOnlyAllowsHumanAccounts(t *testing.T) {
 	_, document := loadSourceDocument(t)
 	schemaRef := document.Components.Schemas["AdminUser"]

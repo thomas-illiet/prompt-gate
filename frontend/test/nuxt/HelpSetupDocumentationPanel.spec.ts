@@ -17,6 +17,7 @@ const guide = (
   title: string,
   position: number,
   template = '{{baseUrl}} {{model}}',
+  syntaxLanguage: SetupGuide['syntaxLanguage'] = 'plaintext',
 ): SetupGuide => ({
   id,
   identifier: id,
@@ -25,6 +26,7 @@ const guide = (
   icon: 'mdi-code-tags',
   compatibility: 'openai',
   modelMode: 'single',
+  syntaxLanguage,
   filePaths: [],
   template,
   enabled: true,
@@ -35,8 +37,9 @@ const guide = (
 const global = {
   stubs: {
     HelpSetupSnippetCard: {
-      props: ['code', 'filePaths', 'subtitle', 'title'],
-      template: '<section><h2>{{ title }}</h2><pre>{{ code }}</pre></section>',
+      props: ['code', 'filePaths', 'syntaxLanguage', 'subtitle', 'title'],
+      template:
+        '<section :data-language="syntaxLanguage"><h2>{{ title }}</h2><pre>{{ code }}</pre></section>',
     },
     VList: { template: '<nav><slot /></nav>' },
     VListItem: {
@@ -74,12 +77,13 @@ describe('HelpSetupDocumentationPanel', () => {
         provider,
         guides: [
           guide('first', 'First', 0),
-          guide('second', 'Second', 1, 'provider={{providerName}}'),
+          guide('second', 'Second', 1, 'provider={{providerName}}', 'python'),
         ],
       },
     })
     await wrapper.findAll('button')[1]!.trigger('click')
     expect(wrapper.text()).toContain('provider=openai-main')
+    expect(wrapper.get('section').attributes('data-language')).toBe('python')
   })
   it('renders nothing when no compatible guide is supplied', () => {
     const wrapper = mount(HelpSetupDocumentationPanel, {

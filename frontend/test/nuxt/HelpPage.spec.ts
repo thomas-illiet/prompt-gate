@@ -52,9 +52,6 @@ function mountPage() {
         HelpSetupDocumentationPanel: {
           template: '<div data-test="documentation-panel" />',
         },
-        HelpSetupOperationalNotes: {
-          template: '<div data-test="operational-notes" />',
-        },
         HelpSetupProviderLoadingCard: true,
         VAlert: { template: '<div><slot /></div>' },
         VBtn: { template: '<button><slot /></button>' },
@@ -113,6 +110,7 @@ describe('HelpPage', () => {
             icon: 'mdi-code-tags',
             compatibility: 'anthropic',
             modelMode: 'none',
+            syntaxLanguage: 'bash',
             filePaths: [],
             template: '{{anthropicBaseUrl}}',
             enabled: true,
@@ -137,6 +135,7 @@ describe('HelpPage', () => {
     expect(wrapper.find('[data-test="documentation-panel"]').exists()).toBe(
       true,
     )
+    expect(wrapper.text()).not.toContain('Before running snippets')
     expect(wrapper.get('[data-test="hero-provider-count"]').text()).toBe('1')
     expect(wrapper.get('[data-test="hero-loading"]').text()).toBe('false')
   })
