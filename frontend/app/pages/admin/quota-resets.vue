@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import AdminQuotaResetsDashboard from '~/components/AdminQuotaResets/AdminQuotaResetsDashboard.vue'
+
 definePageMeta({
   requiredRoles: ['admin'],
   title: 'Quotas & resets',

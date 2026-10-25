@@ -1,11 +1,15 @@
 import { mockNuxtImport } from '@nuxt/test-utils/runtime'
-import { mount } from '@vue/test-utils'
+import { mount, shallowMount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import AdminDashboardPage from '../../app/pages/admin/dashboard.vue'
 import AdminActivityPage from '../../app/pages/admin/activity.vue'
 import AdminQuotaResetsPage from '../../app/pages/admin/quota-resets.vue'
 import AdminUsagePage from '../../app/pages/admin/usage.vue'
+import AdminActivityDashboard from '../../app/components/AdminDashboards/AdminActivityDashboard.vue'
+import AdminDashboardOverview from '../../app/components/AdminDashboards/AdminDashboardOverview.vue'
+import AdminUsageDashboard from '../../app/components/AdminDashboards/AdminUsageDashboard.vue'
+import AdminQuotaResetsDashboard from '../../app/components/AdminQuotaResets/AdminQuotaResetsDashboard.vue'
 
 const { definePageMetaMock, routeQuery, useRouteMock } = vi.hoisted(() => {
   const routeQuery: Record<string, string> = {}
@@ -134,6 +138,20 @@ describe('AdminDashboardPage', () => {
         global: { stubs: { [route.stub]: true } },
       })
       expect(definePageMetaMock).toHaveBeenCalledWith(route.meta)
+    }
+  })
+
+  it('renders every route container as an imported Vue component', () => {
+    const routes = [
+      [AdminDashboardPage, AdminDashboardOverview],
+      [AdminUsagePage, AdminUsageDashboard],
+      [AdminActivityPage, AdminActivityDashboard],
+      [AdminQuotaResetsPage, AdminQuotaResetsDashboard],
+    ] as const
+
+    for (const [page, container] of routes) {
+      const wrapper = shallowMount(page)
+      expect(wrapper.findComponent(container).exists()).toBe(true)
     }
   })
 })

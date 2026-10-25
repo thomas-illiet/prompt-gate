@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import AdminActivityDashboard from '~/components/AdminDashboards/AdminActivityDashboard.vue'
+
 definePageMeta({
   requiredRoles: ['admin'],
   title: 'Activity & adoption',

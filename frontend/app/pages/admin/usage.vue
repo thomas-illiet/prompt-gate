@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import AdminUsageDashboard from '~/components/AdminDashboards/AdminUsageDashboard.vue'
+
 definePageMeta({
   requiredRoles: ['admin'],
   title: 'Usage & costs',

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import AdminDashboardThemeCard from '~/components/AdminDashboards/AdminDashboardThemeCard.vue'
+
 import type { DashboardCostCoverage } from '~/types/user-service'
 import {
   formatCompactNumber,

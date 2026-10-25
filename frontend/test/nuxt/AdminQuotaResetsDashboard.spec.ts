@@ -1,9 +1,12 @@
 import { mockNuxtImport } from '@nuxt/test-utils/runtime'
-import { mount } from '@vue/test-utils'
+import { mount, shallowMount } from '@vue/test-utils'
 import { shallowRef } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import AdminQuotaResetsDashboard from '../../app/components/AdminQuotaResets/AdminQuotaResetsDashboard.vue'
+import AdminQuotaResetEventsSection from '../../app/components/AdminQuotaResets/AdminQuotaResetEventsSection.vue'
+import AdminQuotaResetKpis from '../../app/components/AdminQuotaResets/AdminQuotaResetKpis.vue'
+import AdminQuotaStatesSection from '../../app/components/AdminQuotaResets/AdminQuotaStatesSection.vue'
 
 const { useAdminQuotaResetEventsMock, useAdminQuotaStatesMock } = vi.hoisted(
   () => ({
@@ -145,5 +148,25 @@ describe('AdminQuotaResetsDashboard', () => {
       .trigger('click')
     expect(states.reload).toHaveBeenCalledOnce()
     expect(events.reload).toHaveBeenCalledOnce()
+  })
+
+  it('resolves all dashboard sections as imported Vue components', () => {
+    useAdminQuotaStatesMock.mockReturnValue(quotaStatesState())
+    useAdminQuotaResetEventsMock.mockReturnValue(resetEventsState())
+
+    const wrapper = shallowMount(AdminQuotaResetsDashboard, {
+      global: {
+        stubs: {
+          AppPageHeader: true,
+          VContainer: { template: '<main><slot /></main>' },
+        },
+      },
+    })
+
+    expect(wrapper.findComponent(AdminQuotaResetKpis).exists()).toBe(true)
+    expect(wrapper.findComponent(AdminQuotaStatesSection).exists()).toBe(true)
+    expect(wrapper.findComponent(AdminQuotaResetEventsSection).exists()).toBe(
+      true,
+    )
   })
 })

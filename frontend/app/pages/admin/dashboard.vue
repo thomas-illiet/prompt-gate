@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AdminDashboardOverview from '~/components/AdminDashboards/AdminDashboardOverview.vue'
 import type {
   DashboardBreakdown,
   DashboardMetric,

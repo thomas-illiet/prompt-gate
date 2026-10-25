@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import AdminQuotaResetEventsSection from '~/components/AdminQuotaResets/AdminQuotaResetEventsSection.vue'
+import AdminQuotaResetKpis from '~/components/AdminQuotaResets/AdminQuotaResetKpis.vue'
+import AdminQuotaStatesSection from '~/components/AdminQuotaResets/AdminQuotaStatesSection.vue'
 import { formatDateTime } from '~/utils/formatters'
 
 const quotaStates = useAdminQuotaStates()

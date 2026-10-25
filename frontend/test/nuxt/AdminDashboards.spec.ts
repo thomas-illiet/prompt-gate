@@ -1,10 +1,11 @@
 import { mockNuxtImport } from '@nuxt/test-utils/runtime'
-import { mount } from '@vue/test-utils'
+import { mount, shallowMount } from '@vue/test-utils'
 import { defineComponent, h, shallowRef } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import AdminActivityDashboard from '../../app/components/AdminDashboards/AdminActivityDashboard.vue'
 import AdminDashboardOverview from '../../app/components/AdminDashboards/AdminDashboardOverview.vue'
+import AdminDashboardThemeCard from '../../app/components/AdminDashboards/AdminDashboardThemeCard.vue'
 import AdminUsageDashboard from '../../app/components/AdminDashboards/AdminUsageDashboard.vue'
 import type { DashboardCockpitOverviewResponse } from '../../app/types/user-service'
 
@@ -171,6 +172,14 @@ describe('thematic admin dashboard containers', () => {
 
     await wrapper.get('[data-test="refresh"]').trigger('click')
     expect(overviewReload).toHaveBeenCalledOnce()
+  })
+
+  it('resolves the three overview cards as imported Vue components', () => {
+    const wrapper = shallowMount(AdminDashboardOverview, {
+      global: { stubs: commonStubs() },
+    })
+
+    expect(wrapper.findAllComponents(AdminDashboardThemeCard)).toHaveLength(3)
   })
 
   it('places only usage KPIs, trend, and infrastructure breakdown on Usage', async () => {
