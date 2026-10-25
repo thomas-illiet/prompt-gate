@@ -97,33 +97,16 @@ function mountPage() {
   return mount(ModelsPage, {
     global: {
       stubs: {
-        AppPageHeader: {
-          props: [
-            'copy',
-            'density',
-            'icon',
-            'kicker',
-            'statBusy',
-            'statLabel',
-            'statValue',
-            'title',
-            'visual',
-          ],
-          template: `
-            <header
-              data-test="models-header"
-              :data-busy="statBusy"
-              :data-density="density"
-              :data-stat-label="statLabel"
-              :data-visual="visual"
-            >
-              <h1>{{ title }}</h1>
-              <span data-test="models-count">{{ statValue }}</span>
-            </header>
-          `,
-        },
         ModelLabChatPanel: {
-          template: '<section data-test="model-lab-panel" />',
+          props: ['modelsLoading', 'targets'],
+          template: `
+            <section
+              data-test="model-lab-panel"
+              :data-models-loading="modelsLoading"
+            >
+              {{ targets.length }}
+            </section>
+          `,
         },
         VContainer: { template: '<main><slot /></main>' },
       },
@@ -138,7 +121,7 @@ describe('ModelsPage', () => {
     useModelLabChatMock.mockReturnValue(createChatState())
   })
 
-  it('shows a compact page header with the live runnable model count', async () => {
+  it('passes the live runnable model catalog to the unified chat panel', async () => {
     const catalog = shallowRef<ModelLabCatalogResponse | null>(createCatalog())
     useModelLabCatalogMock.mockReturnValue({
       catalog,
@@ -148,14 +131,11 @@ describe('ModelsPage', () => {
     })
 
     const wrapper = mountPage()
-    const header = wrapper.get('[data-test="models-header"]')
+    const panel = wrapper.get('[data-test="model-lab-panel"]')
 
-    expect(header.get('h1').text()).toBe('Model Lab')
-    expect(header.attributes('data-density')).toBe('compact')
-    expect(header.attributes('data-stat-label')).toBe('Available models')
-    expect(header.attributes('data-visual')).toBe('robot')
-    expect(wrapper.get('[data-test="models-count"]').text()).toBe('2')
-    expect(wrapper.find('[data-test="model-lab-panel"]').exists()).toBe(true)
+    expect(panel.attributes('data-models-loading')).toBe('false')
+    expect(panel.text()).toBe('2')
+    expect(wrapper.find('[data-test="models-header"]').exists()).toBe(false)
 
     catalog.value = {
       ...catalog.value!,
@@ -163,10 +143,10 @@ describe('ModelsPage', () => {
     }
     await nextTick()
 
-    expect(wrapper.get('[data-test="models-count"]').text()).toBe('1')
+    expect(wrapper.get('[data-test="model-lab-panel"]').text()).toBe('1')
   })
 
-  it('marks the live count busy while the catalog is loading', () => {
+  it('passes the model loading state to the unified chat panel', () => {
     useModelLabCatalogMock.mockReturnValue({
       catalog: shallowRef<ModelLabCatalogResponse | null>(null),
       error: shallowRef<string | null>(null),
@@ -177,8 +157,9 @@ describe('ModelsPage', () => {
     const wrapper = mountPage()
 
     expect(
-      wrapper.get('[data-test="models-header"]').attributes('data-busy'),
+      wrapper
+        .get('[data-test="model-lab-panel"]')
+        .attributes('data-models-loading'),
     ).toBe('true')
-    expect(wrapper.get('[data-test="models-count"]').text()).toBe('…')
   })
 })

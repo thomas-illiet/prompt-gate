@@ -40,18 +40,6 @@ const targetItems = computed(() =>
     }
   }),
 )
-const selectionHint = computed(() => {
-  if (props.maxSelectedTargets === 1) {
-    return 'This environment allows one model per message.'
-  }
-  if (props.modelValue.length === 0) {
-    return 'Select at least one model. You can choose up to two.'
-  }
-  if (props.modelValue.length === 1) {
-    return 'Primary model selected. Add one more to compare each new response.'
-  }
-  return 'The first model is primary. Both models run and consume quota for each new message.'
-})
 
 function updateSelection(keys: string[]) {
   const targetsByKey = new Map(
@@ -85,13 +73,12 @@ function applySettings(settings: ModelLabRunSettings) {
         closable-chips
         density="comfortable"
         :disabled="props.disabled"
-        :hint="selectionHint"
+        hide-details
         :items="targetItems"
         label="Models"
         :model-value="selectedTargetKeys"
         multiple
         no-data-text="No accessible model found"
-        persistent-hint
         prepend-inner-icon="mdi-robot-outline"
         variant="outlined"
         @update:model-value="updateSelection"
@@ -100,6 +87,7 @@ function applySettings(settings: ModelLabRunSettings) {
       <div class="model-lab-chat-header__actions">
         <v-btn
           color="primary"
+          height="48"
           prepend-icon="mdi-tune-variant"
           rounded="xl"
           variant="outlined"
@@ -111,6 +99,7 @@ function applySettings(settings: ModelLabRunSettings) {
 
         <v-btn
           color="primary"
+          height="48"
           prepend-icon="mdi-message-plus-outline"
           rounded="xl"
           variant="tonal"
@@ -134,7 +123,6 @@ function applySettings(settings: ModelLabRunSettings) {
 
 <style scoped>
 .model-lab-chat-header {
-  position: relative;
   display: grid;
   flex: 0 0 auto;
   gap: 12px;
@@ -149,30 +137,19 @@ function applySettings(settings: ModelLabRunSettings) {
     rgba(var(--app-shell-surface-strong), 0.84);
 }
 
-.model-lab-chat-header::before {
-  position: absolute;
-  top: 0;
-  left: 20px;
-  width: 58px;
-  height: 3px;
-  border-radius: 0 0 999px 999px;
-  background: linear-gradient(
-    90deg,
-    rgb(var(--v-theme-primary)),
-    rgb(var(--app-accent-coral))
-  );
-  content: '';
-}
-
 .model-lab-chat-header__main,
 .model-lab-chat-header__actions {
   display: flex;
-  align-items: center;
   gap: 12px;
 }
 
 .model-lab-chat-header__main {
+  align-items: center;
   justify-content: space-between;
+}
+
+.model-lab-chat-header__actions {
+  align-items: center;
 }
 
 .model-lab-chat-header__model {
@@ -216,6 +193,10 @@ function applySettings(settings: ModelLabRunSettings) {
   .model-lab-chat-header__actions {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .model-lab-chat-header__actions > * {
+    flex: 0 0 48px;
   }
 }
 </style>

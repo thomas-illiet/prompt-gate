@@ -15,9 +15,6 @@ const catalog = useModelLabCatalog()
 const targets = computed(() =>
   flattenModelLabCatalog(catalog.catalog.value?.providers ?? []),
 )
-const availableModelCountLabel = computed(() =>
-  catalog.loading.value ? '…' : String(targets.value.length),
-)
 const limits = computed(() => catalog.catalog.value?.limits)
 const chat = useModelLabChat(targets, limits)
 
@@ -40,19 +37,6 @@ function retryLane(turnId: string, laneId: string) {
 
 <template>
   <v-container fluid class="app-page model-lab-page">
-    <AppPageHeader
-      class="model-lab-page__header"
-      copy="Run a prompt against one accessible model or compare two responses side by side."
-      density="compact"
-      icon="mdi-flask-outline"
-      kicker="Model workspace"
-      :stat-busy="catalog.loading.value"
-      stat-label="Available models"
-      :stat-value="availableModelCountLabel"
-      title="Model Lab"
-      visual="robot"
-    />
-
     <ModelLabChatPanel
       :draft="chat.draft.value"
       :draft-error="chat.draftError.value"
@@ -89,11 +73,6 @@ function retryLane(turnId: string, laneId: string) {
   height: calc(100dvh - 64px - 32px);
   min-height: 0;
   flex-direction: column;
-  gap: 16px;
   overflow: hidden;
-}
-
-.model-lab-page__header {
-  flex: 0 0 auto;
 }
 </style>

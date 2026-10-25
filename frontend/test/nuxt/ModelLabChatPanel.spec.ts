@@ -78,9 +78,9 @@ function mountPanel(
           template: '<div data-test="empty-state">{{ title }}</div>',
         },
         AppSectionCard: {
-          props: ['title'],
+          props: ['headingTag', 'subtitle', 'title'],
           template:
-            '<section><h2 data-test="panel-title">{{ title }}</h2><slot /></section>',
+            '<section><component :is="headingTag" data-test="panel-title">{{ title }}</component><p data-test="panel-subtitle">{{ subtitle }}</p><slot name="actions" /><slot /></section>',
         },
         ModelLabChatComposer: {
           setup(
@@ -102,6 +102,7 @@ function mountPanel(
           emits: ['click'],
           template: '<button @click="$emit(\'click\')"><slot /></button>',
         },
+        VIcon: true,
         VProgressCircular: true,
       },
     },
@@ -114,9 +115,36 @@ describe('ModelLabChatPanel', () => {
   it('distinguishes model loading from an empty authorized list', () => {
     const wrapper = mountPanel({ modelsLoading: true })
 
-    expect(wrapper.get('[data-test="panel-title"]').text()).toBe('Conversation')
+    const title = wrapper.get('[data-test="panel-title"]')
+    expect(title.text()).toBe('Model Lab')
+    expect(title.element.tagName).toBe('H1')
+    expect(wrapper.get('[data-test="panel-subtitle"]').text()).toContain(
+      'Run a prompt',
+    )
+    expect(
+      wrapper
+        .get('[data-test="model-lab-availability"]')
+        .attributes('aria-busy'),
+    ).toBe('true')
+    expect(
+      wrapper
+        .get('[data-test="model-lab-availability"]')
+        .get('.model-lab-chat-panel__availability-sr')
+        .text(),
+    ).toBe('Available models: …')
     expect(wrapper.text()).toContain('Loading your available models')
     expect(wrapper.find('[data-test="empty-state"]').exists()).toBe(false)
+  })
+
+  it('shows the available model count in the merged card header', () => {
+    const wrapper = mountPanel({ targets: [target] })
+    const availability = wrapper.get('[data-test="model-lab-availability"]')
+
+    expect(availability.attributes('aria-busy')).toBe('false')
+    expect(
+      availability.get('.model-lab-chat-panel__availability-sr').text(),
+    ).toBe('Available models: 1')
+    expect(availability.text()).toContain('1')
   })
 
   it('shows a retryable model error instead of the no-access state', async () => {

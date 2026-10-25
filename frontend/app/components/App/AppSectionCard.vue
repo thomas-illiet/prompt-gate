@@ -1,11 +1,13 @@
 <script setup lang="ts">
 const props = withDefaults(
   defineProps<{
+    headingTag?: 'h1' | 'h2' | 'h3'
     icon?: string
     subtitle?: string
     title?: string
   }>(),
   {
+    headingTag: 'h2',
     icon: '',
     subtitle: '',
     title: '',
@@ -31,7 +33,9 @@ const props = withDefaults(
         </v-avatar>
 
         <div class="app-section-card__heading-copy">
-          <h2 v-if="props.title">{{ props.title }}</h2>
+          <component :is="props.headingTag" v-if="props.title">
+            {{ props.title }}
+          </component>
           <p v-if="props.subtitle">{{ props.subtitle }}</p>
         </div>
       </div>
@@ -113,7 +117,7 @@ const props = withDefaults(
   box-shadow: 3px 4px 0 rgba(var(--app-accent-butter), 0.12);
 }
 
-.app-section-card__heading-copy h2 {
+.app-section-card__heading-copy :is(h1, h2, h3) {
   margin: 0;
   font-size: 1rem;
   color: rgb(var(--app-shell-text-primary));

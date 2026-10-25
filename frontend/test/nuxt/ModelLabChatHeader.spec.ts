@@ -34,14 +34,21 @@ function mountHeader(disabled = false, selectedTargets = targets.slice(0, 1)) {
         },
         VBtn: {
           emits: ['click'],
-          props: ['color', 'disabled', 'prependIcon', 'variant'],
+          props: ['color', 'disabled', 'height', 'prependIcon', 'variant'],
           template:
-            '<button :data-color="color" :data-icon="prependIcon" :data-variant="variant" :disabled="disabled" @click="$emit(\'click\')"><slot /></button>',
+            '<button :data-color="color" :data-height="height" :data-icon="prependIcon" :data-variant="variant" :disabled="disabled" @click="$emit(\'click\')"><slot /></button>',
         },
         VAutocomplete: {
           name: 'VAutocomplete',
           emits: ['update:modelValue'],
-          props: ['disabled', 'items', 'modelValue'],
+          props: {
+            disabled: Boolean,
+            hideDetails: Boolean,
+            hint: String,
+            items: { type: Array, default: () => [] },
+            modelValue: { type: Array, default: () => [] },
+            persistentHint: Boolean,
+          },
           template:
             '<button data-test="select-models" :disabled="disabled" @click="$emit(\'update:modelValue\', items.map((item) => item.value))">Select models</button>',
         },
@@ -90,6 +97,22 @@ describe('ModelLabChatHeader', () => {
       'mdi-message-plus-outline',
     )
     expect(newChatButton?.attributes('data-variant')).toBe('tonal')
+  })
+
+  it('keeps the model field and action buttons at the same compact height', () => {
+    const wrapper = mountHeader()
+    const modelSelect = wrapper.getComponent({ name: 'VAutocomplete' })
+    const actionButtons = wrapper.findAll(
+      '.model-lab-chat-header__actions button',
+    )
+
+    expect(modelSelect.props('hideDetails')).toBe(true)
+    expect(modelSelect.props('hint')).toBeUndefined()
+    expect(modelSelect.props('persistentHint')).toBe(false)
+    expect(actionButtons).toHaveLength(2)
+    expect(
+      actionButtons.map((button) => button.attributes('data-height')),
+    ).toEqual(['48', '48'])
   })
 
   it('emits at most two selected models in their chosen order', async () => {

@@ -45,6 +45,9 @@ const canSend = computed(
     !props.draftError &&
     props.draft.trim().length > 0,
 )
+const availableModelCountLabel = computed(() =>
+  props.modelsLoading ? '…' : String(props.targets.length),
+)
 const terminalLaneSignature = computed(() =>
   props.turns
     .flatMap((turn) => [turn.primary, ...turn.comparisons])
@@ -88,10 +91,47 @@ function forwardRetry(turnId: string, laneId: string) {
 <template>
   <AppSectionCard
     class="model-lab-chat-panel__card"
-    icon="mdi-message-processing-outline"
-    title="Conversation"
-    subtitle="Chat with one model, or select a second for side-by-side responses."
+    heading-tag="h1"
+    icon="mdi-flask-outline"
+    subtitle="Run a prompt against one accessible model or compare two responses side by side."
+    title="Model Lab"
   >
+    <template #actions>
+      <div
+        class="model-lab-chat-panel__availability"
+        data-test="model-lab-availability"
+        role="status"
+        aria-live="polite"
+        :aria-busy="props.modelsLoading"
+      >
+        <v-progress-circular
+          v-if="props.modelsLoading"
+          aria-hidden="true"
+          color="primary"
+          indeterminate
+          size="18"
+          width="2"
+        />
+        <v-icon
+          v-else
+          aria-hidden="true"
+          color="primary"
+          icon="mdi-robot-outline"
+          size="18"
+        />
+        <span
+          class="model-lab-chat-panel__availability-label"
+          aria-hidden="true"
+        >
+          Available models
+        </span>
+        <strong aria-hidden="true">{{ availableModelCountLabel }}</strong>
+        <span class="model-lab-chat-panel__availability-sr">
+          Available models: {{ availableModelCountLabel }}
+        </span>
+      </div>
+    </template>
+
     <div class="model-lab-chat-panel">
       <v-alert v-if="props.error" type="warning" variant="tonal" rounded="lg">
         {{ props.error }}
@@ -205,6 +245,42 @@ function forwardRetry(turnId: string, laneId: string) {
   overflow: hidden;
 }
 
+.model-lab-chat-panel__card :deep(.app-section-card__header) {
+  padding: 14px 20px 12px;
+}
+
+.model-lab-chat-panel__availability {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  padding: 6px 11px;
+  border: 1px solid rgba(var(--v-theme-primary), 0.16);
+  border-radius: 999px;
+  background: rgba(var(--v-theme-primary), 0.07);
+  color: rgb(var(--app-shell-text-secondary));
+  font-size: 0.78rem;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.model-lab-chat-panel__availability strong {
+  color: rgb(var(--app-shell-text-primary));
+  font-size: 0.88rem;
+}
+
+.model-lab-chat-panel__availability-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .model-lab-chat-panel {
   display: flex;
   min-height: 0;
@@ -236,6 +312,16 @@ function forwardRetry(turnId: string, laneId: string) {
 }
 
 @media (max-width: 720px) {
+  .model-lab-chat-panel__card :deep(.app-section-card__header) {
+    align-items: center;
+    flex-direction: row;
+    padding: 12px;
+  }
+
+  .model-lab-chat-panel__card :deep(.app-section-card__actions) {
+    margin-left: auto;
+  }
+
   .model-lab-chat-panel {
     padding: 0 12px 12px;
   }
@@ -243,6 +329,16 @@ function forwardRetry(turnId: string, laneId: string) {
   .model-lab-chat-panel__models-error {
     align-items: stretch;
     flex-direction: column;
+  }
+}
+
+@media (max-width: 520px) {
+  .model-lab-chat-panel__card :deep(.app-section-card__heading-copy p) {
+    display: none;
+  }
+
+  .model-lab-chat-panel__availability-label {
+    display: none;
   }
 }
 </style>
