@@ -11,7 +11,8 @@ import (
 )
 
 type MiddlewareOptions struct {
-	MaxBufferedRequestBytes int64
+	MaxBufferedRequestBytes  int64
+	MaxBufferedResponseBytes int64
 }
 
 // Middleware enforces group-based provider and model access from an in-memory snapshot.
@@ -26,6 +27,9 @@ func MiddlewareWithOptions(snapshot *SnapshotStore, logger *slog.Logger, opts Mi
 	}
 	if opts.MaxBufferedRequestBytes <= 0 {
 		opts.MaxBufferedRequestBytes = proxylimits.DefaultMaxBufferedRequestBytes
+	}
+	if opts.MaxBufferedResponseBytes <= 0 {
+		opts.MaxBufferedResponseBytes = proxylimits.DefaultMaxBufferedResponseBytes
 	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -48,7 +52,7 @@ func MiddlewareWithOptions(snapshot *SnapshotStore, logger *slog.Logger, opts Mi
 					return
 				}
 				if isFilterableModelListRoute(providerType, r.URL.Path, r.Method) {
-					filterModelListResponse(w, r, next, snapshot, user.ID, providerName)
+					filterModelListResponse(w, r, next, snapshot, user.ID, providerName, opts.MaxBufferedResponseBytes)
 					return
 				}
 				next.ServeHTTP(w, r)

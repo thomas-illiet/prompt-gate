@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -384,6 +385,366 @@ func TestWatchCatchesUpMissedUnlimitedToLimitedAssignment(t *testing.T) {
 			t.Fatalf("limited plan was not observed after watcher catch-up: %#v", current)
 		}
 		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func TestWatchAuthoritativeReconciliationRecoversLostVersionAndPublish(t *testing.T) {
+	service, store, user := newSubscriptionTestStore(t)
+	ctx := context.Background()
+
+	unlimited, err := service.CreatePlan(ctx, PlanInput{Name: "Unlimited"})
+	if err != nil {
+		t.Fatalf("create unlimited plan: %v", err)
+	}
+	quota := int64(100)
+	limited, err := service.CreatePlan(ctx, PlanInput{
+		Name:          "Limited",
+		Quota5HTokens: &quota,
+		Quota7DTokens: &quota,
+	})
+	if err != nil {
+		t.Fatalf("create limited plan: %v", err)
+	}
+
+	unlimitedID := unlimited.ID
+	if _, err := service.AssignUserPlan(ctx, user.ID, &unlimitedID); err != nil {
+		t.Fatalf("assign unlimited plan: %v", err)
+	}
+	initial, err := store.CurrentQuota(ctx, user.ID, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("load initial quota: %v", err)
+	}
+	if initial.Plan == nil || initial.Plan.ID != unlimited.ID {
+		t.Fatalf("expected cached unlimited plan, got %#v", initial)
+	}
+
+	// The service still uses its no-op notifier: this simulates a committed DB
+	// mutation whose Redis INCR and publication were both lost.
+	limitedID := limited.ID
+	if _, err := service.AssignUserPlan(ctx, user.ID, &limitedID); err != nil {
+		t.Fatalf("assign limited plan without notification: %v", err)
+	}
+	if err := store.RefreshIfStale(ctx); err != nil {
+		t.Fatalf("version-only refresh: %v", err)
+	}
+	stale, err := store.CurrentQuota(ctx, user.ID, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("load stale quota: %v", err)
+	}
+	if stale.Plan == nil || stale.Plan.ID != unlimited.ID {
+		t.Fatalf("test did not preserve the stale assignment cache: %#v", stale)
+	}
+
+	events := make(chan redisstore.Event)
+	store.subscribeEvents = func(context.Context) <-chan redisstore.Event { return events }
+	store.reconcileInterval = 10 * time.Millisecond
+	watchCtx, cancelWatch := context.WithCancel(ctx)
+	t.Cleanup(cancelWatch)
+	go store.Watch(watchCtx)
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		current, err := store.CurrentQuota(ctx, user.ID, time.Now().UTC())
+		if err != nil {
+			t.Fatalf("load reconciled quota: %v", err)
+		}
+		if current.Plan != nil && current.Plan.ID == limited.ID &&
+			current.Quota5HTokens != nil && *current.Quota5HTokens == quota {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("DB-authoritative reconciliation did not recover lost notification: %#v", current)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+func TestAssignmentCacheExpiresWithoutVersionOrWatcher(t *testing.T) {
+	service, store, user := newSubscriptionTestStore(t)
+	ctx := context.Background()
+	store.reconcileInterval = 20 * time.Millisecond
+
+	unlimited, err := service.CreatePlan(ctx, PlanInput{Name: "Unlimited"})
+	if err != nil {
+		t.Fatalf("create unlimited plan: %v", err)
+	}
+	quota := int64(100)
+	limited, err := service.CreatePlan(ctx, PlanInput{
+		Name:          "Limited",
+		Quota5HTokens: &quota,
+		Quota7DTokens: &quota,
+	})
+	if err != nil {
+		t.Fatalf("create limited plan: %v", err)
+	}
+
+	unlimitedID := unlimited.ID
+	if _, err := service.AssignUserPlan(ctx, user.ID, &unlimitedID); err != nil {
+		t.Fatalf("assign unlimited plan: %v", err)
+	}
+	initial, err := store.CurrentQuota(ctx, user.ID, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("prime unlimited assignment: %v", err)
+	}
+	if initial.Plan == nil || initial.Plan.ID != unlimited.ID {
+		t.Fatalf("expected cached unlimited plan, got %#v", initial)
+	}
+
+	// Keep the no-op notifier to simulate both the version increment and
+	// publication being lost. The per-assignment lifetime must still bound the
+	// stale authorization window without a global cache scan.
+	limitedID := limited.ID
+	if _, err := service.AssignUserPlan(ctx, user.ID, &limitedID); err != nil {
+		t.Fatalf("assign limited plan without notification: %v", err)
+	}
+
+	deadline := time.Now().Add(time.Second)
+	for {
+		current, err := store.CurrentQuota(ctx, user.ID, time.Now().UTC())
+		if err != nil {
+			t.Fatalf("load quota after assignment cache expiry: %v", err)
+		}
+		if current.Plan != nil && current.Plan.ID == limited.ID {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("bounded assignment cache did not observe DB change: %#v", current)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+func TestAuthoritativeReconciliationDoesNotBlockCachedAssignmentReads(t *testing.T) {
+	service, store, user := newSubscriptionTestStore(t)
+	ctx := context.Background()
+	plan, err := service.CreatePlan(ctx, PlanInput{Name: "Unlimited"})
+	if err != nil {
+		t.Fatalf("create plan: %v", err)
+	}
+	planID := plan.ID
+	if _, err := service.AssignUserPlan(ctx, user.ID, &planID); err != nil {
+		t.Fatalf("assign plan: %v", err)
+	}
+	if _, _, err := store.ResolveEffectivePlan(ctx, user.ID); err != nil {
+		t.Fatalf("prime assignment cache: %v", err)
+	}
+
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	var blockOnce sync.Once
+	var releaseOnce sync.Once
+	releaseQuery := func() { releaseOnce.Do(func() { close(release) }) }
+	t.Cleanup(releaseQuery)
+	callbackName := "test:block_subscription_reconciliation"
+	if err := service.db.Callback().Query().Before("gorm:query").Register(callbackName, func(tx *gorm.DB) {
+		if tx.Statement.Table == "subscription_plans" {
+			blockOnce.Do(func() {
+				close(entered)
+				<-release
+			})
+		}
+	}); err != nil {
+		t.Fatalf("register blocking query callback: %v", err)
+	}
+	t.Cleanup(func() { _ = service.db.Callback().Query().Remove(callbackName) })
+
+	reconcileErr := make(chan error, 1)
+	go func() { reconcileErr <- store.reconcileAuthoritative(ctx) }()
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		t.Fatal("authoritative reconciliation did not reach the database")
+	}
+
+	resolved := make(chan error, 1)
+	go func() {
+		resolvedPlan, ok, err := store.ResolveEffectivePlan(ctx, user.ID)
+		if err == nil && (!ok || resolvedPlan.ID != plan.ID) {
+			err = fmt.Errorf("unexpected resolved plan: ok=%t plan=%#v", ok, resolvedPlan)
+		}
+		resolved <- err
+	}()
+	select {
+	case err := <-resolved:
+		if err != nil {
+			t.Fatalf("resolve cached plan during reconciliation: %v", err)
+		}
+	case <-time.After(200 * time.Millisecond):
+		releaseQuery()
+		t.Fatal("cached assignment read blocked behind authoritative reconciliation")
+	}
+
+	releaseQuery()
+	if err := <-reconcileErr; err != nil {
+		t.Fatalf("finish authoritative reconciliation: %v", err)
+	}
+}
+
+func TestExpiredAssignmentLoadsAreCoalescedPerUser(t *testing.T) {
+	service, store, user := newSubscriptionTestStore(t)
+	ctx := context.Background()
+	plan, err := service.CreatePlan(ctx, PlanInput{Name: "Unlimited"})
+	if err != nil {
+		t.Fatalf("create plan: %v", err)
+	}
+	planID := plan.ID
+	if _, err := service.AssignUserPlan(ctx, user.ID, &planID); err != nil {
+		t.Fatalf("assign plan: %v", err)
+	}
+	if _, _, err := store.ResolveEffectivePlan(ctx, user.ID); err != nil {
+		t.Fatalf("prime assignment cache: %v", err)
+	}
+	store.invalidateAssignments()
+
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	var queryCount atomic.Int64
+	var enteredOnce sync.Once
+	callbackName := "test:count_coalesced_assignment_loads"
+	if err := service.db.Callback().Query().Before("gorm:query").Register(callbackName, func(tx *gorm.DB) {
+		if tx.Statement.Table != "users" {
+			return
+		}
+		queryCount.Add(1)
+		enteredOnce.Do(func() { close(entered) })
+		<-release
+	}); err != nil {
+		t.Fatalf("register query callback: %v", err)
+	}
+	t.Cleanup(func() { _ = service.db.Callback().Query().Remove(callbackName) })
+
+	const contenders = 100
+	start := make(chan struct{})
+	errorsCh := make(chan error, contenders)
+	var wait sync.WaitGroup
+	for range contenders {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			<-start
+			resolved, ok, err := store.ResolveEffectivePlan(ctx, user.ID)
+			if err == nil && (!ok || resolved.ID != plan.ID) {
+				err = fmt.Errorf("unexpected resolved plan: ok=%t plan=%#v", ok, resolved)
+			}
+			errorsCh <- err
+		}()
+	}
+	close(start)
+	select {
+	case <-entered:
+	case <-time.After(time.Second):
+		close(release)
+		t.Fatal("assignment reload did not reach database")
+	}
+	time.Sleep(50 * time.Millisecond)
+	close(release)
+	wait.Wait()
+	close(errorsCh)
+	for err := range errorsCh {
+		if err != nil {
+			t.Fatalf("resolve assignment: %v", err)
+		}
+	}
+	if got := queryCount.Load(); got != 1 {
+		t.Fatalf("assignment SQL queries = %d, want 1", got)
+	}
+}
+
+func TestAuthoritativeReconciliationHasLocalTimeout(t *testing.T) {
+	service, store, _ := newSubscriptionTestStore(t)
+	store.reconcileTimeout = 25 * time.Millisecond
+	callbackName := "test:timeout_subscription_reconciliation"
+	if err := service.db.Callback().Query().Before("gorm:query").Register(callbackName, func(tx *gorm.DB) {
+		if tx.Statement.Table != "subscription_plans" {
+			return
+		}
+		<-tx.Statement.Context.Done()
+		tx.AddError(tx.Statement.Context.Err())
+	}); err != nil {
+		t.Fatalf("register timeout query callback: %v", err)
+	}
+	t.Cleanup(func() { _ = service.db.Callback().Query().Remove(callbackName) })
+
+	started := time.Now()
+	err := store.reconcileAuthoritative(context.Background())
+	if err == nil || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected local reconciliation deadline, got %v", err)
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("local reconciliation timeout took too long: %s", elapsed)
+	}
+}
+
+func TestWatchReconnectsClosedSubscriptionsWithoutStarvingReconciliation(t *testing.T) {
+	service, store, user := newSubscriptionTestStore(t)
+	ctx := context.Background()
+
+	unlimited, err := service.CreatePlan(ctx, PlanInput{Name: "Unlimited"})
+	if err != nil {
+		t.Fatalf("create unlimited plan: %v", err)
+	}
+	quota := int64(100)
+	limited, err := service.CreatePlan(ctx, PlanInput{
+		Name:          "Limited",
+		Quota5HTokens: &quota,
+		Quota7DTokens: &quota,
+	})
+	if err != nil {
+		t.Fatalf("create limited plan: %v", err)
+	}
+	unlimitedID := unlimited.ID
+	if _, err := service.AssignUserPlan(ctx, user.ID, &unlimitedID); err != nil {
+		t.Fatalf("assign unlimited plan: %v", err)
+	}
+	if _, err := store.CurrentQuota(ctx, user.ID, time.Now().UTC()); err != nil {
+		t.Fatalf("prime unlimited assignment: %v", err)
+	}
+
+	firstEvents := make(chan redisstore.Event)
+	var callsMu sync.Mutex
+	subscribeCalls := 0
+	store.subscribeEvents = func(context.Context) <-chan redisstore.Event {
+		callsMu.Lock()
+		defer callsMu.Unlock()
+		subscribeCalls++
+		if subscribeCalls == 1 {
+			return firstEvents
+		}
+		closed := make(chan redisstore.Event)
+		close(closed)
+		return closed
+	}
+	store.reconcileInterval = 30 * time.Millisecond
+	store.subscribeRetry = time.Millisecond
+	watchCtx, cancelWatch := context.WithCancel(ctx)
+	t.Cleanup(cancelWatch)
+	go store.Watch(watchCtx)
+
+	// Let the initial post-subscribe authoritative pass complete, then mutate
+	// without a notification and force every subsequent subscription closed.
+	time.Sleep(15 * time.Millisecond)
+	limitedID := limited.ID
+	if _, err := service.AssignUserPlan(ctx, user.ID, &limitedID); err != nil {
+		t.Fatalf("assign limited plan without notification: %v", err)
+	}
+	close(firstEvents)
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		current, err := store.CurrentQuota(ctx, user.ID, time.Now().UTC())
+		if err != nil {
+			t.Fatalf("load quota after reconnect: %v", err)
+		}
+		callsMu.Lock()
+		calls := subscribeCalls
+		callsMu.Unlock()
+		if calls >= 2 && current.Plan != nil && current.Plan.ID == limited.ID {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("closed subscriptions starved reconciliation: calls=%d quota=%#v", calls, current)
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 }
 

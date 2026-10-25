@@ -87,7 +87,7 @@ func (*ollamaProvider) BridgedRoutes() []string {
 
 // PassthroughRoutes returns Ollama routes proxied without interception.
 func (*ollamaProvider) PassthroughRoutes() []string {
-	return []string{"/models", "/models/"}
+	return []string{"/models"}
 }
 
 // InjectAuthHeader sets the authorization header expected by Ollama.

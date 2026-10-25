@@ -30,15 +30,11 @@ func isModelBypassRoute(providerType provider.ProviderType, path string) bool {
 	providerPath := requestProviderPath(path)
 	switch providerType {
 	case provider.ProviderTypeOpenAI:
-		return routeExactOrSubtree(providerPath, "/v1/models") ||
-			routeExactOrSubtree(providerPath, "/v1/conversations") ||
-			routeSubtree(providerPath, "/v1/responses/")
+		return providerPath == "/v1/models"
 	case provider.ProviderTypeOllama:
-		return routeExactOrSubtree(providerPath, "/v1/models")
+		return providerPath == "/v1/models"
 	case provider.ProviderTypeAnthropic:
-		return routeExactOrSubtree(providerPath, "/v1/models") ||
-			providerPath == "/v1/messages/count_tokens" ||
-			routeSubtree(providerPath, "/api/event_logging/")
+		return providerPath == "/v1/models"
 	default:
 		return false
 	}
@@ -48,19 +44,13 @@ func isFilterableModelListRoute(providerType provider.ProviderType, path, method
 	if method != http.MethodGet {
 		return false
 	}
-	if providerType != provider.ProviderTypeOpenAI && providerType != provider.ProviderTypeOllama {
+	if providerType != provider.ProviderTypeOpenAI &&
+		providerType != provider.ProviderTypeOllama &&
+		providerType != provider.ProviderTypeAnthropic {
 		return false
 	}
 	providerPath := requestProviderPath(path)
-	return providerPath == "/v1/models" || providerPath == "/v1/models/"
-}
-
-func routeExactOrSubtree(path, route string) bool {
-	return path == route || strings.HasPrefix(path, route+"/")
-}
-
-func routeSubtree(path, routePrefix string) bool {
-	return strings.HasPrefix(path, routePrefix)
+	return providerPath == "/v1/models"
 }
 
 func requestModel(r *http.Request, maxBufferedRequestBytes int64) (string, error) {

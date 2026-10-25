@@ -249,30 +249,36 @@ func TestMiddlewareAllowsWhitelistedProviderRoutesWithoutModel(t *testing.T) {
 		t.Fatalf("set snapshot: %v", err)
 	}
 
-	handler := Middleware(store, nil)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusNoContent)
+	handler := Middleware(store, nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/openai/v1/models":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"object":"list","data":[]}`))
+		case "/ollama/v1/models":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"models":[]}`))
+		case "/anthropic/v1/models":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"data":[]}`))
+		default:
+			w.WriteHeader(http.StatusNoContent)
+		}
 	}))
 
 	tests := []struct {
-		name string
-		path string
+		name       string
+		method     string
+		path       string
+		statusCode int
 	}{
-		{name: "openai models exact", path: "/openai/v1/models"},
-		{name: "openai models subtree", path: "/openai/v1/models/gpt-5"},
-		{name: "openai conversations exact", path: "/openai/v1/conversations"},
-		{name: "openai conversations subtree", path: "/openai/v1/conversations/conv_123"},
-		{name: "openai responses subtree", path: "/openai/v1/responses/resp_123"},
-		{name: "ollama models exact", path: "/ollama/v1/models"},
-		{name: "ollama models subtree", path: "/ollama/v1/models/llama3.2"},
-		{name: "anthropic models exact", path: "/anthropic/v1/models"},
-		{name: "anthropic models subtree", path: "/anthropic/v1/models/claude-sonnet-4"},
-		{name: "anthropic count tokens", path: "/anthropic/v1/messages/count_tokens"},
-		{name: "anthropic event logging", path: "/anthropic/api/event_logging/events"},
+		{name: "openai models exact", method: http.MethodGet, path: "/openai/v1/models", statusCode: http.StatusOK},
+		{name: "ollama models exact", method: http.MethodGet, path: "/ollama/v1/models", statusCode: http.StatusOK},
+		{name: "anthropic models exact", method: http.MethodGet, path: "/anthropic/v1/models", statusCode: http.StatusOK},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodGet, tc.path, nil)
+			req := httptest.NewRequest(tc.method, tc.path, nil)
 			req = req.WithContext(auth.ContextWithUser(req.Context(), auth.UserProfile{
 				ID:       "user-id",
 				Role:     auth.RoleUser,
@@ -280,8 +286,8 @@ func TestMiddlewareAllowsWhitelistedProviderRoutesWithoutModel(t *testing.T) {
 			}))
 			rec := httptest.NewRecorder()
 			handler.ServeHTTP(rec, req)
-			if rec.Code != http.StatusNoContent {
-				t.Fatalf("expected 204, got %d: %s", rec.Code, rec.Body.String())
+			if rec.Code != tc.statusCode {
+				t.Fatalf("expected %d, got %d: %s", tc.statusCode, rec.Code, rec.Body.String())
 			}
 		})
 	}
@@ -347,6 +353,13 @@ func TestMiddlewareFiltersOpenAIModelListWithExcludedRegex(t *testing.T) {
 
 	handler := Middleware(store, nil)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Length", "4096")
+		w.Header().Set("Content-Md5", "stale-content-md5")
+		w.Header().Set("Content-Digest", "sha-256=:stale:")
+		w.Header().Set("Digest", "sha-256=stale")
+		w.Header().Set("Etag", `"upstream-catalog"`)
+		w.Header().Set("Last-Modified", "Wed, 21 Oct 2015 07:28:00 GMT")
+		w.Header().Set("Repr-Digest", "sha-256=:stale:")
 		_, _ = w.Write([]byte(`{"object":"list","data":[{"id":"gpt-5-mini"},{"id":"bge-large"},{"id":"text-embedding-3-small"}]}`))
 	}))
 
@@ -372,6 +385,11 @@ func TestMiddlewareFiltersOpenAIModelListWithExcludedRegex(t *testing.T) {
 	}
 	if got := modelIDs(response.Data); strings.Join(got, ",") != "gpt-5-mini,text-embedding-3-small" {
 		t.Fatalf("unexpected filtered models: %#v", got)
+	}
+	for _, name := range []string{"Content-Length", "Content-Md5", "Content-Digest", "Digest", "Etag", "Last-Modified", "Repr-Digest"} {
+		if value := rec.Header().Get(name); value != "" {
+			t.Fatalf("expected stale %s to be removed, got %q", name, value)
+		}
 	}
 }
 
@@ -424,6 +442,110 @@ func TestMiddlewareFiltersOllamaModelListWithExcludedRegex(t *testing.T) {
 	}
 }
 
+// TestMiddlewareFiltersAnthropicModelList verifies Anthropic's exact model
+// catalog route is filtered with the same fail-closed policy as other providers.
+func TestMiddlewareFiltersAnthropicModelList(t *testing.T) {
+	store := NewSnapshotStore(nil)
+	if err := store.SetSnapshot(Snapshot{
+		KnownProviders: []string{"anthropic"},
+		ProviderTypes:  testProviderTypes("anthropic"),
+		Users: map[string]UserAccess{
+			"user-id": {
+				Rules: []AccessRule{{
+					Providers:     []string{"anthropic"},
+					ModelPatterns: []string{`^claude-sonnet`},
+				}},
+			},
+		},
+	}); err != nil {
+		t.Fatalf("set snapshot: %v", err)
+	}
+
+	handler := Middleware(store, nil)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"id":"claude-sonnet-4"},{"id":"claude-opus-4"}],"first_id":"claude-sonnet-4","last_id":"claude-opus-4","has_more":true,"next_cursor":"opaque-secret-cursor"}`))
+	}))
+	req := httptest.NewRequest(http.MethodGet, "/anthropic/v1/models", nil)
+	req = req.WithContext(auth.ContextWithUser(req.Context(), auth.UserProfile{
+		ID:       "user-id",
+		Role:     auth.RoleUser,
+		IsActive: true,
+	}))
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var response struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+		FirstID    string  `json:"first_id"`
+		LastID     string  `json:"last_id"`
+		HasMore    bool    `json:"has_more"`
+		NextCursor *string `json:"next_cursor"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if got := modelIDs(response.Data); strings.Join(got, ",") != "claude-sonnet-4" {
+		t.Fatalf("unexpected filtered models: %#v", got)
+	}
+	if response.FirstID != "claude-sonnet-4" || response.LastID != "claude-sonnet-4" || response.HasMore || response.NextCursor != nil {
+		t.Fatalf("filtered pagination leaked excluded catalog state: %#v", response)
+	}
+}
+
+func TestMiddlewareSanitizesPaginationWithoutCurrentPageFiltering(t *testing.T) {
+	store := modelListTestSnapshot(t)
+	for name, upstreamBody := range map[string]string{
+		"allowed page": `{"data":[{"id":"gpt-5-mini"}],"first_id":"gpt-5-mini","last_id":"gpt-5-mini","has_more":true,"next_cursor":"secret-model"}`,
+		"empty page":   `{"data":[],"first_id":"secret-model","last_id":"secret-model","has_more":true,"next_cursor":"secret-model"}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			handler := Middleware(store, nil)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(upstreamBody))
+			}))
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, modelListTestRequest())
+
+			if recorder.Code != http.StatusOK {
+				t.Fatalf("status = %d: %s", recorder.Code, recorder.Body.String())
+			}
+			if strings.Contains(recorder.Body.String(), "secret-model") || strings.Contains(recorder.Body.String(), "next_cursor") || strings.Contains(recorder.Body.String(), `"has_more":true`) {
+				t.Fatalf("pagination leaked excluded catalog state: %s", recorder.Body.String())
+			}
+		})
+	}
+}
+
+// TestMiddlewareFiltersModelListAfterEarlyHints verifies a provisional 103
+// cannot make the final successful catalog bypass authorization filtering.
+func TestMiddlewareFiltersModelListAfterEarlyHints(t *testing.T) {
+	store := modelListTestSnapshot(t)
+	handler := Middleware(store, nil)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Link", "</models>; rel=preload")
+		w.WriteHeader(http.StatusEarlyHints)
+		w.Header().Del("Link")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"data":[{"id":"gpt-5-mini"},{"id":"secret-model"}]}`))
+	}))
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, modelListTestRequest())
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected final 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "secret-model") || !strings.Contains(rec.Body.String(), "gpt-5-mini") {
+		t.Fatalf("early hints bypassed model filtering: %s", rec.Body.String())
+	}
+}
+
 // TestMiddlewareLeavesModelListErrorsUnchanged verifies non-success model list responses are not rewritten.
 func TestMiddlewareLeavesModelListErrorsUnchanged(t *testing.T) {
 	store := NewSnapshotStore(nil)
@@ -460,6 +582,81 @@ func TestMiddlewareLeavesModelListErrorsUnchanged(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "upstream") {
 		t.Fatalf("expected upstream body to be preserved, got %s", rec.Body.String())
+	}
+}
+
+// TestMiddlewareRejectsOversizedModelList verifies filtered responses are bounded.
+func TestMiddlewareRejectsOversizedModelList(t *testing.T) {
+	store := modelListTestSnapshot(t)
+	handler := MiddlewareWithOptions(store, nil, MiddlewareOptions{
+		MaxBufferedResponseBytes: 32,
+	})(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"object":"list","data":[{"id":"gpt-5-mini"},{"id":"gpt-5-large"}]}`))
+	}))
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, modelListTestRequest())
+
+	if rec.Code != http.StatusBadGateway || !strings.Contains(rec.Body.String(), "model_response_too_large") {
+		t.Fatalf("expected bounded model response 502, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestMiddlewareNeutralizesAndRejectsCompressedModelList verifies compressed bytes cannot bypass filtering.
+func TestMiddlewareNeutralizesAndRejectsCompressedModelList(t *testing.T) {
+	store := modelListTestSnapshot(t)
+	handler := Middleware(store, nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Accept-Encoding"); got != "identity" {
+			t.Fatalf("expected identity encoding upstream, got %q", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Header()["Content-Encoding"] = []string{"identity", "gzip"}
+		_, _ = w.Write([]byte("compressed-secret-catalog"))
+	}))
+
+	req := modelListTestRequest()
+	req.Header.Set("Accept-Encoding", "gzip")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadGateway || !strings.Contains(rec.Body.String(), "invalid_model_response") {
+		t.Fatalf("expected compressed model response 502, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), "secret") {
+		t.Fatalf("compressed upstream body leaked: %s", rec.Body.String())
+	}
+}
+
+// TestMiddlewareRejectsInvalidSuccessfulModelList verifies malformed success responses fail closed.
+func TestMiddlewareRejectsInvalidSuccessfulModelList(t *testing.T) {
+	store := modelListTestSnapshot(t)
+	for name, body := range map[string]string{
+		"malformed JSON":            `{"data":[`,
+		"missing list":              `{"object":"list","unexpected":[{"id":"bge-secret"}]}`,
+		"non-array list":            `{"object":"list","data":{"id":"bge-secret"}}`,
+		"null list":                 `{"object":"list","data":null}`,
+		"duplicate list":            `{"data":[{"id":"bge-secret"}],"data":[{"id":"gpt-5-mini"}]}`,
+		"case-folded duplicate":     `{"data":[{"id":"gpt-5-mini"}],"DATA":[{"id":"bge-secret"}]}`,
+		"unicode-folded duplicate":  `{"models":[{"name":"gpt-5-mini"}],"modelſ":[{"name":"bge-secret"}]}`,
+		"nested duplicate model ID": `{"data":[{"id":"gpt-5-mini","ID":"bge-secret"}]}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			handler := Middleware(store, nil)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(body))
+			}))
+
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, modelListTestRequest())
+
+			if rec.Code != http.StatusBadGateway || !strings.Contains(rec.Body.String(), "invalid_model_response") {
+				t.Fatalf("expected invalid model response 502, got %d: %s", rec.Code, rec.Body.String())
+			}
+			if strings.Contains(rec.Body.String(), "bge-secret") {
+				t.Fatalf("invalid upstream model body leaked: %s", rec.Body.String())
+			}
+		})
 	}
 }
 
@@ -618,6 +815,35 @@ func TestMiddlewareDeniesUnknownProvider(t *testing.T) {
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("expected 403, got %d", rec.Code)
 	}
+}
+
+func modelListTestSnapshot(t *testing.T) *SnapshotStore {
+	t.Helper()
+	store := NewSnapshotStore(nil)
+	if err := store.SetSnapshot(Snapshot{
+		KnownProviders: []string{"openai"},
+		ProviderTypes:  testProviderTypes("openai"),
+		Users: map[string]UserAccess{
+			"user-id": {
+				Rules: []AccessRule{{
+					Providers:     []string{"openai"},
+					ModelPatterns: []string{`^gpt-`},
+				}},
+			},
+		},
+	}); err != nil {
+		t.Fatalf("set snapshot: %v", err)
+	}
+	return store
+}
+
+func modelListTestRequest() *http.Request {
+	req := httptest.NewRequest(http.MethodGet, "/openai/v1/models", nil)
+	return req.WithContext(auth.ContextWithUser(req.Context(), auth.UserProfile{
+		ID:       "user-id",
+		Role:     auth.RoleUser,
+		IsActive: true,
+	}))
 }
 
 func modelIDs(models []struct {

@@ -115,8 +115,9 @@ type Snapshot struct {
 }
 
 type AssignmentSnapshot struct {
-	HasUser bool    `json:"hasUser"`
-	PlanID  *string `json:"planId"`
+	HasUser  bool      `json:"hasUser"`
+	PlanID   *string   `json:"planId"`
+	LoadedAt time.Time `json:"loadedAt"`
 }
 
 func (p *SubscriptionPlan) BeforeCreate(_ *gorm.DB) error {

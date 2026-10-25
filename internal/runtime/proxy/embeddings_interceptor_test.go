@@ -214,8 +214,9 @@ func TestOpenAIEmbeddingsRecordsProviderUsageMismatchWarning(t *testing.T) {
 	}
 }
 
-// TestOpenAIEmbeddingsRecordsZeroWithoutUsage verifies OpenAI embeddings records zero without usage.
-func TestOpenAIEmbeddingsRecordsZeroWithoutUsage(t *testing.T) {
+// TestOpenAIEmbeddingsEstimatesUsageWhenProviderOmitsIt verifies successful
+// embeddings remain quota-accounted when the provider omits usage.
+func TestOpenAIEmbeddingsEstimatesUsageWhenProviderOmitsIt(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"object":"list","data":[],"model":"text-embedding-3-small"}`))
@@ -225,7 +226,8 @@ func TestOpenAIEmbeddingsRecordsZeroWithoutUsage(t *testing.T) {
 	rec := &embeddingTestRecorder{}
 	bridge := newEmbeddingTestBridge(t, newOpenAIProvider("openai", upstream.URL+"/v1", "provider-key"), rec)
 
-	req := httptest.NewRequest(http.MethodPost, "/openai/v1/embeddings", strings.NewReader(`{"model":"text-embedding-3-small","input":"hello"}`))
+	requestBody := `{"model":"text-embedding-3-small","input":"hello"}`
+	req := httptest.NewRequest(http.MethodPost, "/openai/v1/embeddings", strings.NewReader(requestBody))
 	recorder := httptest.NewRecorder()
 
 	bridge.ServeHTTP(recorder, withEmbeddingActor(req))
@@ -239,7 +241,7 @@ func TestOpenAIEmbeddingsRecordsZeroWithoutUsage(t *testing.T) {
 	if len(rec.tokenUsages) != 1 {
 		t.Fatalf("expected one token usage record, got %d", len(rec.tokenUsages))
 	}
-	if rec.tokenUsages[0].Input != 0 || rec.tokenUsages[0].Output != 0 {
+	if rec.tokenUsages[0].Input != int64(len(requestBody)) || rec.tokenUsages[0].Output != 0 {
 		t.Fatalf("unexpected token usage: %#v", rec.tokenUsages[0])
 	}
 	if rec.tokenUsages[0].Metadata["token_source"] != embeddingTokenSourceProviderMissing {
@@ -247,8 +249,9 @@ func TestOpenAIEmbeddingsRecordsZeroWithoutUsage(t *testing.T) {
 	}
 }
 
-// TestOpenAIEmbeddingsRecordsZeroForUnknownModelWithoutUsage verifies OpenAI embeddings records zero for unknown model without usage.
-func TestOpenAIEmbeddingsRecordsZeroForUnknownModelWithoutUsage(t *testing.T) {
+// TestOpenAIEmbeddingsEstimatesUsageForUnknownModel verifies the fallback does
+// not rely on a model-specific tokenizer table.
+func TestOpenAIEmbeddingsEstimatesUsageForUnknownModel(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"object":"list","data":[],"model":"custom-embedding"}`))
@@ -258,7 +261,8 @@ func TestOpenAIEmbeddingsRecordsZeroForUnknownModelWithoutUsage(t *testing.T) {
 	rec := &embeddingTestRecorder{}
 	bridge := newEmbeddingTestBridge(t, newOpenAIProvider("openai", upstream.URL+"/v1", "provider-key"), rec)
 
-	req := httptest.NewRequest(http.MethodPost, "/openai/v1/embeddings", strings.NewReader(`{"model":"custom-embedding","input":"hello"}`))
+	requestBody := `{"model":"custom-embedding","input":"hello"}`
+	req := httptest.NewRequest(http.MethodPost, "/openai/v1/embeddings", strings.NewReader(requestBody))
 	recorder := httptest.NewRecorder()
 
 	bridge.ServeHTTP(recorder, withEmbeddingActor(req))
@@ -272,7 +276,7 @@ func TestOpenAIEmbeddingsRecordsZeroForUnknownModelWithoutUsage(t *testing.T) {
 	if len(rec.tokenUsages) != 1 {
 		t.Fatalf("expected one token usage record, got %d", len(rec.tokenUsages))
 	}
-	if rec.tokenUsages[0].Input != 0 || rec.tokenUsages[0].Output != 0 {
+	if rec.tokenUsages[0].Input != int64(len(requestBody)) || rec.tokenUsages[0].Output != 0 {
 		t.Fatalf("unexpected token usage: %#v", rec.tokenUsages[0])
 	}
 	if rec.tokenUsages[0].Metadata["token_source"] != embeddingTokenSourceProviderMissing {

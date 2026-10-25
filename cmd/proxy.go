@@ -1,9 +1,12 @@
 package cli
 
 import (
+	"bufio"
 	"context"
 	"errors"
+	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -85,11 +88,7 @@ func runProxy() error {
 		}
 	}()
 
-	server := &http.Server{
-		Addr:              cfg.ListenAddress(),
-		Handler:           proxyRuntime.Handler,
-		ReadHeaderTimeout: 5 * time.Second,
-	}
+	server := newProxyHTTPServer(cfg.ListenAddress(), proxyRuntime.Handler, cfg.ProxyUpstreamTimeout)
 
 	go func() {
 		<-ctx.Done()
@@ -109,6 +108,79 @@ func runProxy() error {
 
 	return nil
 }
+
+// newProxyHTTPServer bounds header and request-body reads at the connection
+// layer. The server-wide WriteTimeout remains zero so a healthy SSE stream can
+// live for the whole upstream request. A sliding per-write deadline instead
+// bounds only a client that stops reading while one Write/Flush is in progress.
+func newProxyHTTPServer(addr string, handler http.Handler, requestReadTimeout time.Duration) *http.Server {
+	return &http.Server{
+		Addr:              addr,
+		Handler:           writeDeadlineMiddleware(requestReadTimeout)(handler),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       requestReadTimeout,
+		IdleTimeout:       requestReadTimeout,
+	}
+}
+
+func writeDeadlineMiddleware(timeout time.Duration) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			next.ServeHTTP(&writeDeadlineResponseWriter{ResponseWriter: w, timeout: timeout}, r)
+		})
+	}
+}
+
+type writeDeadlineResponseWriter struct {
+	http.ResponseWriter
+	timeout time.Duration
+}
+
+func (w *writeDeadlineResponseWriter) refresh() error {
+	if w.timeout <= 0 {
+		return nil
+	}
+	return http.NewResponseController(w.ResponseWriter).SetWriteDeadline(time.Now().Add(w.timeout))
+}
+
+func (w *writeDeadlineResponseWriter) WriteHeader(statusCode int) {
+	_ = w.refresh()
+	w.ResponseWriter.WriteHeader(statusCode)
+}
+
+func (w *writeDeadlineResponseWriter) Write(raw []byte) (int, error) {
+	if err := w.refresh(); err != nil {
+		return 0, err
+	}
+	return w.ResponseWriter.Write(raw)
+}
+
+func (w *writeDeadlineResponseWriter) Flush() {
+	if err := w.refresh(); err != nil {
+		return
+	}
+	_ = http.NewResponseController(w.ResponseWriter).Flush()
+}
+
+func (w *writeDeadlineResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	return http.NewResponseController(w.ResponseWriter).Hijack()
+}
+
+func (w *writeDeadlineResponseWriter) ReadFrom(reader io.Reader) (int64, error) {
+	if err := w.refresh(); err != nil {
+		return 0, err
+	}
+	return io.Copy(w.ResponseWriter, reader)
+}
+
+func (w *writeDeadlineResponseWriter) Push(target string, options *http.PushOptions) error {
+	if pusher, ok := w.ResponseWriter.(http.Pusher); ok {
+		return pusher.Push(target, options)
+	}
+	return http.ErrNotSupported
+}
+
+func (w *writeDeadlineResponseWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
 // cdrLevel maps configured log level text to the cdr/slog level type.
 func cdrLevel(level string) cdrslog.Level {

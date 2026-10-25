@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"promptgate/backend/internal/domain/auth"
@@ -34,6 +35,7 @@ func Middleware(evaluator *Evaluator, snapshot *groups.SnapshotStore, denialReco
 			if snapshot != nil {
 				groupNames = snapshot.GroupNames(principal.User.ID)
 			}
+			providerName, providerType, providerPath := policyRequestTarget(r.URL.Path, snapshot)
 			input := Input{
 				Identity: IdentityInput{
 					ID: principal.User.ID, Type: string(principal.User.Type), Role: string(principal.User.Role),
@@ -42,6 +44,7 @@ func Middleware(evaluator *Evaluator, snapshot *groups.SnapshotStore, denialReco
 				},
 				Request: RequestInput{
 					ClientIP: clientip.FromContext(r.Context()), Method: r.Method, Path: r.URL.Path, Host: r.Host,
+					Provider: providerName, ProviderType: providerType, ProviderPath: providerPath,
 				},
 			}
 			decision, err := evaluator.Evaluate(r.Context(), input)
@@ -71,6 +74,25 @@ func Middleware(evaluator *Evaluator, snapshot *groups.SnapshotStore, denialReco
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+func policyRequestTarget(path string, snapshot *groups.SnapshotStore) (name, providerType, relativePath string) {
+	trimmed := strings.TrimPrefix(path, "/")
+	name, suffix, found := strings.Cut(trimmed, "/")
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "", "", "/"
+	}
+	relativePath = "/"
+	if found && suffix != "" {
+		relativePath += strings.TrimPrefix(suffix, "/")
+	}
+	if snapshot != nil {
+		if value, ok := snapshot.ProviderType(name); ok {
+			providerType = string(value)
+		}
+	}
+	return name, providerType, relativePath
 }
 
 func writeJSON(w http.ResponseWriter, status int, code string) {

@@ -29,10 +29,13 @@ type IdentityInput struct {
 }
 
 type RequestInput struct {
-	ClientIP string `json:"client_ip"`
-	Method   string `json:"method"`
-	Path     string `json:"path"`
-	Host     string `json:"host"`
+	ClientIP     string `json:"client_ip"`
+	Method       string `json:"method"`
+	Path         string `json:"path"`
+	Host         string `json:"host"`
+	Provider     string `json:"provider"`
+	ProviderType string `json:"provider_type"`
+	ProviderPath string `json:"provider_path"`
 }
 
 type Input struct {

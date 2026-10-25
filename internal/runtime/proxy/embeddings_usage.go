@@ -11,7 +11,7 @@ import (
 
 const (
 	embeddingTokenSourceProviderUsage   = "provider_usage"
-	embeddingTokenSourceProviderMissing = "provider_usage_missing"
+	embeddingTokenSourceProviderMissing = "request_bytes_upper_bound"
 	embeddingTokenWarningTotalMismatch  = "embedding_total_tokens_mismatch"
 )
 
@@ -45,8 +45,16 @@ func (i *embeddingInterceptor) recordTokenUsage(ctx context.Context, body []byte
 		}
 	}
 
+	// Compatible providers do not always return usage. Charging a conservative
+	// UTF-8 byte upper bound prevents successful embeddings from bypassing a
+	// finite quota; a tokenizer cannot emit more byte-level tokens than the
+	// serialized request contains.
 	metadata["token_source"] = embeddingTokenSourceProviderMissing
-	i.recordEmbeddingTokens(ctx, responseID, 0, metadata)
+	estimatedTokens := int64(len(i.rawBody))
+	if estimatedTokens < 1 {
+		estimatedTokens = 1
+	}
+	i.recordEmbeddingTokens(ctx, responseID, estimatedTokens, metadata)
 }
 
 // recordEmbeddingTokens persists embedding token totals through the aibridge recorder.

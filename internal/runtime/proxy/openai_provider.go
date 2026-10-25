@@ -93,7 +93,10 @@ func (p *openAIProvider) BridgedRoutes() []string {
 
 // PassthroughRoutes returns routes forwarded without bridge interception.
 func (p *openAIProvider) PassthroughRoutes() []string {
-	return p.inner.PassthroughRoutes()
+	// Keep passthrough fail-closed. Resource subtrees such as models/{id},
+	// conversations/**, and responses/{id} expose shared or destructive
+	// operations when the provider uses Prompt Gate's centralized credential.
+	return []string{"/models"}
 }
 
 // AuthHeader returns the upstream authentication header name.

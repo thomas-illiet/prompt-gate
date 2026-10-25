@@ -51,10 +51,17 @@ func (e *Evaluator) Evaluate(ctx context.Context, input Input) (Decision, error)
 	var cached Decision
 	if e.redis != nil {
 		if ok, cacheErr := e.redis.GetJSON(ctx, key, &cached); cacheErr == nil && ok {
-			e.record(ctx, "cache_hit", cached.Allow)
-			span.SetAttributes(attribute.Bool("policy.cache_hit", true), attribute.Bool("policy.allow", cached.Allow), attribute.String("policy.reason", cached.Reason))
-			e.logger.Info("policy decision", "source", "cache", "allow", cached.Allow, "reason", cached.Reason)
-			return cached, nil
+			// Positive decisions are deliberately never trusted from cache. OPA's
+			// policy/data APIs do not provide a durable revision in this contract,
+			// so an allow cache entry could otherwise survive an emergency revoke
+			// for the entire TTL. Denials are safe to cache because staleness only
+			// keeps access closed.
+			if !cached.Allow {
+				e.record(ctx, "cache_hit", false)
+				span.SetAttributes(attribute.Bool("policy.cache_hit", true), attribute.Bool("policy.allow", false), attribute.String("policy.reason", cached.Reason))
+				e.logger.Info("policy decision", "source", "cache", "allow", false, "reason", cached.Reason)
+				return cached, nil
+			}
 		} else if cacheErr != nil {
 			e.logger.Warn("policy cache read failed", "error", cacheErr)
 		}
@@ -78,7 +85,7 @@ func (e *Evaluator) Evaluate(ctx context.Context, input Input) (Decision, error)
 	e.record(ctx, "opa", decision.Allow)
 	span.SetAttributes(attribute.Bool("policy.cache_hit", false), attribute.Bool("policy.allow", decision.Allow), attribute.String("policy.reason", decision.Reason))
 	e.logger.Info("policy decision", "source", "opa", "allow", decision.Allow, "reason", decision.Reason)
-	if e.redis != nil {
+	if e.redis != nil && !decision.Allow {
 		if cacheErr := e.redis.SetJSON(ctx, key, decision, e.cacheTTL); cacheErr != nil {
 			e.logger.Warn("policy cache write failed", "error", cacheErr)
 		}

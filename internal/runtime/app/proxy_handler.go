@@ -41,9 +41,14 @@ func (p *ProxyRuntime) buildHandler(
 		Logger:              p.logger,
 	}
 	protectedHandler := groups.MiddlewareWithOptions(accessSnapshot, p.logger, groups.MiddlewareOptions{
-		MaxBufferedRequestBytes: cfg.ProxyMaxBufferedRequestBytes,
+		MaxBufferedRequestBytes:  cfg.ProxyMaxBufferedRequestBytes,
+		MaxBufferedResponseBytes: cfg.ProxyMaxBufferedResponseBytes,
 	})(
-		subscriptions.Middleware(p.subscriptionStore, p.logger)(
+		subscriptions.MiddlewareWithOptions(p.subscriptionStore, p.logger, subscriptions.MiddlewareOptions{
+			MaxBufferedRequestBytes:  cfg.ProxyMaxBufferedRequestBytes,
+			MaxBufferedResponseBytes: cfg.ProxyMaxBufferedResponseBytes,
+			ReservationTTL:           cfg.ProxyUpstreamTimeout + time.Minute,
+		})(
 			auth.ActorMiddleware(proxyruntime.SessionContextMiddleware(p.manager)),
 		),
 	)
@@ -51,6 +56,9 @@ func (p *ProxyRuntime) buildHandler(
 	if cfg.OPAEnabled {
 		protectedHandler = policy.Middleware(policyEvaluator, accessSnapshot, denialRecorder, p.logger)(protectedHandler)
 	}
+	protectedHandler = proxyruntime.MethodGuardMiddlewareWithOptions(proxyruntime.MethodGuardOptions{
+		MaxBufferedRequestBytes: cfg.ProxyMaxBufferedRequestBytes,
+	})(protectedHandler)
 	proxyHandler := tokens.MiddlewareWithOptions(tokens.MiddlewareOptions{
 		TokenService: tokenService,
 		UserResolver: userService,

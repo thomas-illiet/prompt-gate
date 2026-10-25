@@ -18,7 +18,7 @@ data:
       input.identity.id == "replace-with-service-account-id"
       net.cidr_contains("10.0.0.0/8", input.request.client_ip)
       input.request.method == "POST"
-      allowed_path(input.request.path)
+      allowed_route(input.request)
     }
 
     decision := {"allow": true, "reason": "trusted_user_route"} if {
@@ -26,11 +26,42 @@ data:
       input.identity.type == "user"
       net.cidr_contains("192.168.0.0/16", input.request.client_ip)
       input.request.method == "POST"
-      allowed_path(input.request.path)
+      allowed_route(input.request)
     }
 
-    allowed_path(path) if { startswith(path, "/v1/chat/completions") }
-    allowed_path(path) if { startswith(path, "/v1/responses") }
+    allowed_route(request) if {
+      request.provider_type in {"openai", "ollama"}
+      request.provider_path == "/v1/chat/completions"
+    }
+
+    allowed_route(request) if {
+      request.provider_type == "openai"
+      request.provider_path == "/v1/responses"
+    }
+
+    allowed_route(request) if {
+      request.provider_type == "anthropic"
+      request.provider_path == "/v1/messages"
+    }
+  authz.rego: |
+    package system.authz
+
+    # OPA is a decision service here, not a remote policy-management API. The
+    # policy is loaded from the read-only ConfigMap at process start, so denying the
+    # REST mutation endpoints cannot prevent bootstrap.
+    default allow := false
+
+    allow if {
+      input.method == "POST"
+      input.path == ["v1", "data", "promptgate", "proxy", "decision"]
+    }
+
+    # Kubernetes probes use this exact health endpoint; all broader diagnostic,
+    # status, query, policy, and data-management routes stay closed.
+    allow if {
+      input.method == "GET"
+      input.path == ["health"]
+    }
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -45,6 +76,7 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/name: prompt-gate-opa
+        app.kubernetes.io/component: policy
     spec:
       automountServiceAccountToken: false
       securityContext:
@@ -57,7 +89,12 @@ spec:
       containers:
         - name: opa
           image: openpolicyagent/opa:1.21.0-static
-          args: ["run", "--server", "--addr=0.0.0.0:8181", "/policies"]
+          args:
+            - run
+            - --server
+            - --authorization=basic
+            - --addr=0.0.0.0:8181
+            - /policies
           ports:
             - name: http
               containerPort: 8181
@@ -101,3 +138,23 @@ spec:
     - name: http
       port: 8181
       targetPort: http
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: prompt-gate-opa
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: prompt-gate-opa
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prompt-gate
+              app.kubernetes.io/component: proxy
+      ports:
+        - protocol: TCP
+          port: 8181

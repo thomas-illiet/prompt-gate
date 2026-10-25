@@ -53,6 +53,9 @@ jobs:
           go-version-file: go.mod
           cache-dependency-path: go.sum
 
+      - name: Setup Helm
+        uses: azure/setup-helm@v4
+
       - name: Check formatting
         run: make fmt-check
 
@@ -70,6 +73,12 @@ jobs:
 
       - name: Build binary
         run: make build
+
+      - name: Validate Helm chart rendering
+        run: bash deploy/helm/prompt-gate/tests/render.sh
+
+      - name: Validate OPA example policy
+        run: bash deploy/examples/opa/test.sh
 
   frontend:
     name: Validate frontend

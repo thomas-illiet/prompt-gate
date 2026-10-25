@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
@@ -25,17 +24,20 @@ import (
 	coderbridge "github.com/coder/aibridge"
 	"github.com/glebarez/sqlite"
 	"github.com/google/uuid"
-	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
 
 type fakeManagedBridge struct {
 	served   bool
 	shutdown chan struct{}
+	headers  http.Header
+	trailers http.Header
 }
 
-func (b *fakeManagedBridge) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
+func (b *fakeManagedBridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	b.served = true
+	b.headers = r.Header.Clone()
+	b.trailers = r.Trailer.Clone()
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -58,6 +60,82 @@ func TestManagerDelegatesAndShutsDownManagedBridge(t *testing.T) {
 	}
 	if err := manager.Shutdown(context.Background()); err != nil {
 		t.Fatalf("shutdown manager: %v", err)
+	}
+}
+
+func TestManagerAllowsOnlyExplicitUpstreamHeaders(t *testing.T) {
+	bridge := &fakeManagedBridge{}
+	manager := &Manager{opts: Options{Logger: slog.Default()}}
+	manager.installBridge(bridge)
+
+	request := httptest.NewRequest(http.MethodPost, "/openai/v1/responses", nil)
+	for name, value := range map[string]string{
+		"Accept":              "text/event-stream",
+		"Accept-Encoding":     "identity",
+		"Anthropic-Beta":      "prompt-caching-2024-07-31",
+		"Anthropic-Version":   "2023-06-01",
+		"Content-Type":        "application/json",
+		"Idempotency-Key":     "request-123",
+		"OpenAI-Beta":         "responses=v1",
+		"User-Agent":          "private-client/1.0",
+		"X-Client-Request-Id": "internal-request-123",
+		"Authorization":       "Bearer promptgate-secret",
+		"X-Api-Key":           "provider-secret",
+		"Cookie":              "promptgate_session=session-secret",
+		"X-Admin-API-Key":     "admin-secret",
+		"Forwarded":           "for=198.51.100.10",
+		"X-Forwarded-For":     "198.51.100.10",
+		"X-Forwarded-Host":    "internal.example.test",
+		"X-Forwarded-Proto":   "https",
+		"X-Real-IP":           "198.51.100.10",
+		"Traceparent":         "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01",
+		"Tracestate":          "vendor=value",
+		"Baggage":             "secret=value",
+		"X-Session-Id":        "session-id",
+		"OpenAI-Organization": "org-secret",
+		"OpenAI-Project":      "project-secret",
+		"X-Custom-Secret":     "custom-secret",
+	} {
+		request.Header.Set(name, value)
+	}
+	request.Header.Add("Anthropic-Beta", "second-beta")
+	request.Trailer = http.Header{
+		"Cookie":          {"trailer-session-secret"},
+		"X-Custom-Secret": {"trailer-custom-secret"},
+	}
+	originalHeaders := request.Header.Clone()
+	response := httptest.NewRecorder()
+
+	manager.ServeHTTP(response, request)
+
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("status: got %d, want %d", response.Code, http.StatusNoContent)
+	}
+	for name, want := range map[string]string{
+		"Accept":            "text/event-stream",
+		"Accept-Encoding":   "identity",
+		"Anthropic-Version": "2023-06-01",
+		"Content-Type":      "application/json",
+		"OpenAI-Beta":       "responses=v1",
+	} {
+		if got := bridge.headers.Get(name); got != want {
+			t.Errorf("allowed header %s: got %q, want %q", name, got, want)
+		}
+	}
+	if got := bridge.headers.Values("Anthropic-Beta"); len(got) != 2 || got[0] != "prompt-caching-2024-07-31" || got[1] != "second-beta" {
+		t.Fatalf("Anthropic-Beta values were not preserved: %#v", got)
+	}
+	if got, want := len(bridge.headers), len(upstreamHeaderAllowlist); got != want {
+		t.Fatalf("upstream headers: got %#v (%d), want only %d allowlisted names", bridge.headers, got, want)
+	}
+	if len(bridge.trailers) != 0 {
+		t.Fatalf("upstream trailers were not removed: %#v", bridge.trailers)
+	}
+	if got := bridge.headers.Get("Idempotency-Key"); got != "" {
+		t.Fatalf("client idempotency key crossed the shared provider credential boundary: %q", got)
+	}
+	if request.Header.Get("Cookie") != originalHeaders.Get("Cookie") || request.Header.Get("X-Custom-Secret") != originalHeaders.Get("X-Custom-Secret") {
+		t.Fatal("manager mutated the caller's request headers")
 	}
 }
 
@@ -174,7 +252,7 @@ func TestReloadDebouncerCoalescesSchedules(t *testing.T) {
 }
 
 // TestWatchReloadsAccessGroupsFromRedisEvent verifies watch reloads access groups from Redis event.
-func TestWatchReloadsAccessGroupsFromRedisEvent(t *testing.T) {
+func TestWatchDoesNotTrustCachedGroupsWithoutAuthoritativeService(t *testing.T) {
 	ctx := context.Background()
 	srv := miniredis.RunT(t)
 	store, err := redisstore.NewRequired(ctx, "redis://"+srv.Addr(), time.Minute, nil)
@@ -209,33 +287,13 @@ func TestWatchReloadsAccessGroupsFromRedisEvent(t *testing.T) {
 		Logger:         slog.New(slog.NewTextHandler(io.Discard, nil)),
 	}}
 
-	watchCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	go manager.Watch(watchCtx)
-
-	redisClient := redis.NewClient(&redis.Options{Addr: srv.Addr()})
-	defer redisClient.Close()
-	event := redisstore.Event{
-		Domain:    configevents.DomainGroups,
-		Version:   1,
-		CreatedAt: time.Now().UTC(),
+	version := int64(1)
+	if err := manager.reconcileGroups(ctx, &version, false); err == nil {
+		t.Fatal("expected authoritative group service error")
 	}
-	payload, err := json.Marshal(event)
-	if err != nil {
-		t.Fatalf("marshal event: %v", err)
+	if accessStore.Allows("user-id", "openai", "any-model") {
+		t.Fatal("cached group grants were trusted without an authoritative service")
 	}
-
-	deadline := time.Now().Add(time.Second)
-	for time.Now().Before(deadline) {
-		if err := redisClient.Publish(ctx, redisstore.EventsChannel, payload).Err(); err != nil {
-			t.Fatalf("publish event: %v", err)
-		}
-		if accessStore.Allows("user-id", "openai", "any-model") {
-			return
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	t.Fatal("timed out waiting for group access snapshot reload")
 }
 
 // TestRefreshAccessGroupsFallsBackWhenRedisSnapshotIsLegacy verifies refresh access groups falls back when Redis snapshot is legacy.

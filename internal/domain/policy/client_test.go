@@ -48,7 +48,10 @@ func response(status int, body string, req *http.Request) *http.Response {
 func TestClientDecisionContract(t *testing.T) {
 	input := Input{
 		Identity: IdentityInput{ID: "user-id", Type: "user", Role: "admin", Groups: []string{"developers", "platform"}, CredentialID: "key-id", CredentialName: "local"},
-		Request:  RequestInput{ClientIP: "192.0.2.10", Method: http.MethodPost, Path: "/v1/responses", Host: "proxy.example.com"},
+		Request: RequestInput{
+			ClientIP: "192.0.2.10", Method: http.MethodPost, Path: "/openai-main/v1/responses", Host: "proxy.example.com",
+			Provider: "openai-main", ProviderType: "openai", ProviderPath: "/v1/responses",
+		},
 	}
 	client, err := NewClient("http://opa:8181", "promptgate/proxy/decision", &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		if req.URL.Path != "/v1/data/promptgate/proxy/decision" {
@@ -61,7 +64,11 @@ func TestClientDecisionContract(t *testing.T) {
 		if readErr != nil {
 			t.Fatal(readErr)
 		}
-		if strings.Contains(string(payload), "prompt") || !strings.Contains(string(payload), `"groups":["developers","platform"]`) || !strings.Contains(string(payload), `"credential_id":"key-id"`) {
+		if strings.Contains(string(payload), "prompt") || !strings.Contains(string(payload), `"groups":["developers","platform"]`) ||
+			!strings.Contains(string(payload), `"credential_id":"key-id"`) ||
+			!strings.Contains(string(payload), `"provider":"openai-main"`) ||
+			!strings.Contains(string(payload), `"provider_type":"openai"`) ||
+			!strings.Contains(string(payload), `"provider_path":"/v1/responses"`) {
 			t.Fatalf("unexpected OPA payload: %s", payload)
 		}
 		return response(http.StatusOK, `{"result":{"allow":true,"reason":"administrator"}}`, req), nil
@@ -122,7 +129,7 @@ func TestClientHonorsCancellation(t *testing.T) {
 	}
 }
 
-func TestEvaluatorCachesAllowAndDenyUntilTTL(t *testing.T) {
+func TestEvaluatorCachesOnlyDenyUntilTTL(t *testing.T) {
 	for _, allowed := range []bool{true, false} {
 		t.Run(map[bool]string{true: "allow", false: "deny"}[allowed], func(t *testing.T) {
 			server := miniredis.RunT(t)
@@ -148,17 +155,57 @@ func TestEvaluatorCachesAllowAndDenyUntilTTL(t *testing.T) {
 					t.Fatalf("unexpected decision %#v: %v", decision, evalErr)
 				}
 			}
-			if calls.Load() != 1 {
-				t.Fatalf("expected one OPA call for cache hit, got %d", calls.Load())
+			wantCalls := int32(1)
+			if allowed {
+				wantCalls = 2
+			}
+			if calls.Load() != wantCalls {
+				t.Fatalf("OPA calls before expiry = %d, want %d", calls.Load(), wantCalls)
 			}
 			server.FastForward(10 * time.Minute)
 			if _, evalErr := evaluator.Evaluate(context.Background(), input); evalErr != nil {
 				t.Fatal(evalErr)
 			}
-			if calls.Load() != 2 {
-				t.Fatalf("expected cache expiry to call OPA again, got %d", calls.Load())
+			wantCalls++
+			if calls.Load() != wantCalls {
+				t.Fatalf("OPA calls after expiry = %d, want %d", calls.Load(), wantCalls)
 			}
 		})
+	}
+}
+
+func TestEvaluatorAllowDoesNotSurvivePolicyRevocation(t *testing.T) {
+	server := miniredis.RunT(t)
+	store, err := redisstore.NewRequired(context.Background(), "redis://"+server.Addr()+"/0", time.Minute, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	var allow atomic.Bool
+	allow.Store(true)
+	var calls atomic.Int32
+	client, _ := NewClient("http://opa:8181", "decision", &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		calls.Add(1)
+		if allow.Load() {
+			return response(http.StatusOK, `{"result":{"allow":true,"reason":"initial_policy"}}`, req), nil
+		}
+		return response(http.StatusOK, `{"result":{"allow":false,"reason":"revoked"}}`, req), nil
+	})})
+	evaluator := NewEvaluator(client, store, "decision", 10*time.Minute, nil)
+	input := Input{Identity: IdentityInput{ID: "identity"}, Request: RequestInput{Path: "/v1/responses"}}
+
+	first, err := evaluator.Evaluate(context.Background(), input)
+	if err != nil || !first.Allow {
+		t.Fatalf("initial decision = %#v, %v", first, err)
+	}
+	allow.Store(false)
+	second, err := evaluator.Evaluate(context.Background(), input)
+	if err != nil || second.Allow || second.Reason != "revoked" {
+		t.Fatalf("revoked decision = %#v, %v", second, err)
+	}
+	if calls.Load() != 2 {
+		t.Fatalf("OPA calls = %d, want 2 so allow is never cached", calls.Load())
 	}
 }
 

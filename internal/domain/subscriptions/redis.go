@@ -23,7 +23,136 @@ const (
 	quotaWindow7DSeconds = int64((7 * 24 * time.Hour) / time.Second)
 	quotaBucket5HSeconds = int64(time.Minute / time.Second)
 	quotaBucket7DSeconds = int64(time.Hour / time.Second)
+	quotaReservationTTL  = 10 * time.Minute
 )
+
+var reserveQuotaScript = redis.NewScript(`
+local redis_time = redis.call("TIME")
+local now_seconds = tonumber(redis_time[1])
+
+local function bucket_start(timestamp, bucket_seconds)
+ return timestamp - (timestamp % bucket_seconds)
+end
+
+local function snapshot_window(zset, hash, window_seconds, bucket_seconds)
+ local cutoff_time = now_seconds - window_seconds - bucket_seconds
+ local cutoff = bucket_start(cutoff_time, bucket_seconds)
+ local expired = redis.call("ZRANGEBYSCORE", zset, "-inf", cutoff)
+ if #expired > 0 then
+  redis.call("ZREM", zset, unpack(expired))
+  redis.call("HDEL", hash, unpack(expired))
+ end
+ local members = redis.call("ZRANGE", zset, 0, -1)
+ if #members == 0 then
+  return 0, 0
+ end
+ local values = redis.call("HMGET", hash, unpack(members))
+ local used = 0
+ for _, value in ipairs(values) do
+  used = used + tonumber(value or "0")
+ end
+ return used, tonumber(members[1]) or 0
+end
+
+local expired_reservations = redis.call("ZRANGEBYSCORE", KEYS[5], "-inf", now_seconds)
+if #expired_reservations > 0 then
+ redis.call("ZREM", KEYS[5], unpack(expired_reservations))
+ redis.call("HDEL", KEYS[6], unpack(expired_reservations))
+end
+local pending = 0
+local pending_values = redis.call("HVALS", KEYS[6])
+for _, value in ipairs(pending_values) do
+ pending = pending + tonumber(value or "0")
+end
+
+local used_5h, oldest_5h = snapshot_window(KEYS[1], KEYS[2], ARGV[1], ARGV[2])
+local used_7d, oldest_7d = snapshot_window(KEYS[3], KEYS[4], ARGV[3], ARGV[4])
+local quota_5h = tonumber(ARGV[5])
+local quota_7d = tonumber(ARGV[6])
+local requested = tonumber(ARGV[7])
+
+if requested < 0 then
+ local remaining = nil
+ if quota_5h >= 0 then
+  remaining = quota_5h - used_5h - pending
+ end
+ if quota_7d >= 0 then
+  local remaining_7d = quota_7d - used_7d - pending
+  if remaining == nil or remaining_7d < remaining then
+   remaining = remaining_7d
+  end
+ end
+ requested = remaining or 0
+end
+
+if quota_5h >= 0 and used_5h + pending + requested > quota_5h then
+ return {0, 5, used_5h, used_7d, pending, 0, oldest_5h, oldest_7d}
+end
+if quota_7d >= 0 and used_7d + pending + requested > quota_7d then
+ return {0, 7, used_5h, used_7d, pending, 0, oldest_5h, oldest_7d}
+end
+if requested <= 0 then
+ local denied_window = 5
+ if quota_5h < 0 then denied_window = 7 end
+ return {0, denied_window, used_5h, used_7d, pending, 0, oldest_5h, oldest_7d}
+end
+
+redis.call("HSET", KEYS[6], ARGV[8], requested)
+redis.call("ZADD", KEYS[5], now_seconds + tonumber(ARGV[9]), ARGV[8])
+redis.call("EXPIRE", KEYS[5], tonumber(ARGV[9]) * 2)
+redis.call("EXPIRE", KEYS[6], tonumber(ARGV[9]) * 2)
+return {1, 0, used_5h, used_7d, pending, requested, oldest_5h, oldest_7d}
+`)
+
+var commitQuotaReservationScript = redis.NewScript(`
+if redis.call("HEXISTS", KEYS[8], ARGV[7]) == 0 then
+ return 0
+end
+redis.call("ZREM", KEYS[7], ARGV[7])
+redis.call("HDEL", KEYS[8], ARGV[7])
+local tokens = tonumber(ARGV[1])
+if tokens <= 0 then
+ return 1
+end
+
+local redis_time = redis.call("TIME")
+local recorded_at_micros = (tonumber(redis_time[1]) * 1000000) + tonumber(redis_time[2])
+local reset_cutoff_micros = tonumber(redis.call("HGET", KEYS[6], "cutoff") or "0")
+if recorded_at_micros <= reset_cutoff_micros then
+ recorded_at_micros = reset_cutoff_micros + 1
+end
+local recorded_at_seconds = math.floor(recorded_at_micros / 1000000)
+
+local function bucket_start(timestamp, bucket_seconds)
+ return timestamp - (timestamp % bucket_seconds)
+end
+local function increment(zset, hash, amount, window_seconds, bucket_seconds)
+ local bucket = bucket_start(recorded_at_seconds, bucket_seconds)
+ local cutoff = bucket_start(recorded_at_seconds - window_seconds - bucket_seconds, bucket_seconds)
+ local expired = redis.call("ZRANGEBYSCORE", zset, "-inf", cutoff)
+ if #expired > 0 then
+  redis.call("ZREM", zset, unpack(expired))
+  redis.call("HDEL", hash, unpack(expired))
+ end
+ redis.call("ZADD", zset, bucket, bucket)
+ redis.call("HINCRBY", hash, bucket, amount)
+ redis.call("EXPIRE", zset, window_seconds + (2 * bucket_seconds))
+ redis.call("EXPIRE", hash, window_seconds + (2 * bucket_seconds))
+end
+increment(KEYS[1], KEYS[2], tokens, ARGV[2], ARGV[3])
+increment(KEYS[4], KEYS[5], tokens, ARGV[4], ARGV[5])
+local current = redis.call("ZSCORE", KEYS[3], ARGV[6])
+if not current or recorded_at_seconds > tonumber(current) then
+ redis.call("ZADD", KEYS[3], recorded_at_seconds, ARGV[6])
+end
+return 1
+`)
+
+var releaseQuotaReservationScript = redis.NewScript(`
+redis.call("ZREM", KEYS[1], ARGV[1])
+redis.call("HDEL", KEYS[2], ARGV[1])
+return 1
+`)
 
 var incrementUsageScript = redis.NewScript(`
 local redis_time = redis.call("TIME")
@@ -135,7 +264,7 @@ return {1, requested_sequence, effective_cutoff}
 `)
 
 var deleteUserQuotaStateScript = redis.NewScript(`
-redis.call("DEL", KEYS[1], KEYS[2], KEYS[3], KEYS[4], KEYS[5], KEYS[6])
+redis.call("DEL", KEYS[1], KEYS[2], KEYS[3], KEYS[4], KEYS[5], KEYS[6], KEYS[9], KEYS[10])
 redis.call("ZREM", KEYS[7], ARGV[1])
 redis.call("SREM", KEYS[8], ARGV[1])
 return 1
@@ -164,6 +293,12 @@ type RedisStore struct {
 	version            atomic.Int64
 	snapshot           atomic.Value
 	refreshMu          sync.Mutex
+	assignmentCutoff   atomic.Int64
+	assignmentFlights  sync.Map
+	reconcileInterval  time.Duration
+	reconcileTimeout   time.Duration
+	subscribeRetry     time.Duration
+	subscribeEvents    func(context.Context) <-chan redisstore.Event
 	deletedUserScanMu  sync.Mutex
 	deletedUserZCursor uint64
 	deletedUserSCursor uint64
@@ -176,6 +311,26 @@ type quotaUsageSnapshot struct {
 	reset5HAt  *time.Time
 	used7D     int64
 	reset7DAt  *time.Time
+}
+
+type assignmentLoadFlight struct {
+	done       chan struct{}
+	assignment AssignmentSnapshot
+	err        error
+}
+
+// QuotaReservation represents capacity atomically held for one in-flight
+// provider request. Reservations are short-lived and are either committed as
+// observed usage or released when the request fails before usage is produced.
+type QuotaReservation struct {
+	ID     string
+	UserID string
+	Tokens int64
+}
+
+type quotaReservationDecision struct {
+	Reservation QuotaReservation
+	Exceeded    *quotaExceededResponse
 }
 
 // QuotaResetApplication reports the durable Redis barrier observed for a reset.
@@ -231,8 +386,10 @@ func (s *RedisStore) RefreshIfStale(ctx context.Context) error {
 	if !s.Enabled() {
 		return nil
 	}
+	refreshCtx, cancel := s.refreshContext(ctx)
+	defer cancel()
 
-	version, err := s.store.Version(ctx, configevents.DomainSubscriptions)
+	version, err := s.store.Version(refreshCtx, configevents.DomainSubscriptions)
 	if err != nil {
 		return fmt.Errorf("load subscription config version: %w", err)
 	}
@@ -240,29 +397,155 @@ func (s *RedisStore) RefreshIfStale(ctx context.Context) error {
 		return nil
 	}
 
-	s.refreshMu.Lock()
+	if err := lockSubscriptionRefresh(refreshCtx, &s.refreshMu); err != nil {
+		return fmt.Errorf("wait for subscription snapshot refresh: %w", err)
+	}
 	defer s.refreshMu.Unlock()
 
-	version, err = s.store.Version(ctx, configevents.DomainSubscriptions)
+	version, err = s.store.Version(refreshCtx, configevents.DomainSubscriptions)
 	if err != nil {
 		return fmt.Errorf("reload subscription config version: %w", err)
 	}
 	if version == s.version.Load() {
 		return nil
 	}
-	previousVersion := s.version.Load()
-
 	for {
-		if version < previousVersion {
-			if err := s.clearAssignmentVersion(ctx, version); err != nil {
-				return fmt.Errorf("clear reset subscription assignments: %w", err)
-			}
-		}
-		if err := s.warmSnapshotLocked(ctx); err != nil {
+		if err := s.warmSnapshotLocked(refreshCtx); err != nil {
 			return fmt.Errorf("refresh subscription snapshot: %w", err)
 		}
 
-		latest, err := s.store.Version(ctx, configevents.DomainSubscriptions)
+		latest, err := s.store.Version(refreshCtx, configevents.DomainSubscriptions)
+		if err != nil {
+			return fmt.Errorf("verify subscription config version: %w", err)
+		}
+		if latest != version {
+			version = latest
+			continue
+		}
+		// Invalidate locally instead of scanning and deleting every assignment
+		// key. Cached assignments are also independently short-lived, so a lost
+		// version increment or publication cannot leave them stale forever.
+		s.invalidateAssignments()
+		s.version.Store(version)
+		return nil
+	}
+}
+
+func (s *RedisStore) Watch(ctx context.Context) {
+	if !s.Enabled() {
+		return
+	}
+	reconcileInterval := s.reconcileInterval
+	if reconcileInterval <= 0 {
+		reconcileInterval = 30 * time.Second
+	}
+	subscribeRetry := s.subscribeRetry
+	if subscribeRetry <= 0 {
+		subscribeRetry = time.Second
+	}
+	ticker := time.NewTicker(reconcileInterval)
+	defer ticker.Stop()
+	lastAuthoritative := time.Time{}
+
+	for ctx.Err() == nil {
+		events := s.subscriptionEvents(ctx)
+		if ctx.Err() != nil {
+			return
+		}
+
+		// Pub/Sub is only a low-latency hint. Force a DB-authoritative refresh
+		// after subscribing and periodically thereafter, so a failed version INCR
+		// or a completely missed publication cannot preserve a revoked plan.
+		force := lastAuthoritative.IsZero() || time.Since(lastAuthoritative) >= reconcileInterval
+		if force {
+			if err := s.reconcileAuthoritative(ctx); err != nil {
+				s.logger.Warn("subscription authoritative reconciliation failed", "error", err)
+			}
+			lastAuthoritative = time.Now()
+		}
+		s.logger.Info("subscription quota watcher started")
+
+		if !s.watchSubscription(ctx, events, ticker.C, &lastAuthoritative) {
+			return
+		}
+		s.logger.Warn("subscription config event subscription closed; reconnecting")
+		if !waitSubscriptionRetry(ctx, subscribeRetry) {
+			return
+		}
+	}
+}
+
+func (s *RedisStore) subscriptionEvents(ctx context.Context) <-chan redisstore.Event {
+	if s.subscribeEvents != nil {
+		return s.subscribeEvents(ctx)
+	}
+	return s.store.Subscribe(ctx)
+}
+
+func (s *RedisStore) watchSubscription(
+	ctx context.Context,
+	events <-chan redisstore.Event,
+	ticks <-chan time.Time,
+	lastAuthoritative *time.Time,
+) bool {
+	for {
+		select {
+		case <-ctx.Done():
+			return false
+		case <-ticks:
+			if err := s.reconcileAuthoritative(ctx); err != nil {
+				s.logger.Warn("periodic subscription reconciliation failed", "error", err)
+			}
+			*lastAuthoritative = time.Now()
+		case event, ok := <-events:
+			if !ok {
+				return true
+			}
+			if event.Domain != configevents.DomainSubscriptions {
+				continue
+			}
+			if err := s.RefreshIfStale(ctx); err != nil {
+				s.logger.Warn("subscription snapshot refresh failed", "version", event.Version, "error", err)
+			}
+		}
+	}
+}
+
+func waitSubscriptionRetry(ctx context.Context, delay time.Duration) bool {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
+}
+
+// reconcileAuthoritative refreshes plans directly from the database even when
+// Redis' version never advanced. Assignment entries have a separate bounded
+// lifetime, so this path never performs a global key scan or blocks quota
+// admission while the database is slow.
+func (s *RedisStore) reconcileAuthoritative(ctx context.Context) error {
+	if !s.Enabled() || s.service == nil {
+		return nil
+	}
+	refreshCtx, cancel := s.refreshContext(ctx)
+	defer cancel()
+	if err := lockSubscriptionRefresh(refreshCtx, &s.refreshMu); err != nil {
+		return fmt.Errorf("wait for subscription authoritative reconciliation: %w", err)
+	}
+	defer s.refreshMu.Unlock()
+
+	version, err := s.store.Version(refreshCtx, configevents.DomainSubscriptions)
+	if err != nil {
+		return fmt.Errorf("load subscription config version: %w", err)
+	}
+	for {
+		if err := s.warmSnapshotLocked(refreshCtx); err != nil {
+			return fmt.Errorf("refresh subscription snapshot from database: %w", err)
+		}
+		latest, err := s.store.Version(refreshCtx, configevents.DomainSubscriptions)
 		if err != nil {
 			return fmt.Errorf("verify subscription config version: %w", err)
 		}
@@ -275,59 +558,61 @@ func (s *RedisStore) RefreshIfStale(ctx context.Context) error {
 	}
 }
 
-func (s *RedisStore) clearAssignmentVersion(ctx context.Context, version int64) error {
-	client := s.store.Client()
-	pattern := redisstore.SubscriptionAssignmentKey(version, "*")
-	var cursor uint64
+func (s *RedisStore) refreshContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	timeout := s.reconcileTimeout
+	if timeout <= 0 {
+		timeout = 10 * time.Second
+	}
+	return context.WithTimeout(ctx, timeout)
+}
+
+func lockSubscriptionRefresh(ctx context.Context, mutex *sync.Mutex) error {
+	if mutex.TryLock() {
+		return nil
+	}
+	ticker := time.NewTicker(time.Millisecond)
+	defer ticker.Stop()
 	for {
-		keys, next, err := client.Scan(ctx, cursor, pattern, 100).Result()
-		if err != nil {
-			return err
-		}
-		if len(keys) > 0 {
-			if err := client.Del(ctx, keys...).Err(); err != nil {
-				return err
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			if mutex.TryLock() {
+				return nil
 			}
-		}
-		cursor = next
-		if cursor == 0 {
-			return nil
 		}
 	}
 }
 
-func (s *RedisStore) Watch(ctx context.Context) {
-	if !s.Enabled() {
-		return
-	}
-	events := s.store.Subscribe(ctx)
-	if ctx.Err() != nil {
-		return
-	}
+func (s *RedisStore) invalidateAssignments() {
+	s.assignmentCutoff.Store(time.Now().UTC().UnixNano())
+}
 
-	// Subscribe is established synchronously. Refresh after that point so a
-	// mutation published between process startup and watcher startup cannot
-	// leave this process on a stale assignment version or plan snapshot.
-	if err := s.RefreshIfStale(ctx); err != nil {
-		s.logger.Warn("subscription snapshot catch-up failed", "error", err)
+func (s *RedisStore) assignmentCacheTTL() time.Duration {
+	cacheTTL := s.reconcileInterval
+	if cacheTTL <= 0 {
+		cacheTTL = 30 * time.Second
 	}
-	s.logger.Info("subscription quota watcher started")
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case event, ok := <-events:
-			if !ok {
-				return
-			}
-			if event.Domain != configevents.DomainSubscriptions {
-				continue
-			}
-			if err := s.RefreshIfStale(ctx); err != nil {
-				s.logger.Warn("subscription snapshot refresh failed", "version", event.Version, "error", err)
-			}
-		}
+	if s.ttl > 0 && s.ttl < cacheTTL {
+		cacheTTL = s.ttl
 	}
+	return cacheTTL
+}
+
+func (s *RedisStore) assignmentCacheValid(assignment AssignmentSnapshot, now time.Time) bool {
+	if assignment.LoadedAt.IsZero() {
+		return false
+	}
+	loadedAt := assignment.LoadedAt.UTC()
+	cutoff := s.assignmentCutoff.Load()
+	if cutoff > 0 && loadedAt.UnixNano() < cutoff {
+		return false
+	}
+	cacheTTL := s.assignmentCacheTTL()
+	if loadedAt.After(now.Add(cacheTTL)) {
+		return false
+	}
+	return now.Sub(loadedAt) < cacheTTL
 }
 
 func (s *RedisStore) WarmSnapshot(ctx context.Context) error {
@@ -464,6 +749,181 @@ func (s *RedisStore) IncrementUsage(ctx context.Context, userID string, tokens i
 	return nil
 }
 
+// ReserveQuota atomically checks actual usage plus all in-flight reservations
+// against both quota windows and, when allowed, records a short-lived hold.
+// A negative requested token count reserves all remaining capacity in the
+// tightest finite window; this is used for APIs that omit an output bound.
+func (s *RedisStore) ReserveQuota(
+	ctx context.Context,
+	userID string,
+	plan PlanSnapshot,
+	requested int64,
+) (quotaReservationDecision, error) {
+	return s.reserveQuota(ctx, userID, plan, requested, quotaReservationTTL)
+}
+
+func (s *RedisStore) reserveQuota(
+	ctx context.Context,
+	userID string,
+	plan PlanSnapshot,
+	requested int64,
+	reservationTTL time.Duration,
+) (quotaReservationDecision, error) {
+	if !s.Enabled() {
+		return quotaReservationDecision{}, errors.New("subscription quota store unavailable")
+	}
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		return quotaReservationDecision{}, errors.New("subscription quota user is required")
+	}
+	if plan.Quota5HTokens == nil && plan.Quota7DTokens == nil {
+		return quotaReservationDecision{}, nil
+	}
+	if requested == 0 {
+		requested = 1
+	}
+	if reservationTTL <= 0 {
+		reservationTTL = quotaReservationTTL
+	}
+
+	reservationID := uuid.NewString()
+	quota5H := int64(-1)
+	if plan.Quota5HTokens != nil {
+		quota5H = *plan.Quota5HTokens
+	}
+	quota7D := int64(-1)
+	if plan.Quota7DTokens != nil {
+		quota7D = *plan.Quota7DTokens
+	}
+	values, err := reserveQuotaScript.Run(
+		ctx,
+		s.store.Client(),
+		[]string{
+			redisstore.SubscriptionUsageZSetKey(userID, Window5H),
+			redisstore.SubscriptionUsageHashKey(userID, Window5H),
+			redisstore.SubscriptionUsageZSetKey(userID, Window7D),
+			redisstore.SubscriptionUsageHashKey(userID, Window7D),
+			quotaReservationZSetKey(userID),
+			quotaReservationHashKey(userID),
+		},
+		quotaWindow5HSeconds,
+		quotaBucket5HSeconds,
+		quotaWindow7DSeconds,
+		quotaBucket7DSeconds,
+		quota5H,
+		quota7D,
+		requested,
+		reservationID,
+		int64(reservationTTL/time.Second),
+	).Slice()
+	if err != nil {
+		return quotaReservationDecision{}, fmt.Errorf("reserve subscription quota: %w", err)
+	}
+	if len(values) != 8 {
+		return quotaReservationDecision{}, fmt.Errorf("reserve subscription quota: unexpected result length %d", len(values))
+	}
+	decoded := make([]int64, len(values))
+	for index, value := range values {
+		decoded[index], err = quotaResetScriptInt64(value)
+		if err != nil {
+			return quotaReservationDecision{}, fmt.Errorf("decode subscription quota reservation field %d: %w", index, err)
+		}
+	}
+	if decoded[0] == 1 {
+		return quotaReservationDecision{Reservation: QuotaReservation{
+			ID:     reservationID,
+			UserID: userID,
+			Tokens: decoded[5],
+		}}, nil
+	}
+
+	window := Window5H
+	used := decoded[2] + decoded[4]
+	quota := quota5H
+	resetAt := quotaWindowResetAt(decoded[2], decoded[6], quotaWindow5HSeconds, quotaBucket5HSeconds)
+	if decoded[1] == 7 {
+		window = Window7D
+		used = decoded[3] + decoded[4]
+		quota = quota7D
+		resetAt = quotaWindowResetAt(decoded[3], decoded[7], quotaWindow7DSeconds, quotaBucket7DSeconds)
+	}
+	return quotaReservationDecision{Exceeded: &quotaExceededResponse{
+		Error:       "quota_exceeded",
+		Window:      window,
+		UsedTokens:  used,
+		QuotaTokens: quota,
+		ResetAt:     resetAt,
+	}}, nil
+}
+
+// CommitQuotaReservation atomically releases a hold and records the provider's
+// observed usage. It intentionally records usage even if the hold expired, so
+// delayed recorder callbacks cannot make successful requests free.
+func (s *RedisStore) CommitQuotaReservation(ctx context.Context, reservation QuotaReservation, tokens int64) (bool, error) {
+	if !s.Enabled() {
+		return false, errors.New("subscription quota store unavailable")
+	}
+	if strings.TrimSpace(reservation.ID) == "" || strings.TrimSpace(reservation.UserID) == "" {
+		return false, errors.New("invalid subscription quota reservation")
+	}
+	result, err := commitQuotaReservationScript.Run(
+		ctx,
+		s.store.Client(),
+		[]string{
+			redisstore.SubscriptionUsageZSetKey(reservation.UserID, Window5H),
+			redisstore.SubscriptionUsageHashKey(reservation.UserID, Window5H),
+			redisstore.SubscriptionActiveUsersZSetKey(),
+			redisstore.SubscriptionUsageZSetKey(reservation.UserID, Window7D),
+			redisstore.SubscriptionUsageHashKey(reservation.UserID, Window7D),
+			redisstore.SubscriptionQuotaResetStateKey(reservation.UserID),
+			quotaReservationZSetKey(reservation.UserID),
+			quotaReservationHashKey(reservation.UserID),
+		},
+		tokens,
+		quotaWindow5HSeconds,
+		quotaBucket5HSeconds,
+		quotaWindow7DSeconds,
+		quotaBucket7DSeconds,
+		reservation.UserID,
+		reservation.ID,
+	).Int64()
+	if err != nil {
+		return false, fmt.Errorf("commit subscription quota reservation: %w", err)
+	}
+	if result != 0 && result != 1 {
+		return false, fmt.Errorf("commit subscription quota reservation: unexpected result %d", result)
+	}
+	return result == 1, nil
+}
+
+// ReleaseQuotaReservation releases an unused in-flight hold.
+func (s *RedisStore) ReleaseQuotaReservation(ctx context.Context, reservation QuotaReservation) error {
+	if !s.Enabled() || reservation.ID == "" || reservation.UserID == "" {
+		return nil
+	}
+	result, err := releaseQuotaReservationScript.Run(
+		ctx,
+		s.store.Client(),
+		[]string{quotaReservationZSetKey(reservation.UserID), quotaReservationHashKey(reservation.UserID)},
+		reservation.ID,
+	).Int64()
+	if err != nil {
+		return fmt.Errorf("release subscription quota reservation: %w", err)
+	}
+	if result != 1 {
+		return fmt.Errorf("release subscription quota reservation: unexpected result %d", result)
+	}
+	return nil
+}
+
+func quotaReservationZSetKey(userID string) string {
+	return fmt.Sprintf("promptgate:subscriptions:reservations:%s:z", userID)
+}
+
+func quotaReservationHashKey(userID string) string {
+	return fmt.Sprintf("promptgate:subscriptions:reservations:%s:h", userID)
+}
+
 // ApplyQuotaReset atomically clears both quota windows. Redis chooses the cutoff
 // at the script's linearization point; the sequence makes retries idempotent and
 // prevents an older pending event from clearing usage recorded after a reset.
@@ -585,6 +1045,8 @@ func (s *RedisStore) DeleteUserQuotaState(ctx context.Context, userID string) er
 			redisstore.SubscriptionAssignmentKey(s.version.Load(), userID),
 			redisstore.SubscriptionActiveUsersZSetKey(),
 			redisstore.SubscriptionActiveUsersKey(),
+			quotaReservationZSetKey(userID),
+			quotaReservationHashKey(userID),
 		},
 		userID,
 	).Int64()
@@ -770,26 +1232,60 @@ func (s *RedisStore) loadSnapshot(ctx context.Context) (Snapshot, error) {
 
 func (s *RedisStore) loadAssignment(ctx context.Context, userID string) (AssignmentSnapshot, error) {
 	key := redisstore.SubscriptionAssignmentKey(s.version.Load(), userID)
-	var assignment AssignmentSnapshot
-	if s.Enabled() {
-		if ok, err := s.store.GetJSON(ctx, key, &assignment); err != nil {
-			s.logger.Warn("subscription assignment load failed", "user_id", userID, "error", err)
-		} else if ok {
-			return assignment, nil
-		}
+	if assignment, ok := s.cachedAssignment(ctx, key); ok {
+		return assignment, nil
 	}
 	if s.service == nil {
 		return AssignmentSnapshot{}, nil
 	}
+
+	flight := &assignmentLoadFlight{done: make(chan struct{})}
+	actual, loaded := s.assignmentFlights.LoadOrStore(key, flight)
+	if loaded {
+		active := actual.(*assignmentLoadFlight)
+		select {
+		case <-ctx.Done():
+			return AssignmentSnapshot{}, ctx.Err()
+		case <-active.done:
+			return active.assignment, active.err
+		}
+	}
+	defer func() {
+		close(flight.done)
+		s.assignmentFlights.Delete(key)
+	}()
+
+	// A previous loader may have populated Redis between the optimistic lookup
+	// and this goroutine becoming the per-user leader.
+	if assignment, ok := s.cachedAssignment(ctx, key); ok {
+		flight.assignment = assignment
+		return assignment, nil
+	}
+
 	planID, hasUser, err := s.service.UserPlanID(ctx, userID)
 	if err != nil {
+		flight.err = err
 		return AssignmentSnapshot{}, err
 	}
-	assignment = AssignmentSnapshot{HasUser: hasUser, PlanID: planID}
+	assignment := AssignmentSnapshot{HasUser: hasUser, PlanID: planID, LoadedAt: time.Now().UTC()}
 	if s.Enabled() {
-		_ = s.store.SetJSON(ctx, key, assignment, s.ttl)
+		_ = s.store.SetJSON(ctx, key, assignment, s.assignmentCacheTTL())
 	}
+	flight.assignment = assignment
 	return assignment, nil
+}
+
+func (s *RedisStore) cachedAssignment(ctx context.Context, key string) (AssignmentSnapshot, bool) {
+	var assignment AssignmentSnapshot
+	now := time.Now().UTC()
+	if s.Enabled() {
+		if ok, err := s.store.GetJSON(ctx, key, &assignment); err != nil {
+			s.logger.Warn("subscription assignment load failed", "key", key, "error", err)
+		} else if ok && s.assignmentCacheValid(assignment, now) {
+			return assignment, true
+		}
+	}
+	return AssignmentSnapshot{}, false
 }
 
 func (s *RedisStore) loadQuotaUsageSnapshot(ctx context.Context, userID string, now time.Time) (quotaUsageSnapshot, error) {

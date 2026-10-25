@@ -1,4 +1,8 @@
 {{- if and .Values.ingress.enabled .Values.proxy.enabled -}}
+{{- $proxyAnnotations := deepCopy (default dict .Values.ingress.proxy.annotations) -}}
+{{- if and .Values.ingress.proxy.stripPath (not (hasKey $proxyAnnotations "haproxy.org/path-rewrite")) -}}
+{{- $_ := set $proxyAnnotations "haproxy.org/path-rewrite" (printf "^%s(/|$)(.*) /\\2" (trimSuffix "/" .Values.ingress.proxyPath)) -}}
+{{- end -}}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -10,7 +14,9 @@ metadata:
     {{- if .Values.argoCd.enabled }}
     argocd.argoproj.io/sync-wave: {{ .Values.argoCd.syncWaves.ingress | quote }}
     {{- end }}
-    {{- toYaml .Values.ingress.proxy.annotations | nindent 4 }}
+    {{- with $proxyAnnotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
 spec:
   ingressClassName: {{ .Values.ingress.className | quote }}
   {{- if .Values.ingress.tls.enabled }}
@@ -23,8 +29,8 @@ spec:
     - host: {{ .Values.ingress.host | quote }}
       http:
         paths:
-          - path: {{ printf "%s(/|$)(.*)" .Values.ingress.proxyPath | quote }}
-            pathType: ImplementationSpecific
+          - path: {{ .Values.ingress.proxyPath | quote }}
+            pathType: Prefix
             backend:
               service:
                 name: {{ include "prompt-gate.fullname" . }}-proxy

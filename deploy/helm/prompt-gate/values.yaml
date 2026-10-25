@@ -382,11 +382,11 @@ ingress:
   # Creates two Ingress objects on the same host: one for API/frontend at /
   # and one for the proxy under proxyPath.
   enabled: true
-  className: nginx
+  className: haproxy
   host: promptgate.example.com
 
-  # Public path for the proxy. The nginx rewrite strips this prefix before
-  # forwarding requests to the proxy Service.
+  # Public path for the proxy. With stripPath enabled, the generated HAProxy
+  # Technologies annotation removes this prefix before forwarding requests.
   proxyPath: /remote
 
   tls:
@@ -398,8 +398,8 @@ ingress:
     annotations: {}
 
   proxy:
-    # nginx regex rewrite for proxyPath. For /remote(/|$)(.*), /$2 forwards
-    # /remote/v1/chat/completions to /v1/chat/completions.
-    annotations:
-      nginx.ingress.kubernetes.io/use-regex: "true"
-      nginx.ingress.kubernetes.io/rewrite-target: /$2
+    # Generate haproxy.org/path-rewrite from proxyPath. Disable this when the
+    # external controller already strips the prefix. An explicit annotation in
+    # annotations overrides the generated value.
+    stripPath: true
+    annotations: {}

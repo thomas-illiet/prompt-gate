@@ -26,6 +26,22 @@ func (m *Manager) providerRecords(ctx context.Context) ([]localprovider.Provider
 	return records, nil
 }
 
+func (m *Manager) providerRecordsForBuild(ctx context.Context, authoritative bool) ([]localprovider.Provider, error) {
+	if !authoritative {
+		return m.providerRecords(ctx)
+	}
+	return m.opts.Providers.ListEnabled(ctx)
+}
+
+func (m *Manager) cacheProviderRecords(ctx context.Context, records []localprovider.Provider) {
+	if m.opts.Redis == nil {
+		return
+	}
+	if err := m.opts.Redis.SetJSON(ctx, redisstore.SnapshotKey(configevents.DomainProviders), records, m.opts.Redis.TTL()); err != nil {
+		m.opts.Logger.Warn("provider snapshot cache failed", "error", err)
+	}
+}
+
 func (m *Manager) cacheAccessSnapshot(ctx context.Context) error {
 	if m.opts.Redis == nil || m.opts.AccessSnapshot == nil {
 		return nil
