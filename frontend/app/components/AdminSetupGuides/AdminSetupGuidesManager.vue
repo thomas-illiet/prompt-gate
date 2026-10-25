@@ -46,13 +46,14 @@ async function confirmDelete() {
 <template>
   <v-row>
     <v-col cols="12">
-      <AppPageHero
+      <AppPageHeader
         icon="mdi-book-cog-outline"
         kicker="Documentation"
         title="Setup guides"
         copy="Build the launch paths users follow from their first token to a working client."
         visual="book"
         stat-label="Guide status"
+        :stat-busy="admin.loading.value"
         :stat-value="guideSummary"
       />
     </v-col>

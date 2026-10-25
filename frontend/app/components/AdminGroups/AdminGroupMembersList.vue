@@ -202,7 +202,8 @@ function normalizeSearch(value: string) {
 
 .admin-group-members-list__list {
   border: 1px solid rgba(var(--app-shell-border), 0.45);
-  border-radius: 8px;
+  border-radius: var(--app-control-radius);
+  background: rgba(var(--app-shell-surface-strong), 0.54);
 }
 
 .admin-group-members-list__pagination {

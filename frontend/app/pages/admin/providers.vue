@@ -94,7 +94,7 @@ async function confirmDelete() {
   <v-container fluid class="app-page">
     <v-row>
       <v-col cols="12">
-        <AppPageHero
+        <AppPageHeader
           icon="mdi-cloud-cog-outline"
           kicker="AI control plane"
           title="Providers"

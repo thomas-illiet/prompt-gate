@@ -24,6 +24,23 @@ const VChartStub = defineComponent({
     '<div data-test="chart" :data-axis-overflow="option.yAxis.axisLabel.overflow" :data-axis-width="option.yAxis.axisLabel.width" />',
 })
 
+const VBtnToggleStub = defineComponent({
+  name: 'VBtnToggleStub',
+  props: {
+    modelValue: String,
+  },
+  emits: ['update:modelValue'],
+  template: '<div data-test="breakdown-selector"><slot /></div>',
+})
+
+const VBtnStub = defineComponent({
+  name: 'VBtnStub',
+  props: {
+    value: String,
+  },
+  template: '<button :data-value="value"><slot /></button>',
+})
+
 function response(name: string) {
   return {
     window: '7d',
@@ -33,27 +50,30 @@ function response(name: string) {
   }
 }
 
-function mountPanel(metric: 'requests' | 'tokens' | 'cost' = 'tokens') {
+function mountPanel(
+  metric: 'requests' | 'tokens' | 'cost' = 'tokens',
+  scope: 'global' | 'self' = 'self',
+) {
   return mount(DashboardBreakdownPanel, {
     props: {
       metric,
       modelValue: 'models',
       refreshVersion: 0,
-      scope: 'self',
+      scope,
       window: '7d',
     },
     global: {
       stubs: {
         AppSectionCard: {
-          template: '<section><slot name="actions" /><slot /></section>',
+          template:
+            '<section><header data-test="card-actions"><slot name="actions" /></header><div data-test="card-content"><slot /></div></section>',
         },
         VAlert: { template: '<div><slot /></div>' },
-        VBtn: { template: '<button><slot /></button>' },
+        VBtn: VBtnStub,
+        VBtnToggle: VBtnToggleStub,
         Echarts: VChartStub,
         'v-chart': VChartStub,
         VIcon: true,
-        VTab: { template: '<button><slot /></button>' },
-        VTabs: { template: '<div><slot /></div>' },
       },
     },
   })
@@ -63,6 +83,47 @@ describe('DashboardBreakdownPanel', () => {
   beforeEach(() => {
     apiFetch.mockReset()
     useApiFetchMock.mockClear()
+  })
+
+  it('uses the same segmented header selector pattern as the trend card', async () => {
+    apiFetch.mockResolvedValueOnce(response('gpt-5'))
+    const wrapper = mountPanel()
+
+    await vi.waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(1))
+
+    const actions = wrapper.get('[data-test="card-actions"]')
+    const selector = actions.get('[data-test="breakdown-selector"]')
+    expect(selector.attributes('aria-label')).toBe('Usage breakdown')
+    expect(
+      selector.findAll('button').map((button) => ({
+        label: button.attributes('aria-label'),
+        value: button.attributes('data-value'),
+      })),
+    ).toEqual([
+      { label: 'Show models breakdown', value: 'models' },
+      { label: 'Show providers breakdown', value: 'providers' },
+      {
+        label: 'Show provider types breakdown',
+        value: 'provider-types',
+      },
+    ])
+    expect(
+      wrapper.get('[data-test="card-content"] [data-test="chart"]'),
+    ).toBeTruthy()
+  })
+
+  it('keeps the global identities option in the segmented selector', async () => {
+    apiFetch.mockResolvedValueOnce(response('alice@example.com'))
+    const wrapper = mountPanel('tokens', 'global')
+
+    await vi.waitFor(() => expect(apiFetch).toHaveBeenCalledTimes(1))
+
+    const identityButton = wrapper.get(
+      '[data-test="breakdown-selector"] [data-value="identities"]',
+    )
+    expect(identityButton.attributes('aria-label')).toBe(
+      'Show identities breakdown',
+    )
   })
 
   it('loads only the active breakdown and switches endpoints on demand', async () => {
@@ -84,7 +145,9 @@ describe('DashboardBreakdownPanel', () => {
       '/api/v1/me/dashboard/top-provider-names?window=7d&metric=tokens',
     )
     expect(
-      apiFetch.mock.calls.some(([url]) => String(url).includes('provider-types')),
+      apiFetch.mock.calls.some(([url]) =>
+        String(url).includes('provider-types'),
+      ),
     ).toBe(false)
   })
 
@@ -99,9 +162,7 @@ describe('DashboardBreakdownPanel', () => {
     const wrapper = mountPanel('requests')
 
     await vi.waitFor(() =>
-      expect(wrapper.text()).toContain(
-        'Request-heavy leads with 10.',
-      ),
+      expect(wrapper.text()).toContain('Request-heavy leads with 10.'),
     )
 
     const rows = wrapper.findAll('tbody tr')

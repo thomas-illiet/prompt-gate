@@ -43,8 +43,11 @@ describe('FAQList', () => {
     })
 
     expect(wrapper.html()).toContain('<strong>key</strong>')
+    expect(wrapper.find('.faq-search__count').exists()).toBe(false)
+    expect(wrapper.get('[role="status"]').text()).toBe('2 questions')
     await wrapper.get('input').setValue('usage')
     expect(wrapper.text()).not.toContain('authenticate')
     expect(wrapper.text()).toContain('Where is usage?')
+    expect(wrapper.get('[role="status"]').text()).toBe('1 result')
   })
 })

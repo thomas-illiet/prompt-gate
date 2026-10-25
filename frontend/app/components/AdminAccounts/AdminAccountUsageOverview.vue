@@ -202,7 +202,7 @@ const costCaption = computed(() => {
 .admin-account-usage-overview__activity {
   overflow: hidden;
   border: 1px solid rgba(var(--app-shell-border), 0.52);
-  border-radius: 8px;
+  border-radius: var(--app-card-radius);
   background: rgb(var(--app-shell-surface));
   box-shadow: var(--app-card-shadow-soft);
 }

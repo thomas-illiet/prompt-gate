@@ -87,10 +87,7 @@ function intervalLabel(seconds: number) {
     :subtitle="subtitle"
     :title="title"
   >
-    <div
-      v-if="props.service"
-      class="admin-monitoring-service-details-dialog"
-    >
+    <div v-if="props.service" class="admin-monitoring-service-details-dialog">
       <section class="admin-monitoring-service-details-dialog__summary">
         <div class="admin-monitoring-service-details-dialog__status">
           <v-chip
@@ -205,7 +202,8 @@ function intervalLabel(seconds: number) {
   gap: 12px;
   padding: 16px;
   border: 1px solid rgba(var(--app-shell-border), 0.5);
-  border-radius: 8px;
+  border-radius: var(--app-card-radius);
+  background: rgba(var(--app-shell-surface-muted), 0.44);
 }
 
 .admin-monitoring-service-details-dialog__status {

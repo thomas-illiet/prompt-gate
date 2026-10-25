@@ -120,115 +120,117 @@ function toISOStringOrNull(value: string) {
 </script>
 
 <template>
-  <AppDialogCard v-model="isOpen" icon="mdi-account-cog-outline" :loading="props.loading" max-width="620" subtitle="Review this identity and adjust its application access." title="Update user access">
-      <form
-        :id="formId"
-        ref="accessForm"
-        @submit.prevent="save"
-      >
-        <div
-          v-if="props.user"
-          class="admin-users-dialog__body"
-        >
-          <v-sheet rounded="lg" border class="admin-users-dialog__identity">
-            <v-list bg-color="transparent" density="comfortable" lines="two">
-              <v-list-item
-                prepend-icon="mdi-account-outline"
-                title="Name"
-                :subtitle="displayName"
-              />
-              <v-list-item
-                prepend-icon="mdi-email-outline"
-                title="Email"
-                :subtitle="displayEmail"
-              />
-              <v-list-item
-                prepend-icon="mdi-at"
-                title="Username"
-                :subtitle="displayUsername"
-              >
-                <template #append>
-                  <v-chip
-                    size="small"
-                    label
-                    variant="tonal"
-                    :color="appRoleColor(props.user.role)"
-                  >
-                    {{ appRoleLabel(props.user.role) }}
-                  </v-chip>
-                </template>
-              </v-list-item>
-              <v-list-item
-                prepend-icon="mdi-fingerprint"
-                title="OIDC subject"
-                :subtitle="displaySubject"
-              />
-            </v-list>
-          </v-sheet>
-
-          <v-row>
-            <v-col cols="12" md="7">
-              <v-select
-                v-model="selectedRole"
-                :items="roleOptions"
-                label="Application role"
-                variant="outlined"
-                density="comfortable"
-              />
-            </v-col>
-
-            <v-col cols="12" md="5">
-              <v-switch
-                v-model="isActive"
-                color="success"
-                inset
-                label="Access enabled"
-              />
-            </v-col>
-
-            <v-col cols="12">
-              <v-select
-                v-model="selectedPlanId"
-                :items="subscriptionPlanOptions"
-                label="Subscription plan"
-                variant="outlined"
-                density="comfortable"
-              />
-            </v-col>
-
-            <v-col cols="12">
-              <label class="admin-users-dialog__field">
-                <span class="admin-users-dialog__label">Expires at</span>
-                <input
-                  v-model="expiresAt"
-                  :disabled="isExpirationDisabled"
-                  class="admin-users-dialog__datetime"
-                  name="expiresAt"
-                  type="datetime-local"
-                />
-              </label>
-            </v-col>
-          </v-row>
-
-          <div class="admin-users-dialog__meta">
-            <span
-              >Last login: {{ formatDateTime(props.user.lastLoginAt) }}</span
+  <AppDialogCard
+    v-model="isOpen"
+    icon="mdi-account-cog-outline"
+    :loading="props.loading"
+    max-width="620"
+    subtitle="Review this identity and adjust its application access."
+    title="Update user access"
+  >
+    <form :id="formId" ref="accessForm" @submit.prevent="save">
+      <div v-if="props.user" class="admin-users-dialog__body">
+        <v-sheet rounded="lg" border class="admin-users-dialog__identity">
+          <v-list bg-color="transparent" density="comfortable" lines="two">
+            <v-list-item
+              prepend-icon="mdi-account-outline"
+              title="Name"
+              :subtitle="displayName"
+            />
+            <v-list-item
+              prepend-icon="mdi-email-outline"
+              title="Email"
+              :subtitle="displayEmail"
+            />
+            <v-list-item
+              prepend-icon="mdi-at"
+              title="Username"
+              :subtitle="displayUsername"
             >
-            <span>Created: {{ formatDateTime(props.user.createdAt) }}</span>
-          </div>
-        </div>
-      </form>
+              <template #append>
+                <v-chip
+                  size="small"
+                  label
+                  variant="tonal"
+                  :color="appRoleColor(props.user.role)"
+                >
+                  {{ appRoleLabel(props.user.role) }}
+                </v-chip>
+              </template>
+            </v-list-item>
+            <v-list-item
+              prepend-icon="mdi-fingerprint"
+              title="OIDC subject"
+              :subtitle="displaySubject"
+            />
+          </v-list>
+        </v-sheet>
 
-      <template #actions>
-          <AppDialogCloseButton :disabled="props.loading" label="Cancel" @click="isOpen = false" />
-          <AppDialogActionButton
-            color="primary"
-            :form="formId"
-            label="Save access"
-            type="submit"
-            :loading="props.loading"
-          />
-      </template>
+        <v-row>
+          <v-col cols="12" md="7">
+            <v-select
+              v-model="selectedRole"
+              :items="roleOptions"
+              label="Application role"
+              variant="outlined"
+              density="comfortable"
+            />
+          </v-col>
+
+          <v-col cols="12" md="5">
+            <v-switch
+              v-model="isActive"
+              color="success"
+              inset
+              label="Access enabled"
+            />
+          </v-col>
+
+          <v-col cols="12">
+            <v-select
+              v-model="selectedPlanId"
+              :items="subscriptionPlanOptions"
+              label="Subscription plan"
+              variant="outlined"
+              density="comfortable"
+            />
+          </v-col>
+
+          <v-col cols="12">
+            <label class="admin-users-dialog__field">
+              <span class="admin-users-dialog__label">Expires at</span>
+              <input
+                v-model="expiresAt"
+                :disabled="isExpirationDisabled"
+                class="admin-users-dialog__datetime"
+                name="expiresAt"
+                type="datetime-local"
+              />
+            </label>
+          </v-col>
+        </v-row>
+
+        <div class="admin-users-dialog__meta">
+          <span>Last login: {{ formatDateTime(props.user.lastLoginAt) }}</span>
+          <span>Created: {{ formatDateTime(props.user.createdAt) }}</span>
+        </div>
+      </div>
+    </form>
+
+    <template #actions>
+      <AppDialogCloseButton
+        :disabled="props.loading"
+        label="Cancel"
+        @click="isOpen = false"
+      />
+      <AppDialogActionButton
+        color="primary"
+        :form="formId"
+        label="Save access"
+        type="submit"
+        :loading="props.loading"
+      />
+    </template>
   </AppDialogCard>
 </template>
 
@@ -264,15 +266,17 @@ function toISOStringOrNull(value: string) {
   min-height: 48px;
   padding: 0 16px;
   color: rgb(var(--v-theme-on-surface));
-  background: transparent;
-  border: 1px solid rgba(var(--v-theme-on-surface), 0.38);
-  border-radius: 4px;
+  background: rgba(var(--app-shell-surface-strong), 0.72);
+  border: 1px solid rgba(var(--app-shell-border), 0.72);
+  border-radius: var(--app-control-radius);
+  box-shadow: 0 12px 28px -26px rgba(var(--app-shell-shadow), 0.5);
   font: inherit;
 }
 
 .admin-users-dialog__datetime:focus {
   border-color: rgb(var(--v-theme-primary));
-  outline: 2px solid rgba(var(--v-theme-primary), 0.16);
+  outline: 3px solid rgba(var(--v-theme-primary), 0.16);
+  outline-offset: 1px;
 }
 
 .admin-users-dialog__datetime:disabled {

@@ -38,9 +38,10 @@ function mountPage() {
           props: ['text', 'title'],
           template: '<div data-test="empty-state">{{ title }} {{ text }}</div>',
         },
-        AppPageHero: {
-          props: ['statValue'],
-          template: '<div data-test="hero-stat">{{ statValue }}</div>',
+        HelpSetupHero: {
+          props: ['loading', 'providerCount'],
+          template:
+            '<div data-test="setup-hero"><span data-test="hero-provider-count">{{ providerCount }}</span><span data-test="hero-loading">{{ loading }}</span></div>',
         },
         AppSectionCard: {
           template: '<section><slot /></section>',
@@ -91,6 +92,8 @@ describe('HelpPage', () => {
     expect(wrapper.get('[data-test="empty-state"]').text()).toContain(
       'groups grant access',
     )
+    expect(wrapper.get('[data-test="hero-provider-count"]').text()).toBe('0')
+    expect(wrapper.get('[data-test="hero-loading"]').text()).toBe('false')
   })
 
   it('shows setup cards for Anthropic providers without models', () => {
@@ -134,6 +137,8 @@ describe('HelpPage', () => {
     expect(wrapper.find('[data-test="documentation-panel"]').exists()).toBe(
       true,
     )
+    expect(wrapper.get('[data-test="hero-provider-count"]').text()).toBe('1')
+    expect(wrapper.get('[data-test="hero-loading"]').text()).toBe('false')
   })
 
   it('shows an indeterminate provider count and retries loading failures', async () => {
@@ -147,7 +152,8 @@ describe('HelpPage', () => {
 
     const wrapper = mountPage()
 
-    expect(wrapper.get('[data-test="hero-stat"]').text()).toBe('…')
+    expect(wrapper.get('[data-test="hero-provider-count"]').text()).toBe('0')
+    expect(wrapper.get('[data-test="hero-loading"]').text()).toBe('true')
     await wrapper.get('[data-test="help-setup-retry"]').trigger('click')
     expect(reload).toHaveBeenCalledOnce()
   })

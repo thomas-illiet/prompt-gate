@@ -139,7 +139,7 @@ function mountPage() {
         AdminServiceAccountUsageDialog: UsageDialogStub,
         AppConfirmDialog: true,
         AppFilterCard: { template: '<section><slot /></section>' },
-        AppPageHero: true,
+        AppPageHeader: true,
         AppTokenCreateDialog: true,
         VAlert: { template: '<div><slot /></div>' },
         VCol: { template: '<div><slot /></div>' },

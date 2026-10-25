@@ -98,7 +98,7 @@ describe('DashboardTopTools', () => {
     expect(wrapper.text()).toContain(
       '8 of 10 observed calls attributed by name (80%).',
     )
-    expect(wrapper.text()).toContain(
+    expect(wrapper.text()).not.toContain(
       'Older calls may predate named tool tracking.',
     )
 

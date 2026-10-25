@@ -74,7 +74,7 @@ async function confirmDelete() {
   <v-container fluid class="app-page">
     <v-row>
       <v-col cols="12">
-        <AppPageHero
+        <AppPageHeader
           icon="mdi-currency-usd"
           kicker="Cost intelligence"
           title="Model pricing"

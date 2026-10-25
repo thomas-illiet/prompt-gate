@@ -22,12 +22,8 @@ const modelLoopHelp = '{{#models}}...{{/models}}'
     </div>
 
     <v-tabs v-model="activeTab" class="setup-guide-content__tabs" grow>
-      <v-tab value="template" prepend-icon="mdi-code-braces">
-        Template
-      </v-tab>
-      <v-tab value="preview" prepend-icon="mdi-eye-outline">
-        Preview
-      </v-tab>
+      <v-tab value="template" prepend-icon="mdi-code-braces"> Template </v-tab>
+      <v-tab value="preview" prepend-icon="mdi-eye-outline"> Preview </v-tab>
     </v-tabs>
 
     <div v-show="activeTab === 'template'" class="setup-guide-content__panel">
@@ -130,7 +126,7 @@ const modelLoopHelp = '{{#models}}...{{/models}}'
   margin-bottom: 20px;
   padding: 6px;
   border: 1px solid rgba(var(--app-shell-border), 0.55);
-  border-radius: 12px;
+  border-radius: var(--app-control-radius);
   background: rgba(var(--app-shell-surface-muted), 0.5);
   overflow: visible;
 }
@@ -143,7 +139,7 @@ const modelLoopHelp = '{{#models}}...{{/models}}'
 .setup-guide-content__tabs :deep(.v-tab) {
   min-height: 44px;
   border: 1px solid rgba(var(--app-shell-border), 0.52);
-  border-radius: 8px;
+  border-radius: calc(var(--app-control-radius) - 4px);
   color: rgb(var(--app-shell-text-secondary));
   background: rgb(var(--app-shell-surface-strong));
   cursor: pointer;
@@ -199,7 +195,7 @@ const modelLoopHelp = '{{#models}}...{{/models}}'
 .setup-guide-content__card {
   padding: 18px;
   border: 1px solid rgba(var(--app-shell-border), 0.52);
-  border-radius: 14px;
+  border-radius: var(--app-card-radius);
   background: rgba(var(--app-shell-surface-muted), 0.42);
 }
 
@@ -231,7 +227,7 @@ const modelLoopHelp = '{{#models}}...{{/models}}'
   min-height: 430px;
   padding: 24px;
   border: 1px solid rgba(var(--app-shell-border), 0.5);
-  border-radius: 14px;
+  border-radius: var(--app-card-radius);
   background: rgba(var(--app-shell-surface-muted), 0.52);
 }
 

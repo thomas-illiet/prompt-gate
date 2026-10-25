@@ -1,10 +1,7 @@
 <script setup lang="ts">
 import type { DataTableHeader } from 'vuetify'
 
-import type {
-  ServiceAccount,
-  TokenResponse,
-} from '~/types/service-accounts'
+import type { ServiceAccount, TokenResponse } from '~/types/service-accounts'
 import { formatDateTime } from '~/utils/formatters'
 import { appTableCenteredColumn } from '~/utils/table'
 
@@ -83,141 +80,143 @@ function canRevoke(token: TokenResponse) {
 </script>
 
 <template>
-  <AppDialogCard v-model="isOpen" content-class="admin-service-account-tokens-dialog__body" icon="mdi-key-chain" :loading="props.saving" max-width="980" subtitle="Manage virtual keys for this service account. Raw key values are shown only once." :title="title">
-        <div class="admin-service-account-tokens-dialog__table">
-          <div class="admin-service-account-tokens-dialog__table-header">
-            <div class="admin-service-account-tokens-dialog__table-heading">
-              <v-avatar color="primary" variant="tonal" size="36">
-                <v-icon icon="mdi-table-key" />
-              </v-avatar>
-              <div class="admin-service-account-tokens-dialog__heading-copy">
-                <h2 class="admin-service-account-tokens-dialog__section-title">
-                  Virtual keys
-                </h2>
-                <p
-                  class="admin-service-account-tokens-dialog__section-subtitle"
-                >
-                  {{ props.total }} virtual key records
-                </p>
-              </div>
-            </div>
-
-            <div class="admin-service-account-tokens-dialog__table-actions">
-              <v-btn
-                color="primary"
-                variant="flat"
-                rounded="xl"
-                prepend-icon="mdi-key-plus"
-                :disabled="props.saving"
-                @click="emit('create')"
-              >
-                New key
-              </v-btn>
-
-              <v-switch
-                v-model="showRevoked"
-                class="admin-service-account-tokens-dialog__revoked-switch"
-                color="primary"
-                density="compact"
-                hide-details
-                inset
-                label="Show revoked"
-              />
-
-              <v-btn
-                color="primary"
-                variant="tonal"
-                rounded="xl"
-                prepend-icon="mdi-refresh"
-                :loading="props.loading"
-                @click="emit('refresh')"
-              >
-                Refresh
-              </v-btn>
-            </div>
-          </div>
-
-          <div class="admin-service-account-tokens-dialog__table-scroll">
-            <AppServerDataTable
-              default-sort-by="createdAt"
-              default-sort-dir="desc"
-              empty-icon="mdi-key-outline"
-              empty-title="No virtual keys found"
-              empty-text="This account has no virtual keys for the current view."
-              :headers="headers"
-              :items="props.tokens"
-              :loading="props.loading"
-              :page="props.page"
-              :page-size="props.pageSize"
-              :sort-by="props.sortBy"
-              :sort-dir="props.sortDir"
-              :total="props.total"
-              @update:page="emit('update:page', $event)"
-              @update:page-size="emit('update:page-size', $event)"
-              @update:sort="
-                (nextSortBy, nextSortDir) =>
-                  emit('update:sort', nextSortBy, nextSortDir)
-              "
-            >
-              <template #item.name="{ item }">
-                <span class="admin-service-account-tokens-dialog__text">
-                  {{ item.name }}
-                </span>
-              </template>
-
-              <template #item.description="{ item }">
-                <span class="admin-service-account-tokens-dialog__text">
-                  {{ item.description || 'No description' }}
-                </span>
-              </template>
-
-              <template #item.status="{ item }">
-                <div class="admin-service-account-tokens-dialog__center">
-                  <v-chip
-                    size="small"
-                    label
-                    variant="tonal"
-                    :color="tokenStatus(item).color"
-                  >
-                    {{ tokenStatus(item).label }}
-                  </v-chip>
-                </div>
-              </template>
-
-              <template #item.expiresAt="{ item }">
-                <div class="admin-service-account-tokens-dialog__center">
-                  <span class="admin-service-account-tokens-dialog__text">
-                    {{ formatDateTime(item.expiresAt) }}
-                  </span>
-                </div>
-              </template>
-
-              <template #item.actions="{ item }">
-                <div class="admin-service-account-tokens-dialog__center">
-                  <v-btn
-                    size="small"
-                    color="error"
-                    variant="tonal"
-                    rounded="lg"
-                    :disabled="!canRevoke(item)"
-                    :loading="props.saving"
-                    @click="emit('revoke', item)"
-                  >
-                    Revoke
-                  </v-btn>
-                </div>
-              </template>
-            </AppServerDataTable>
+  <AppDialogCard
+    v-model="isOpen"
+    content-class="admin-service-account-tokens-dialog__body"
+    icon="mdi-key-chain"
+    :loading="props.saving"
+    max-width="980"
+    subtitle="Manage virtual keys for this service account. Raw key values are shown only once."
+    :title="title"
+  >
+    <div class="admin-service-account-tokens-dialog__table">
+      <div class="admin-service-account-tokens-dialog__table-header">
+        <div class="admin-service-account-tokens-dialog__table-heading">
+          <v-avatar color="primary" variant="tonal" size="36">
+            <v-icon icon="mdi-table-key" />
+          </v-avatar>
+          <div class="admin-service-account-tokens-dialog__heading-copy">
+            <h2 class="admin-service-account-tokens-dialog__section-title">
+              Virtual keys
+            </h2>
+            <p class="admin-service-account-tokens-dialog__section-subtitle">
+              {{ props.total }} virtual key records
+            </p>
           </div>
         </div>
-      
 
-      <template #actions>
-        <AppDialogCloseButton
-          :disabled="props.saving"
-          @click="isOpen = false"
-        />
-      </template>
+        <div class="admin-service-account-tokens-dialog__table-actions">
+          <v-btn
+            color="primary"
+            variant="flat"
+            rounded="xl"
+            prepend-icon="mdi-key-plus"
+            :disabled="props.saving"
+            @click="emit('create')"
+          >
+            New key
+          </v-btn>
+
+          <v-switch
+            v-model="showRevoked"
+            class="admin-service-account-tokens-dialog__revoked-switch"
+            color="primary"
+            density="compact"
+            hide-details
+            inset
+            label="Show revoked"
+          />
+
+          <v-btn
+            color="primary"
+            variant="tonal"
+            rounded="xl"
+            prepend-icon="mdi-refresh"
+            :loading="props.loading"
+            @click="emit('refresh')"
+          >
+            Refresh
+          </v-btn>
+        </div>
+      </div>
+
+      <div class="admin-service-account-tokens-dialog__table-scroll">
+        <AppServerDataTable
+          default-sort-by="createdAt"
+          default-sort-dir="desc"
+          empty-icon="mdi-key-outline"
+          empty-title="No virtual keys found"
+          empty-text="This account has no virtual keys for the current view."
+          :headers="headers"
+          :items="props.tokens"
+          :loading="props.loading"
+          :page="props.page"
+          :page-size="props.pageSize"
+          :sort-by="props.sortBy"
+          :sort-dir="props.sortDir"
+          :total="props.total"
+          @update:page="emit('update:page', $event)"
+          @update:page-size="emit('update:page-size', $event)"
+          @update:sort="
+            (nextSortBy, nextSortDir) =>
+              emit('update:sort', nextSortBy, nextSortDir)
+          "
+        >
+          <template #item.name="{ item }">
+            <span class="admin-service-account-tokens-dialog__text">
+              {{ item.name }}
+            </span>
+          </template>
+
+          <template #item.description="{ item }">
+            <span class="admin-service-account-tokens-dialog__text">
+              {{ item.description || 'No description' }}
+            </span>
+          </template>
+
+          <template #item.status="{ item }">
+            <div class="admin-service-account-tokens-dialog__center">
+              <v-chip
+                size="small"
+                label
+                variant="tonal"
+                :color="tokenStatus(item).color"
+              >
+                {{ tokenStatus(item).label }}
+              </v-chip>
+            </div>
+          </template>
+
+          <template #item.expiresAt="{ item }">
+            <div class="admin-service-account-tokens-dialog__center">
+              <span class="admin-service-account-tokens-dialog__text">
+                {{ formatDateTime(item.expiresAt) }}
+              </span>
+            </div>
+          </template>
+
+          <template #item.actions="{ item }">
+            <div class="admin-service-account-tokens-dialog__center">
+              <v-btn
+                size="small"
+                color="error"
+                variant="tonal"
+                rounded="lg"
+                :disabled="!canRevoke(item)"
+                :loading="props.saving"
+                @click="emit('revoke', item)"
+              >
+                Revoke
+              </v-btn>
+            </div>
+          </template>
+        </AppServerDataTable>
+      </div>
+    </div>
+
+    <template #actions>
+      <AppDialogCloseButton :disabled="props.saving" @click="isOpen = false" />
+    </template>
   </AppDialogCard>
 </template>
 
@@ -257,7 +256,8 @@ function canRevoke(token: TokenResponse) {
 .admin-service-account-tokens-dialog__table {
   overflow: hidden;
   border: 1px solid rgba(var(--app-shell-border), 0.5);
-  border-radius: 8px;
+  border-radius: var(--app-card-radius);
+  background: rgba(var(--app-shell-surface-strong), 0.48);
 }
 
 .admin-service-account-tokens-dialog__table-header {

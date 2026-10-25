@@ -2,6 +2,7 @@ import { mount } from '@vue/test-utils'
 import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import DashboardPageHeader from '../../app/components/Dashboard/DashboardPageHeader.vue'
 import DashboardPage from '../../app/pages/dashboard.vue'
 
 const {
@@ -46,7 +47,10 @@ const {
 
 mockNuxtImport('useAuthStore', () => useAuthStoreMock)
 mockNuxtImport('useDashboardOverview', () => useDashboardOverviewMock)
-mockNuxtImport('useRoute', () => () => ({ fullPath: '/dashboard', query: routeQuery }))
+mockNuxtImport('useRoute', () => () => ({
+  fullPath: '/dashboard',
+  query: routeQuery,
+}))
 
 function overviewData(requests = 4) {
   return {
@@ -77,8 +81,12 @@ function mountPage() {
   return mount(DashboardPage, {
     global: {
       stubs: {
-        AppEmptyState: { template: '<div data-test="empty"><slot name="actions" /></div>' },
-        AppSectionCard: { template: '<section><slot /><slot name="actions" /></section>' },
+        AppEmptyState: {
+          template: '<div data-test="empty"><slot name="actions" /></div>',
+        },
+        AppSectionCard: {
+          template: '<section><slot /><slot name="actions" /></section>',
+        },
         DashboardAnnualActivity: {
           props: ['refreshVersion'],
           template: '<div data-test="annual" :data-refresh="refreshVersion" />',
@@ -112,11 +120,16 @@ function mountPage() {
         },
         DashboardTrend: { template: '<div data-test="trend" />' },
         VAlert: { template: '<div><slot /></div>' },
+        VAvatar: { template: '<span><slot /></span>' },
         VBtn: {
           props: ['to'],
           emits: ['click'],
           template:
             '<button data-test="button" :data-to="to || \'\'" @click="$emit(\'click\')"><slot /></button>',
+        },
+        VCard: {
+          props: ['tag'],
+          template: '<component :is="tag || \'div\'"><slot /></component>',
         },
         VContainer: { template: '<div><slot /></div>' },
         VIcon: true,
@@ -128,7 +141,8 @@ function mountPage() {
 describe('DashboardPage', () => {
   beforeEach(async () => {
     authUser.value = { id: 'user-1', role: 'user' }
-    for (const key of Object.keys(routeQuery)) Reflect.deleteProperty(routeQuery, key)
+    for (const key of Object.keys(routeQuery))
+      Reflect.deleteProperty(routeQuery, key)
     await navigateTo('/dashboard')
     overviewState.data.value = overviewData()
     overviewState.error.value = null
@@ -142,15 +156,26 @@ describe('DashboardPage', () => {
   it('shows an admin My usage view by default and switches to organization scope', async () => {
     authUser.value = { id: 'admin-1', role: 'admin' }
     const wrapper = mountPage()
+    const header = wrapper.getComponent(DashboardPageHeader)
 
     expect(wrapper.get('h1').text()).toBe('My usage')
+    expect(header.props()).toMatchObject({
+      isAdmin: true,
+      scope: 'self',
+      window: '7d',
+    })
     expect(wrapper.get('[data-test="scope-select"]').text()).toBe('self')
-    expect(wrapper.get('[data-test="current-state"]').attributes('data-scope')).toBe('self')
+    expect(
+      wrapper.get('[data-test="current-state"]').attributes('data-scope'),
+    ).toBe('self')
 
     await wrapper.get('[data-test="scope-select"]').trigger('click')
 
     expect(wrapper.get('h1').text()).toBe('Organization overview')
-    expect(wrapper.get('[data-test="current-state"]').attributes('data-scope')).toBe('global')
+    expect(header.props('scope')).toBe('global')
+    expect(
+      wrapper.get('[data-test="current-state"]').attributes('data-scope'),
+    ).toBe('global')
     expect(
       wrapper.get('[data-test="top-tools"]').attributes('data-scope'),
     ).toBe('global')
@@ -167,7 +192,9 @@ describe('DashboardPage', () => {
     const wrapper = mountPage()
 
     expect(wrapper.find('[data-test="scope-select"]').exists()).toBe(false)
-    expect(wrapper.get('[data-test="current-state"]').attributes('data-scope')).toBe('self')
+    expect(
+      wrapper.get('[data-test="current-state"]').attributes('data-scope'),
+    ).toBe('self')
     expect(wrapper.get('h1').text()).toBe('My usage')
   })
 
@@ -179,7 +206,9 @@ describe('DashboardPage', () => {
     const wrapper = mountPage()
 
     expect(wrapper.get('[data-test="window-select"]').text()).toBe('30d')
-    expect(wrapper.get('[data-test="breakdown"]').attributes('data-tab')).toBe('providers')
+    expect(wrapper.get('[data-test="breakdown"]').attributes('data-tab')).toBe(
+      'providers',
+    )
     expect(
       wrapper.get('[data-test="top-tools"]').attributes('data-window'),
     ).toBe('30d')
@@ -188,19 +217,23 @@ describe('DashboardPage', () => {
 
   it('refreshes the overview and every lazy dashboard area together', async () => {
     const wrapper = mountPage()
-    const refresh = wrapper.findAll('[data-test="button"]').find((button) =>
-      button.text().includes('Refresh'),
-    )
+    const refresh = wrapper
+      .findAll('[data-test="button"]')
+      .find((button) => button.text().includes('Refresh'))
     expect(refresh).toBeDefined()
 
     await refresh!.trigger('click')
 
     expect(overviewReloadMock).toHaveBeenCalledTimes(1)
-    expect(wrapper.get('[data-test="current-state"]').attributes('data-refresh')).toBe('1')
+    expect(
+      wrapper.get('[data-test="current-state"]').attributes('data-refresh'),
+    ).toBe('1')
     expect(
       wrapper.get('[data-test="top-tools"]').attributes('data-refresh'),
     ).toBe('1')
-    expect(wrapper.get('[data-test="annual"]').attributes('data-refresh')).toBe('1')
+    expect(wrapper.get('[data-test="annual"]').attributes('data-refresh')).toBe(
+      '1',
+    )
   })
 
   it('sends limited users to the accessible FAQ from the single empty state', () => {
@@ -209,9 +242,9 @@ describe('DashboardPage', () => {
 
     const wrapper = mountPage()
 
-    const action = wrapper.findAll('[data-test="button"]').find((button) =>
-      button.text().includes('Browse FAQ'),
-    )
+    const action = wrapper
+      .findAll('[data-test="button"]')
+      .find((button) => button.text().includes('Browse FAQ'))
     expect(action?.attributes('data-to')).toBe('/faq')
     expect(wrapper.findAll('[data-test="empty"]')).toHaveLength(1)
   })

@@ -4,6 +4,8 @@ import type {
   DashboardCostCoverage,
   DashboardMetric,
 } from '~/types/user-service'
+import { promptGateChartColors } from '~/theme/palette'
+import { downloadDailyUsageCsv } from '~/utils/daily-usage-csv'
 import { formatCurrencyUsd, formatNumber } from '~/utils/formatters'
 
 const props = defineProps<{
@@ -14,11 +16,12 @@ const props = defineProps<{
 const metric = defineModel<DashboardMetric>({ required: true })
 const reducedMotion = shallowRef(false)
 
-const metricOptions: { icon: string; label: string; value: DashboardMetric }[] = [
-  { icon: 'mdi-api', label: 'Requests', value: 'requests' },
-  { icon: 'mdi-counter', label: 'Tokens', value: 'tokens' },
-  { icon: 'mdi-currency-usd', label: 'Cost', value: 'cost' },
-]
+const metricOptions: { icon: string; label: string; value: DashboardMetric }[] =
+  [
+    { icon: 'mdi-api', label: 'Requests', value: 'requests' },
+    { icon: 'mdi-counter', label: 'Tokens', value: 'tokens' },
+    { icon: 'mdi-currency-usd', label: 'Cost', value: 'cost' },
+  ]
 
 const points = computed(() =>
   props.daily.map((day) => ({
@@ -39,7 +42,8 @@ const total = computed(() =>
 
 const peak = computed(() =>
   availablePoints.value.reduce<{ date: string; value: number } | null>(
-    (current, point) => (!current || point.value > current.value ? point : current),
+    (current, point) =>
+      !current || point.value > current.value ? point : current,
     null,
   ),
 )
@@ -48,7 +52,8 @@ const summary = computed(() => {
   if (metric.value === 'cost' && props.costCoverage.status === 'unavailable') {
     return 'Estimated cost is unavailable for this period.'
   }
-  if (!peak.value) return `No ${metricLabel(metric.value).toLowerCase()} recorded.`
+  if (!peak.value)
+    return `No ${metricLabel(metric.value).toLowerCase()} recorded.`
   return `${formatMetric(total.value, metric.value)} in total. Peak: ${formatMetric(
     peak.value.value,
     metric.value,
@@ -59,6 +64,7 @@ const option = computed<ECOption>(() => ({
   animation: !reducedMotion.value,
   animationDuration: 550,
   backgroundColor: 'transparent',
+  color: [...promptGateChartColors],
   grid: {
     bottom: 20,
     containLabel: true,
@@ -116,6 +122,18 @@ function formatMetric(value: number, selectedMetric: DashboardMetric) {
   if (selectedMetric === 'cost') return formatCurrencyUsd(value)
   return formatNumber(value)
 }
+
+function exportDailyData() {
+  const firstDate = props.daily[0]?.date
+  const lastDate = props.daily[props.daily.length - 1]?.date
+  if (!firstDate || !lastDate) return
+
+  downloadDailyUsageCsv(
+    props.daily,
+    metric.value,
+    `promptgate-daily-${metric.value}-${firstDate}-to-${lastDate}.csv`,
+  )
+}
 </script>
 
 <template>
@@ -161,10 +179,27 @@ function formatMetric(value: number, selectedMetric: DashboardMetric) {
 
       <details class="dashboard-trend__data">
         <summary>View daily data</summary>
+        <div class="dashboard-trend__data-actions">
+          <v-btn
+            data-test="export-daily-data"
+            color="primary"
+            prepend-icon="mdi-download-outline"
+            rounded="xl"
+            size="small"
+            type="button"
+            variant="tonal"
+            @click="exportDailyData"
+          >
+            Export CSV
+          </v-btn>
+        </div>
         <div class="dashboard-trend__table-scroll">
           <table>
             <caption>
-              Daily {{ metricLabel(metric).toLowerCase() }}
+              Daily
+              {{
+                metricLabel(metric).toLowerCase()
+              }}
             </caption>
             <thead>
               <tr>
@@ -176,7 +211,11 @@ function formatMetric(value: number, selectedMetric: DashboardMetric) {
               <tr v-for="point in points" :key="point.date">
                 <th scope="row">{{ point.date }}</th>
                 <td>
-                  {{ point.value == null ? '—' : formatMetric(point.value, metric) }}
+                  {{
+                    point.value == null
+                      ? '—'
+                      : formatMetric(point.value, metric)
+                  }}
                 </td>
               </tr>
             </tbody>
@@ -218,9 +257,15 @@ function formatMetric(value: number, selectedMetric: DashboardMetric) {
   font-weight: 700;
 }
 
+.dashboard-trend__data-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
 .dashboard-trend__table-scroll {
   max-height: 280px;
-  margin-top: 10px;
+  margin-top: 8px;
   overflow: auto;
 }
 

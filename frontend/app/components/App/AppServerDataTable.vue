@@ -251,6 +251,19 @@ function updateSort(
 .app-server-data-table-shell {
   position: relative;
   overflow: hidden;
+  background: rgba(var(--app-shell-surface-strong), 0.34);
+}
+
+.app-server-data-table-shell :deep(.v-table) {
+  background: transparent;
+}
+
+.app-server-data-table-shell :deep(tbody tr) {
+  transition: background-color var(--app-motion-fast) var(--app-ease-standard);
+}
+
+.app-server-data-table-shell :deep(tbody td) {
+  border-bottom-color: rgba(var(--app-shell-border), 0.34) !important;
 }
 
 .app-server-data-table-shell__refresh {

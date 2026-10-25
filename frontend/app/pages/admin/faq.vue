@@ -57,13 +57,14 @@ async function confirmDelete() {
   <v-container fluid class="app-page">
     <v-row>
       <v-col cols="12">
-        <AppPageHero
+        <AppPageHeader
           icon="mdi-frequently-asked-questions"
           kicker="Documentation"
           title="FAQ management"
           copy="Maintain Markdown answers, preview their final rendering, and control publication."
           visual="book"
           stat-label="Visible published"
+          :stat-busy="faq.loading.value"
           :stat-value="publishedStat"
         />
       </v-col>

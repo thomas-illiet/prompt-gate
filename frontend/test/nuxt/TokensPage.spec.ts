@@ -117,7 +117,7 @@ function mountPage() {
             </div>
           `,
         },
-        AppPageHero: {
+        AppPageHeader: {
           props: ['statLabel', 'statValue'],
           template:
             '<div data-test="hero-stat" :data-label="statLabel">{{ statValue }}</div>',

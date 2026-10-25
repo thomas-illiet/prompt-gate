@@ -1,4 +1,5 @@
 import type { AdminUser } from '~/types/users'
+import { downloadCsv, rowsToCsv } from './csv'
 
 const USER_CSV_HEADERS = [
   'ID',
@@ -16,13 +17,6 @@ const USER_CSV_HEADERS = [
   'Created at',
   'Updated at',
 ]
-
-// csvCell escapes spreadsheet control characters, quotes, and line breaks.
-function csvCell(value: string | number | null | undefined) {
-  let text = value == null ? '' : String(value)
-  if (/^[=+\-@]/.test(text)) text = `'${text}`
-  return `"${text.replaceAll('"', '""')}"`
-}
 
 // usersToCsv serializes admin users into a spreadsheet-safe CSV document.
 export function usersToCsv(users: AdminUser[]) {
@@ -43,20 +37,10 @@ export function usersToCsv(users: AdminUser[]) {
     user.updatedAt,
   ])
 
-  return [USER_CSV_HEADERS, ...rows]
-    .map((row) => row.map(csvCell).join(','))
-    .join('\r\n')
+  return rowsToCsv([USER_CSV_HEADERS, ...rows])
 }
 
 // downloadUsersCsv triggers a UTF-8 CSV download compatible with spreadsheets.
 export function downloadUsersCsv(users: AdminUser[], filename: string) {
-  const blob = new Blob([`\uFEFF${usersToCsv(users)}`], {
-    type: 'text/csv;charset=utf-8',
-  })
-  const url = URL.createObjectURL(blob)
-  const link = document.createElement('a')
-  link.href = url
-  link.download = filename
-  link.click()
-  URL.revokeObjectURL(url)
+  downloadCsv(usersToCsv(users), filename)
 }

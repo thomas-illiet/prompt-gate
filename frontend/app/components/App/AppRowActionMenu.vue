@@ -140,5 +140,15 @@ function selectAction(action: AppRowAction<TItem>) {
 
 .app-row-action-menu__button {
   min-width: 0;
+  border-color: rgba(var(--app-shell-border), 0.66) !important;
+  background: rgba(var(--app-shell-surface-strong), 0.74);
+  color: rgb(var(--app-shell-text-secondary));
+  box-shadow: 2px 3px 0 rgba(var(--app-accent-butter), 0.09);
+}
+
+.app-row-action-menu__button:hover {
+  border-color: rgba(var(--v-theme-primary), 0.3) !important;
+  background: rgba(var(--app-accent-butter), 0.12);
+  color: rgb(var(--app-shell-text-primary));
 }
 </style>

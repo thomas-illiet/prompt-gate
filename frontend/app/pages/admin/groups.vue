@@ -126,7 +126,7 @@ async function confirmDelete() {
   <v-container fluid class="app-page">
     <v-row>
       <v-col cols="12">
-        <AppPageHero
+        <AppPageHeader
           icon="mdi-account-multiple-check-outline"
           kicker="Proxy authorization"
           title="Groups"

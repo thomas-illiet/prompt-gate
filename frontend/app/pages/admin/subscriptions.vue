@@ -71,13 +71,14 @@ async function confirmDefault() {
   <v-container fluid class="app-page">
     <v-row>
       <v-col cols="12">
-        <AppPageHero
+        <AppPageHeader
           icon="mdi-card-account-details-star-outline"
           kicker="Usage control"
           title="Subscription plans"
           copy="Define token windows for proxy access and choose the default plan inherited by accounts."
           visual="ledger"
           stat-label="Plan catalog"
+          :stat-busy="adminSubscriptions.loading.value"
           :stat-value="totalLabel"
         />
       </v-col>

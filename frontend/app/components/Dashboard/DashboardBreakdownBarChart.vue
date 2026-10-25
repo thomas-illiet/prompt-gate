@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { EstimatedCost, UsageBreakdown } from '~/types/user-service'
+import { promptGateChartColors } from '~/theme/palette'
 import {
   dashboardTooltipOptions,
   formatDashboardTooltip,
@@ -26,6 +27,7 @@ const option = computed<ECOption>(() => ({
   animationDelay: (index: number) => index * 70,
   animationDuration: 650,
   animationEasing: 'cubicOut',
+  color: [...promptGateChartColors],
   tooltip: {
     ...dashboardTooltipOptions,
     trigger: 'axis',

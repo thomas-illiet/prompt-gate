@@ -80,34 +80,36 @@ drawerState.value = lgAndUp.value && width.value !== 1280
     v-model="drawer"
     :expand-on-hover="rail"
     :rail="rail"
+    :rail-width="72"
+    :width="288"
+    aria-label="Primary navigation"
     floating
     class="app-shell-drawer"
   >
     <template #prepend>
-      <v-list>
-        <v-list-item class="pa-1 drawer-brand">
+      <v-list class="drawer-brand-shell">
+        <v-list-item class="drawer-brand" data-test="drawer-brand">
           <template #prepend>
-            <v-icon
-              icon="custom:promptgate-mark"
-              size="x-large"
-              class="drawer-header-icon"
-              color="primary"
-            />
+            <span class="drawer-brand__mark" aria-hidden="true">
+              <v-icon
+                icon="custom:promptgate-mark"
+                size="30"
+                class="drawer-header-icon"
+                color="primary"
+              />
+            </span>
           </template>
-          <v-list-item-title
-            class="text-headline-small font-weight-bold"
-            style="line-height: 2rem"
-          >
+          <v-list-item-title class="drawer-brand__title font-weight-bold">
             Prompt<span class="text-primary">Gate</span>
           </v-list-item-title>
           <v-list-item-subtitle class="drawer-brand__subtitle">
             <span class="drawer-brand__beacon" aria-hidden="true" />
-            Friendly control room
+            Secure model access
           </v-list-item-subtitle>
         </v-list-item>
       </v-list>
     </template>
-    <v-list nav density="compact">
+    <v-list nav density="compact" class="drawer-navigation">
       <AppDrawerItem v-for="route in routes" :key="route.name" :item="route" />
     </v-list>
   </v-navigation-drawer>
@@ -135,10 +137,9 @@ drawerState.value = lgAndUp.value && width.value !== 1280
         inset -1px 0 rgba(var(--app-shell-border), 0.4);
     }
     &:not(.v-navigation-drawer--is-hovering) {
-      .drawer-header-icon {
-        height: 1em;
-        width: 1em;
-        margin-right: 0;
+      .drawer-brand__mark {
+        width: 46px;
+        height: 46px;
       }
       .v-list {
         padding-inline: 0;
@@ -172,8 +173,8 @@ drawerState.value = lgAndUp.value && width.value !== 1280
       .v-list-item__append {
         display: none;
       }
-      .v-list-group__items .v-list-item {
-        margin-inline: auto;
+      .v-list-group__items {
+        display: none;
       }
     }
   }
@@ -185,24 +186,64 @@ drawerState.value = lgAndUp.value && width.value !== 1280
   }
   .drawer-header-icon {
     opacity: 1;
-    height: 1.2em;
-    width: 1.2em;
     filter: drop-shadow(0 8px 12px rgba(var(--v-theme-primary), 0.2));
     transition:
       width var(--app-motion-standard) var(--app-ease-out),
       height var(--app-motion-standard) var(--app-ease-out),
-      margin var(--app-motion-standard) var(--app-ease-out);
+      transform var(--app-motion-standard) var(--app-ease-out);
     animation:
       app-enter-soft var(--app-motion-expressive) var(--app-ease-out) both,
       app-float 6s ease-in-out 1.2s infinite;
-    margin-right: -4px;
+  }
+  .drawer-brand-shell {
+    padding: 10px 9px 6px;
   }
   .drawer-brand {
+    min-height: 66px;
+    padding: 8px 10px;
+    border: 1px solid rgba(var(--app-shell-border), 0.55);
+    border-radius: 20px !important;
+    background:
+      radial-gradient(
+        circle at 90% 12%,
+        rgba(var(--app-accent-coral), 0.1),
+        transparent 34%
+      ),
+      rgba(var(--app-shell-surface-strong), 0.76);
+    box-shadow: 0 12px 28px -24px rgba(var(--app-shell-shadow), 0.58);
     pointer-events: none;
     cursor: default;
     .v-list-item__overlay {
       display: none;
     }
+  }
+  .drawer-brand__mark {
+    display: inline-flex;
+    width: 48px;
+    height: 48px;
+    flex: 0 0 auto;
+    justify-content: center;
+    align-items: center;
+    transform: rotate(-4deg);
+    border: 1px solid rgba(var(--v-theme-primary), 0.16);
+    border-radius: 17px;
+    background:
+      radial-gradient(
+        circle at 28% 24%,
+        rgba(var(--app-accent-butter), 0.46),
+        transparent 52%
+      ),
+      rgba(var(--v-theme-primary), 0.08);
+    box-shadow: 3px 4px 0 rgba(var(--app-accent-coral), 0.1);
+    transition:
+      width var(--app-motion-standard) var(--app-ease-out),
+      height var(--app-motion-standard) var(--app-ease-out);
+  }
+  .drawer-brand__title {
+    color: rgb(var(--app-shell-text-primary));
+    font-size: 1.2rem;
+    line-height: 1.25;
+    letter-spacing: -0.035em;
   }
   .drawer-brand__subtitle {
     display: flex;
@@ -225,6 +266,9 @@ drawerState.value = lgAndUp.value && width.value !== 1280
   }
   .v-list-group__items {
     --v-list-indent: 28px;
+  }
+  .drawer-navigation {
+    padding: 4px 9px 18px;
   }
   .v-list-item {
     transition:

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 import { defineComponent, shallowRef } from 'vue'
 
+import AppLimitedAccessBanner from '../../app/components/App/AppLimitedAccessBanner.vue'
 import AppMonitoringBanner from '../../app/components/App/AppMonitoringBanner.vue'
 import DefaultLayout from '../../app/layouts/default.vue'
 import type { AppRole, AuthUser } from '../../app/types/auth'
@@ -79,12 +80,13 @@ function mountLayout() {
   return mount(DefaultLayout, {
     slots: { default: '<div data-test="page-content">Page content</div>' },
     global: {
-      components: { AppMonitoringBanner },
+      components: { AppLimitedAccessBanner, AppMonitoringBanner },
       stubs: {
         AppBar: true,
         AppDrawer: true,
         AppFooter: true,
         QuotaExhaustedDialog: QuotaExhaustedDialogStub,
+        VAlert: { template: '<aside><slot /></aside>' },
         VApp: { template: '<div><slot /></div>' },
         VMain: { template: '<main><slot /></main>' },
       },
@@ -109,6 +111,7 @@ describe('DefaultLayout', () => {
     const wrapper = mountLayout()
     await flushPromises()
 
+    expect(wrapper.findComponent(AppLimitedAccessBanner).exists()).toBe(true)
     expect(wrapper.findComponent(AppMonitoringBanner).exists()).toBe(false)
     expect(useApiFetchMock).not.toHaveBeenCalled()
     expect(apiFetch).not.toHaveBeenCalled()
@@ -116,6 +119,40 @@ describe('DefaultLayout', () => {
     expect(wrapper.get('[data-test="page-content"]').text()).toBe(
       'Page content',
     )
+    wrapper.unmount()
+  })
+
+  it.each(['none', 'user', 'admin'] as const)(
+    'does not show the limited-access banner for the %s role',
+    async (role) => {
+      authStore.user = authenticatedUser(role)
+
+      const wrapper = mountLayout()
+      await flushPromises()
+
+      expect(wrapper.findComponent(AppLimitedAccessBanner).exists()).toBe(false)
+      wrapper.unmount()
+    },
+  )
+
+  it('does not show the limited-access banner without a session user', async () => {
+    const wrapper = mountLayout()
+    await flushPromises()
+
+    expect(wrapper.findComponent(AppLimitedAccessBanner).exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('does not show the limited-access banner for an inactive limited user', async () => {
+    authStore.user = {
+      ...authenticatedUser('limited'),
+      isActive: false,
+    }
+
+    const wrapper = mountLayout()
+    await flushPromises()
+
+    expect(wrapper.findComponent(AppLimitedAccessBanner).exists()).toBe(false)
     wrapper.unmount()
   })
 

@@ -134,12 +134,34 @@ function applySettings(settings: ModelLabRunSettings) {
 
 <style scoped>
 .model-lab-chat-header {
+  position: relative;
   display: grid;
   flex: 0 0 auto;
   gap: 12px;
   padding: 16px 20px;
   border-bottom: 1px solid rgba(var(--app-shell-border), 0.52);
-  background: rgba(var(--app-shell-surface-strong), 0.84);
+  background:
+    radial-gradient(
+      circle at 92% 0,
+      rgba(var(--app-accent-butter), 0.12),
+      transparent 18rem
+    ),
+    rgba(var(--app-shell-surface-strong), 0.84);
+}
+
+.model-lab-chat-header::before {
+  position: absolute;
+  top: 0;
+  left: 20px;
+  width: 58px;
+  height: 3px;
+  border-radius: 0 0 999px 999px;
+  background: linear-gradient(
+    90deg,
+    rgb(var(--v-theme-primary)),
+    rgb(var(--app-accent-coral))
+  );
+  content: '';
 }
 
 .model-lab-chat-header__main,

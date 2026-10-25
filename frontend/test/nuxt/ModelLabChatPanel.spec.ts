@@ -77,7 +77,11 @@ function mountPanel(
           props: ['title'],
           template: '<div data-test="empty-state">{{ title }}</div>',
         },
-        AppSectionCard: { template: '<section><slot /></section>' },
+        AppSectionCard: {
+          props: ['title'],
+          template:
+            '<section><h2 data-test="panel-title">{{ title }}</h2><slot /></section>',
+        },
         ModelLabChatComposer: {
           setup(
             _props: unknown,
@@ -110,6 +114,7 @@ describe('ModelLabChatPanel', () => {
   it('distinguishes model loading from an empty authorized list', () => {
     const wrapper = mountPanel({ modelsLoading: true })
 
+    expect(wrapper.get('[data-test="panel-title"]').text()).toBe('Conversation')
     expect(wrapper.text()).toContain('Loading your available models')
     expect(wrapper.find('[data-test="empty-state"]').exists()).toBe(false)
   })

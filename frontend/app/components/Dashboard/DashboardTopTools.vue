@@ -57,11 +57,6 @@ const emptyLabel = computed(() =>
     ? 'Observed tool calls could not be attributed by name for this period.'
     : 'No observed tool calls for this period.',
 )
-const hasUnattributedCalls = computed(() => {
-  const response = data.value
-  return Boolean(response && response.attributedCalls < response.totalCalls)
-})
-
 watch(
   [currentKey, () => props.refreshVersion],
   ([key], previous) => {
@@ -175,16 +170,6 @@ function callsLabel(calls: number) {
         <p class="dashboard-top-tools__coverage" aria-live="polite">
           {{ coverageLabel }}
         </p>
-
-        <v-alert
-          v-if="hasUnattributedCalls"
-          type="info"
-          variant="tonal"
-          rounded="lg"
-        >
-          Some observed calls are not attributed by name. Older calls may
-          predate named tool tracking.
-        </v-alert>
 
         <p v-if="rankedItems.length === 0" class="dashboard-top-tools__empty">
           {{ emptyLabel }}

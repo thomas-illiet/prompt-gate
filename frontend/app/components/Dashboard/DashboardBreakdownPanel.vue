@@ -7,6 +7,7 @@ import type {
   UsageBreakdown,
   UsageWindow,
 } from '~/types/user-service'
+import { promptGateChartColors } from '~/theme/palette'
 import { formatCurrencyUsd, formatNumber } from '~/utils/formatters'
 
 const props = defineProps<{
@@ -93,7 +94,9 @@ const summary = computed(() => {
 })
 
 const tabLabel = computed(
-  () => tabs.value.find((tab) => tab.value === activeTab.value)?.label ?? 'Breakdown',
+  () =>
+    tabs.value.find((tab) => tab.value === activeTab.value)?.label ??
+    'Breakdown',
 )
 
 const option = computed<ECOption>(() => ({
@@ -101,6 +104,7 @@ const option = computed<ECOption>(() => ({
   animationDelay: (index: number) => index * 45,
   animationDuration: 480,
   backgroundColor: 'transparent',
+  color: [...promptGateChartColors],
   grid: {
     bottom: 12,
     containLabel: true,
@@ -209,7 +213,9 @@ function metricLabel(selectedMetric: DashboardMetric) {
 
 function formatMetric(value: number | null) {
   if (value == null) return '—'
-  return props.metric === 'cost' ? formatCurrencyUsd(value) : formatNumber(value)
+  return props.metric === 'cost'
+    ? formatCurrencyUsd(value)
+    : formatNumber(value)
 }
 </script>
 
@@ -219,24 +225,30 @@ function formatMetric(value: number | null) {
     title="What explains it"
     :subtitle="`${metricLabel(props.metric)} by ${tabLabel.toLowerCase()}`"
   >
-    <div class="dashboard-breakdown-panel">
-      <v-tabs
+    <template #actions>
+      <v-btn-toggle
         v-model="activeTab"
         aria-label="Usage breakdown"
-        class="dashboard-breakdown-panel__tabs"
+        class="dashboard-breakdown-panel__selector"
         color="primary"
-        show-arrows
+        density="compact"
+        mandatory
+        variant="outlined"
       >
-        <v-tab
+        <v-btn
           v-for="tab in tabs"
           :key="tab.value"
+          :aria-label="`Show ${tab.label.toLowerCase()} breakdown`"
           :value="tab.value"
+          size="small"
         >
           <v-icon :icon="tab.icon" start />
           {{ tab.label }}
-        </v-tab>
-      </v-tabs>
+        </v-btn>
+      </v-btn-toggle>
+    </template>
 
+    <div class="dashboard-breakdown-panel">
       <p class="dashboard-breakdown-panel__summary" aria-live="polite">
         {{ summary }}
       </p>
@@ -252,13 +264,21 @@ function formatMetric(value: number | null) {
       <v-alert v-else-if="error" type="warning" variant="tonal" rounded="lg">
         <div class="dashboard-breakdown-panel__alert">
           <span>{{ error }}</span>
-          <v-btn size="small" variant="text" prepend-icon="mdi-refresh" @click="loadBreakdown()">
+          <v-btn
+            size="small"
+            variant="text"
+            prepend-icon="mdi-refresh"
+            @click="loadBreakdown()"
+          >
             Retry
           </v-btn>
         </div>
       </v-alert>
 
-      <p v-else-if="items.length === 0" class="dashboard-breakdown-panel__empty">
+      <p
+        v-else-if="items.length === 0"
+        class="dashboard-breakdown-panel__empty"
+      >
         Traffic has no {{ tabLabel.toLowerCase() }} attribution for this period.
       </p>
 
@@ -276,7 +296,13 @@ function formatMetric(value: number | null) {
           <div class="dashboard-breakdown-panel__table-scroll">
             <table>
               <caption>
-                {{ tabLabel }} by {{ metricLabel(props.metric).toLowerCase() }}
+                {{
+                  tabLabel
+                }}
+                by
+                {{
+                  metricLabel(props.metric).toLowerCase()
+                }}
               </caption>
               <thead>
                 <tr>
@@ -291,7 +317,13 @@ function formatMetric(value: number | null) {
                   <th scope="row">{{ item.name }}</th>
                   <td>{{ formatNumber(item.requests) }}</td>
                   <td>{{ formatNumber(item.totalTokens) }}</td>
-                  <td>{{ item.estimatedCost ? formatCurrencyUsd(item.estimatedCost.totalUsd) : '—' }}</td>
+                  <td>
+                    {{
+                      item.estimatedCost
+                        ? formatCurrencyUsd(item.estimatedCost.totalUsd)
+                        : '—'
+                    }}
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -307,11 +339,6 @@ function formatMetric(value: number | null) {
   display: grid;
   gap: 10px;
   padding: 0 20px 20px;
-}
-
-.dashboard-breakdown-panel__tabs {
-  margin-inline: -8px;
-  border-bottom: 1px solid rgba(var(--app-shell-border), 0.42);
 }
 
 .dashboard-breakdown-panel__summary,
@@ -346,10 +373,18 @@ function formatMetric(value: number | null) {
   background: rgba(var(--app-shell-border), 0.34);
 }
 
-.dashboard-breakdown-panel__loading span:nth-child(2) { width: 82%; }
-.dashboard-breakdown-panel__loading span:nth-child(3) { width: 68%; }
-.dashboard-breakdown-panel__loading span:nth-child(4) { width: 52%; }
-.dashboard-breakdown-panel__loading span:nth-child(5) { width: 38%; }
+.dashboard-breakdown-panel__loading span:nth-child(2) {
+  width: 82%;
+}
+.dashboard-breakdown-panel__loading span:nth-child(3) {
+  width: 68%;
+}
+.dashboard-breakdown-panel__loading span:nth-child(4) {
+  width: 52%;
+}
+.dashboard-breakdown-panel__loading span:nth-child(5) {
+  width: 38%;
+}
 
 .dashboard-breakdown-panel__alert {
   display: flex;
@@ -397,6 +432,13 @@ function formatMetric(value: number | null) {
 }
 
 @media (max-width: 599px) {
+  .dashboard-breakdown-panel__selector {
+    width: 100%;
+    max-width: 100%;
+    justify-content: flex-start;
+    overflow-x: auto;
+  }
+
   .dashboard-breakdown-panel {
     padding: 0 12px 16px;
   }

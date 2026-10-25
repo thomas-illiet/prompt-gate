@@ -12,7 +12,7 @@ definePageMeta({
   <v-container fluid class="app-page">
     <v-row>
       <v-col cols="12">
-        <AppPageHero
+        <AppPageHeader
           icon="mdi-api"
           kicker="Developer tools"
           title="API documentation"

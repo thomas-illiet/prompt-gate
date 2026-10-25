@@ -89,7 +89,7 @@ function forwardRetry(turnId: string, laneId: string) {
   <AppSectionCard
     class="model-lab-chat-panel__card"
     icon="mdi-message-processing-outline"
-    title="Model Lab"
+    title="Conversation"
     subtitle="Chat with one model, or select a second for side-by-side responses."
   >
     <div class="model-lab-chat-panel">
@@ -211,6 +211,11 @@ function forwardRetry(turnId: string, laneId: string) {
   flex: 1 1 auto;
   flex-direction: column;
   padding: 0 24px 24px;
+}
+
+.model-lab-chat-panel > :deep(.v-alert) {
+  flex: 0 0 auto;
+  margin-top: 16px;
 }
 
 .model-lab-chat-panel__models-state,

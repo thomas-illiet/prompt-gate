@@ -1,7 +1,7 @@
 import { defineVuetifyConfiguration } from 'vuetify-nuxt-module/custom-configuration'
 import { md3 } from 'vuetify/blueprints'
 
-const BNP_GREEN = '#00965E'
+import { promptGateLightThemeColors } from './app/theme/palette'
 
 export default defineVuetifyConfiguration({
   blueprint: md3,
@@ -68,7 +68,7 @@ export default defineVuetifyConfiguration({
   theme: {
     defaultTheme: 'light',
     themes: {
-      light: { colors: { primary: BNP_GREEN } },
+      light: { colors: promptGateLightThemeColors },
     },
   },
 })

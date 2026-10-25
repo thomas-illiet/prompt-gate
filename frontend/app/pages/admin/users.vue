@@ -346,7 +346,7 @@ async function confirmQuotaResetGrant() {
   <v-container fluid class="app-page">
     <v-row>
       <v-col cols="12">
-        <AppPageHero
+        <AppPageHeader
           icon="mdi-account-cog-outline"
           kicker="Security control plane"
           title="User management"

@@ -18,7 +18,7 @@ describe('Admin documentation page', () => {
           AdminDocumentationSwaggerDocumentation: {
             template: '<div data-test="swagger-documentation" />',
           },
-          AppPageHero: {
+          AppPageHeader: {
             props: ['kicker', 'title', 'copy', 'statLabel', 'statValue'],
             template:
               '<header>{{ kicker }} {{ title }} {{ copy }} {{ statLabel }} {{ statValue }}</header>',

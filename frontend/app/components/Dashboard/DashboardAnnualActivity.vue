@@ -1,17 +1,21 @@
 <script setup lang="ts">
-import { formatCompactNumber, formatDate, formatNumber } from '~/utils/formatters'
+import { downloadDailyUsageCsv } from '~/utils/daily-usage-csv'
+import {
+  formatCompactNumber,
+  formatDate,
+  formatNumber,
+} from '~/utils/formatters'
 
 const props = defineProps<{
   refreshVersion: number
 }>()
 
-const expanded = shallowRef(false)
-const annual = useProfileTokenUsage(() => expanded.value)
+const annual = useProfileTokenUsage()
 
 watch(
   () => props.refreshVersion,
   () => {
-    if (expanded.value) void annual.reload()
+    void annual.reload()
   },
 )
 
@@ -20,32 +24,28 @@ const peakCaption = computed(() =>
     ? formatDate(annual.summary.value.peakDay.date)
     : 'No activity',
 )
+
+function exportDailyData() {
+  const days = annual.summary.value.days
+  const firstDate = days[0]?.date
+  const lastDate = days[days.length - 1]?.date
+  if (!firstDate || !lastDate) return
+
+  downloadDailyUsageCsv(
+    days,
+    'annual',
+    `promptgate-annual-activity-${firstDate}-to-${lastDate}.csv`,
+  )
+}
 </script>
 
 <template>
   <AppSectionCard
     icon="mdi-calendar-blank-multiple"
     title="Annual activity"
-    subtitle="A 365-day view loaded only when you open it"
+    subtitle="Your token activity across the last 365 days"
   >
-    <template #actions>
-      <v-btn
-        :aria-expanded="expanded"
-        aria-controls="dashboard-annual-activity-content"
-        :append-icon="expanded ? 'mdi-chevron-up' : 'mdi-chevron-down'"
-        color="primary"
-        variant="tonal"
-        @click="expanded = !expanded"
-      >
-        {{ expanded ? 'Collapse' : 'Show annual activity' }}
-      </v-btn>
-    </template>
-
-    <div
-      v-if="expanded"
-      id="dashboard-annual-activity-content"
-      class="dashboard-annual-activity"
-    >
+    <div class="dashboard-annual-activity">
       <div
         v-if="annual.loading.value && !annual.activity.value"
         class="dashboard-annual-activity__loading"
@@ -62,7 +62,12 @@ const peakCaption = computed(() =>
       >
         <div class="dashboard-annual-activity__alert">
           <span>{{ annual.error.value }}</span>
-          <v-btn size="small" variant="text" prepend-icon="mdi-refresh" @click="annual.reload">
+          <v-btn
+            size="small"
+            variant="text"
+            prepend-icon="mdi-refresh"
+            @click="annual.reload"
+          >
             Retry
           </v-btn>
         </div>
@@ -72,8 +77,13 @@ const peakCaption = computed(() =>
         <div class="dashboard-annual-activity__kpis">
           <article>
             <span>Total tokens</span>
-            <strong>{{ formatCompactNumber(annual.summary.value.totalTokens) }}</strong>
-            <small>{{ formatNumber(annual.summary.value.totalTokens) }} over 365 days</small>
+            <strong>{{
+              formatCompactNumber(annual.summary.value.totalTokens)
+            }}</strong>
+            <small
+              >{{ formatNumber(annual.summary.value.totalTokens) }} over 365
+              days</small
+            >
           </article>
           <article>
             <span>Active days</span>
@@ -82,12 +92,17 @@ const peakCaption = computed(() =>
           </article>
           <article>
             <span>Daily peak</span>
-            <strong>{{ formatCompactNumber(annual.summary.value.maxTokens) }}</strong>
+            <strong>{{
+              formatCompactNumber(annual.summary.value.maxTokens)
+            }}</strong>
             <small>{{ peakCaption }}</small>
           </article>
         </div>
 
-        <p v-if="annual.summary.value.totalTokens === 0" class="dashboard-annual-activity__empty">
+        <p
+          v-if="annual.summary.value.totalTokens === 0"
+          class="dashboard-annual-activity__empty"
+        >
           No token activity was recorded during the last 365 days.
         </p>
 
@@ -101,6 +116,20 @@ const peakCaption = computed(() =>
 
           <details class="dashboard-annual-activity__data">
             <summary>View daily data</summary>
+            <div class="dashboard-annual-activity__data-actions">
+              <v-btn
+                data-test="export-daily-data"
+                color="primary"
+                prepend-icon="mdi-download-outline"
+                rounded="xl"
+                size="small"
+                type="button"
+                variant="tonal"
+                @click="exportDailyData"
+              >
+                Export CSV
+              </v-btn>
+            </div>
             <div class="dashboard-annual-activity__table-scroll">
               <table>
                 <caption>
@@ -133,7 +162,7 @@ const peakCaption = computed(() =>
 .dashboard-annual-activity {
   display: grid;
   gap: 18px;
-  padding: 4px 24px 24px;
+  padding: 20px 24px 24px;
 }
 
 .dashboard-annual-activity__kpis {
@@ -214,9 +243,15 @@ const peakCaption = computed(() =>
   font-weight: 700;
 }
 
+.dashboard-annual-activity__data-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
 .dashboard-annual-activity__table-scroll {
   max-height: 300px;
-  margin-top: 10px;
+  margin-top: 8px;
   overflow: auto;
 }
 
@@ -253,7 +288,7 @@ const peakCaption = computed(() =>
 
 @media (max-width: 599px) {
   .dashboard-annual-activity {
-    padding: 0 16px 20px;
+    padding: 16px 16px 20px;
   }
 }
 </style>

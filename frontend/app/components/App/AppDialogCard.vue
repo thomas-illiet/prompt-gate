@@ -33,8 +33,8 @@ const isOpen = defineModel<boolean>({ default: false })
 const generatedId = useId()
 const titleId = `app-dialog-title-${generatedId}`
 const subtitleId = `app-dialog-subtitle-${generatedId}`
-const accessibleDescription = computed(() =>
-  props.describedBy || (props.subtitle ? subtitleId : undefined),
+const accessibleDescription = computed(
+  () => props.describedBy || (props.subtitle ? subtitleId : undefined),
 )
 
 function close() {
@@ -58,7 +58,12 @@ function close() {
     <v-card rounded="lg" class="app-dialog-card app-surface-gradient">
       <v-card-item class="app-dialog-card__header">
         <template v-if="props.icon" #prepend>
-          <v-avatar :color="props.iconColor" variant="tonal" size="44">
+          <v-avatar
+            :color="props.iconColor"
+            variant="tonal"
+            size="44"
+            class="app-dialog-card__icon"
+          >
             <v-icon :icon="props.icon" />
           </v-avatar>
         </template>
@@ -108,7 +113,21 @@ function close() {
 
 .app-dialog-card__header {
   flex: 0 0 auto;
-  padding: 24px 24px 10px;
+  padding: 24px;
+  border-bottom: 1px solid rgba(var(--app-shell-border), 0.34);
+  background:
+    radial-gradient(
+      circle at 92% 0,
+      rgba(var(--app-accent-coral), 0.08),
+      transparent 14rem
+    ),
+    rgba(var(--app-shell-surface-strong), 0.52);
+}
+
+.app-dialog-card__icon {
+  border: 1px solid rgba(var(--v-theme-primary), 0.18);
+  border-radius: 15px !important;
+  box-shadow: 4px 5px 0 rgba(var(--app-accent-butter), 0.13);
 }
 
 .app-dialog-card__title,
@@ -124,7 +143,7 @@ function close() {
 
 .app-dialog-card__content {
   flex: 1 1 auto;
-  padding: 14px 24px 10px;
+  padding: 20px 24px 16px;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -133,7 +152,9 @@ function close() {
   flex: 0 0 auto;
   gap: 10px;
   justify-content: flex-end;
-  padding: 12px 24px 24px;
+  padding: 16px 24px 20px;
+  border-top: 1px solid rgba(var(--app-shell-border), 0.34);
+  background: rgba(var(--app-shell-surface-muted), 0.38);
 }
 
 @media (max-width: 600px) {
@@ -143,11 +164,11 @@ function close() {
   }
 
   .app-dialog-card__header {
-    padding: 18px 16px 8px;
+    padding: 18px 16px;
   }
 
   .app-dialog-card__content {
-    padding: 12px 16px 8px;
+    padding: 16px;
   }
 
   .app-dialog-card__actions {

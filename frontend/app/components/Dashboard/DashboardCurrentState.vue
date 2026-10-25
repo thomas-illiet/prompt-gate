@@ -173,7 +173,9 @@ function riskStatusLabel(item: DashboardQuotaRiskItem) {
 <template>
   <AppSectionCard
     :icon="props.scope === 'global' ? 'mdi-radar' : 'mdi-gauge'"
-    :title="props.scope === 'global' ? 'Needs attention' : 'Plan and live quota'"
+    :title="
+      props.scope === 'global' ? 'Needs attention' : 'Plan and live quota'
+    "
     :subtitle="
       props.scope === 'global'
         ? 'Adoption and quota saturation across people and service accounts'
@@ -187,14 +189,22 @@ function riskStatusLabel(item: DashboardQuotaRiskItem) {
     </template>
 
     <div class="dashboard-current-state" :aria-busy="loading">
-      <div v-if="loading && !quota && !risk" class="dashboard-current-state__loading">
+      <div
+        v-if="loading && !quota && !risk"
+        class="dashboard-current-state__loading"
+      >
         <span v-for="index in 3" :key="index" />
       </div>
 
       <v-alert v-else-if="error" type="warning" variant="tonal" rounded="lg">
         <div class="dashboard-current-state__alert">
           <span>{{ error }}</span>
-          <v-btn size="small" variant="text" prepend-icon="mdi-refresh" @click="loadCurrentState">
+          <v-btn
+            size="small"
+            variant="text"
+            prepend-icon="mdi-refresh"
+            @click="loadCurrentState"
+          >
             Retry
           </v-btn>
         </div>
@@ -207,7 +217,8 @@ function riskStatusLabel(item: DashboardQuotaRiskItem) {
           variant="tonal"
           rounded="lg"
         >
-          No subscription plan is currently assigned. Contact an administrator before sending requests.
+          No subscription plan is currently assigned. Contact an administrator
+          before sending requests.
         </v-alert>
 
         <div v-else class="dashboard-current-state__quota-grid">
@@ -222,7 +233,12 @@ function riskStatusLabel(item: DashboardQuotaRiskItem) {
                 <strong>{{ window.label }}</strong>
                 <span>{{ formatNumber(window.used) }} tokens used</span>
               </div>
-              <v-chip :color="quotaColor(window)" label size="small" variant="tonal">
+              <v-chip
+                :color="quotaColor(window)"
+                label
+                size="small"
+                variant="tonal"
+              >
                 {{ quotaStateLabel(window) }}
               </v-chip>
             </div>
@@ -249,7 +265,11 @@ function riskStatusLabel(item: DashboardQuotaRiskItem) {
             </div>
 
             <span class="dashboard-current-state__reset">
-              {{ window.resetAt ? `Resets ${formatDateTime(window.resetAt)}` : 'No reset scheduled' }}
+              {{
+                window.resetAt
+                  ? `Resets ${formatDateTime(window.resetAt)}`
+                  : 'No reset scheduled'
+              }}
             </span>
           </article>
         </div>
@@ -259,19 +279,28 @@ function riskStatusLabel(item: DashboardQuotaRiskItem) {
         <div class="dashboard-current-state__adoption">
           <article>
             <span>Active people</span>
-            <strong>{{ formatCompactNumber(props.adoption?.activeUsers ?? 0) }}</strong>
+            <strong>{{
+              formatCompactNumber(props.adoption?.activeUsers ?? 0)
+            }}</strong>
           </article>
           <article>
             <span>Active service accounts</span>
-            <strong>{{ formatCompactNumber(props.adoption?.activeServiceAccounts ?? 0) }}</strong>
+            <strong>{{
+              formatCompactNumber(props.adoption?.activeServiceAccounts ?? 0)
+            }}</strong>
           </article>
           <article>
             <span>Active virtual keys</span>
-            <strong>{{ formatCompactNumber(props.adoption?.activeVirtualKeys ?? 0) }}</strong>
+            <strong>{{
+              formatCompactNumber(props.adoption?.activeVirtualKeys ?? 0)
+            }}</strong>
           </article>
           <article class="dashboard-current-state__risk-stat">
             <span>At risk / exhausted</span>
-            <strong>{{ formatNumber(risk?.atRiskCount ?? 0) }} / {{ formatNumber(risk?.exhaustedCount ?? 0) }}</strong>
+            <strong
+              >{{ formatNumber(risk?.atRiskCount ?? 0) }} /
+              {{ formatNumber(risk?.exhaustedCount ?? 0) }}</strong
+            >
           </article>
         </div>
 
@@ -285,7 +314,10 @@ function riskStatusLabel(item: DashboardQuotaRiskItem) {
           </span>
         </div>
 
-        <div v-if="risk?.items.length" class="dashboard-current-state__risk-list">
+        <div
+          v-if="risk?.items.length"
+          class="dashboard-current-state__risk-list"
+        >
           <NuxtLink
             v-for="item in risk.items"
             :key="item.accountId"
@@ -293,7 +325,14 @@ function riskStatusLabel(item: DashboardQuotaRiskItem) {
             :to="riskAccountLink(item)"
           >
             <div class="dashboard-current-state__risk-identity">
-              <v-icon :icon="item.accountType === 'service' ? 'mdi-robot-outline' : 'mdi-account-outline'" size="20" />
+              <v-icon
+                :icon="
+                  item.accountType === 'service'
+                    ? 'mdi-robot-outline'
+                    : 'mdi-account-outline'
+                "
+                size="20"
+              />
               <div>
                 <strong>{{ item.displayName }}</strong>
                 <span>{{ item.planName }} · {{ item.window }}</span>
@@ -308,12 +347,22 @@ function riskStatusLabel(item: DashboardQuotaRiskItem) {
                 variant="tonal"
               >
                 {{ riskStatusLabel(item) }} ·
-                {{ new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 }).format(item.percent) }}%
+                {{
+                  new Intl.NumberFormat('en-US', {
+                    maximumFractionDigits: 1,
+                  }).format(item.percent)
+                }}%
               </v-chip>
               <div class="dashboard-current-state__risk-meta">
-                <span>{{ formatNumber(item.remainingTokens) }} tokens left</span>
+                <span
+                  >{{ formatNumber(item.remainingTokens) }} tokens left</span
+                >
                 <span>
-                  {{ item.resetAt ? `Resets ${formatDateTime(item.resetAt)}` : 'No reset scheduled' }}
+                  {{
+                    item.resetAt
+                      ? `Resets ${formatDateTime(item.resetAt)}`
+                      : 'No reset scheduled'
+                  }}
                 </span>
               </div>
               <v-icon
@@ -336,7 +385,7 @@ function riskStatusLabel(item: DashboardQuotaRiskItem) {
 .dashboard-current-state {
   display: grid;
   gap: 18px;
-  padding: 4px 24px 24px;
+  padding: 20px 24px 24px;
 }
 
 .dashboard-current-state__loading,
@@ -529,7 +578,7 @@ function riskStatusLabel(item: DashboardQuotaRiskItem) {
 
 @media (max-width: 599px) {
   .dashboard-current-state {
-    padding: 0 16px 20px;
+    padding: 16px 16px 20px;
   }
 
   .dashboard-current-state__loading,

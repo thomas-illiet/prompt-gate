@@ -132,13 +132,14 @@ async function confirmDelete() {
   <v-container fluid class="app-page">
     <v-row>
       <v-col cols="12">
-        <AppPageHero
+        <AppPageHeader
           icon="mdi-heart-pulse"
           kicker="Control room"
           title="Monitoring"
           :copy="heroCopy"
           visual="heartbeat"
           stat-label="Visible health"
+          :stat-busy="adminMonitoring.loading.value"
           :stat-value="totalLabel"
         />
       </v-col>

@@ -53,13 +53,14 @@ async function confirmRevoke() {
   <v-container fluid class="app-page">
     <v-row>
       <v-col cols="12">
-        <AppPageHero
+        <AppPageHeader
           icon="mdi-key-outline"
           kicker="The keyring"
           title="Virtual keys"
           copy="Keep access on your terms. Create and revoke virtual keys for your own service access."
           visual="key"
           :stat-label="filteredTokenStatLabel"
+          :stat-busy="userTokens.loading.value"
           :stat-value="filteredTokenStatValue"
         />
       </v-col>

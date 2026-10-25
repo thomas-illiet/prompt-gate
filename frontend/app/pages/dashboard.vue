@@ -6,7 +6,7 @@ import type {
   DashboardScope,
   UsageWindow,
 } from '~/types/user-service'
-import { formatDate, formatDateTime } from '~/utils/formatters'
+import { formatDate } from '~/utils/formatters'
 
 definePageMeta({
   icon: 'mdi-monitor-dashboard',
@@ -179,42 +179,18 @@ function parseBreakdown(value: unknown): DashboardBreakdown {
 
 <template>
   <v-container fluid class="app-page dashboard-page">
-    <header class="dashboard-page__header">
-      <div class="dashboard-page__heading">
-        <p class="dashboard-page__kicker">Usage cockpit</p>
-        <h1>{{ title }}</h1>
-        <p>{{ subtitle }}</p>
-        <div class="dashboard-page__period" aria-live="polite">
-          <v-icon icon="mdi-calendar-range" size="17" />
-          <span>{{ periodLabel }}</span>
-          <span v-if="overview.updatedAt.value" aria-hidden="true">·</span>
-          <span v-if="overview.updatedAt.value">
-            Updated {{ formatDateTime(overview.updatedAt.value) }}
-          </span>
-        </div>
-      </div>
-
-      <div class="dashboard-page__visual" aria-hidden="true">
-        <AppSignalVisual name="radar" />
-      </div>
-
-      <div class="dashboard-page__controls" aria-label="Dashboard controls">
-        <DashboardScopeSelect v-if="isAdmin" v-model="selectedScope" />
-        <DashboardTimeRangeSelect v-model="selectedWindow" />
-        <v-btn
-          class="dashboard-page__refresh"
-          color="primary"
-          prepend-icon="mdi-refresh"
-          variant="outlined"
-          rounded="lg"
-          :loading="overview.loading.value"
-          aria-label="Refresh all dashboard data"
-          @click="refreshDashboard"
-        >
-          Refresh
-        </v-btn>
-      </div>
-    </header>
+    <DashboardPageHeader
+      v-model:scope="selectedScope"
+      v-model:window="selectedWindow"
+      class="dashboard-page__header"
+      :copy="subtitle"
+      :is-admin="isAdmin"
+      :loading="overview.loading.value"
+      :period-label="periodLabel"
+      :title="title"
+      :updated-at="overview.updatedAt.value"
+      @refresh="refreshDashboard"
+    />
 
     <v-alert
       v-if="overview.staleWarning.value"
@@ -332,112 +308,7 @@ function parseBreakdown(value: unknown): DashboardBreakdown {
 }
 
 .dashboard-page__header {
-  position: relative;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 104px;
-  align-items: center;
-  gap: 16px;
   margin-bottom: 18px;
-  padding: 16px 18px;
-  overflow: hidden;
-  border: 1px solid rgba(var(--app-shell-border), 0.52);
-  border-radius: var(--app-card-radius);
-  background:
-    radial-gradient(
-      circle at 72% 8%,
-      rgba(var(--app-accent-coral), 0.12),
-      transparent 24%
-    ),
-    linear-gradient(
-      90deg,
-      rgba(var(--v-theme-primary), 0.08) 0,
-      rgba(var(--v-theme-primary), 0) 5px
-    ),
-    linear-gradient(
-      180deg,
-      rgba(var(--app-shell-surface-strong), 0.98) 0%,
-      rgba(var(--app-shell-surface), 0.98) 58%,
-      rgba(var(--app-shell-surface-muted), 0.82) 100%
-    );
-  box-shadow: var(--app-card-shadow-soft);
-}
-
-.dashboard-page__heading {
-  display: grid;
-  max-width: 48rem;
-  gap: 5px;
-}
-
-.dashboard-page__kicker,
-.dashboard-page__heading h1,
-.dashboard-page__heading > p {
-  margin: 0;
-}
-
-.dashboard-page__kicker {
-  color: rgb(var(--app-shell-text-muted));
-  font-family: var(--app-font-mono);
-  font-size: 0.76rem;
-  font-weight: 750;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.dashboard-page__heading h1 {
-  font-family: var(--app-font-display);
-  font-size: 1.55rem;
-  font-weight: 800;
-}
-
-.dashboard-page__heading > p {
-  color: rgb(var(--app-shell-text-secondary));
-  line-height: 1.5;
-}
-
-.dashboard-page__period {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 5px;
-  color: rgb(var(--app-shell-text-secondary));
-  font-size: 0.82rem;
-  font-weight: 650;
-}
-
-.dashboard-page__visual {
-  position: relative;
-  display: grid;
-  width: 104px;
-  height: 104px;
-  place-items: center;
-  overflow: hidden;
-  border: 1px solid rgba(var(--app-shell-border), 0.6);
-  border-radius: calc(var(--app-card-radius) - 2px);
-  background:
-    radial-gradient(
-      circle at 70% 20%,
-      rgba(var(--app-accent-coral), 0.12),
-      transparent 42%
-    ),
-    rgba(var(--v-theme-primary), 0.055);
-  box-shadow: var(--app-card-shadow-soft);
-  padding: 10px;
-}
-
-.dashboard-page__controls {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  grid-column: 1 / -1;
-  justify-content: flex-start;
-  gap: 10px;
-}
-
-.dashboard-page__refresh {
-  min-height: 46px;
-  font-weight: 700;
-  text-transform: none;
 }
 
 .dashboard-page__section,
@@ -466,39 +337,12 @@ function parseBreakdown(value: unknown): DashboardBreakdown {
 }
 
 @media (max-width: 959px) {
-  .dashboard-page__header {
-    grid-template-columns: minmax(0, 1fr) 88px;
-  }
-
-  .dashboard-page__visual {
-    width: 88px;
-    height: 88px;
-  }
-
   .dashboard-page__loading {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 599px) {
-  .dashboard-page__header {
-    grid-template-columns: minmax(0, 1fr);
-    padding: 15px;
-  }
-
-  .dashboard-page__visual {
-    display: none;
-  }
-
-  .dashboard-page__controls {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .dashboard-page__refresh {
-    width: 100%;
-  }
-
   .dashboard-page__loading {
     grid-template-columns: 1fr;
   }

@@ -4,6 +4,9 @@ import { hasRequiredRole } from '~/utils/auth'
 
 const authStore = useAuthStore()
 const quotaExhaustionDialog = useQuotaExhaustionDialog()
+const isLimited = computed(
+  () => authStore.user?.isActive === true && authStore.user.role === 'limited',
+)
 const canViewMonitoring = computed(() =>
   hasRequiredRole(authStore.user, ['user', 'admin']),
 )
@@ -14,6 +17,7 @@ const canViewMonitoring = computed(() =>
     <AppDrawer />
     <AppBar />
     <v-main class="default-layout-main">
+      <AppLimitedAccessBanner v-if="isLimited" />
       <AppMonitoringBanner v-if="canViewMonitoring" />
       <slot />
     </v-main>

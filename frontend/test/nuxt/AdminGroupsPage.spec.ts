@@ -119,7 +119,7 @@ function mountPage() {
         AdminGroupsTable: GroupsTableStub,
         AdminGroupUsageDialog: UsageDialogStub,
         AppConfirmDialog: true,
-        AppPageHero: true,
+        AppPageHeader: true,
         VAlert: { template: '<div><slot /></div>' },
         VCol: { template: '<div><slot /></div>' },
         VContainer: { template: '<main><slot /></main>' },

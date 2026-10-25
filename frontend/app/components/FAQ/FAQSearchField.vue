@@ -23,30 +23,24 @@ const resultLabel = computed(() => {
       aria-label="Search FAQ questions"
       bg-color="surface"
       clearable
-      density="comfortable"
+      density="compact"
       hide-details
       placeholder="Search the FAQ…"
       prepend-inner-icon="mdi-magnify"
       rounded="xl"
       variant="solo-filled"
     />
-    <v-chip
-      class="faq-search__count"
-      color="primary"
-      prepend-icon="mdi-text-search"
-      size="small"
-      variant="tonal"
-    >
+    <span class="faq-search__status" role="status" aria-live="polite">
       {{ resultLabel }}
-    </v-chip>
+    </span>
   </div>
 </template>
 
 <style scoped>
 .faq-search {
+  position: relative;
   display: grid;
   width: 100%;
-  gap: 8px;
 }
 
 .faq-search :deep(.v-field) {
@@ -59,14 +53,15 @@ const resultLabel = computed(() => {
   box-shadow: 0 10px 28px rgba(var(--v-theme-primary), 0.14);
 }
 
-.faq-search__count {
-  justify-self: end;
-  pointer-events: none;
-}
-
-@media (max-width: 600px) {
-  .faq-search__count {
-    justify-self: start;
-  }
+.faq-search__status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  border: 0;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
 }
 </style>

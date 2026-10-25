@@ -59,4 +59,17 @@ describe('LoginPage', () => {
     expect(image.attributes('alt')).toBe('')
     expect(image.attributes('src')).toContain('login-gateway.jpg')
   })
+
+  it('reserves the current layout space without rendering a content section', () => {
+    const wrapper = mountPage()
+    const reservedSpace = wrapper.get(
+      '[data-test="login-content-reserved-space"]',
+    )
+
+    expect(reservedSpace.attributes('aria-hidden')).toBe('true')
+    expect(wrapper.find('[data-test="login-route"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="login-highlights"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('The boring stuff?')
+    expect(wrapper.text()).not.toContain('All systems green')
+  })
 })

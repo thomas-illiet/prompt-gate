@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { EstimatedCost, UsageBreakdown } from '~/types/user-service'
+import { promptGateChartColors } from '~/theme/palette'
 import {
   dashboardTooltipOptions,
   formatDashboardTooltip,
@@ -20,6 +21,7 @@ const option = computed<ECOption>(() => ({
   backgroundColor: 'transparent',
   animationDuration: 760,
   animationEasing: 'cubicOut',
+  color: [...promptGateChartColors],
   tooltip: {
     ...dashboardTooltipOptions,
     trigger: 'item',
@@ -34,7 +36,10 @@ const option = computed<ECOption>(() => ({
         estimatedCost: data.estimatedCost,
         metrics: [
           { label: 'Tokens', value: `${formatNumber(data.value)} tokens` },
-          { label: 'Requests', value: `${formatNumber(data.requests)} requests` },
+          {
+            label: 'Requests',
+            value: `${formatNumber(data.requests)} requests`,
+          },
         ],
         title: item.name,
       })

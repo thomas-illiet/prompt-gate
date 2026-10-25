@@ -66,7 +66,9 @@ watch(open, (isOpen) => {
           icon: source.icon,
           compatibility: source.compatibility,
           modelMode: source.modelMode,
-          filePaths: Array.isArray(source.filePaths) ? [...source.filePaths] : [],
+          filePaths: Array.isArray(source.filePaths)
+            ? [...source.filePaths]
+            : [],
           template: source.template,
           enabled: source.enabled,
           position: source.position,
@@ -199,7 +201,7 @@ function submit() {
   margin-bottom: 24px;
   padding: 12px;
   border: 1px solid rgba(var(--app-shell-border), 0.5);
-  border-radius: 14px;
+  border-radius: var(--app-card-radius);
   background: rgba(var(--app-shell-surface-muted), 0.52);
 }
 
@@ -210,7 +212,7 @@ function submit() {
   min-width: 0;
   padding: 8px;
   border: 0;
-  border-radius: 10px;
+  border-radius: var(--app-control-radius);
   color: rgb(var(--app-shell-text-secondary));
   background: transparent;
   text-align: left;

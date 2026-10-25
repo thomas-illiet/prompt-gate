@@ -102,7 +102,7 @@ function mountPage() {
     global: {
       stubs: {
         AppConfirmDialog: ConfirmDialogStub,
-        AppPageHero: {
+        AppPageHeader: {
           props: ['statValue', 'visual'],
           template:
             '<div data-test="profile-hero" :data-visual="visual">{{ statValue }}</div>',

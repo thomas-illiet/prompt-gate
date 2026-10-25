@@ -16,13 +16,14 @@ const publishedAnswers = computed(() =>
   <v-container fluid class="app-page">
     <v-row>
       <v-col cols="12">
-        <AppPageHero
+        <AppPageHeader
           icon="mdi-frequently-asked-questions"
           kicker="Field manual"
           title="Frequently asked questions"
           copy="Answers without the scavenger hunt. Search the guidance published by your administrators."
           visual="book"
           stat-label="Published answers"
+          :stat-busy="faq.loading.value"
           :stat-value="publishedAnswers"
         />
       </v-col>

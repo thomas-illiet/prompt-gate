@@ -15,7 +15,7 @@ function mountPage() {
   return mount(FAQPage, {
     global: {
       stubs: {
-        AppPageHero: {
+        AppPageHeader: {
           props: ['copy', 'statValue', 'visual'],
           template: `
             <div

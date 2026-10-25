@@ -2,7 +2,7 @@ import type { IconProps } from 'vuetify'
 import { Icon } from '#components'
 import { aliases } from 'vuetify/iconsets/mdi'
 
-const BNP_GREEN = '#00965E'
+import { promptGateLightThemeColors } from '~/theme/palette'
 
 export default defineNuxtPlugin((nuxtApp) => {
   nuxtApp.hook('vuetify:configuration', ({ vuetifyOptions }) => {
@@ -29,7 +29,7 @@ export default defineNuxtPlugin((nuxtApp) => {
           ...(themeOptions.themes?.light ?? {}),
           colors: {
             ...(themeOptions.themes?.light?.colors ?? {}),
-            primary: BNP_GREEN,
+            ...promptGateLightThemeColors,
           },
         },
       },

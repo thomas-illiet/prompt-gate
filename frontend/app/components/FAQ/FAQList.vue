@@ -87,11 +87,11 @@ const questionsSubtitle = computed(() => {
 }
 
 .faq-list__search {
-  padding: 4px 24px 24px;
+  padding: 0;
 }
 
 .faq-list__questions {
-  padding: 0 24px 24px;
+  padding: 20px 24px 24px;
 }
 
 .faq-list__panels {
@@ -151,12 +151,8 @@ const questionsSubtitle = computed(() => {
 }
 
 @media (max-width: 600px) {
-  .faq-list__search {
-    padding-inline: 16px;
-  }
-
   .faq-list__questions {
-    padding-inline: 16px;
+    padding: 16px 16px 20px;
   }
 }
 </style>

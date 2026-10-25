@@ -3,8 +3,8 @@ html {
 }
 
 :root {
-  --app-card-radius: 18px;
-  --app-control-radius: 12px;
+  --app-card-radius: 22px;
+  --app-control-radius: 14px;
   --app-chip-radius: 999px;
   --app-font-display: 'Avenir Next', 'Segoe UI', system-ui, sans-serif;
   --app-font-mono: 'SFMono-Regular', 'Cascadia Code', 'Roboto Mono', monospace;
@@ -19,29 +19,42 @@ html {
   box-shadow: var(--app-card-shadow);
 }
 
+.v-card.v-card--border {
+  border-color: rgba(var(--app-shell-border), 0.58);
+}
+
 .v-theme--light {
   &.v-icon--clickable,
   &.v-btn--icon {
     color: rgba(0, 0, 0, 0.54);
   }
   --v-border-opacity: 0.09;
-  --v-theme-background: 247, 244, 237;
-  --app-shell-surface: 255, 253, 248;
-  --app-shell-surface-muted: 244, 241, 233;
-  --app-shell-border: 205, 211, 200;
-  --app-shell-shadow: 25, 43, 36;
-  --app-shell-shadow-opacity: 0.12;
-  --app-shell-shadow-strong-opacity: 0.18;
-  --app-shell-text-primary: 27, 43, 37;
-  --app-shell-text-secondary: 57, 72, 66;
-  --app-shell-text-muted: 91, 104, 98;
-  --app-shell-surface-strong: 255, 255, 252;
-  --app-accent-coral: 231, 110, 83;
-  --app-accent-amber: 224, 167, 62;
-  --app-signal-mint: 53, 169, 126;
-  --app-card-shadow: 0 24px 54px -42px rgba(25, 43, 36, 0.46);
-  --app-card-shadow-soft: 0 16px 38px -30px rgba(25, 43, 36, 0.3);
-  --app-control-shadow: 0 12px 24px -18px rgba(25, 43, 36, 0.38);
+  --v-theme-background: 249, 246, 237;
+  --app-shell-surface: 255, 252, 244;
+  --app-shell-surface-muted: 239, 245, 233;
+  --app-shell-border: 181, 201, 187;
+  --app-shell-shadow: 20, 62, 46;
+  --app-shell-shadow-opacity: 0.14;
+  --app-shell-shadow-strong-opacity: 0.22;
+  --app-shell-text-primary: 20, 52, 40;
+  --app-shell-text-secondary: 54, 76, 67;
+  --app-shell-text-muted: 87, 107, 98;
+  --app-shell-surface-strong: 255, 255, 250;
+  --app-control-border: 112, 135, 122;
+  --app-accent-coral: 240, 111, 87;
+  --app-accent-amber: 229, 170, 61;
+  --app-accent-butter: 246, 198, 87;
+  --app-accent-sky: 96, 164, 205;
+  --app-signal-mint: 42, 174, 119;
+  --app-card-shadow:
+    0 7px 0 -3px rgba(240, 111, 87, 0.1),
+    0 28px 58px -40px rgba(20, 62, 46, 0.42);
+  --app-card-shadow-soft:
+    0 5px 0 -3px rgba(246, 198, 87, 0.14),
+    0 18px 42px -32px rgba(20, 62, 46, 0.32);
+  --app-control-shadow:
+    0 5px 0 -3px rgba(20, 62, 46, 0.18),
+    0 14px 26px -20px rgba(20, 62, 46, 0.42);
   --app-markdown-code-background: 240, 242, 234;
   --app-markdown-code-border: 205, 215, 204;
   --app-markdown-code-text: 31, 48, 42;
@@ -58,40 +71,63 @@ html {
 .v-main {
   background:
     radial-gradient(
-      circle at 14% 0%,
-      rgba(var(--v-theme-primary), 0.075),
-      transparent 34rem
+      circle at 12% 2%,
+      rgba(var(--app-accent-butter), 0.13),
+      transparent 28rem
     ),
     radial-gradient(
-      circle at 92% 12%,
-      rgba(var(--app-accent-coral), 0.07),
-      transparent 30rem
+      circle at 94% 10%,
+      rgba(var(--app-accent-coral), 0.1),
+      transparent 27rem
+    ),
+    linear-gradient(rgba(var(--v-theme-primary), 0.018) 1px, transparent 1px),
+    linear-gradient(
+      90deg,
+      rgba(var(--v-theme-primary), 0.018) 1px,
+      transparent 1px
     ),
     rgb(var(--v-theme-background));
+  background-size:
+    auto,
+    auto,
+    34px 34px,
+    34px 34px,
+    auto;
 }
 
 .v-app-bar.app-shell-bar {
   background:
     linear-gradient(
       90deg,
-      rgba(var(--v-theme-primary), 0.055),
-      transparent 34%,
-      rgba(var(--app-accent-coral), 0.035)
+      rgba(var(--app-accent-butter), 0.11),
+      transparent 28%,
+      rgba(var(--app-accent-coral), 0.065)
     ),
-    rgba(var(--app-shell-surface), 0.94);
-  border-bottom: 1px solid rgba(var(--app-shell-border), 0.65);
+    rgba(var(--app-shell-surface), 0.95);
+  border-bottom: 1px solid rgba(var(--app-shell-border), 0.78);
   box-shadow: 0 16px 30px -28px
     rgba(var(--app-shell-shadow), var(--app-shell-shadow-opacity));
   backdrop-filter: blur(14px);
 }
 
 .v-navigation-drawer.app-shell-drawer {
-  background: linear-gradient(
-    180deg,
-    rgba(var(--app-shell-surface), 0.98) 0%,
-    rgba(var(--app-shell-surface-muted), 0.98) 72%,
-    rgba(var(--v-theme-primary), 0.065) 140%
-  );
+  background:
+    radial-gradient(
+      circle at 16% 92%,
+      rgba(var(--app-accent-butter), 0.16),
+      transparent 28%
+    ),
+    radial-gradient(
+      circle at 88% 8%,
+      rgba(var(--app-accent-coral), 0.1),
+      transparent 24%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(var(--app-shell-surface), 0.99) 0%,
+      rgba(var(--app-shell-surface-muted), 0.99) 74%,
+      rgba(var(--v-theme-primary), 0.08) 140%
+    );
   border: 0;
   border-right: 1px solid rgba(var(--app-shell-border), 0.55);
   box-shadow: 0 22px 44px -32px
@@ -101,7 +137,17 @@ html {
 .v-navigation-drawer.app-shell-drawer .v-list-item--active {
   position: relative;
   overflow: hidden;
-  background-color: rgba(var(--v-theme-primary), 0.12);
+  border: 1px solid rgba(var(--v-theme-primary), 0.16);
+  background:
+    linear-gradient(
+      100deg,
+      rgba(var(--v-theme-primary), 0.15),
+      rgba(var(--app-accent-butter), 0.11)
+    ),
+    rgb(var(--app-shell-surface-strong));
+  box-shadow:
+    0 4px 0 -2px rgba(var(--v-theme-primary), 0.18),
+    0 12px 24px -22px rgba(var(--app-shell-shadow), 0.6);
 }
 
 .v-navigation-drawer.app-shell-drawer .v-list-item--active::before {
@@ -117,7 +163,7 @@ html {
 }
 
 .v-navigation-drawer.app-shell-drawer .v-list-item:hover {
-  background-color: rgba(var(--v-theme-primary), 0.08);
+  background-color: rgba(var(--app-accent-butter), 0.13);
 }
 
 .v-footer {
@@ -158,6 +204,38 @@ html {
   border-radius: var(--app-control-radius) !important;
 }
 
+.v-application .v-field--variant-outlined {
+  background:
+    radial-gradient(
+      circle at 100% 0,
+      rgba(var(--app-accent-butter), 0.08),
+      transparent 56%
+    ),
+    rgba(var(--app-shell-surface-strong), 0.72);
+  box-shadow: 0 12px 28px -26px rgba(var(--app-shell-shadow), 0.5);
+  transition:
+    background-color var(--app-motion-fast) var(--app-ease-standard),
+    box-shadow var(--app-motion-fast) var(--app-ease-standard);
+}
+
+.v-application
+  .v-field--variant-outlined:not(
+    .v-field--error,
+    .v-field--focused,
+    .v-field--disabled
+  )
+  .v-field__outline {
+  --v-field-border-opacity: 1;
+  color: rgb(var(--app-control-border));
+}
+
+.v-application .v-field--variant-outlined.v-field--focused {
+  background: rgb(var(--app-shell-surface-strong));
+  box-shadow:
+    0 0 0 3px rgba(var(--v-theme-primary), 0.08),
+    0 14px 30px -26px rgba(var(--app-shell-shadow), 0.62);
+}
+
 .v-field--variant-solo,
 .v-field--variant-solo-filled,
 .v-field--variant-solo-inverted {
@@ -193,8 +271,54 @@ html {
   box-shadow: var(--app-control-shadow);
 }
 
+.v-btn.bg-primary:not(.v-btn--disabled) {
+  box-shadow:
+    0 4px 0 rgba(7, 91, 59, 0.2),
+    0 14px 28px -20px rgba(var(--v-theme-primary), 0.72);
+}
+
 .v-btn--variant-tonal {
   border: 1px solid rgba(var(--app-shell-border), 0.46);
+}
+
+.v-chip--variant-tonal {
+  border: 1px solid rgba(var(--app-shell-border), 0.42);
+}
+
+.app-page .v-alert:not(.app-monitoring-banner),
+.v-overlay__content .v-alert {
+  border: 1px solid rgba(var(--app-shell-border), 0.62);
+  border-radius: var(--app-control-radius) !important;
+  background-image: linear-gradient(
+    135deg,
+    rgba(var(--app-shell-surface-strong), 0.28),
+    transparent 52%
+  );
+  box-shadow: var(--app-card-shadow-soft);
+}
+
+.app-page .v-alert .v-alert__prepend .v-icon,
+.v-overlay__content .v-alert .v-alert__prepend .v-icon {
+  filter: drop-shadow(2px 3px 0 rgba(var(--app-shell-shadow), 0.08));
+}
+
+.app-page .v-btn-toggle {
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid rgba(var(--app-shell-border), 0.54);
+  border-radius: var(--app-control-radius) !important;
+  background: rgba(var(--app-shell-surface-muted), 0.56);
+  box-shadow: inset 0 1px 0 rgba(var(--app-shell-surface-strong), 0.76);
+}
+
+.app-page .v-btn-toggle > .v-btn {
+  border-width: 0 !important;
+  border-radius: calc(var(--app-control-radius) - 4px) !important;
+}
+
+.app-page .v-btn-toggle > .v-btn.v-btn--active {
+  background: rgb(var(--app-shell-surface-strong));
+  box-shadow: 2px 3px 0 rgba(var(--app-accent-butter), 0.14);
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -214,10 +338,36 @@ html {
 }
 
 .v-overlay__content .v-list {
+  padding: 6px;
   border-color: rgba(var(--app-shell-border), 0.55);
   border-radius: var(--app-card-radius);
   background: rgb(var(--app-shell-surface));
   box-shadow: var(--app-card-shadow);
+}
+
+.v-overlay__content .v-list .v-list-item {
+  min-height: 42px;
+  margin-block: 2px;
+  border-radius: var(--app-control-radius) !important;
+  color: rgb(var(--app-shell-text-secondary));
+  transition:
+    background-color var(--app-motion-fast) var(--app-ease-standard),
+    color var(--app-motion-fast) var(--app-ease-standard),
+    transform var(--app-motion-fast) var(--app-ease-out);
+}
+
+.v-overlay__content .v-list .v-list-item:hover {
+  background: rgba(var(--app-accent-butter), 0.14);
+  color: rgb(var(--app-shell-text-primary));
+}
+
+.v-overlay__content .v-list .v-list-item--active {
+  background: rgba(var(--v-theme-primary), 0.1);
+  color: rgb(var(--v-theme-primary));
+}
+
+.v-overlay__content .v-list .v-list-item__prepend > .v-icon {
+  color: rgb(var(--v-theme-primary));
 }
 
 .v-overlay__content > .v-card {
@@ -235,10 +385,19 @@ html {
 }
 
 .v-data-table-footer {
+  min-height: 58px;
+  border-top: 1px solid rgba(var(--app-shell-border), 0.38);
+  background: rgba(var(--app-shell-surface-muted), 0.36);
+
   .v-field__input {
     min-height: 36px;
     padding-top: 0;
     padding-bottom: 0;
+  }
+
+  .v-field {
+    background: rgb(var(--app-shell-surface-strong));
+    box-shadow: none;
   }
 }
 
@@ -249,15 +408,81 @@ html {
 .v-data-table .v-table__wrapper > table > thead > tr > th {
   background: rgba(var(--app-shell-surface-muted), 0.72);
   color: rgb(var(--app-shell-text-secondary));
+  font-family: var(--app-font-mono);
+  font-size: 0.72rem;
   font-weight: 700;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+}
+
+.v-data-table .v-table__wrapper > table > tbody > tr {
+  transition: background-color var(--app-motion-fast) var(--app-ease-standard);
 }
 
 .v-data-table .v-table__wrapper > table > tbody > tr:hover {
-  background: rgba(var(--v-theme-primary), 0.045);
+  background: rgba(var(--app-accent-butter), 0.075);
 }
 
-.v-tab {
-  border-radius: 0;
+.v-data-table .v-table__wrapper > table > tbody > tr > td {
+  border-bottom-color: rgba(var(--app-shell-border), 0.34) !important;
+}
+
+:is(.app-page, .v-overlay__content) .v-tabs:not(.setup-guide-content__tabs) {
+  min-height: 48px;
+  padding: 4px;
+  border: 1px solid rgba(var(--app-shell-border), 0.54);
+  border-radius: var(--app-control-radius);
+  background: rgba(var(--app-shell-surface-muted), 0.58);
+  box-shadow: inset 0 1px 0 rgba(var(--app-shell-surface-strong), 0.76);
+}
+
+:is(.app-page, .v-overlay__content)
+  .v-tabs:not(.setup-guide-content__tabs)
+  .v-tab {
+  min-height: 38px;
+  border-radius: calc(var(--app-control-radius) - 4px) !important;
+  color: rgb(var(--app-shell-text-secondary));
+  transition:
+    background-color var(--app-motion-fast) var(--app-ease-standard),
+    color var(--app-motion-fast) var(--app-ease-standard),
+    box-shadow var(--app-motion-fast) var(--app-ease-standard);
+}
+
+:is(.app-page, .v-overlay__content)
+  .v-tabs:not(.setup-guide-content__tabs)
+  .v-tab--selected {
+  background: rgb(var(--app-shell-surface-strong));
+  color: rgb(var(--v-theme-primary));
+  box-shadow:
+    2px 3px 0 rgba(var(--app-accent-butter), 0.14),
+    0 12px 20px -20px rgba(var(--app-shell-shadow), 0.5);
+  font-weight: 750;
+}
+
+:is(.app-page, .v-overlay__content)
+  .v-tabs:not(.setup-guide-content__tabs)
+  .v-tab__slider {
+  display: none;
+}
+
+.app-page .v-sheet--border,
+.v-overlay__content .v-sheet--border {
+  border-color: rgba(var(--app-shell-border), 0.58);
+  background: rgba(var(--app-shell-surface-muted), 0.48);
+  box-shadow: inset 0 1px 0 rgba(var(--app-shell-surface-strong), 0.68);
+}
+
+.app-page .v-pagination .v-btn {
+  border: 1px solid transparent;
+  background: rgba(var(--app-shell-surface-strong), 0.76);
+  box-shadow: 0 10px 20px -22px rgba(var(--app-shell-shadow), 0.6);
+}
+
+.app-page .v-pagination__item--is-active .v-btn {
+  border-color: rgba(var(--v-theme-primary), 0.24);
+  background: rgba(var(--v-theme-primary), 0.12);
+  color: rgb(var(--v-theme-primary));
+  box-shadow: 2px 3px 0 rgba(var(--app-accent-butter), 0.15);
 }
 
 .v-list-item-title {

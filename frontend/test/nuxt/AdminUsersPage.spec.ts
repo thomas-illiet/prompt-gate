@@ -257,7 +257,7 @@ function mountPage() {
         AdminUserTokensDialog: UserTokensDialogStub,
         AdminUserUsageDialog: UsageDialogStub,
         AppConfirmDialog: ConfirmDialogStub,
-        AppPageHero: true,
+        AppPageHeader: true,
         AppTokenCreateDialog: TokenCreateDialogStub,
         UserTokenCreatedDialog: true,
         VAlert: { template: '<div><slot /></div>' },
@@ -329,9 +329,7 @@ describe('Admin users page usage statistics dialog', () => {
       expect(wrapper.find('[data-test="create-user-dialog"]').exists()).toBe(
         false,
       )
-      expect(wrapper.find('[data-test="edit-user-dialog"]').exists()).toBe(
-        true,
-      )
+      expect(wrapper.find('[data-test="edit-user-dialog"]').exists()).toBe(true)
     })
     expect(adminUsers.loadUser).toHaveBeenCalledWith(user.id)
     expect(loadAllPlans).toHaveBeenCalledOnce()
@@ -371,9 +369,9 @@ describe('Admin users page usage statistics dialog', () => {
     await wrapper.get('[data-test="submit-create-user"]').trigger('click')
 
     await vi.waitFor(() => {
-      expect(
-        wrapper.find('[data-test="create-user-dialog"]').exists(),
-      ).toBe(false)
+      expect(wrapper.find('[data-test="create-user-dialog"]').exists()).toBe(
+        false,
+      )
       expect(
         wrapper.find('[data-test="created-user-setup-warning"]').exists(),
       ).toBe(true)
@@ -382,9 +380,7 @@ describe('Admin users page usage statistics dialog', () => {
     expect(wrapper.find('[data-test="edit-user-dialog"]').exists()).toBe(false)
     expect(adminUsers.createUser).toHaveBeenCalledOnce()
 
-    await wrapper
-      .get('[data-test="retry-created-user-setup"]')
-      .trigger('click')
+    await wrapper.get('[data-test="retry-created-user-setup"]').trigger('click')
 
     await vi.waitFor(() => {
       expect(wrapper.find('[data-test="edit-user-dialog"]').exists()).toBe(true)

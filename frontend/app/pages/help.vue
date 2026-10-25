@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import HelpSetupConfigurationCard from '~/components/HelpSetup/HelpSetupConfigurationCard.vue'
 import HelpSetupDocumentationPanel from '~/components/HelpSetup/HelpSetupDocumentationPanel.vue'
+import HelpSetupHero from '~/components/HelpSetup/HelpSetupHero.vue'
 import HelpSetupOperationalNotes from '~/components/HelpSetup/HelpSetupOperationalNotes.vue'
 import HelpSetupProviderLoadingCard from '~/components/HelpSetup/HelpSetupProviderLoadingCard.vue'
 import { availableSetupProviders } from '~/utils/help-setup'
@@ -43,14 +44,9 @@ const modelSelectMode = computed<ModelSelectMode>(() => {
   <v-container fluid class="app-page">
     <v-row>
       <v-col cols="12">
-        <AppPageHero
-          icon="mdi-help-circle-outline"
-          kicker="Launch sequence"
-          title="Setup guide"
-          copy="Choose your route. We’ll wire the snippet. Configure curl, SDKs, shell scripts, Cline, Continue, Claude Code, and OpenCode with your PromptGate endpoint."
-          visual="cables"
-          stat-label="Providers"
-          :stat-value="helpSetup.loading.value ? '…' : String(providers.length)"
+        <HelpSetupHero
+          :loading="helpSetup.loading.value"
+          :provider-count="providers.length"
         />
       </v-col>
 

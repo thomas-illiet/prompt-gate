@@ -86,7 +86,7 @@ async function confirmQuotaReset() {
   <v-container fluid class="app-page profile-page">
     <v-row>
       <v-col cols="12">
-        <AppPageHero
+        <AppPageHeader
           icon="mdi-account-circle-outline"
           kicker="Access badge"
           title="Profile"
