@@ -75,12 +75,72 @@ Runtime image.
 {{- required "configSecret.key must not be empty" .Values.configSecret.key -}}
 {{- end -}}
 
+{{/*
+Validated public proxy path. Keep the path unescaped and segment-safe so the
+Ingress route and the application base path always have identical semantics.
+*/}}
+{{- define "prompt-gate.proxyPath" -}}
+{{- $proxyPath := required "ingress.proxyPath must not be empty" .Values.ingress.proxyPath -}}
+{{- if or (not (regexMatch "^/[A-Za-z0-9._~-]+(/[A-Za-z0-9._~-]+)*$" $proxyPath)) (ne (clean $proxyPath) $proxyPath) -}}
+{{- fail "ingress.proxyPath must be a normalized absolute non-root path without a trailing slash, encoding, query, fragment, or dot segments" -}}
+{{- end -}}
+{{- $proxyPath -}}
+{{- end -}}
+
+{{/*
+Return the normalized path component of an absolute public proxy URL. A root
+path is equivalent to no application base path.
+*/}}
+{{- define "prompt-gate.publicProxyURLPath" -}}
+{{- $rawURL := trim . -}}
+{{- $parsedURL := urlParse $rawURL -}}
+{{- $scheme := default "" (get $parsedURL "scheme") -}}
+{{- $host := default "" (get $parsedURL "host") -}}
+{{- $userinfo := default "" (get $parsedURL "userinfo") -}}
+{{- $query := default "" (get $parsedURL "query") -}}
+{{- $fragment := default "" (get $parsedURL "fragment") -}}
+{{- if or (not (or (eq $scheme "http") (eq $scheme "https"))) (eq $host "") (ne $userinfo "") (ne $query "") (ne $fragment "") (contains "%" $rawURL) -}}
+{{- fail "config.common.public_urls.proxy must be an absolute HTTP(S) URL without credentials, encoding, query, or fragment" -}}
+{{- end -}}
+{{- $urlPath := default "" (get $parsedURL "path") -}}
+{{- if eq $urlPath "/" -}}
+{{- $urlPath = "" -}}
+{{- end -}}
+{{- $urlPath -}}
+{{- end -}}
+
 {{/* Render the complete runtime document and derive public URLs from Ingress. */}}
 {{- define "prompt-gate.runtimeConfig" -}}
 {{- $config := deepCopy .Values.config -}}
+{{- $configuredBasePath := trim (default "" $config.proxy.base_path) -}}
+{{- $configuredProxyURL := trim (default "" $config.common.public_urls.proxy) -}}
+{{- $_ := set $config.proxy "base_path" $configuredBasePath -}}
+{{- if and .Values.ingress.enabled .Values.proxy.enabled -}}
+{{- $ingressProxyPath := include "prompt-gate.proxyPath" . -}}
+{{- if and (ne $configuredBasePath "") (ne $configuredBasePath $ingressProxyPath) -}}
+{{- fail "config.proxy.base_path must be empty or equal ingress.proxyPath when the proxy Ingress is enabled" -}}
+{{- end -}}
+{{- if ne $configuredProxyURL "" -}}
+{{- $configuredURLPath := include "prompt-gate.publicProxyURLPath" $configuredProxyURL -}}
+{{- if ne $configuredURLPath $ingressProxyPath -}}
+{{- fail "config.common.public_urls.proxy path must equal ingress.proxyPath when the proxy Ingress is enabled" -}}
+{{- end -}}
+{{- else -}}
+{{- $configuredProxyURL = printf "%s://%s%s" (include "prompt-gate.publicScheme" .) .Values.ingress.host $ingressProxyPath -}}
+{{- end -}}
+{{- $_ := set $config.proxy "base_path" $ingressProxyPath -}}
+{{- else if .Values.proxy.enabled -}}
+{{- if eq $configuredProxyURL "" -}}
+{{- fail "config.common.public_urls.proxy is required when the chart-managed proxy Ingress is disabled" -}}
+{{- end -}}
+{{- $configuredURLPath := include "prompt-gate.publicProxyURLPath" $configuredProxyURL -}}
+{{- if ne $configuredURLPath $configuredBasePath -}}
+{{- fail "config.common.public_urls.proxy path must equal config.proxy.base_path when the chart-managed proxy Ingress is disabled" -}}
+{{- end -}}
+{{- end -}}
 {{- $_ := set $config.common.public_urls "frontend" (include "prompt-gate.frontendBaseUrl" .) -}}
 {{- $_ := set $config.common.public_urls "backend" (include "prompt-gate.backendBaseUrl" .) -}}
-{{- $_ := set $config.common.public_urls "proxy" (include "prompt-gate.proxyBaseUrl" .) -}}
+{{- $_ := set $config.common.public_urls "proxy" $configuredProxyURL -}}
 {{- toYaml $config -}}
 {{- end -}}
 
@@ -103,13 +163,6 @@ Public backend URL.
 */}}
 {{- define "prompt-gate.backendBaseUrl" -}}
 {{- default (printf "%s://%s" (include "prompt-gate.publicScheme" .) .Values.ingress.host) .Values.config.common.public_urls.backend -}}
-{{- end -}}
-
-{{/*
-Public proxy URL.
-*/}}
-{{- define "prompt-gate.proxyBaseUrl" -}}
-{{- default (printf "%s://%s%s" (include "prompt-gate.publicScheme" .) .Values.ingress.host .Values.ingress.proxyPath) .Values.config.common.public_urls.proxy -}}
 {{- end -}}
 
 {{/*

@@ -48,7 +48,7 @@ Recommended production layout:
 Prompt Gate requires:
 
 - PostgreSQL for durable data
-- Redis for sessions, auth and OPA decision caches, group/provider/subscription
+- Redis for sessions, auth and OPA denial caches, group/provider/subscription
   snapshots, rolling quota state and reset barriers, config reload events, and
   usage event streams
 - an independently operated OPA server for every proxy decision
@@ -75,7 +75,8 @@ reference.
 Model Lab is always enabled for `user` and `admin` roles. Configure the same
 browser-visible HTTP(S) URL in `common.public_urls.proxy`. If
 that URL contains a routing prefix such as the
-Helm chart's `/remote`, the edge must strip it before forwarding to the proxy.
+Helm chart's `/remote`, configure the same value in `proxy.base_path`; the edge
+must forward the original path without rewriting it.
 Control exposure through roles and access groups. Verify that tickets are one-time,
 three-stream limits hold, quota/accounting are exact, and a unique canary prompt
 is absent from logs, Redis event payloads, PostgreSQL content, OTel spans,
@@ -108,7 +109,7 @@ runtime; only the final command name changes:
 ```sh
 docker run --rm \
   -v /secure/path/promptgate.yaml:/etc/prompt-gate/promptgate.yaml:ro \
-  ghcr.io/thomas-illiet/prompt-gate:v0.1.0 \
+  ghcr.io/thomas-illiet/prompt-gate:v2.1.0 \
   /app/promptgate --config /etc/prompt-gate/promptgate.yaml migrate
 ```
 
@@ -119,7 +120,7 @@ docker run --rm \
   -p 8080:8080 \
   -v /secure/path/promptgate.yaml:/etc/prompt-gate/promptgate.yaml:ro \
   -v /path/to/custom-ca.pem:/run/secrets/custom-ca.pem:ro \
-  ghcr.io/thomas-illiet/prompt-gate:v0.1.0 \
+  ghcr.io/thomas-illiet/prompt-gate:v2.1.0 \
   /app/promptgate --config /etc/prompt-gate/promptgate.yaml api
 ```
 
@@ -149,7 +150,7 @@ Run the proxy, worker, or scheduler by changing only the last argument:
 docker run --rm \
   -p 8081:8081 \
   -v /secure/path/promptgate.yaml:/etc/prompt-gate/promptgate.yaml:ro \
-  ghcr.io/thomas-illiet/prompt-gate:v0.1.0 \
+  ghcr.io/thomas-illiet/prompt-gate:v2.1.0 \
   /app/promptgate --config /etc/prompt-gate/promptgate.yaml proxy
 ```
 
@@ -179,10 +180,14 @@ SPA shell for frontend routes.
 - Set `common.public_urls.frontend` to the browser-visible frontend origin.
 - Set `common.public_urls.proxy` when the proxy is exposed on a different
   origin, path, or externally mapped port.
+- Set `proxy.base_path` to the public proxy path when the proxy shares an
+  origin with the API. The proxy removes it internally before authorization
+  and provider routing.
 - Prefer `proxy.trusted_proxies` with explicit ingress or
   reverse-proxy CIDRs when the proxy needs the real client IP.
-- Enable `proxy.trust_forward_headers` only when the proxy is behind
-  trusted infrastructure that sanitizes forwarded headers.
+- Keep `proxy.trust_forward_headers` disabled when using explicit trusted CIDRs;
+  the global switch is only for an entirely trusted network boundary that
+  sanitizes every forwarded header.
 
 ## Kubernetes NGINX Ingress
 
@@ -232,10 +237,9 @@ https://promptgate.example.com/auth/callback
 ```
 
 For a separate frontend service behind the same host, route `/auth/*` and
-`/api/v1/*` to the API service, `/bridge/*` to the proxy service with the
-`/bridge` prefix stripped, and `/` to the frontend service. Keep the rules that
-need rewrites in separate Ingress objects because nginx applies
-`rewrite-target` to every path in the same object.
+`/api/v1/*` to the API service, `/bridge` to the proxy service, and `/` to the
+frontend service. Configure `proxy.base_path: /bridge`; no Ingress rewrite is
+required.
 
 If `common.public_urls.backend` includes `/api`, add a compatibility rule for
 the OIDC callback:
@@ -270,22 +274,29 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: promptgate-proxy
-  annotations:
-    nginx.ingress.kubernetes.io/use-regex: "true"
-    nginx.ingress.kubernetes.io/rewrite-target: /$2
 spec:
   ingressClassName: nginx
   rules:
     - host: promptgate.example.com
       http:
         paths:
-          - path: /bridge(/|$)(.*)
-            pathType: ImplementationSpecific
+          - path: /bridge
+            pathType: Prefix
             backend:
               service:
                 name: promptgate-proxy
                 port:
                   number: 8081
+```
+
+The matching runtime configuration is:
+
+```yaml
+common:
+  public_urls:
+    proxy: https://promptgate.example.com/bridge
+proxy:
+  base_path: /bridge
 ```
 
 To preserve the real client IP with ingress-nginx, make sure the controller
@@ -298,8 +309,16 @@ for your load balancer, ingress nodes, or upstream proxies. See the
 [source IP notes](https://kubernetes.github.io/ingress-nginx/user-guide/miscellaneous/#source-ip-address),
 and [externalTrafficPolicy FAQ](https://kubernetes.github.io/ingress-nginx/faq/#client-ipaddress-on-single-node-cluster).
 
-For HAProxy Ingress, ensure the controller overwrites or sanitizes inbound
-`X-Forwarded-For` before forwarding the client address. Temporarily enable
+For F5 -> HAProxy Ingress, require the F5 to overwrite or sanitize inbound
+`X-Forwarded-For` and explicitly enable
+`haproxy.org/forwarded-for: "true"` on the Ingress. HAProxy appends the TCP
+source it actually observes as the last header occurrence; this can be the F5
+or a controlled node/SNAT hop when the Kubernetes Service masks the original
+source. Configure `proxy.trusted_proxies` with the narrow direct HAProxy peer
+range and every controlled upstream hop that actually appears in the chain.
+Prompt Gate walks the chain from right to left to select the nearest untrusted
+client address. Do not set `haproxy.org/src-ip-header` or enable the legacy
+global `proxy.trust_forward_headers` for this topology. Temporarily enable
 `proxy.client_ip_debug: true`, send a known external request, and use
 the structured `peer_ip` field to determine whether Prompt Gate sees an HAProxy
 pod IP, node IP, or SNAT address. Configure only the narrow stable CIDR that
@@ -307,6 +326,12 @@ contains that peer in `proxy.trusted_proxies`, keep
 `proxy.trust_forward_headers: false`, then disable the diagnostic.
 If the trusted CIDR is shared with other workloads, restrict the proxy Service
 with a NetworkPolicy selecting the HAProxy namespace and controller pods.
+
+Chart `0.2.x` moves `/remote` removal from HAProxy into Prompt Gate. Upgrade
+from `0.1.x` during a short F5 maintenance window after the `v2.1.0` image is
+available: close external traffic, perform a full Argo CD sync, wait for the
+proxy rollout and unified Ingress to become healthy, validate
+`/remote/health` and a provider request, then reopen traffic.
 
 ## Health Checks
 
@@ -326,10 +351,13 @@ GET /health
 ```
 
 Returns `200 OK` with `{"status":"ok"}` when the proxy process is serving.
+When `proxy.base_path` is `/remote`, `GET /remote/health` reaches the same
+handler through the public Ingress while the direct path remains available to
+Kubernetes probes.
 
 ## Production Notes
 
-- Use immutable version tags such as `v0.1.0` for production deployments.
+- Use immutable version tags such as `v2.1.0` for production deployments.
 - Avoid deploying `latest` to production unless the platform also records the
   resolved image digest.
 - Store all secrets in a secret manager.

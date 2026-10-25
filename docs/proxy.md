@@ -22,12 +22,13 @@ flowchart TD
     B --> C{"Valid Prompt Gate token?"}
     C -->|No| D["401 invalid_token or missing_auth_credentials"]
     C -->|Yes| E["Load user profile and cache it in Redis"]
-    E --> F["External OPA decision (Redis-cached)"]
+    E --> E2["Provider route and method allowlist"]
+    E2 --> F["External OPA decision (denials Redis-cached)"]
     F --> G{"Policy allows?"}
     G -->|No| H["403 policy_denied or 503 policy_unavailable"]
     G -->|Yes| I["Access-group provider and model checks"]
     I -->|Denied| I2["403 group_access_denied or group_model_required"]
-    I -->|Allowed| J["Effective subscription and rolling quota check"]
+    I -->|Allowed| J["Atomic rolling-quota reservation"]
     J -->|No plan| J2["403 subscription_required"]
     J -->|Quota exhausted| J3["429 quota_exceeded"]
     J -->|Allowed| K["AIBridge actor middleware"]
@@ -36,13 +37,49 @@ flowchart TD
     L --> N["Usage recorder"]
 ```
 
-The proxy strips inbound `Authorization` and `X-Api-Key` headers after Prompt
-Gate authentication so local credentials are not forwarded upstream.
+The proxy rebuilds provider-bound headers from a strict allowlist after Prompt
+Gate authentication. Prompt Gate credentials, cookies, forwarding headers,
+tracing baggage, administration headers, and unknown custom headers are never
+forwarded upstream.
 
-Subscription checks apply to quota-consuming `POST` routes for chat
-completions, embeddings, Anthropic messages, and Responses API operations. A
-quota reset advances a per-account Redis barrier and clears both live rolling
-windows without deleting PostgreSQL usage, interception, or dashboard KPI data.
+Subscription checks apply to the exact `POST` routes for chat completions,
+embeddings, Anthropic messages, and Responses API operations. Finite plans use
+an atomic Redis reservation before provider dispatch, so concurrent requests
+cannot all pass against the same remaining balance. The reservation combines a
+conservative input/cache bound with the requested maximum output; an unbounded
+request holds the remaining finite allowance until it completes. Observed
+provider usage replaces the hold atomically. A successful provider response
+without usage metadata consumes the conservative reservation. An explicit,
+non-cancelled provider failure releases it; a client cancellation or deadline
+after dispatch keeps the conservative charge because the provider may already
+have accepted the request. Hosted/server-side tools whose injected context is
+not bounded by the request body also reserve all remaining allowance. A quota
+reset advances a per-account Redis barrier and
+clears both live rolling windows without deleting PostgreSQL usage,
+interception, or dashboard KPI data; in-flight reservations remain held because
+their eventual usage is recorded after the reset barrier.
+
+Streaming reservations remain held until the provider stream is complete.
+Partial or aborted streams keep the conservative charge instead of reconciling
+to an early input-only usage event. Prompt Gate also reads the final bounded
+Responses API SSE usage event because the current AI Bridge does not emit that
+usage callback when MCP is disabled.
+
+Every provider POST body is parsed once with a strict, bounded JSON parser
+before policy, quota, or upstream dispatch. Duplicate keys (including
+Unicode/case-folded duplicates), non-object bodies, and malformed JSON are
+rejected in linear time. Structural security fields are then matched
+case-insensitively without imposing naming rules on arbitrary tool schemas or
+business payloads. Prompt Gate also rejects provider-owned object handles that cannot be
+attributed to the authenticated account: conversations, previous responses,
+stored prompts, files/uploads, vector stores, remote media URLs, containers,
+OpenAI encrypted reasoning/compaction items, and Anthropic thinking signatures
+or redacted-thinking blobs. Provider-backed file search, MCP, image generation,
+non-local shell state, provider-generated tool-result blocks, and unknown beta
+input variants fail closed. Inline text/base64/data URLs and ordinary local
+tool correlation IDs remain supported. This deliberately disables stateful
+provider continuations until Prompt Gate has a per-account ownership registry
+for them.
 
 ### Model Lab ticket path
 
@@ -54,9 +91,11 @@ and canonicalizes the bounded text-only conversation history; then atomically
 consumes the Redis record. Messages must alternate between `user` and
 `assistant`, start with `user`, and end with the current `user` message. Replays
 and expired tickets return the same generic `401`.
-If `common.public_urls.proxy` contains a public routing prefix, the edge must
-strip it before forwarding. The ticket is bound to the canonical post-rewrite
-path seen by the proxy, while the browser receives the prefixed public URL.
+If `common.public_urls.proxy` contains a public routing prefix, configure the
+same normalized path in `proxy.base_path`. The proxy removes it before ticket
+validation, so the ticket remains bound to the canonical provider path while
+the browser receives the prefixed public URL. The edge forwards the original
+path unchanged and does not need a rewrite rule.
 
 An account can hold at most `common.model_lab.max_concurrent` active Model
 Lab leases. After ticket authentication, the request rejoins the canonical
@@ -77,9 +116,11 @@ by the proxy. It does not drain an unread body solely for logging. JSON objects
 and arrays are logged as structured JSON; other payloads are logged as raw
 strings.
 
-The middleware is the first proxy-request middleware, before authentication and
-any header mutation. It mirrors reads without pre-consuming or replacing the
-body stream. Its diagnostic copy is bounded by
+When `proxy.base_path` is configured, its validated prefix is removed before
+this diagnostic runs, so the logged `path` is the canonical provider path. The
+debug middleware otherwise remains first in the proxy pipeline, before
+authentication and any header mutation. It mirrors reads without pre-consuming
+or replacing the body stream. Its diagnostic copy is bounded by
 `proxy.max_buffered_request_bytes`; only oversized requests include
 `body_truncated: true`, and their normal processing or rejection is unchanged.
 Responses are never logged.
@@ -121,9 +162,11 @@ Provider names must be lowercase DNS-like names such as `openai-main` or
 ## OPA policy behavior
 
 The proxy evaluates an external OPA decision after token authentication and
-before group, quota, and provider processing. Both allowed and denied decisions
-are cached in Redis. OPA failures return `503 policy_unavailable` on a cache
-miss; explicit policy denials return `403 policy_denied`.
+before group, quota, and provider processing. Only denied decisions are cached
+in Redis: every allow is re-evaluated so a policy revocation takes effect on the
+next request without waiting for a cache TTL. OPA failures return
+`503 policy_unavailable` on a cache miss; explicit policy denials return
+`403 policy_denied`.
 
 `proxy.opa.enabled` defaults to `true`. Setting it to `false` is an
 emergency access-release mechanism: the proxy does not initialize or call OPA,
@@ -135,11 +178,21 @@ warning; restore it to `true` as soon as the incident is resolved.
 By default the proxy uses the TCP remote address. In production, prefer setting
 `proxy.trusted_proxies` to the CIDRs of trusted ingress or reverse
 proxy hops. The proxy will then trust `X-Forwarded-For` and `X-Real-IP` only
-when the direct peer is in those CIDRs.
+when the direct peer is in those CIDRs. All `X-Forwarded-For` occurrences are
+processed from right to left: trusted intermediary hops are skipped and the
+nearest untrusted address is selected. A malformed trusted chain falls back to
+the TCP peer address.
+
+For F5 -> HAProxy -> Prompt Gate, configure the narrow direct HAProxy peer range
+and every controlled upstream hop that actually appears in the header chain.
+The F5 must overwrite or sanitize the inbound header. With `forwarded-for`
+enabled, HAProxy appends the TCP source it observes, which may be the F5 or a
+node/SNAT address depending on the Kubernetes Service topology.
 
 `proxy.trust_forward_headers: true` remains available as a legacy
-global trust switch. Enable it only behind infrastructure that strips or
-rewrites untrusted forwarded headers.
+global trust switch. Keep it disabled when `proxy.trusted_proxies` is
+configured; enable it only behind an entirely trusted network boundary that
+strips or rewrites every untrusted forwarded header.
 
 For short-lived diagnosis, set `proxy.client_ip_debug: true`. Each
 request then produces a structured `client IP resolved` log with only
@@ -272,7 +325,7 @@ The proxy uses Redis for:
 - access-group and subscription-plan snapshots
 - versioned subscription assignments
 - rolling 5-hour and 7-day quota counters plus quota-reset barriers
-- OPA allow and deny decisions
+- OPA deny decisions
 - config version counters
 - config reload pub/sub
 - asynchronous proxy usage and account IP events
@@ -281,7 +334,7 @@ The proxy uses Redis for:
 
 `common.redis.cache_ttl` controls the default TTL for snapshots and cached
 auth records. Cached auth entries also never outlive the token's expiration.
-`proxy.opa.cache_ttl` independently controls policy-decision expiration.
+`proxy.opa.cache_ttl` independently controls cached-denial expiration.
 
 ## Hot Reload
 
@@ -292,15 +345,24 @@ The proxy subscribes to `promptgate:config:events`.
 | `providers` | Schedule a debounced bridge rebuild. |
 | `groups` | Refresh the access-group snapshot. |
 | `auth` | Update the auth cache version. |
-| `subscriptions` | Refresh subscription plans and versioned account assignments through the subscription watcher. |
+| `subscriptions` | Refresh subscription plans and invalidate process-local assignment generations. |
 
 `common.proxy_reload_debounce` controls provider rebuild debounce
 time. Subscription updates use their own watcher but consume the same Redis
 event stream. The proxy also listens for `SIGHUP` and runs a full runtime reload
 when the signal is received.
 
-If a reload fails, the proxy logs the error and keeps the previous working
-bridge.
+Periodic DB-authoritative reconciliation repairs lost Redis notifications and
+reconnects closed Pub/Sub subscriptions. If the database fails after a newer
+provider or group generation is known, the proxy fails closed (provider bridge
+unavailable or deny-all group snapshot) until an authoritative reload succeeds.
+When no change is known, a transient database failure can retain the last
+version-proven state. Each authoritative load has its own deadline so a database
+blackhole cannot pin the reload lock indefinitely. Subscription assignments
+also have a short independent lifetime, so a lost version bump is repaired by
+a bounded per-user reload without scanning Redis or blocking unrelated quota
+checks. Concurrent misses for the same account are coalesced into one database
+lookup.
 
 ## Startup Requirements
 

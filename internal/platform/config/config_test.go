@@ -67,6 +67,9 @@ func TestLoadRuntimeConfigsFromYAML(t *testing.T) {
 	if api.Port != "8080" || proxy.Port != "8081" {
 		t.Fatalf("unexpected ports: api=%q proxy=%q", api.Port, proxy.Port)
 	}
+	if proxy.ProxyBasePath != "" {
+		t.Fatalf("expected root-mounted proxy by default, got base path %q", proxy.ProxyBasePath)
+	}
 	if api.SessionTTL != 8*time.Hour || api.ModelLab.TicketTTL != time.Minute {
 		t.Fatalf("unexpected API defaults: %#v", api)
 	}
@@ -131,6 +134,7 @@ func TestLoadYAMLOverridesAndLists(t *testing.T) {
     max_idle_connections: 7
     max_open_connections: 12
 `, 1)
+	contents = strings.Replace(contents, "    proxy: https://proxy.example.com\n", "    proxy: https://proxy.example.com/remote\n", 1)
 	contents = strings.Replace(contents, `  redis:
     url: redis://localhost:6379/0
 `, `  redis:
@@ -183,6 +187,7 @@ func TestLoadYAMLOverridesAndLists(t *testing.T) {
     url: http://opa:8181
 `, `proxy:
   port: ":9090"
+  base_path: /remote
   trusted_proxies:
     - 10.0.0.0/8
     - 192.168.0.0/16
@@ -248,7 +253,7 @@ schedule:
 	if api.ModelLab.TicketTTL != 90*time.Second || api.ModelLab.MaxTargets != 2 || api.ModelLab.CatalogStaleTTL != 25*time.Minute {
 		t.Fatalf("unexpected model lab overrides: %#v", api.ModelLab)
 	}
-	if proxy.Port != ":9090" || len(proxy.ProxyTrustedProxies) != 2 {
+	if proxy.Port != ":9090" || proxy.ProxyBasePath != "/remote" || len(proxy.ProxyTrustedProxies) != 2 {
 		t.Fatalf("unexpected proxy overrides: %#v", proxy)
 	}
 	if proxy.RedisCacheTTL != 7*time.Minute || proxy.RedisPoolSize != 20 || proxy.RedisMinIdleConnections != 2 || proxy.RedisPoolTimeout != 4*time.Second || proxy.RedisReadTimeout != 3*time.Second || proxy.RedisWriteTimeout != 2*time.Second {
@@ -376,6 +381,15 @@ func TestLoadProxyValidatesCostsCIDRsAndOTel(t *testing.T) {
 		{name: "negative cost", content: strings.Replace(validConfigYAML, "  security:\n", "  usage_cost:\n    input: -1\n  security:\n", 1), want: "common.usage_cost.input"},
 		{name: "zero Redis minimum idle", content: strings.Replace(validConfigYAML, "    url: redis://localhost:6379/0\n", "    url: redis://localhost:6379/0\n    min_idle_connections: 0\n", 1), want: "common.redis.min_idle_connections"},
 		{name: "invalid CIDR", content: strings.Replace(validConfigYAML, "proxy:\n", "proxy:\n  trusted_proxies: [10.0.0.0/8, not-a-cidr]\n", 1), want: "proxy.trusted_proxies"},
+		{name: "relative base path", content: strings.Replace(validConfigYAML, "proxy:\n", "proxy:\n  base_path: remote\n", 1), want: "proxy.base_path"},
+		{name: "root base path", content: strings.Replace(validConfigYAML, "proxy:\n", "proxy:\n  base_path: /\n", 1), want: "proxy.base_path"},
+		{name: "base path trailing slash", content: strings.Replace(validConfigYAML, "proxy:\n", "proxy:\n  base_path: /remote/\n", 1), want: "proxy.base_path"},
+		{name: "base path dot segment", content: strings.Replace(validConfigYAML, "proxy:\n", "proxy:\n  base_path: /edge/../remote\n", 1), want: "proxy.base_path"},
+		{name: "base path encoded", content: strings.Replace(validConfigYAML, "proxy:\n", "proxy:\n  base_path: /remote%2Fedge\n", 1), want: "proxy.base_path"},
+		{name: "base path query", content: strings.Replace(validConfigYAML, "proxy:\n", "proxy:\n  base_path: /remote?tenant=one\n", 1), want: "proxy.base_path"},
+		{name: "base path fragment", content: strings.Replace(validConfigYAML, "proxy:\n", "proxy:\n  base_path: \"/remote#section\"\n", 1), want: "proxy.base_path"},
+		{name: "base path empty fragment", content: strings.Replace(validConfigYAML, "proxy:\n", "proxy:\n  base_path: \"/remote#\"\n", 1), want: "proxy.base_path"},
+		{name: "base path does not match public URL", content: strings.Replace(strings.Replace(validConfigYAML, "    proxy: https://proxy.example.com\n", "    proxy: https://proxy.example.com/other\n", 1), "proxy:\n", "proxy:\n  base_path: /remote\n", 1), want: "common.public_urls.proxy path must equal proxy.base_path"},
 		{name: "invalid model lab limit", content: strings.Replace(validConfigYAML, "  security:\n", "  model_lab:\n    max_targets: 4\n  security:\n", 1), want: "common.model_lab.max_targets"},
 		{name: "stale catalog shorter than fresh", content: strings.Replace(validConfigYAML, "  security:\n", "  model_lab:\n    catalog_fresh_ttl: 10m\n    catalog_stale_ttl: 5m\n  security:\n", 1), want: "common.model_lab.catalog_stale_ttl"},
 		{name: "invalid OPA URL", content: strings.Replace(validConfigYAML, "url: http://opa:8181", "url: file:///tmp/policy", 1), want: "proxy.opa.url"},

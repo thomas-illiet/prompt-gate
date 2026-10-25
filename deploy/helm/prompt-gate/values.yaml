@@ -100,7 +100,9 @@ config:
       jwt_secret: ""
       secrets_key: ""
     public_urls:
-      # Empty values are derived from the Ingress host and proxy path.
+      # Empty frontend/backend values are derived from the Ingress host. The
+      # proxy URL is derived only while the chart-managed proxy Ingress is
+      # enabled; otherwise it must be set explicitly and match proxy.base_path.
       frontend: ""
       backend: ""
       proxy: ""
@@ -140,6 +142,11 @@ config:
 
   proxy:
     port: 8081
+    # Optional application-owned public mount path. When the chart-managed
+    # Ingress is enabled this is derived from ingress.proxyPath.
+    base_path: ""
+    # Keep global header trust disabled. List the narrow direct HAProxy peer
+    # range and each controlled upstream hop actually present in X-Forwarded-For.
     trust_forward_headers: false
     trusted_proxies: []
     client_ip_debug: false
@@ -342,27 +349,21 @@ migrate:
       memory: 256Mi
 
 ingress:
-  # Creates two Ingress objects on the same host: one for API/frontend at /
-  # and one for the proxy under proxyPath.
+  # Creates one Ingress object on one host. The longest Prefix route sends
+  # proxyPath to the proxy while / serves the API and frontend.
   enabled: true
   className: haproxy
   host: promptgate.example.com
 
-  # Public path for the proxy. With stripPath enabled, the generated HAProxy
-  # Technologies annotation removes this prefix before forwarding requests.
+  # Public path for the proxy. Prompt Gate removes this prefix internally;
+  # HAProxy forwards the original path without a rewrite rule.
   proxyPath: /remote
+
+  # Annotations shared by both routes in the single Ingress. HAProxy appends
+  # the connection source to X-Forwarded-For for backend client-IP resolution.
+  annotations:
+    haproxy.org/forwarded-for: "true"
 
   tls:
     enabled: true
     secretName: promptgate-tls
-
-  api:
-    # Extra annotations for the API/frontend Ingress.
-    annotations: {}
-
-  proxy:
-    # Generate haproxy.org/path-rewrite from proxyPath. Disable this when the
-    # external controller already strips the prefix. An explicit annotation in
-    # annotations overrides the generated value.
-    stripPath: true
-    annotations: {}

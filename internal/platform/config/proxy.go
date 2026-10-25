@@ -35,6 +35,7 @@ func LoadProxy(configPath string) (ProxyConfig, error) {
 		SecretsConfig:   file.secretsConfig(),
 		PublicURLConfig: file.publicURLConfig(),
 		ProxyRuntimeConfig: ProxyRuntimeConfig{
+			ProxyBasePath:                 file.Proxy.BasePath,
 			ProxyTrustForwardHeaders:      file.Proxy.TrustForwardHeaders,
 			ProxyTrustedProxies:           trustedProxies,
 			ProxyClientIPDebug:            file.Proxy.ClientIPDebug,
@@ -97,6 +98,12 @@ func LoadProxy(configPath string) (ProxyConfig, error) {
 		return ProxyConfig{}, errors.New("common.public_urls.proxy is required")
 	}
 	if err := validateModelLabProxyBaseURL(cfg.ProxyBaseURL); err != nil {
+		return ProxyConfig{}, err
+	}
+	if err := validateProxyBasePath(cfg.ProxyBasePath); err != nil {
+		return ProxyConfig{}, err
+	}
+	if err := validateProxyPublicURLPath(cfg.ProxyBaseURL, cfg.ProxyBasePath); err != nil {
 		return ProxyConfig{}, err
 	}
 	if err := validateOptionalFile("common.tls.ca_file", cfg.CAFile); err != nil {

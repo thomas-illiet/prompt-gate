@@ -168,6 +168,7 @@ type oidcFileConfig struct {
 
 type proxyFileConfig struct {
 	Port                     portValue      `yaml:"port"`
+	BasePath                 string         `yaml:"base_path"`
 	TrustForwardHeaders      bool           `yaml:"trust_forward_headers"`
 	TrustedProxies           []string       `yaml:"trusted_proxies"`
 	ClientIPDebug            bool           `yaml:"client_ip_debug"`

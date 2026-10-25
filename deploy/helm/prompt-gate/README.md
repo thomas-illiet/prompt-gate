@@ -33,6 +33,40 @@ spec:
       - CreateNamespace=true
 ```
 
+## HAProxy Technologies Ingress
+
+The chart targets the HAProxy Technologies Kubernetes Ingress Controller by
+default. It renders one Ingress, one hostname, and two ordinary `Prefix`
+routes: `/remote` goes to the proxy Service and `/` goes to the API/frontend
+Service. Kubernetes selects the longest matching prefix. There is no regex or
+HAProxy URL rewrite; Prompt Gate removes the configured proxy base path before
+authentication, policy, quota, and provider routing.
+
+```yaml
+ingress:
+  className: haproxy
+  host: promptgate.example.com
+  proxyPath: /remote
+  annotations:
+    haproxy.org/forwarded-for: "true"
+```
+
+For a chart-managed configuration Secret, the chart sets
+`config.proxy.base_path` from `ingress.proxyPath`. If `existingSecret` is used,
+the YAML stored in that Secret must set the same base path. `/health` remains
+available directly to Kubernetes probes, while `/remote/health` reaches the
+same proxy health handler through the Ingress.
+
+An explicit `config.common.public_urls.proxy` may use a different scheme or
+hostname, but its path must equal `ingress.proxyPath`. When the chart-managed
+proxy Ingress is disabled, set `config.common.public_urls.proxy` explicitly and
+make its path match `config.proxy.base_path`; the chart no longer derives a
+misleading URL from the example Ingress hostname.
+
+The chart does not guess trusted-proxy networks. Determine the actual HAProxy
+controller or node CIDR and every trusted upstream proxy CIDR before setting
+`config.proxy.trusted_proxies`.
+
 ## Runtime Configuration Secret
 
 Prompt Gate reads one structured `promptgate.yaml` file. The document contains
@@ -58,7 +92,9 @@ configSecret:
 
 When `existingSecret` is set, the chart does not render configuration content.
 Keep `config.api.port` and `config.proxy.port` equal to the corresponding values
-in the external file because Kubernetes probes use those container ports.
+in the external file because Kubernetes probes use those container ports. When
+Ingress and proxy are enabled, also set `proxy.base_path` in the external file
+to the exact `ingress.proxyPath` value.
 Change `rolloutToken` after replacing the Secret so all workloads restart.
 Because the selected design uses one complete file, every Prompt Gate process
 can read every secret in it; restrict Secret and values-file access accordingly.
@@ -156,7 +192,8 @@ config:
   proxy:
     trust_forward_headers: false
     trusted_proxies:
-      - "<narrow-controller-or-node-cidr>"
+      - "<narrow-haproxy-controller-or-node-cidr>"
+      - "<upstream-hop-seen-by-haproxy-ip/32-or-cidr>"
     client_ip_debug: true # temporary
 ```
 
@@ -175,12 +212,25 @@ narrow corresponding node/network CIDR. Prefer dedicated controller address
 ranges; never trust all cluster-private addresses merely for convenience.
 After validation, set `config.proxy.client_ip_debug` back to `false`.
 
-HAProxy must overwrite or sanitize client-supplied `X-Forwarded-For` before
-appending the real client address. When the trusted CIDR contains workloads
-other than the ingress controller, add a NetworkPolicy that permits access to
-the Prompt Gate proxy only from the HAProxy controller namespace/pods. The
-controller or its upstream load balancer must preserve the source IP; the exact
-HAProxy setting depends on that external topology.
+The generated Ingress explicitly enables
+`haproxy.org/forwarded-for: "true"`. In the supported F5 topology, the F5 must
+overwrite or sanitize client-supplied `X-Forwarded-For`. HAProxy then appends
+the TCP source it actually observes as the last occurrence. Depending on the
+Service topology, that source can be the F5 or a controlled node/SNAT hop.
+Prompt Gate walks every header occurrence from right to left, skips only the
+explicitly configured HAProxy and upstream ranges, and selects the nearest
+untrusted address as the client.
+Do not enable `trust_forward_headers` or configure `haproxy.org/src-ip-header`
+for this topology.
+`externalTrafficPolicy: Local` is not a substitute for the F5 header contract
+when the F5 terminates or SNATs the connection; use it only if the F5 operator
+confirms that the original L4 source address is preserved.
+
+Obtain the F5 header contract, inspect the source HAProxy really receives, and
+configure every controlled hop that actually appears in the chain; do not guess
+any CIDR. When the HAProxy CIDR contains other workloads, add a NetworkPolicy
+that permits access to the Prompt Gate proxy only from the HAProxy controller
+namespace/pods.
 
 ## Argo CD Ordering
 
@@ -188,3 +238,9 @@ The migration Job is an Argo CD `Sync` hook, not a Helm hook. The default sync
 waves apply the configuration Secret and ServiceAccount first, run migrations next, then
 roll out workloads and Ingress resources. Hooks are not run during selective
 syncs, so use a full application sync when migrations must run.
+
+Upgrading from chart `0.1.x` to `0.2.x` changes where `/remote` is removed:
+HAProxy stops rewriting it and Prompt Gate starts removing it. Perform that
+upgrade during a short maintenance window after the `v2.1.0` image is
+available, wait for the proxy rollout and full Argo CD sync to become healthy,
+validate `/remote/health`, and only then reopen F5 traffic.

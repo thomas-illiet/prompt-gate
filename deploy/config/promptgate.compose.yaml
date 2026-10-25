@@ -62,6 +62,7 @@ api:
 
 proxy:
   port: 8081
+  base_path: ""
   trust_forward_headers: false
   trusted_proxies: []
   client_ip_debug: false

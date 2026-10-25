@@ -59,6 +59,19 @@ func TestResolveWithOptionsGlobalTrustOverridesTrustedProxyCIDRs(t *testing.T) {
 	}
 }
 
+// TestResolveGlobalTrustKeepsFirstHeaderSemantics verifies the legacy global
+// switch is unaffected by the stricter trusted-proxy chain handling.
+func TestResolveGlobalTrustKeepsFirstHeaderSemantics(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "192.0.2.10:1234"
+	req.Header.Add("X-Forwarded-For", "198.51.100.7")
+	req.Header.Add("X-Forwarded-For", "203.0.113.9")
+
+	if got := Resolve(req, true); got != "198.51.100.7" {
+		t.Fatalf("expected first forwarded IP from legacy global trust, got %q", got)
+	}
+}
+
 // TestResolveUsesTrustedRealIPFallback verifies trusted X-Real-IP fallback handling.
 func TestResolveUsesTrustedRealIPFallback(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -112,6 +125,45 @@ func TestResolveWithOptionsReadsForwardedForRightToLeft(t *testing.T) {
 	}
 }
 
+// TestResolveWithOptionsReadsRepeatedForwardedForRightToLeft verifies that
+// HAProxy's appended header wins over values supplied by an untrusted client.
+func TestResolveWithOptionsReadsRepeatedForwardedForRightToLeft(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "10.1.2.3:1234"
+	req.Header.Add("X-Forwarded-For", "203.0.113.66") // client-supplied spoof
+	req.Header.Add("X-Forwarded-For", "198.51.100.7") // client recorded by F5
+	req.Header.Add("X-Forwarded-For", "192.0.2.9")    // F5 recorded by HAProxy
+
+	got := ResolveWithOptions(req, Options{
+		TrustedProxies: []netip.Prefix{
+			mustPrefix(t, "10.0.0.0/8"),
+			mustPrefix(t, "192.0.2.0/24"),
+		},
+	})
+	if got != "198.51.100.7" {
+		t.Fatalf("expected F5-recorded client IP, got %q", got)
+	}
+}
+
+// TestResolveWithOptionsReadsRepeatedAndCommaSeparatedForwardedFor verifies
+// every header occurrence participates in the same ordered proxy chain.
+func TestResolveWithOptionsReadsRepeatedAndCommaSeparatedForwardedFor(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "10.1.2.3:1234"
+	req.Header.Add("X-Forwarded-For", "203.0.113.66, 203.0.113.67")
+	req.Header.Add("X-Forwarded-For", "198.51.100.7, 192.0.2.9")
+
+	got := ResolveWithOptions(req, Options{
+		TrustedProxies: []netip.Prefix{
+			mustPrefix(t, "10.0.0.0/8"),
+			mustPrefix(t, "192.0.2.0/24"),
+		},
+	})
+	if got != "198.51.100.7" {
+		t.Fatalf("expected closest untrusted client IP, got %q", got)
+	}
+}
+
 // TestResolveWithOptionsRejectsMalformedForwardedForChain verifies invalid hops stop trust traversal.
 func TestResolveWithOptionsRejectsMalformedForwardedForChain(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -124,6 +176,27 @@ func TestResolveWithOptionsRejectsMalformedForwardedForChain(t *testing.T) {
 	})
 	if got != "10.1.2.3" {
 		t.Fatalf("expected malformed chain to fall back to remote addr, got %q", got)
+	}
+}
+
+// TestResolveWithOptionsRejectsMalformedRepeatedForwardedForChain verifies a
+// malformed hop between the client and trusted edge fails closed.
+func TestResolveWithOptionsRejectsMalformedRepeatedForwardedForChain(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "10.1.2.3:1234"
+	req.Header.Add("X-Forwarded-For", "198.51.100.7")
+	req.Header.Add("X-Forwarded-For", "not-an-ip")
+	req.Header.Add("X-Forwarded-For", "192.0.2.9")
+	req.Header.Set("X-Real-IP", "203.0.113.9")
+
+	got := ResolveWithOptions(req, Options{
+		TrustedProxies: []netip.Prefix{
+			mustPrefix(t, "10.0.0.0/8"),
+			mustPrefix(t, "192.0.2.0/24"),
+		},
+	})
+	if got != "10.1.2.3" {
+		t.Fatalf("expected malformed repeated chain to fall back to remote addr, got %q", got)
 	}
 }
 

@@ -153,9 +153,11 @@ An atomic per-account reservation ZSET bounds tickets issued but not yet
 consumed; reservations are released on consumption or expire with the ticket.
 
 `common.public_urls.proxy` may include a browser-visible routing prefix such
-as `/remote` only when the edge removes it before forwarding. The signed path
-is the canonical post-rewrite path observed by the proxy; mixed-case method
-variants are rejected before quota or provider middleware can run.
+as `/remote` when the same value is configured in `proxy.base_path`. The edge
+forwards the path unchanged; the proxy removes the configured prefix before
+ticket verification. The signed path is therefore still the canonical provider
+path observed by downstream middleware, and mixed-case method variants are
+rejected before quota or provider middleware can run.
 
 Provider model discovery never follows HTTP redirects, preventing provider
 credentials from being forwarded to a redirected origin.
@@ -201,9 +203,19 @@ underscores and have a maximum length of 64 characters.
 
 After token authentication, the proxy sends OPA only stable identity IDs,
 role/type, sorted technical access-group names in `input.identity.groups`,
-virtual-key metadata, resolved client IP, method, path, and host.
+virtual-key metadata, resolved client IP, method, host, the full routed path,
+and structured provider routing fields. `input.request.provider` is the route's
+provider name, `provider_type` is its configured protocol (`openai`, `ollama`,
+or `anthropic`), and `provider_path` is relative to the provider prefix. For
+example, `/openai-main/v1/responses` is represented with provider
+`openai-main` and provider path `/v1/responses`.
 Tokens, personal profile fields, headers, and request bodies are never sent.
 OPA is the sole policy source and the supplied example denies by default.
+Prompt Gate caches only OPA denials; positive decisions are always re-evaluated,
+so an allow cannot outlive a policy or data revocation. The Kubernetes example
+also loads a `system.authz` policy before startup and exposes only the exact
+decision and health endpoints; policy/data mutation routes are denied and a
+NetworkPolicy limits callers to proxy pods.
 `proxy.opa.enabled: false` is an emergency fail-open switch for this policy
 stage. It must be time-bounded and operationally monitored because every
 authenticated request then bypasses OPA; group, quota, and provider controls
@@ -211,9 +223,16 @@ still apply.
 
 The proxy normally uses the TCP remote address. In production, prefer
 `proxy.trusted_proxies` with explicit ingress or reverse-proxy CIDRs
-so forwarded headers are accepted only from known peers.
-`proxy.trust_forward_headers` should be enabled only behind trusted
-infrastructure that strips or rewrites untrusted forwarding headers.
+so forwarded headers are accepted only from known peers. Trusted
+`X-Forwarded-For` chains are traversed from right to left across every header
+occurrence; malformed chains fail closed to the direct peer address. In an
+F5 -> HAProxy topology, trust the direct HAProxy range and every exact
+controlled upstream hop that actually appears in the chain. Require the F5 to
+sanitize the header before HAProxy appends the TCP source it observes; that
+source can be the F5 or a node/SNAT address depending on the Service topology.
+`proxy.trust_forward_headers` is a legacy global switch. Keep it disabled when
+`proxy.trusted_proxies` is configured; enable it only behind an entirely trusted
+network boundary that strips or rewrites every untrusted forwarding header.
 
 ## Secret Storage
 

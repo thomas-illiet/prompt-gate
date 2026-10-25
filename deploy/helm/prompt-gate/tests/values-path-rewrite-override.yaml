@@ -1,6 +1,0 @@
-ingress:
-  proxyPath: /gateway
-  proxy:
-    stripPath: true
-    annotations:
-      haproxy.org/path-rewrite: "^/custom(/|$)(.*) /backend/\\2"

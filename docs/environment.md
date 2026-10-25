@@ -76,9 +76,16 @@ All default to `1h` and must be positive.
 
 ## Proxy Settings
 
-The `proxy` section contains `port`, `trust_forward_headers`, the YAML CIDR list
-`trusted_proxies`, `client_ip_debug`, `debug_requests`, request and response
-buffer limits, and `upstream_timeout`.
+The `proxy` section contains `port`, the optional `base_path`,
+`trust_forward_headers`, the YAML CIDR list `trusted_proxies`,
+`client_ip_debug`, `debug_requests`, request and response buffer limits, and
+`upstream_timeout`. `base_path` is empty by default. When set, it must be a
+normalized absolute non-root path such as `/remote`; the proxy requires and
+removes it before applying Model Lab, authentication, policy, quota, and
+provider routing. The direct `/health` endpoint remains available to probes,
+and `<base_path>/health` exposes the same check through an Ingress. The path in
+`common.public_urls.proxy` must match `proxy.base_path` so generated SDK and
+Model Lab URLs reach the mounted proxy.
 
 `proxy.opa` contains `enabled`, `url`, `policy_path`, `timeout`, and
 `cache_ttl`. The URL is required and must be absolute HTTP(S) when OPA is

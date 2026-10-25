@@ -56,8 +56,8 @@ func resolveWithOptions(r *http.Request, options Options) resolution {
 	if len(options.TrustedProxies) > 0 {
 		trusted := isTrustedProxy(remote, options.TrustedProxies)
 		if trusted {
-			if header := r.Header.Get("X-Forwarded-For"); header != "" {
-				forwarded, valid := trustedForwardedFor(header, options.TrustedProxies)
+			if headers := r.Header.Values("X-Forwarded-For"); len(headers) > 0 {
+				forwarded, valid := trustedForwardedFor(headers, options.TrustedProxies)
 				if !valid {
 					return resolution{clientIP: remote, peerIP: remote, source: "remote", peerTrusted: true}
 				}
@@ -82,17 +82,22 @@ func remoteAddrHost(remoteAddr string) string {
 	return remoteAddr
 }
 
-func trustedForwardedFor(value string, trustedProxies []netip.Prefix) (string, bool) {
-	parts := strings.Split(value, ",")
-	for i := len(parts) - 1; i >= 0; i-- {
-		addr := parseAddr(parts[i])
-		if !addr.IsValid() {
-			return "", false
+func trustedForwardedFor(values []string, trustedProxies []netip.Prefix) (string, bool) {
+	// HAProxy appends its X-Forwarded-For field after any fields already on the
+	// request. Preserve that wire order across repeated header lines as well as
+	// comma-separated values, then walk from the trusted edge towards the client.
+	for valueIndex := len(values) - 1; valueIndex >= 0; valueIndex-- {
+		parts := strings.Split(values[valueIndex], ",")
+		for partIndex := len(parts) - 1; partIndex >= 0; partIndex-- {
+			addr := parseAddr(parts[partIndex])
+			if !addr.IsValid() {
+				return "", false
+			}
+			if isTrustedAddr(addr, trustedProxies) {
+				continue
+			}
+			return addr.String(), true
 		}
-		if isTrustedAddr(addr, trustedProxies) {
-			continue
-		}
-		return addr.String(), true
 	}
 	return "", true
 }

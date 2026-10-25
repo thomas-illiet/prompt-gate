@@ -41,6 +41,20 @@ proxy:
     cache_ttl: 10m
 ```
 
+`system.authz` is loaded from the read-only ConfigMap before the server starts,
+and `--authorization=basic` rejects every other OPA REST route. The example does
+not enable bearer authentication because Prompt Gate does not send an OPA bearer
+token; instead, the accompanying `NetworkPolicy` limits port 8181 to proxy pods
+with labels `app.kubernetes.io/name=prompt-gate` and
+`app.kubernetes.io/component=proxy`. Adapt those selectors if the Helm chart uses
+`nameOverride`, if OPA is in another namespace, or if a non-Helm proxy is used.
+Kubernetes probes use the single authorized `GET /health` route.
+
+The example uses HTTP inside the namespace. Add TLS or mTLS when the cluster
+network is not a trusted transport boundary. Do not remove `system.authz` even
+when a NetworkPolicy is present: the two controls protect against different
+failure modes.
+
 For emergency recovery only, set `proxy.opa.enabled: false` and restart the
 proxy. This bypasses OPA authorization while leaving authentication, groups,
 quotas, and provider controls enabled.

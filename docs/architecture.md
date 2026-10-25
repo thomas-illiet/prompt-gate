@@ -76,7 +76,7 @@ Redis is required by the current runtime configuration. It is used for:
 - access-group and subscription-plan snapshots
 - versioned subscription assignments and rolling 5-hour and 7-day quota state
 - quota-reset sequence and cutoff barriers
-- cached OPA allow and deny decisions
+- cached OPA deny decisions (allows are always re-evaluated)
 - config version counters and hot-reload events
 - proxy usage event stream `promptgate:usage:events`
 
@@ -122,8 +122,8 @@ sequenceDiagram
     C->>P: Bearer Prompt Gate API token
     P->>R: Check auth cache
     P->>D: Validate token hash and user when cache misses
-    P->>R: Check cached policy decision
-    P->>O: Evaluate policy on cache miss
+    P->>R: Check cached policy denial
+    P->>O: Evaluate policy unless denied by cache
     P->>P: Enforce group, provider, and model access snapshot
     P->>R: Enforce effective subscription and rolling quotas
     P->>U: Forward request through AIBridge
@@ -150,14 +150,15 @@ flowchart TD
     Kind -->|providers| Bridge["Debounced bridge rebuild"]
     Kind -->|groups| Groups["Refresh access snapshot"]
     Kind -->|auth| AuthCache["Update auth cache version"]
-    Kind -->|subscriptions| Quotas["Refresh plan and assignment snapshot"]
+    Kind -->|subscriptions| Quotas["Refresh plans and invalidate assignments"]
 ```
 
 Provider updates trigger a debounced bridge rebuild. Group updates refresh the
 proxy access snapshot. Auth updates bump the token auth cache version, which
 invalidates old cache keys. A separate subscription watcher refreshes plan and
-versioned assignment snapshots. OPA decisions expire only through
-`proxy.opa.cache_ttl`.
+versioned assignment snapshots; per-user assignment entries expire on a short
+independent bound without a global Redis scan. OPA denials expire through
+`proxy.opa.cache_ttl`; allows are never cached.
 
 ## Migrations
 

@@ -94,6 +94,7 @@ type ScheduleIntervals struct {
 
 // ProxyRuntimeConfig contains proxy reload, trust, and buffering settings.
 type ProxyRuntimeConfig struct {
+	ProxyBasePath                 string
 	ProxyTrustForwardHeaders      bool
 	ProxyTrustedProxies           []netip.Prefix
 	ProxyClientIPDebug            bool
@@ -266,6 +267,38 @@ func validateModelLabProxyBaseURL(value string) error {
 		(parsed.Path != "" && path.Clean(parsed.Path) != parsed.Path) ||
 		parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" {
 		return errors.New("common.public_urls.proxy must be an HTTP(S) public URL with an optional normalized path and without credentials, encoded path, query, or fragment")
+	}
+	return nil
+}
+
+// validateProxyBasePath accepts an optional normalized, unescaped URL path
+// used to mount the proxy behind a path-based ingress.
+func validateProxyBasePath(value string) error {
+	if value == "" {
+		return nil
+	}
+	parsed, err := url.Parse(value)
+	if err != nil || !strings.HasPrefix(value, "/") || value == "/" ||
+		parsed.IsAbs() || parsed.Host != "" || parsed.User != nil ||
+		parsed.Path != value || parsed.RawPath != "" || parsed.EscapedPath() != parsed.Path ||
+		parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" ||
+		path.Clean(value) != value {
+		return errors.New("proxy.base_path must be empty or a normalized absolute path without a trailing slash, credentials, encoding, query, or fragment")
+	}
+	return nil
+}
+
+func validateProxyPublicURLPath(publicURL string, basePath string) error {
+	parsed, err := url.Parse(publicURL)
+	if err != nil {
+		return errors.New("common.public_urls.proxy must be a valid URL")
+	}
+	publicPath := parsed.Path
+	if publicPath == "/" {
+		publicPath = ""
+	}
+	if publicPath != basePath {
+		return errors.New("common.public_urls.proxy path must equal proxy.base_path")
 	}
 	return nil
 }

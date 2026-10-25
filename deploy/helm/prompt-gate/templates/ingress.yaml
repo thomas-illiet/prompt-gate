@@ -1,17 +1,17 @@
-{{- if and .Values.ingress.enabled .Values.api.enabled -}}
+{{- if and .Values.ingress.enabled (or .Values.api.enabled .Values.proxy.enabled) -}}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: {{ include "prompt-gate.fullname" . }}-api
+  name: {{ include "prompt-gate.fullname" . }}
   labels:
     {{- include "prompt-gate.labels" . | nindent 4 }}
-    app.kubernetes.io/component: api
-  {{- if or .Values.argoCd.enabled .Values.ingress.api.annotations }}
+    app.kubernetes.io/component: ingress
+  {{- if or .Values.argoCd.enabled .Values.ingress.annotations }}
   annotations:
     {{- if .Values.argoCd.enabled }}
     argocd.argoproj.io/sync-wave: {{ .Values.argoCd.syncWaves.ingress | quote }}
     {{- end }}
-    {{- with .Values.ingress.api.annotations }}
+    {{- with .Values.ingress.annotations }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
   {{- end }}
@@ -27,6 +27,16 @@ spec:
     - host: {{ .Values.ingress.host | quote }}
       http:
         paths:
+          {{- if .Values.proxy.enabled }}
+          - path: {{ include "prompt-gate.proxyPath" . | quote }}
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "prompt-gate.fullname" . }}-proxy
+                port:
+                  number: {{ .Values.proxy.service.port }}
+          {{- end }}
+          {{- if .Values.api.enabled }}
           - path: /
             pathType: Prefix
             backend:
@@ -34,4 +44,5 @@ spec:
                 name: {{ include "prompt-gate.fullname" . }}-api
                 port:
                   number: {{ .Values.api.service.port }}
+          {{- end }}
 {{- end }}
