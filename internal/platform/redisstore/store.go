@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -43,8 +42,18 @@ type Store struct {
 	logger *slog.Logger
 }
 
+// ClientOptions overrides Redis client pool and timeout settings. A zero value
+// keeps the default parsed by go-redis from the connection URL.
+type ClientOptions struct {
+	PoolSize     int
+	MinIdleConns int
+	PoolTimeout  time.Duration
+	ReadTimeout  time.Duration
+	WriteTimeout time.Duration
+}
+
 // NewRequired creates a Redis-backed store and returns an error when the configured Redis cannot be used.
-func NewRequired(ctx context.Context, rawURL string, ttl time.Duration, logger *slog.Logger) (*Store, error) {
+func NewRequired(ctx context.Context, rawURL string, ttl time.Duration, logger *slog.Logger, clientOptions ...ClientOptions) (*Store, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -56,33 +65,30 @@ func NewRequired(ctx context.Context, rawURL string, ttl time.Duration, logger *
 	if err != nil {
 		return nil, fmt.Errorf("parse redis url: %w", err)
 	}
-	opt.PoolSize = envInt("PROMPTGATE_REDIS_POOL_SIZE", opt.PoolSize)
-	opt.MinIdleConns = envInt("PROMPTGATE_REDIS_MIN_IDLE_CONNS", opt.MinIdleConns)
-	opt.PoolTimeout = envDuration("PROMPTGATE_REDIS_POOL_TIMEOUT", opt.PoolTimeout)
-	opt.ReadTimeout = envDuration("PROMPTGATE_REDIS_READ_TIMEOUT", opt.ReadTimeout)
-	opt.WriteTimeout = envDuration("PROMPTGATE_REDIS_WRITE_TIMEOUT", opt.WriteTimeout)
+	if len(clientOptions) > 0 {
+		configured := clientOptions[0]
+		if configured.PoolSize > 0 {
+			opt.PoolSize = configured.PoolSize
+		}
+		if configured.MinIdleConns > 0 {
+			opt.MinIdleConns = configured.MinIdleConns
+		}
+		if configured.PoolTimeout > 0 {
+			opt.PoolTimeout = configured.PoolTimeout
+		}
+		if configured.ReadTimeout > 0 {
+			opt.ReadTimeout = configured.ReadTimeout
+		}
+		if configured.WriteTimeout > 0 {
+			opt.WriteTimeout = configured.WriteTimeout
+		}
+	}
 	client := redis.NewClient(opt)
 	if err := client.Ping(ctx).Err(); err != nil {
 		_ = client.Close()
 		return nil, fmt.Errorf("ping redis: %w", err)
 	}
 	return &Store{client: client, ttl: ttl, logger: logger}, nil
-}
-
-func envInt(name string, fallback int) int {
-	value, err := strconv.Atoi(os.Getenv(name))
-	if err != nil || value <= 0 {
-		return fallback
-	}
-	return value
-}
-
-func envDuration(name string, fallback time.Duration) time.Duration {
-	value, err := time.ParseDuration(os.Getenv(name))
-	if err != nil || value <= 0 {
-		return fallback
-	}
-	return value
 }
 
 // Enabled reports whether Redis is available for this store.

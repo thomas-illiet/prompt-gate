@@ -3,7 +3,7 @@
 The scheduler process runs recurring maintenance jobs:
 
 ```sh
-promptgate schedule
+promptgate --config /path/to/promptgate.yaml schedule
 ```
 
 It does not expose HTTP routes. It runs until the process receives `SIGINT` or
@@ -16,7 +16,7 @@ It does not expose HTTP routes. It runs until the process receives `SIGINT` or
 | Token cleanup | `1h` | Marks stored tokens as expired when `expires_at` is in the past and `expired_at` is still empty. |
 | User access expiration | `1h` | Removes app access for users whose `expires_at` has passed and revokes their active tokens. |
 | Monitoring checks | `15s` scheduler tick, per-service intervals | Runs due HTTP/S checks and marks enabled services `ok` or `degraded`. |
-| Raw usage cleanup | `1h` | Deletes raw proxy usage rows older than `PROMPTGATE_USAGE_RAW_RETENTION`; dashboard KPI rows are retained. |
+| Raw usage cleanup | `1h` | Deletes raw proxy usage rows older than `schedule.usage_raw_retention`; dashboard KPI rows are retained. |
 | Subscription quota sync | `5m` | Copies live Redis quota counters into PostgreSQL for admin/profile display and audit. |
 | Quota reset distribution | `1h` | Idempotently grants the current UTC calendar month's reset credit to eligible users, up to the two-credit cap. |
 | Pending quota reset reconciliation | `5m` | Retries durable reset consumptions that have not yet been applied to Redis. |
@@ -79,28 +79,23 @@ monitoring banner.
 
 ## Required Configuration
 
-The scheduler requires:
-
-```sh
-PROMPTGATE_DATABASE_URL
-PROMPTGATE_REDIS_URL
-PROMPTGATE_JWT_SECRET
-PROMPTGATE_SECRETS_KEY
-```
+The scheduler requires `common.database.url`, `common.redis.url`,
+`common.security.jwt_secret`, and `common.security.secrets_key` in the selected
+YAML document.
 
 Optional scheduler settings:
 
-| Variable | Default | Purpose |
+| YAML path | Default | Purpose |
 | --- | --- | --- |
-| `PROMPTGATE_LOG_LEVEL` | `info` | `debug`, `info`, `warn`, `warning`, or `error`. |
-| `PROMPTGATE_TOKEN_CLEANUP_INTERVAL` | `1h` | Interval for expired token marking. |
-| `PROMPTGATE_USER_ACCESS_EXPIRATION_INTERVAL` | `1h` | Interval for user access expiration. |
-| `PROMPTGATE_REDIS_CACHE_TTL` | `5m` | Redis TTL used by shared services. |
-| `PROMPTGATE_PROXY_RELOAD_DEBOUNCE` | `250ms` | Loaded for shared configuration consistency; scheduler jobs do not use it directly. |
-| `PROMPTGATE_USAGE_RAW_RETENTION` | `2160h` | Retention for raw proxy usage tables used by operational metrics. |
-| `PROMPTGATE_USAGE_RAW_CLEANUP_INTERVAL` | `1h` | Interval for raw proxy usage cleanup. |
-| `PROMPTGATE_SUBSCRIPTION_QUOTA_SYNC_INTERVAL` | `5m` | Interval for syncing Redis subscription quota state to PostgreSQL. |
-| `PROMPTGATE_QUOTA_RESET_DISTRIBUTION_INTERVAL` | `1h` | Interval for idempotently granting the current UTC calendar month's reset credit. |
+| `common.log.level` | `info` | `debug`, `info`, `warn`, `warning`, or `error`. |
+| `common.maintenance.token_cleanup_interval` | `1h` | Interval for expired token marking. |
+| `common.maintenance.user_access_expiration_interval` | `1h` | Interval for user access expiration. |
+| `common.redis.cache_ttl` | `5m` | Redis TTL used by shared services. |
+| `common.proxy_reload_debounce` | `250ms` | Loaded for shared configuration consistency. |
+| `schedule.usage_raw_retention` | `2160h` | Retention for raw proxy usage tables used by operational metrics. |
+| `schedule.usage_raw_cleanup_interval` | `1h` | Interval for raw proxy usage cleanup. |
+| `schedule.subscription_quota_sync_interval` | `5m` | Interval for syncing Redis subscription quota state to PostgreSQL. |
+| `common.maintenance.quota_reset_distribution_interval` | `1h` | Interval for idempotently granting the current UTC calendar month's reset credit. |
 
 Durations use Go duration syntax such as `30m`, `1h`, or `24h`.
 
@@ -110,8 +105,7 @@ Durations use Go duration syntax such as `30m`, `1h`, or `24h`.
   separate locking mechanism. The current scheduler code does not implement a
   distributed job lock.
 - Start the scheduler after migrations have completed.
-- Use the same `PROMPTGATE_JWT_SECRET` and `PROMPTGATE_SECRETS_KEY` values as
-  API and proxy processes.
+- Mount the same protected YAML used by the API and proxy processes.
 - Treat scheduler failures as operationally important because expired access
   and token state may lag until the process is restored. Monthly reset-credit
   distribution, pending reset reconciliation, and the PostgreSQL quota

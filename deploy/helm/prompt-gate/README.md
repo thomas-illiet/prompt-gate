@@ -33,27 +33,42 @@ spec:
       - CreateNamespace=true
 ```
 
-## Runtime Secret
+## Runtime Configuration Secret
 
-Create a Secret in the destination namespace and set `secret.existingSecret` to
-its name. It must contain:
+Prompt Gate reads one structured `promptgate.yaml` file. The document contains
+both ordinary settings and credentials, so the chart stores the complete file
+in a Secret and mounts it read-only in every Prompt Gate workload.
 
-- `PROMPTGATE_DATABASE_URL`
-- `PROMPTGATE_REDIS_URL`
-- `PROMPTGATE_JWT_SECRET`
-- `PROMPTGATE_SECRETS_KEY`
-- `PROMPTGATE_KEYCLOAK_CLIENT_SECRET` when the OIDC client requires it
+For a chart-managed Secret, configure the nested `config.common`, `config.api`,
+`config.proxy`, `config.worker`, and `config.schedule` values. In production,
+prefer an encrypted values source or provide an externally managed Secret:
 
-Model Lab is always enabled for `user` and `admin` roles. API and proxy use the
-same `PROMPTGATE_SECRETS_KEY` value unchanged to sign and verify its short-lived
-tickets; the chart does not create or mount a second Model Lab secret.
+```bash
+kubectl create secret generic prompt-gate-config \
+  --from-file=promptgate.yaml=./promptgate.yaml \
+  --namespace prompt-gate
+```
+
+```yaml
+configSecret:
+  existingSecret: prompt-gate-config
+  key: promptgate.yaml
+  rolloutToken: "2026-10-rotation-1"
+```
+
+When `existingSecret` is set, the chart does not render configuration content.
+Keep `config.api.port` and `config.proxy.port` equal to the corresponding values
+in the external file because Kubernetes probes use those container ports.
+Change `rolloutToken` after replacing the Secret so all workloads restart.
+Because the selected design uses one complete file, every Prompt Gate process
+can read every secret in it; restrict Secret and values-file access accordingly.
 
 ## Quota Reset Scheduling
 
 The scheduler distributes monthly reset credits immediately on startup and then
-at `config.quotaResetDistributionInterval`, which defaults to `1h`. Pending
+at `config.common.maintenance.quota_reset_distribution_interval`, which defaults to `1h`. Pending
 reset reconciliation and the PostgreSQL quota projection run immediately and
-then at `config.subscriptionQuotaSyncInterval`, which defaults to `5m`;
+then at `config.schedule.subscription_quota_sync_interval`, which defaults to `5m`;
 reconciliation always runs before projection.
 
 Keep `schedule.replicas: 1` unless the deployment adds an external distributed
@@ -71,74 +86,50 @@ include destructive operations, so use the key only over HTTPS and treat it as
 a privileged production credential. It is global: requests made with it do not
 carry an individual administrator identity for attribution.
 
-The feature is disabled by default. For production, create a dedicated Secret
-and reference it from the chart:
+The feature is disabled by default. Configure it inside the shared runtime
+document:
 
 ```yaml
-adminApiKey:
-  existingSecret:
-    name: prompt-gate-admin-api-key
-    key: PROMPTGATE_ADMIN_API_KEY
-  rolloutToken: "2026-07-rotation-1"
+config:
+  api:
+    admin_api_key: "replace-with-a-secret-value"
 ```
 
-Only the API Deployment receives this Secret, through an explicit
-`secretKeyRef`; it is not added to the shared runtime Secret or exposed to the
-proxy, worker, scheduler, or migration Job. After rotating an externally
-managed Secret, change `rolloutToken` or restart the API Deployment so its Pods
-load the new value. Do not put `PROMPTGATE_ADMIN_API_KEY` in
-`secret.existingSecret`, because that shared Secret is imported by every
-Prompt Gate workload. The chart rejects an administration Secret with the same
-name as the shared runtime Secret.
-
-For local development only, `value` creates a dedicated chart-managed Secret:
-
-```yaml
-adminApiKey:
-  value: "local-development-key"
-  annotations: {}
-```
-
-`value` and `existingSecret.name` are mutually exclusive. An empty or
-whitespace-only `value` leaves the feature disabled; any non-empty value is
-accepted without a minimum length. A generated Secret automatically rolls the
-API Pods when the value changes. Do not commit a real administration key to a
-values file.
+An empty or whitespace-only value leaves the feature disabled. The API is the
+only runtime that consumes the value, although all workloads can read the
+shared file. Do not commit a production administration key to a plain values
+file.
 
 Example request:
 
 ```bash
 curl --fail-with-body \
-  -H "X-Admin-API-Key: ${PROMPTGATE_ADMIN_API_KEY:?not set}" \
+  -H "X-Admin-API-Key: ${ADMIN_API_KEY:?not set}" \
   https://promptgate.example.com/api/v1/admin/users
 ```
 
 ## Phoenix API Key
 
-Enable OTLP export with the `config.otel*` values. When Phoenix authentication
-is enabled, reference a dedicated Secret so only the proxy Deployment receives
-the API key:
+Enable OTLP export under `config.proxy.otel`. The API key is stored in the same
+runtime configuration Secret:
 
 ```yaml
 config:
-  otelEnabled: "true"
-  otelEndpoint: https://phoenix.example.com/v1/traces
-  otelProjectName: prompt-gate
-  otelEnvironment: production
-  otelCapturePrompts: "true"
-  otelCaptureOutput: "true"
-  otelCaptureThinking: "true"
-otelApiKey:
-  existingSecret:
-    name: prompt-gate-phoenix-api-key
-    key: PROMPTGATE_OTEL_API_KEY
-  rolloutToken: "2026-09-rotation-1"
+  proxy:
+    otel:
+      enabled: true
+      endpoint: https://phoenix.example.com/v1/traces
+      api_key: "replace-with-a-secret-value"
+      project_name: prompt-gate
+      environment: production
+      capture_prompts: true
+      capture_output: true
+      capture_thinking: true
 ```
 
-For local development, `otelApiKey.value` creates a chart-managed dedicated
-Secret. Never commit a production Phoenix key. Prompt capture exports raw,
-unredacted content and remains disabled independently of trace export by
-default. Change `rolloutToken` after rotating an externally managed Secret.
+Never commit a production Phoenix key. Prompt capture exports raw, unredacted
+content and remains disabled independently of trace export by default. The
+single `config.common.tls.ca_file` bundle also applies to OTEL.
 
 ## Image Pull Secrets
 
@@ -162,9 +153,11 @@ direct peer that reaches Prompt Gate.
 
 ```yaml
 config:
-  proxyTrustForwardHeaders: "false"
-  proxyTrustedProxies: "<narrow-controller-or-node-cidr>"
-  proxyClientIpDebug: "true" # temporary
+  proxy:
+    trust_forward_headers: false
+    trusted_proxies:
+      - "<narrow-controller-or-node-cidr>"
+    client_ip_debug: true # temporary
 ```
 
 Send one known external request and inspect the proxy's `client IP resolved`
@@ -180,7 +173,7 @@ If `peer_ip` is a controller pod address, use the narrow stable pod CIDR
 allocated to those controller pods. If it is a node or SNAT address, use the
 narrow corresponding node/network CIDR. Prefer dedicated controller address
 ranges; never trust all cluster-private addresses merely for convenience.
-After validation, set `proxyClientIpDebug` back to `"false"`.
+After validation, set `config.proxy.client_ip_debug` back to `false`.
 
 HAProxy must overwrite or sanitize client-supplied `X-Forwarded-For` before
 appending the real client address. When the trusted CIDR contains workloads
@@ -192,6 +185,6 @@ HAProxy setting depends on that external topology.
 ## Argo CD Ordering
 
 The migration Job is an Argo CD `Sync` hook, not a Helm hook. The default sync
-waves apply the ConfigMap and ServiceAccount first, run migrations next, then
+waves apply the configuration Secret and ServiceAccount first, run migrations next, then
 roll out workloads and Ingress resources. Hooks are not run during selective
 syncs, so use a full application sync when migrations must run.

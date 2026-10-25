@@ -5,154 +5,120 @@ import (
 	"fmt"
 	"os"
 	"strings"
-
-	"github.com/spf13/viper"
+	"time"
 )
 
-// LoadApi reads configuration from environment variables prefixed with PROMPTGATE_ and validates required fields.
-func LoadApi() (APIConfig, error) {
-	v := viper.New()
-	v.SetEnvPrefix("PROMPTGATE")
-	v.AutomaticEnv()
-
-	v.SetDefault("port", "8080")
-	v.SetDefault("log_level", "info")
-	v.SetDefault("session_cookie_name", "promptgate_session")
-	v.SetDefault("session_ttl", "8h")
-	v.SetDefault("token_cleanup_interval", "1h")
-	v.SetDefault("user_access_expiration_interval", "1h")
-	v.SetDefault("quota_reset_distribution_interval", "1h")
-	v.SetDefault("proxy_port", "8081")
-	v.SetDefault("redis_cache_ttl", "5m")
-	v.SetDefault("proxy_reload_debounce", "250ms")
-	v.SetDefault("usage_cost_enabled", true)
-	v.SetDefault("usage_cost_input", "5.00")
-	v.SetDefault("usage_cost_output", "30.00")
-	v.SetDefault("usage_cost_embedding", "0.02")
-	setModelLabDefaults(v)
-
-	usageCost, err := loadUsageCostConfig(v)
+// LoadApi reads the management API configuration from a strict YAML file.
+func LoadApi(configPath string) (APIConfig, error) {
+	file, err := loadFile(configPath)
+	if err != nil {
+		return APIConfig{}, err
+	}
+	usageCost, err := file.usageCostConfig()
 	if err != nil {
 		return APIConfig{}, err
 	}
 
 	cfg := APIConfig{
-		LogConfig:         loadLogConfig(v),
-		DatabaseURLConfig: loadDatabaseURLConfig(v),
-		TLSConfig:         loadTLSConfig(v),
-		RedisConfig:       loadRedisConfig(v),
-		ServerConfig:      loadServerConfig(v, "port"),
-		SessionConfig:     loadSessionConfig(v),
-		SecretsConfig:     loadSecretsConfig(v),
+		LogConfig:         file.logConfig(),
+		DatabaseURLConfig: file.databaseConfig(),
+		TLSConfig:         file.tlsConfig(),
+		RedisConfig:       file.redisConfig(),
+		ServerConfig: ServerConfig{
+			Port:               string(file.API.Port),
+			CORSAllowedOrigins: append([]string(nil), file.Common.CORS.AllowedOrigins...),
+		},
+		SessionConfig: file.sessionConfig(),
+		SecretsConfig: file.secretsConfig(),
 		KeycloakConfig: KeycloakConfig{
-			KeycloakIssuerURL:    strings.TrimSpace(v.GetString("keycloak_issuer_url")),
-			KeycloakJWKSURL:      strings.TrimSpace(v.GetString("keycloak_jwks_url")),
-			KeycloakClientID:     strings.TrimSpace(v.GetString("keycloak_client_id")),
-			KeycloakClientSecret: strings.TrimSpace(v.GetString("keycloak_client_secret")),
+			KeycloakIssuerURL:    strings.TrimSpace(file.API.OIDC.IssuerURL),
+			KeycloakJWKSURL:      strings.TrimSpace(file.API.OIDC.JWKSURL),
+			KeycloakClientID:     strings.TrimSpace(file.API.OIDC.ClientID),
+			KeycloakClientSecret: strings.TrimSpace(file.API.OIDC.ClientSecret),
 		},
-		PublicURLConfig: PublicURLConfig{
-			FrontendBaseURL: strings.TrimRight(strings.TrimSpace(v.GetString("frontend_base_url")), "/"),
-			BackendBaseURL:  strings.TrimRight(strings.TrimSpace(v.GetString("backend_base_url")), "/"),
-			ProxyBaseURL:    strings.TrimRight(strings.TrimSpace(v.GetString("proxy_base_url")), "/"),
-		},
+		PublicURLConfig: file.publicURLConfig(),
 		APIHTTPConfig: APIHTTPConfig{
-			StaticAssetsDir: strings.TrimSpace(v.GetString("static_assets_dir")),
-			AdminAPIKey:     strings.TrimSpace(v.GetString("admin_api_key")),
+			StaticAssetsDir: file.API.StaticAssetsDir,
+			AdminAPIKey:     strings.TrimSpace(file.API.AdminAPIKey),
 		},
 		ScheduleIntervals: ScheduleIntervals{
-			TokenCleanupInterval:           v.GetDuration("token_cleanup_interval"),
-			UserAccessExpirationInterval:   v.GetDuration("user_access_expiration_interval"),
-			QuotaResetDistributionInterval: v.GetDuration("quota_reset_distribution_interval"),
+			TokenCleanupInterval:           time.Duration(file.Common.Maintenance.TokenCleanupInterval),
+			UserAccessExpirationInterval:   time.Duration(file.Common.Maintenance.UserAccessExpirationInterval),
+			QuotaResetDistributionInterval: time.Duration(file.Common.Maintenance.QuotaResetDistributionInterval),
 		},
-		ProxyRuntimeConfig: ProxyRuntimeConfig{
-			ProxyReloadDebounce: v.GetDuration("proxy_reload_debounce"),
-		},
-		ModelLab:  loadModelLabConfig(v),
-		UsageCost: usageCost,
+		ProxyRuntimeConfig: ProxyRuntimeConfig{ProxyReloadDebounce: time.Duration(file.Common.ProxyReloadDebounce)},
+		ModelLab:           file.modelLabConfig(),
+		UsageCost:          usageCost,
 	}
 
-	if cfg.DatabaseURL == "" {
-		return APIConfig{}, errors.New("PROMPTGATE_DATABASE_URL is required")
-	}
-
-	if cfg.KeycloakIssuerURL == "" {
-		return APIConfig{}, errors.New("PROMPTGATE_KEYCLOAK_ISSUER_URL is required")
-	}
-
-	if cfg.KeycloakJWKSURL == "" {
-		return APIConfig{}, errors.New("PROMPTGATE_KEYCLOAK_JWKS_URL is required")
-	}
-
-	if cfg.KeycloakClientID == "" {
-		return APIConfig{}, errors.New("PROMPTGATE_KEYCLOAK_CLIENT_ID is required")
-	}
-
-	if err := validateOptionalFile("PROMPTGATE_CA_FILE", cfg.CAFile); err != nil {
+	if err := validateDatabaseConfig(cfg.DatabaseURLConfig); err != nil {
 		return APIConfig{}, err
 	}
-
+	if err := validateRedisConfig(cfg.RedisConfig); err != nil {
+		return APIConfig{}, err
+	}
+	if err := validateRedisOverrides(file.Common.Redis); err != nil {
+		return APIConfig{}, err
+	}
+	if cfg.KeycloakIssuerURL == "" {
+		return APIConfig{}, errors.New("api.oidc.issuer_url is required")
+	}
+	if cfg.KeycloakJWKSURL == "" {
+		return APIConfig{}, errors.New("api.oidc.jwks_url is required")
+	}
+	if cfg.KeycloakClientID == "" {
+		return APIConfig{}, errors.New("api.oidc.client_id is required")
+	}
+	if err := validateOptionalFile("common.tls.ca_file", cfg.CAFile); err != nil {
+		return APIConfig{}, err
+	}
 	if cfg.FrontendBaseURL == "" {
-		return APIConfig{}, errors.New("PROMPTGATE_FRONTEND_BASE_URL is required")
+		return APIConfig{}, errors.New("common.public_urls.frontend is required")
 	}
-
 	if cfg.BackendBaseURL == "" {
-		return APIConfig{}, errors.New("PROMPTGATE_BACKEND_BASE_URL is required")
+		return APIConfig{}, errors.New("common.public_urls.backend is required")
 	}
-
 	if cfg.ProxyBaseURL == "" {
-		cfg.ProxyBaseURL = deriveProxyBaseURL(cfg.BackendBaseURL, v.GetString("proxy_port"))
+		cfg.ProxyBaseURL = deriveProxyBaseURL(cfg.BackendBaseURL, string(file.Proxy.Port))
 	}
 	if err := validateModelLabProxyBaseURL(cfg.ProxyBaseURL); err != nil {
 		return APIConfig{}, err
 	}
-
 	if cfg.SessionTTL <= 0 {
-		return APIConfig{}, errors.New("PROMPTGATE_SESSION_TTL must be greater than zero")
+		return APIConfig{}, errors.New("common.session.ttl must be greater than zero")
 	}
-
 	if cfg.JWTSecret == "" {
-		return APIConfig{}, errors.New("PROMPTGATE_JWT_SECRET is required")
+		return APIConfig{}, errors.New("common.security.jwt_secret is required")
 	}
-
 	if len(cfg.JWTSecret) < 32 {
-		return APIConfig{}, errors.New("PROMPTGATE_JWT_SECRET must be at least 32 characters")
+		return APIConfig{}, errors.New("common.security.jwt_secret must be at least 32 characters")
 	}
-
 	if cfg.SecretsKey == "" {
-		return APIConfig{}, errors.New("PROMPTGATE_SECRETS_KEY is required")
+		return APIConfig{}, errors.New("common.security.secrets_key is required")
 	}
 	if err := validateModelLabConfig(cfg.ModelLab); err != nil {
 		return APIConfig{}, err
 	}
-
-	if cfg.RedisURL == "" {
-		return APIConfig{}, errors.New("PROMPTGATE_REDIS_URL is required")
-	}
 	if err := validatePositiveDurations(
-		positiveDuration{"PROMPTGATE_TOKEN_CLEANUP_INTERVAL", cfg.TokenCleanupInterval},
-		positiveDuration{"PROMPTGATE_USER_ACCESS_EXPIRATION_INTERVAL", cfg.UserAccessExpirationInterval},
-		positiveDuration{"PROMPTGATE_QUOTA_RESET_DISTRIBUTION_INTERVAL", cfg.QuotaResetDistributionInterval},
-		positiveDuration{"PROMPTGATE_REDIS_CACHE_TTL", cfg.RedisCacheTTL},
-		positiveDuration{"PROMPTGATE_PROXY_RELOAD_DEBOUNCE", cfg.ProxyReloadDebounce},
+		positiveDuration{"common.maintenance.token_cleanup_interval", cfg.TokenCleanupInterval},
+		positiveDuration{"common.maintenance.user_access_expiration_interval", cfg.UserAccessExpirationInterval},
+		positiveDuration{"common.maintenance.quota_reset_distribution_interval", cfg.QuotaResetDistributionInterval},
+		positiveDuration{"common.proxy_reload_debounce", cfg.ProxyReloadDebounce},
 	); err != nil {
 		return APIConfig{}, err
 	}
-
 	if cfg.StaticAssetsDir != "" {
 		info, err := os.Stat(cfg.StaticAssetsDir)
 		if err != nil {
-			return APIConfig{}, fmt.Errorf("PROMPTGATE_STATIC_ASSETS_DIR is not accessible: %w", err)
+			return APIConfig{}, fmt.Errorf("api.static_assets_dir is not accessible: %w", err)
 		}
 		if !info.IsDir() {
-			return APIConfig{}, errors.New("PROMPTGATE_STATIC_ASSETS_DIR must be a directory")
+			return APIConfig{}, errors.New("api.static_assets_dir must be a directory")
 		}
 	}
-
 	if len(cfg.CORSAllowedOrigins) == 0 {
 		cfg.CORSAllowedOrigins = []string{cfg.FrontendBaseURL}
 	}
-
 	cfg.CORSAllowedOrigins = expandLoopbackOrigins(cfg.CORSAllowedOrigins)
-
 	return cfg, nil
 }

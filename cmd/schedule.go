@@ -14,22 +14,22 @@ import (
 )
 
 // newScheduleCommand builds the CLI command that starts scheduled background jobs.
-func newScheduleCommand() *cobra.Command {
+func newScheduleCommand(configPath *string) *cobra.Command {
 	return &cobra.Command{
 		Use:   "schedule",
 		Short: "Run scheduled background jobs",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			return runSchedule()
+			return runSchedule(*configPath)
 		},
 	}
 }
 
 // runSchedule loads scheduler configuration and runs background workers until shutdown.
-func runSchedule() error {
+func runSchedule(configPath string) error {
 	bootstrapLogger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
-	cfg, err := config.LoadSchedule()
+	cfg, err := config.LoadSchedule(configPath)
 	if err != nil {
 		bootstrapLogger.Error("failed to load schedule configuration", "error", err)
 		return err

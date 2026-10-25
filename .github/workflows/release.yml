@@ -61,8 +61,6 @@ jobs:
         run: make staticcheck
 
       - name: Test
-        env:
-          PROMPTGATE_TEST_POSTGRES_URL: postgres://postgres:postgres@127.0.0.1:5432/promptgate_test?sslmode=disable
         run: make test
 
       - name: Install frontend dependencies
@@ -124,12 +122,19 @@ jobs:
               "" \
               "Run the API with the bundled frontend assets:" \
               "" \
-              '  PROMPTGATE_STATIC_ASSETS_DIR="$(pwd)/public" ./promptgate api' \
+              '  cp promptgate.example.yaml promptgate.yaml' \
+              '  # In promptgate.yaml, set api.static_assets_dir to public.' \
+              '  # Set common.public_urls.frontend to http://localhost:8080.' \
+              '  # Set common.cors.allowed_origins to [http://localhost:8080].' \
+              '  ./promptgate --config promptgate.yaml api' \
               "" \
               "On Windows PowerShell:" \
               "" \
-              '  $env:PROMPTGATE_STATIC_ASSETS_DIR = (Join-Path (Get-Location) "public")' \
-              '  .\promptgate.exe api' \
+              '  Copy-Item promptgate.example.yaml promptgate.yaml' \
+              '  # In promptgate.yaml, set api.static_assets_dir to public.' \
+              '  # Set common.public_urls.frontend to http://localhost:8080.' \
+              '  # Set common.cors.allowed_origins to [http://localhost:8080].' \
+              '  .\promptgate.exe --config promptgate.yaml api' \
               "" \
               "The binary still requires PostgreSQL, Redis, and OIDC/Keycloak configuration." \
               > "${package_path}/README.txt"
@@ -153,6 +158,7 @@ jobs:
               go build -trimpath -ldflags="-s -w" -o "${package_path}/${binary_name}" "."
 
             cp -R "${FRONTEND_PUBLIC}" "${package_path}/public"
+            cp promptgate.example.yaml "${package_path}/promptgate.example.yaml"
             create_readme "${package_path}"
 
             if [ "${goos}" = "windows" ]; then
@@ -182,12 +188,15 @@ jobs:
 
           tar -tzf "${DARWIN_ARCHIVE}" | grep -Fx "promptgate_${VERSION}_darwin_arm64/promptgate"
           tar -tzf "${DARWIN_ARCHIVE}" | grep -Fx "promptgate_${VERSION}_darwin_arm64/public/index.html"
+          tar -tzf "${DARWIN_ARCHIVE}" | grep -Fx "promptgate_${VERSION}_darwin_arm64/promptgate.example.yaml"
 
           tar -tzf "${LINUX_ARCHIVE}" | grep -Fx "promptgate_${VERSION}_linux_amd64/promptgate"
           tar -tzf "${LINUX_ARCHIVE}" | grep -Fx "promptgate_${VERSION}_linux_amd64/public/index.html"
+          tar -tzf "${LINUX_ARCHIVE}" | grep -Fx "promptgate_${VERSION}_linux_amd64/promptgate.example.yaml"
 
           unzip -Z1 "${WINDOWS_ARCHIVE}" | grep -Fx "promptgate_${VERSION}_windows_amd64/promptgate.exe"
           unzip -Z1 "${WINDOWS_ARCHIVE}" | grep -Fx "promptgate_${VERSION}_windows_amd64/public/index.html"
+          unzip -Z1 "${WINDOWS_ARCHIVE}" | grep -Fx "promptgate_${VERSION}_windows_amd64/promptgate.example.yaml"
 
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v4

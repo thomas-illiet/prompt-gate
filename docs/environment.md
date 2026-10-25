@@ -1,254 +1,128 @@
-# Environment Variables
+# YAML Configuration
 
-All application configuration is read from environment variables prefixed with
-`PROMPTGATE_`. Durations use Go duration syntax such as `250ms`, `5m`, `1h`, or
-`8h`.
+Prompt Gate reads all runtime configuration from one YAML document. Every
+command requires its path explicitly:
 
-The CLI also loads the nearest `.env` file automatically before running any
-Prompt Gate command. Use `--env-file /path/to/file.env` to load a specific
-dotenv file.
+```sh
+promptgate --config /etc/prompt-gate/promptgate.yaml api
+promptgate --config /etc/prompt-gate/promptgate.yaml proxy
+promptgate --config /etc/prompt-gate/promptgate.yaml worker
+promptgate --config /etc/prompt-gate/promptgate.yaml schedule
+promptgate --config /etc/prompt-gate/promptgate.yaml migrate
+```
 
-## Required Variables
+The application does not search for `.env`, read `PROMPTGATE_*` runtime
+variables, interpolate `${ENV}` placeholders, or merge multiple sources. The
+loader rejects unknown fields, duplicate keys, multiple YAML documents, and
+incorrect types. Durations use Go syntax such as `250ms`, `5m`, `1h`, or `8h`.
 
-| Variable | Used by | Default | Required | Description |
-| --- | --- | --- | --- | --- |
-| `PROMPTGATE_DATABASE_URL` | API, proxy, worker, schedule, migrate | none | Yes | PostgreSQL connection string. Example: `postgres://postgres:postgres@localhost:5432/promptgate?sslmode=disable`. |
-| `PROMPTGATE_REDIS_URL` | API, proxy, worker, schedule | none | Yes | Redis connection URL. Example: `redis://localhost:6379/0`. |
-| `PROMPTGATE_JWT_SECRET` | API, proxy, schedule | none | Yes | Secret used for Prompt Gate API token signing and validation. Must be at least 32 characters. |
-| `PROMPTGATE_SECRETS_KEY` | API, proxy, schedule | none | Yes | Base64-encoded 32-byte key used for stored provider secrets and, unchanged, for Model Lab ticket signing/verification. Keep stable across restarts and deployments. |
-| `PROMPTGATE_KEYCLOAK_ISSUER_URL` | API | none | API only | OIDC issuer URL. Example: `https://keycloak.example.com/realms/promptgate`. |
-| `PROMPTGATE_KEYCLOAK_JWKS_URL` | API | none | API only | JWKS URL used to validate OIDC access tokens. |
-| `PROMPTGATE_KEYCLOAK_CLIENT_ID` | API | none | API only | OIDC client ID used for browser login and ID token verification. |
-| `PROMPTGATE_FRONTEND_BASE_URL` | API, proxy | none | API only, optional for proxy | Public frontend origin. Proxy uses it as the default CORS origin when explicit origins are not set. |
-| `PROMPTGATE_BACKEND_BASE_URL` | API | none | API only | Public API origin. Used to build `/auth/callback` and decide secure-cookie behavior. |
+Copy [`promptgate.example.yaml`](../promptgate.example.yaml) to
+`promptgate.yaml` for local source development. The local file is ignored by
+Git because it contains credentials.
 
-## Optional Settings
+## Common Settings
 
-| Variable | Used by | Default | Description |
+| YAML path | Used by | Default | Description |
 | --- | --- | --- | --- |
-| `PROMPTGATE_PORT` | API | `8080` | API server listen port. Values may be `8080` or `:8080`. |
-| `PROMPTGATE_PROXY_PORT` | API, proxy | `8081` | Proxy server listen port. The API also uses it to derive `PROMPTGATE_PROXY_BASE_URL` when no explicit proxy base URL is set. |
-| `PROMPTGATE_LOG_LEVEL` | API, proxy, worker, schedule, migrate | `info` | Log level. Supported values are `debug`, `info`, `warn`, `warning`, and `error`; unknown values fall back to `info`. |
-| `PROMPTGATE_KEYCLOAK_CLIENT_SECRET` | API | empty | Optional OIDC client secret. Set it when the OIDC client is confidential. |
-| `PROMPTGATE_ADMIN_API_KEY` | API | empty (disabled) | Optional global credential accepted in `X-Admin-API-Key` for `/api/v1/admin/**` routes. Intended only for trusted CLI and server-to-server administration. Empty or whitespace-only values disable it; any other trimmed value is accepted. |
-| `PROMPTGATE_CA_FILE` | API, proxy, schedule | empty | Optional path to a PEM-encoded CA certificate file. API uses it for Keycloak and monitoring, proxy for upstream providers, and schedule for monitoring checks. |
-| `PROMPTGATE_PROXY_BASE_URL` | API, proxy | API: derived from `PROMPTGATE_BACKEND_BASE_URL` and `PROMPTGATE_PROXY_PORT`; proxy: empty | Browser-visible proxy base URL. Set the same HTTP(S) URL on API and proxy for Model Lab; credentials, encoded paths, queries, and fragments are rejected. An optional path is a public routing prefix that must be removed before the request reaches the proxy. |
-| `PROMPTGATE_STATIC_ASSETS_DIR` | API | empty | Optional directory containing frontend static assets. When set, the API serves files from this directory and falls back to the SPA shell for frontend routes. |
-| `PROMPTGATE_SESSION_COOKIE_NAME` | API, proxy | `promptgate_session` | Browser session cookie name. |
-| `PROMPTGATE_SESSION_TTL` | API, proxy | `8h` | Browser session lifetime. Must be greater than zero. |
-| `PROMPTGATE_CORS_ALLOWED_ORIGINS` | API, proxy | API: `PROMPTGATE_FRONTEND_BASE_URL`; proxy: `PROMPTGATE_FRONTEND_BASE_URL` when present | Allowed browser origins for CORS. Loopback origins are expanded across `localhost`, `127.0.0.1`, and `::1` when possible. |
-| `PROMPTGATE_MODEL_LAB_TICKET_TTL` | API, proxy | `60s` | One-time ticket lifetime. Must be greater than zero and at most `5m`. |
-| `PROMPTGATE_MODEL_LAB_MAX_PROMPT_BYTES` | API, proxy | `32768` | Maximum Model Lab request body size in bytes; cannot exceed the proxy request-buffer limit. |
-| `PROMPTGATE_MODEL_LAB_MAX_OUTPUT_TOKENS` | API, proxy | `4096` | Maximum requested output tokens accepted by the Model Lab payload validator. |
-| `PROMPTGATE_MODEL_LAB_MAX_TARGETS` | API, proxy | `3` | Maximum distinct targets in one ticket batch, from 1 through 3. |
-| `PROMPTGATE_MODEL_LAB_MAX_CONCURRENT` | API, proxy | `3` | Maximum active Model Lab streams per account, from 1 through 3. |
-| `PROMPTGATE_MODEL_LAB_CATALOG_FRESH_TTL` | API, proxy | `5m` | Time during which a discovered provider catalog is fresh. |
-| `PROMPTGATE_MODEL_LAB_CATALOG_STALE_TTL` | API, proxy | `24h` | Retention for the last known good catalog; must be at least the fresh TTL. |
-| `PROMPTGATE_TOKEN_CLEANUP_INTERVAL` | API, schedule | `1h` | Interval for expired token cleanup. |
-| `PROMPTGATE_USER_ACCESS_EXPIRATION_INTERVAL` | API, schedule | `1h` | Interval for user access expiration jobs. |
-| `PROMPTGATE_PROXY_TRUST_FORWARD_HEADERS` | proxy | `false` | Whether the proxy trusts `X-Forwarded-For` and `X-Real-IP`. Enable only behind trusted infrastructure. |
-| `PROMPTGATE_PROXY_TRUSTED_PROXIES` | proxy | empty | Comma-separated CIDRs for proxies whose `X-Forwarded-For` and `X-Real-IP` headers can be trusted. Prefer this over global forwarded-header trust in production. |
-| `PROMPTGATE_PROXY_CLIENT_IP_DEBUG` | proxy | `false` | Temporarily logs the direct peer IP, resolved client IP, resolution source, and peer trust decision. It never logs raw forwarding headers or request content. |
-| `PROMPTGATE_PROXY_DEBUG_REQUESTS` | proxy | `false` | Writes every incoming proxy request to stdout as JSON, including all headers and body bytes consumed by the proxy. Unread body bytes are not drained solely for logging. **Danger:** credentials, JWTs, cookies, provider keys, prompts, and personal data are logged in cleartext. Enable only temporarily for diagnosis; never leave enabled in production. |
-| `PROMPTGATE_PROXY_MAX_BUFFERED_REQUEST_BYTES` | proxy | `8388608` | Maximum buffered request body size for routes that require inspection, in bytes. Must be greater than zero. |
-| `PROMPTGATE_PROXY_MAX_BUFFERED_RESPONSE_BYTES` | proxy | `16777216` | Maximum buffered upstream response size for inspected responses, in bytes. Must be greater than zero. |
-| `PROMPTGATE_PROXY_UPSTREAM_TIMEOUT` | proxy | `2m` | Complete upstream request timeout, including provider calls. Must be greater than zero. |
-| `PROMPTGATE_REDIS_CACHE_TTL` | API, proxy, worker, schedule | `5m` | TTL for Redis-backed cache entries and snapshots. |
-| `PROMPTGATE_OPA_ENABLED` | proxy | `true` | Enables external OPA authorization. Set to `false` only as an emergency bypass: authenticated requests then continue directly to groups, quotas, and providers, and OPA is excluded from `/health`. |
-| `PROMPTGATE_OPA_URL` | proxy | required when OPA is enabled | Absolute HTTP(S) base URL of the external OPA server. Ignored when OPA is disabled. |
-| `PROMPTGATE_OPA_POLICY_PATH` | proxy | `promptgate/proxy/decision` | OPA data API document returning `{allow, reason}`. |
-| `PROMPTGATE_OPA_TIMEOUT` | proxy | `2s` | Timeout for OPA decision and health requests. |
-| `PROMPTGATE_OPA_CACHE_TTL` | proxy | `10m` | Redis TTL for allow and deny decisions. |
-| `PROMPTGATE_PROXY_RELOAD_DEBOUNCE` | API, proxy, schedule | `250ms` | Debounce duration for proxy provider reload notifications. |
-| `PROMPTGATE_WORKER_BATCH_SIZE` | worker | `100` | Maximum Redis Stream events read per worker batch. |
-| `PROMPTGATE_WORKER_BLOCK_TIMEOUT` | worker | `5s` | Long-poll timeout for new Redis Stream events. |
-| `PROMPTGATE_WORKER_PENDING_IDLE_TIMEOUT` | worker | `30s` | Minimum idle time before a worker can reclaim pending usage events. |
-| `PROMPTGATE_WORKER_CONSUMER_NAME` | worker | generated | Optional Redis consumer name. Leave empty for `hostname-pid-random`. |
-| `PROMPTGATE_USAGE_RAW_RETENTION` | schedule | `2160h` | Retention for raw proxy usage rows used by operational metrics. |
-| `PROMPTGATE_USAGE_RAW_CLEANUP_INTERVAL` | schedule | `1h` | Interval for raw proxy usage cleanup. |
-| `PROMPTGATE_SUBSCRIPTION_QUOTA_SYNC_INTERVAL` | schedule | `5m` | Interval for copying live Redis subscription quota state into PostgreSQL. |
-| `PROMPTGATE_QUOTA_RESET_DISTRIBUTION_INTERVAL` | API, schedule | `1h` | Interval for idempotently granting the current UTC calendar month's reset credit to eligible users. The scheduler runs this job immediately on startup; the API validates the shared setting for configuration parity. |
-| `PROMPTGATE_USAGE_COST_ENABLED` | API, proxy | `true` | Enables dashboard estimates and estimated OpenInference cost attributes. |
-| `PROMPTGATE_USAGE_COST_INPUT` | API, proxy | `5.00` | Estimated USD price per 1M completion input tokens. |
-| `PROMPTGATE_USAGE_COST_OUTPUT` | API, proxy | `30.00` | Estimated USD price per 1M completion output tokens. |
-| `PROMPTGATE_USAGE_COST_EMBEDDING` | API, proxy | `0.02` | Estimated USD price per 1M embedding tokens. |
-| `PROMPTGATE_OTEL_ENABLED` | proxy | `false` | Enables OTLP/HTTP trace export. |
-| `PROMPTGATE_OTEL_ENDPOINT` | proxy | empty | Full OTLP traces endpoint, required when enabled, for example `https://phoenix.example.com/v1/traces`. |
-| `PROMPTGATE_OTEL_API_KEY` | proxy | empty | Optional Phoenix API key sent as a Bearer authorization header. Store it as a secret. |
-| `PROMPTGATE_OTEL_PROJECT_NAME` | proxy | `prompt-gate` | Phoenix project selected through resource attributes and `x-project-name`. |
-| `PROMPTGATE_OTEL_SERVICE_NAME` | proxy | `promptgate-proxy` | OpenTelemetry `service.name`. |
-| `PROMPTGATE_OTEL_ENVIRONMENT` | proxy | `production` | Deployment environment resource attribute. |
-| `PROMPTGATE_OTEL_CAPTURE_PROMPTS` | proxy | `false` | Explicitly allows raw prompt content to leave Prompt Gate. |
-| `PROMPTGATE_OTEL_CAPTURE_OUTPUT` | proxy | `false` | Independently allows raw assistant output to leave Prompt Gate as `output.value`; oversized responses are omitted. Identity text and tool arguments are exported regardless, so `false` does not make traces PII-free. |
-| `PROMPTGATE_OTEL_CAPTURE_THINKING` | proxy | `false` | Independently allows provider-returned thinking, reasoning summaries, and commentary to leave Prompt Gate as OpenInference reasoning content. The text is exported in full without redaction. |
-| `PROMPTGATE_OTEL_EXPORT_TIMEOUT` | proxy | `10s` | Timeout for one OTLP export. |
-| `PROMPTGATE_OTEL_BATCH_TIMEOUT` | proxy | `5s` | Maximum delay before exporting a queued batch. |
-| `PROMPTGATE_OTEL_MAX_QUEUE_SIZE` | proxy | `2048` | Maximum queued spans. |
-| `PROMPTGATE_OTEL_MAX_EXPORT_BATCH_SIZE` | proxy | `512` | Maximum spans per export; cannot exceed the queue size. |
-| `PROMPTGATE_OTEL_CA_FILE` | proxy | empty | Optional PEM CA bundle used only by the OTLP exporter. |
-| `PROMPTGATE_OTEL_INSECURE` | proxy | `false` | Permits a plain HTTP endpoint. Use only on trusted development networks. |
+| `common.log.level` | all | `info` | `debug`, `info`, `warn`, `warning`, or `error`; unknown values fall back to `info`. |
+| `common.database.url` | all | none | Required PostgreSQL connection URL. |
+| `common.database.connection_max_lifetime` | all | `30m` | Maximum lifetime of a pooled PostgreSQL connection. |
+| `common.database.max_idle_connections` | all | `5` | Maximum idle PostgreSQL connections. |
+| `common.database.max_open_connections` | all | `10` | Maximum open PostgreSQL connections. |
+| `common.redis.url` | API, proxy, worker, schedule | none | Required Redis connection URL. |
+| `common.redis.cache_ttl` | API, proxy, worker, schedule | `5m` | Shared cache and snapshot TTL. |
+| `common.redis.pool_size` | Redis runtimes | driver default | Optional positive pool-size override. |
+| `common.redis.min_idle_connections` | Redis runtimes | driver default | Optional positive idle-connection override. |
+| `common.redis.pool_timeout` | Redis runtimes | driver default | Optional positive pool wait timeout. |
+| `common.redis.read_timeout` | Redis runtimes | driver default | Optional positive read timeout. |
+| `common.redis.write_timeout` | Redis runtimes | driver default | Optional positive write timeout. |
+| `common.tls.ca_file` | API, proxy, schedule | empty | Single CA bundle for OIDC, monitoring, providers, and OTEL. |
+| `common.security.jwt_secret` | API, proxy, schedule | none | Required signing secret of at least 32 characters. |
+| `common.security.secrets_key` | API, proxy, schedule | none | Required base64-encoded 32-byte provider-secret and Model Lab ticket key. |
+| `common.public_urls.frontend` | API, proxy | none | Browser-visible frontend origin; required by API. |
+| `common.public_urls.backend` | API | none | Browser-visible API origin; required by API. |
+| `common.public_urls.proxy` | API, proxy | derived for API | Browser-visible proxy URL; required by proxy. |
+| `common.session.cookie_name` | API, proxy | `promptgate_session` | Browser session cookie name. |
+| `common.session.ttl` | API, proxy | `8h` | Positive browser session lifetime. |
+| `common.cors.allowed_origins` | API, proxy | frontend URL | YAML list of browser origins. Loopback aliases are expanded. |
+| `common.proxy_reload_debounce` | API, proxy, schedule | `250ms` | Provider reload-event debounce. |
 
-## Per Command Requirements
+`common.model_lab` contains `ticket_ttl`, `max_prompt_bytes`,
+`max_output_tokens`, `max_targets`, `max_concurrent`, `catalog_fresh_ttl`, and
+`catalog_stale_ttl`. The existing limits remain: tickets live at most `5m`,
+targets and concurrency are between 1 and 3, and stale catalog retention cannot
+be shorter than fresh retention.
 
-`promptgate api` requires:
+`common.usage_cost` contains the non-negative fallback USD rates `input`,
+`output`, and `embedding`, each expressed per one million tokens. Cost
+estimation is always enabled; there is no `enabled` setting. Database-backed
+per-model pricing takes precedence over these fallback rates.
 
-```sh
-PROMPTGATE_DATABASE_URL
-PROMPTGATE_REDIS_URL
-PROMPTGATE_JWT_SECRET
-PROMPTGATE_SECRETS_KEY
-PROMPTGATE_KEYCLOAK_ISSUER_URL
-PROMPTGATE_KEYCLOAK_JWKS_URL
-PROMPTGATE_KEYCLOAK_CLIENT_ID
-PROMPTGATE_FRONTEND_BASE_URL
-PROMPTGATE_BACKEND_BASE_URL
-```
+`common.maintenance` contains `token_cleanup_interval`,
+`user_access_expiration_interval`, and `quota_reset_distribution_interval`.
+All default to `1h` and must be positive.
 
-`promptgate proxy` requires:
+## API Settings
 
-```sh
-PROMPTGATE_DATABASE_URL
-PROMPTGATE_REDIS_URL
-PROMPTGATE_JWT_SECRET
-PROMPTGATE_SECRETS_KEY
-```
+| YAML path | Default | Description |
+| --- | --- | --- |
+| `api.port` | `8080` | API listen port. |
+| `api.static_assets_dir` | empty | Optional frontend asset directory. |
+| `api.admin_api_key` | empty | Optional global credential for `/api/v1/admin/**`. |
+| `api.oidc.issuer_url` | none | Required OIDC issuer URL. |
+| `api.oidc.jwks_url` | none | Required JWKS URL. |
+| `api.oidc.client_id` | none | Required OIDC client ID. |
+| `api.oidc.client_secret` | empty | Optional confidential-client secret. |
 
-Model Lab is always enabled for `user` and `admin` roles. The proxy therefore
-requires an explicit `PROMPTGATE_PROXY_BASE_URL`; API and proxy use their
-existing shared `PROMPTGATE_SECRETS_KEY` directly for its tickets.
+## Proxy Settings
 
-`promptgate schedule` requires:
+The `proxy` section contains `port`, `trust_forward_headers`, the YAML CIDR list
+`trusted_proxies`, `client_ip_debug`, `debug_requests`, request and response
+buffer limits, and `upstream_timeout`.
 
-```sh
-PROMPTGATE_DATABASE_URL
-PROMPTGATE_REDIS_URL
-PROMPTGATE_JWT_SECRET
-PROMPTGATE_SECRETS_KEY
-```
+`proxy.opa` contains `enabled`, `url`, `policy_path`, `timeout`, and
+`cache_ttl`. The URL is required and must be absolute HTTP(S) when OPA is
+enabled. `cache_ttl` applies only to cached denials; allow decisions are always
+re-evaluated.
 
-`promptgate worker` requires:
+`proxy.otel` contains `enabled`, `endpoint`, `api_key`, `project_name`,
+`service_name`, `environment`, the three `capture_*` consent switches,
+`export_timeout`, `batch_timeout`, queue and batch sizes, and `insecure`.
+There is deliberately no OTEL-specific CA path: the exporter uses
+`common.tls.ca_file`.
 
-```sh
-PROMPTGATE_DATABASE_URL
-PROMPTGATE_REDIS_URL
-```
+## Worker And Scheduler Settings
 
-`promptgate migrate` requires:
+`worker` contains `batch_size`, `block_timeout`, `pending_idle_timeout`, and
+the optional `consumer_name`.
 
-```sh
-PROMPTGATE_DATABASE_URL
-```
+`schedule` contains `usage_raw_retention`, `usage_raw_cleanup_interval`, and
+`subscription_quota_sync_interval`. All durations must be positive. The
+`migrate` section is currently empty; migrations consume common logging and
+database settings.
 
-## Local Example
+## Relative Paths And Secrets
 
-```sh
-PROMPTGATE_PORT=8080
-PROMPTGATE_PROXY_PORT=8081
-PROMPTGATE_LOG_LEVEL=debug
-PROMPTGATE_DATABASE_URL=postgres://postgres:postgres@localhost:5432/promptgate?sslmode=disable
-PROMPTGATE_REDIS_URL=redis://localhost:6379/0
-PROMPTGATE_KEYCLOAK_ISSUER_URL=http://localhost:8082/realms/promptgate
-PROMPTGATE_KEYCLOAK_JWKS_URL=http://localhost:8082/realms/promptgate/protocol/openid-connect/certs
-PROMPTGATE_KEYCLOAK_CLIENT_ID=promptgate-backend
-PROMPTGATE_KEYCLOAK_CLIENT_SECRET=
-PROMPTGATE_ADMIN_API_KEY=
-PROMPTGATE_CA_FILE=
-PROMPTGATE_FRONTEND_BASE_URL=http://localhost:3000
-PROMPTGATE_BACKEND_BASE_URL=http://localhost:8080
-PROMPTGATE_PROXY_BASE_URL=http://localhost:8081
-PROMPTGATE_STATIC_ASSETS_DIR=
-PROMPTGATE_SESSION_COOKIE_NAME=promptgate_session
-PROMPTGATE_SESSION_TTL=8h
-PROMPTGATE_CORS_ALLOWED_ORIGINS=http://localhost:3000
-PROMPTGATE_MODEL_LAB_TICKET_TTL=60s
-PROMPTGATE_MODEL_LAB_MAX_PROMPT_BYTES=32768
-PROMPTGATE_MODEL_LAB_MAX_OUTPUT_TOKENS=4096
-PROMPTGATE_MODEL_LAB_MAX_TARGETS=3
-PROMPTGATE_MODEL_LAB_MAX_CONCURRENT=3
-PROMPTGATE_MODEL_LAB_CATALOG_FRESH_TTL=5m
-PROMPTGATE_MODEL_LAB_CATALOG_STALE_TTL=24h
-PROMPTGATE_JWT_SECRET=change-me-change-me-change-me-32
-PROMPTGATE_SECRETS_KEY=MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
-PROMPTGATE_TOKEN_CLEANUP_INTERVAL=1h
-PROMPTGATE_USER_ACCESS_EXPIRATION_INTERVAL=1h
-PROMPTGATE_PROXY_TRUST_FORWARD_HEADERS=false
-PROMPTGATE_PROXY_TRUSTED_PROXIES=
-PROMPTGATE_PROXY_CLIENT_IP_DEBUG=false
-PROMPTGATE_PROXY_DEBUG_REQUESTS=false
-PROMPTGATE_PROXY_MAX_BUFFERED_REQUEST_BYTES=8388608
-PROMPTGATE_PROXY_MAX_BUFFERED_RESPONSE_BYTES=16777216
-PROMPTGATE_PROXY_UPSTREAM_TIMEOUT=2m
-PROMPTGATE_REDIS_CACHE_TTL=5m
-PROMPTGATE_OPA_ENABLED=true
-PROMPTGATE_OPA_URL=http://prompt-gate-opa:8181
-PROMPTGATE_OPA_POLICY_PATH=promptgate/proxy/decision
-PROMPTGATE_OPA_TIMEOUT=2s
-PROMPTGATE_OPA_CACHE_TTL=10m
-PROMPTGATE_PROXY_RELOAD_DEBOUNCE=250ms
-PROMPTGATE_WORKER_BATCH_SIZE=100
-PROMPTGATE_WORKER_BLOCK_TIMEOUT=5s
-PROMPTGATE_WORKER_PENDING_IDLE_TIMEOUT=30s
-PROMPTGATE_WORKER_CONSUMER_NAME=
-PROMPTGATE_USAGE_RAW_RETENTION=2160h
-PROMPTGATE_USAGE_RAW_CLEANUP_INTERVAL=1h
-PROMPTGATE_SUBSCRIPTION_QUOTA_SYNC_INTERVAL=5m
-PROMPTGATE_QUOTA_RESET_DISTRIBUTION_INTERVAL=1h
-PROMPTGATE_USAGE_COST_ENABLED=true
-PROMPTGATE_USAGE_COST_INPUT=5.00
-PROMPTGATE_USAGE_COST_OUTPUT=30.00
-PROMPTGATE_USAGE_COST_EMBEDDING=0.02
-PROMPTGATE_OTEL_ENABLED=false
-PROMPTGATE_OTEL_ENDPOINT=
-PROMPTGATE_OTEL_API_KEY=
-PROMPTGATE_OTEL_PROJECT_NAME=prompt-gate
-PROMPTGATE_OTEL_SERVICE_NAME=promptgate-proxy
-PROMPTGATE_OTEL_ENVIRONMENT=production
-PROMPTGATE_OTEL_CAPTURE_PROMPTS=false
-PROMPTGATE_OTEL_CAPTURE_OUTPUT=false
-PROMPTGATE_OTEL_CAPTURE_THINKING=false
-PROMPTGATE_OTEL_EXPORT_TIMEOUT=10s
-PROMPTGATE_OTEL_BATCH_TIMEOUT=5s
-PROMPTGATE_OTEL_MAX_QUEUE_SIZE=2048
-PROMPTGATE_OTEL_MAX_EXPORT_BATCH_SIZE=512
-PROMPTGATE_OTEL_CA_FILE=
-PROMPTGATE_OTEL_INSECURE=false
-```
+Relative values for `common.tls.ca_file` and `api.static_assets_dir` resolve
+against the directory containing the selected YAML file, not the process
+working directory.
 
-## Notes
+The document contains database credentials, signing and encryption keys, the
+OIDC client secret, administration key, and optional OTEL key. Store and mount
+the complete file as a secret, make it readable only by the Prompt Gate
+process, and never print or commit it. Configuration is read once at startup;
+restart every affected process after changing it.
 
-- `PROMPTGATE_BACKEND_BASE_URL` must be the browser-visible API URL because the
-  OIDC callback URL is computed as `<backend-base-url>/auth/callback`.
-- `PROMPTGATE_PROXY_BASE_URL` is optional for the API. When omitted, the API
-  derives it from `PROMPTGATE_BACKEND_BASE_URL` and `PROMPTGATE_PROXY_PORT`.
-  For Model Lab, an optional path is treated only as a browser-visible
-  routing prefix. The edge must strip it before forwarding, as the Helm
-  `/remote` Ingress does; tickets bind the canonical path seen by the proxy.
-- `PROMPTGATE_CORS_ALLOWED_ORIGINS` should contain origins only, without paths
-  or trailing slashes.
-- `PROMPTGATE_CA_FILE` must point to a readable PEM file. Mount the file into
-  API and schedule containers when Keycloak or monitored HTTPS services use a
-  private or internal CA.
-- `PROMPTGATE_ADMIN_API_KEY` is read only by the API process. When enabled, it
-  grants full access to every admin endpoint, including destructive actions.
-  Keep it out of frontend code, browser storage, URLs, logs, and version
-  control, and send it only over HTTPS.
-- `PROMPTGATE_SECRETS_KEY` protects stored downstream provider credentials and
-  is used unchanged to sign and verify Model Lab tickets. Rotating it requires
-  a deliberate secret migration plan and immediately invalidates outstanding
-  Model Lab tickets; their Redis records then expire naturally.
-- `PROMPTGATE_JWT_SECRET` must be shared by API, proxy, and scheduler
-  processes so issued tokens can be validated and revoked consistently.
-- Dashboard usage cost fields are indicative estimates only. They are
-  calculated from recorded token counts and the configured rates, not from an
-  OpenAI invoice.
-- OTLP export is fail-open: exporter failures are logged and never fail an LLM
-  request. Enabling prompt capture sends raw, unredacted prompt text to the
-  configured collector; review Phoenix access and retention before enabling it.
+## Per-Command Requirements
 
-Related docs:
+- `api`: database, Redis, JWT and secrets keys, public frontend/backend URLs,
+  and the three required OIDC fields.
+- `proxy`: database, Redis, JWT and secrets keys, and a public proxy URL; OPA
+  additionally requires its URL when enabled.
+- `schedule`: database, Redis, JWT and secrets keys.
+- `worker`: database and Redis.
+- `migrate`: database only.
 
-- [Development guide](development.md)
-- [Deployment](deployment.md)
-- [Security model](security.md)
-- [Proxy runtime](proxy.md)
-- [Scheduler](scheduler.md)
+Integration-test PostgreSQL and Redis endpoints are also file-backed in
+[`testdata/promptgate.integration.yaml`](../testdata/promptgate.integration.yaml).
+The test harness does not read configuration from environment variables.

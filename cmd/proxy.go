@@ -24,22 +24,22 @@ import (
 )
 
 // newProxyCommand builds the CLI command that starts the LLM proxy server.
-func newProxyCommand() *cobra.Command {
+func newProxyCommand(configPath *string) *cobra.Command {
 	return &cobra.Command{
 		Use:   "proxy",
 		Short: "Run the LLM proxy server",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			return runProxy()
+			return runProxy(*configPath)
 		},
 	}
 }
 
 // runProxy loads proxy configuration, initializes runtime services, and serves proxy traffic until shutdown.
-func runProxy() error {
+func runProxy(configPath string) error {
 	bootstrapLogger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
-	cfg, err := config.LoadProxy()
+	cfg, err := config.LoadProxy(configPath)
 	if err != nil {
 		bootstrapLogger.Error("failed to load proxy configuration", "error", err)
 		return err

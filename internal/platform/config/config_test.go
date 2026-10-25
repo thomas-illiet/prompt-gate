@@ -3,214 +3,300 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 )
 
-// setRequiredAPIEnv sets required API env.
-func setRequiredAPIEnv(t *testing.T) {
+const validConfigYAML = `
+common:
+  database:
+    url: postgres://postgres:postgres@localhost:5432/promptgate?sslmode=disable
+  redis:
+    url: redis://localhost:6379/0
+  security:
+    jwt_secret: 0123456789abcdef0123456789abcdef
+    secrets_key: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
+  public_urls:
+    frontend: http://localhost:3000
+    backend: http://localhost:8080
+    proxy: https://proxy.example.com
+api:
+  oidc:
+    issuer_url: https://keycloak.example.com/realms/promptgate
+    jwks_url: https://keycloak.example.com/realms/promptgate/protocol/openid-connect/certs
+    client_id: promptgate-backend
+proxy:
+  opa:
+    url: http://opa:8181
+`
+
+func writeConfig(t *testing.T, contents string) string {
 	t.Helper()
-
-	t.Setenv("PROMPTGATE_DATABASE_URL", "postgres://postgres:postgres@localhost:5432/promptgate?sslmode=disable")
-	t.Setenv("PROMPTGATE_KEYCLOAK_ISSUER_URL", "https://keycloak.example.com/realms/promptgate")
-	t.Setenv("PROMPTGATE_KEYCLOAK_JWKS_URL", "https://keycloak.example.com/realms/promptgate/protocol/openid-connect/certs")
-	t.Setenv("PROMPTGATE_KEYCLOAK_CLIENT_ID", "promptgate-backend")
-	t.Setenv("PROMPTGATE_FRONTEND_BASE_URL", "http://localhost:3000")
-	t.Setenv("PROMPTGATE_BACKEND_BASE_URL", "http://localhost:8080")
-	t.Setenv("PROMPTGATE_JWT_SECRET", "0123456789abcdef0123456789abcdef")
-	t.Setenv("PROMPTGATE_SECRETS_KEY", "0123456789abcdef0123456789abcdef")
-	t.Setenv("PROMPTGATE_REDIS_URL", "redis://localhost:6379/0")
+	path := filepath.Join(t.TempDir(), "promptgate.yaml")
+	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	return path
 }
 
-// setRequiredScheduleEnv sets required schedule env.
-func setRequiredScheduleEnv(t *testing.T) {
-	t.Helper()
-
-	t.Setenv("PROMPTGATE_DATABASE_URL", "postgres://postgres:postgres@localhost:5432/promptgate?sslmode=disable")
-	t.Setenv("PROMPTGATE_JWT_SECRET", "0123456789abcdef0123456789abcdef")
-	t.Setenv("PROMPTGATE_SECRETS_KEY", "0123456789abcdef0123456789abcdef")
-	t.Setenv("PROMPTGATE_REDIS_URL", "redis://localhost:6379/0")
-}
-
-// setRequiredWorkerEnv sets required worker env.
-func setRequiredWorkerEnv(t *testing.T) {
-	t.Helper()
-
-	t.Setenv("PROMPTGATE_DATABASE_URL", "postgres://postgres:postgres@localhost:5432/promptgate?sslmode=disable")
-	t.Setenv("PROMPTGATE_REDIS_URL", "redis://localhost:6379/0")
-}
-
-// setRequiredProxyEnv sets required proxy env.
-func setRequiredProxyEnv(t *testing.T) {
-	t.Helper()
-
-	setRequiredWorkerEnv(t)
-	t.Setenv("PROMPTGATE_JWT_SECRET", "0123456789abcdef0123456789abcdef")
-	t.Setenv("PROMPTGATE_SECRETS_KEY", "0123456789abcdef0123456789abcdef")
-	t.Setenv("PROMPTGATE_OPA_URL", "http://opa:8181")
-	t.Setenv("PROMPTGATE_PROXY_BASE_URL", "https://proxy.example.com")
-}
-
-// TestLoadProxyOTelDefaults verifies telemetry is safely disabled by default.
-func TestLoadProxyOTelDefaults(t *testing.T) {
-	setRequiredProxyEnv(t)
-	cfg, err := LoadProxy()
+func TestLoadRuntimeConfigsFromYAML(t *testing.T) {
+	path := writeConfig(t, validConfigYAML)
+	api, err := LoadApi(path)
 	if err != nil {
-		t.Fatalf("load proxy config: %v", err)
+		t.Fatalf("load api: %v", err)
 	}
-	if cfg.OTel.Enabled || cfg.OTel.CapturePrompts || cfg.OTel.CaptureOutput || cfg.OTel.CaptureThinking {
-		t.Fatalf("expected telemetry and prompt capture disabled: %#v", cfg.OTel)
-	}
-	if cfg.OTel.ProjectName != "prompt-gate" || cfg.OTel.ServiceName != "promptgate-proxy" {
-		t.Fatalf("unexpected telemetry defaults: %#v", cfg.OTel)
-	}
-}
-
-func TestModelLabDefaults(t *testing.T) {
-	setRequiredAPIEnv(t)
-	apiCfg, err := LoadApi()
+	proxy, err := LoadProxy(path)
 	if err != nil {
-		t.Fatalf("load api config: %v", err)
+		t.Fatalf("load proxy: %v", err)
 	}
-	if apiCfg.ModelLab.TicketTTL != time.Minute || apiCfg.ModelLab.MaxTargets != 3 || apiCfg.ModelLab.MaxConcurrent != 3 {
-		t.Fatalf("unexpected Model Lab defaults: %#v", apiCfg.ModelLab)
-	}
-}
-
-func TestLoadModelLabConfiguration(t *testing.T) {
-	setRequiredProxyEnv(t)
-	t.Setenv("PROMPTGATE_MODEL_LAB_TICKET_TTL", "90s")
-	t.Setenv("PROMPTGATE_MODEL_LAB_MAX_PROMPT_BYTES", "16384")
-	t.Setenv("PROMPTGATE_MODEL_LAB_MAX_OUTPUT_TOKENS", "2048")
-	t.Setenv("PROMPTGATE_MODEL_LAB_MAX_TARGETS", "2")
-	t.Setenv("PROMPTGATE_MODEL_LAB_MAX_CONCURRENT", "2")
-
-	cfg, err := LoadProxy()
+	worker, err := LoadWorker(path)
 	if err != nil {
-		t.Fatalf("load proxy config: %v", err)
+		t.Fatalf("load worker: %v", err)
 	}
-	if cfg.ModelLab.TicketTTL != 90*time.Second || cfg.ModelLab.MaxPromptBytes != 16384 || cfg.ModelLab.MaxOutputTokens != 2048 || cfg.ModelLab.MaxTargets != 2 || cfg.ModelLab.MaxConcurrent != 2 {
-		t.Fatalf("unexpected Model Lab config: %#v", cfg.ModelLab)
-	}
-}
-
-func TestModelLabRejectsUnsafeProxyPublicURL(t *testing.T) {
-	for _, load := range []struct {
-		name    string
-		prepare func(*testing.T)
-		call    func() error
-	}{
-		{name: "api", prepare: setRequiredAPIEnv, call: func() error { _, err := LoadApi(); return err }},
-		{name: "proxy", prepare: setRequiredProxyEnv, call: func() error { _, err := LoadProxy(); return err }},
-	} {
-		t.Run(load.name, func(t *testing.T) {
-			load.prepare(t)
-			t.Setenv("PROMPTGATE_PROXY_BASE_URL", "https://proxy.example.com/remote?token=secret")
-
-			if err := load.call(); err == nil || !strings.Contains(err.Error(), "without credentials, encoded path, query, or fragment") {
-				t.Fatalf("expected Model Lab public URL validation, got %v", err)
-			}
-		})
-	}
-}
-
-func TestModelLabAllowsStrippedPublicProxyRoutingPrefix(t *testing.T) {
-	for _, load := range []struct {
-		name    string
-		prepare func(*testing.T)
-		call    func() error
-	}{
-		{name: "api", prepare: setRequiredAPIEnv, call: func() error { _, err := LoadApi(); return err }},
-		{name: "proxy", prepare: setRequiredProxyEnv, call: func() error { _, err := LoadProxy(); return err }},
-	} {
-		t.Run(load.name, func(t *testing.T) {
-			load.prepare(t)
-			t.Setenv("PROMPTGATE_PROXY_BASE_URL", "https://proxy.example.com/remote")
-
-			if err := load.call(); err != nil {
-				t.Fatalf("expected stripped public routing prefix to be accepted, got %v", err)
-			}
-		})
-	}
-}
-
-func TestLoadProxyOPAEnabledByDefault(t *testing.T) {
-	setRequiredProxyEnv(t)
-	cfg, err := LoadProxy()
+	schedule, err := LoadSchedule(path)
 	if err != nil {
-		t.Fatalf("load proxy config: %v", err)
+		t.Fatalf("load schedule: %v", err)
 	}
-	if !cfg.OPAEnabled {
-		t.Fatal("expected OPA to be enabled by default")
-	}
-}
-
-func TestLoadProxyAllowsDisabledOPAWithoutConfiguration(t *testing.T) {
-	setRequiredProxyEnv(t)
-	t.Setenv("PROMPTGATE_OPA_ENABLED", "false")
-	t.Setenv("PROMPTGATE_OPA_URL", "")
-	t.Setenv("PROMPTGATE_OPA_POLICY_PATH", "")
-	t.Setenv("PROMPTGATE_OPA_TIMEOUT", "0s")
-	t.Setenv("PROMPTGATE_OPA_CACHE_TTL", "0s")
-
-	cfg, err := LoadProxy()
+	migration, err := LoadMigration(path)
 	if err != nil {
-		t.Fatalf("load proxy with OPA disabled: %v", err)
+		t.Fatalf("load migration: %v", err)
 	}
-	if cfg.OPAEnabled {
-		t.Fatal("expected OPA to be disabled")
+
+	if api.Port != "8080" || proxy.Port != "8081" {
+		t.Fatalf("unexpected ports: api=%q proxy=%q", api.Port, proxy.Port)
 	}
-}
-
-func TestLoadProxyRequiresOPAURLWhenEnabled(t *testing.T) {
-	setRequiredProxyEnv(t)
-	t.Setenv("PROMPTGATE_OPA_URL", "")
-
-	_, err := LoadProxy()
-	if err == nil || !strings.Contains(err.Error(), "PROMPTGATE_OPA_URL") {
-		t.Fatalf("expected enabled OPA to require its URL, got %v", err)
+	if api.SessionTTL != 8*time.Hour || api.ModelLab.TicketTTL != time.Minute {
+		t.Fatalf("unexpected API defaults: %#v", api)
 	}
-}
-
-// TestLoadProxyOTelConfig verifies explicit Phoenix exporter settings.
-func TestLoadProxyOTelConfig(t *testing.T) {
-	setRequiredProxyEnv(t)
-	t.Setenv("PROMPTGATE_OTEL_ENABLED", "true")
-	t.Setenv("PROMPTGATE_OTEL_ENDPOINT", "http://phoenix:6006/v1/traces")
-	t.Setenv("PROMPTGATE_OTEL_INSECURE", "true")
-	t.Setenv("PROMPTGATE_OTEL_CAPTURE_PROMPTS", "true")
-	t.Setenv("PROMPTGATE_OTEL_CAPTURE_OUTPUT", "true")
-	t.Setenv("PROMPTGATE_OTEL_CAPTURE_THINKING", "true")
-	t.Setenv("PROMPTGATE_OTEL_PROJECT_NAME", "platform-analysis")
-
-	cfg, err := LoadProxy()
-	if err != nil {
-		t.Fatalf("load proxy config: %v", err)
+	if proxy.UsageCost.Input != 5 || proxy.UsageCost.Output != 30 || proxy.UsageCost.Embedding != 0.02 {
+		t.Fatalf("unexpected usage cost defaults: %#v", proxy.UsageCost)
 	}
-	if !cfg.OTel.Enabled || !cfg.OTel.CapturePrompts || !cfg.OTel.CaptureOutput || !cfg.OTel.CaptureThinking || cfg.OTel.ProjectName != "platform-analysis" {
-		t.Fatalf("unexpected telemetry config: %#v", cfg.OTel)
+	if worker.WorkerBatchSize != 100 || schedule.UsageRawRetention != 90*24*time.Hour {
+		t.Fatalf("unexpected worker/schedule defaults: worker=%#v schedule=%#v", worker, schedule)
+	}
+	if migration.DatabaseURL != api.DatabaseURL {
+		t.Fatalf("expected common database URL, got %q", migration.DatabaseURL)
+	}
+	if api.ConnMaxLifetime != 30*time.Minute || api.MaxIdleConnections != 5 || api.MaxOpenConnections != 10 {
+		t.Fatalf("unexpected database pool defaults: %#v", api.DatabaseURLConfig)
 	}
 }
 
-// TestLoadProxyRejectsInvalidOTelConfig verifies required endpoint, TLS, and queue constraints.
-func TestLoadProxyRejectsInvalidOTelConfig(t *testing.T) {
-	for _, test := range []struct {
+func TestShippedConfigsLoadForEveryRuntime(t *testing.T) {
+	paths := []string{
+		filepath.Join("..", "..", "..", "promptgate.example.yaml"),
+		filepath.Join("..", "..", "..", "deploy", "config", "promptgate.compose.yaml"),
+		filepath.Join("..", "..", "..", "testdata", "promptgate.integration.yaml"),
+	}
+	loads := []struct {
 		name string
-		env  map[string]string
-		want string
+		load func(string) error
 	}{
-		{name: "missing endpoint", env: map[string]string{}, want: "PROMPTGATE_OTEL_ENDPOINT"},
-		{name: "plain HTTP", env: map[string]string{"PROMPTGATE_OTEL_ENDPOINT": "http://phoenix:6006/v1/traces"}, want: "PROMPTGATE_OTEL_INSECURE"},
-		{name: "batch larger than queue", env: map[string]string{"PROMPTGATE_OTEL_ENDPOINT": "https://phoenix.example/v1/traces", "PROMPTGATE_OTEL_MAX_QUEUE_SIZE": "10", "PROMPTGATE_OTEL_MAX_EXPORT_BATCH_SIZE": "11"}, want: "must not exceed"},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			setRequiredProxyEnv(t)
-			t.Setenv("PROMPTGATE_OTEL_ENABLED", "true")
-			for key, value := range test.env {
-				t.Setenv(key, value)
+		{"api", func(path string) error { _, err := LoadApi(path); return err }},
+		{"proxy", func(path string) error { _, err := LoadProxy(path); return err }},
+		{"worker", func(path string) error { _, err := LoadWorker(path); return err }},
+		{"schedule", func(path string) error { _, err := LoadSchedule(path); return err }},
+		{"migrate", func(path string) error { _, err := LoadMigration(path); return err }},
+	}
+	for _, path := range paths {
+		t.Run(filepath.Base(path), func(t *testing.T) {
+			loadPath := path
+			if filepath.Base(path) == "promptgate.compose.yaml" {
+				contents, err := os.ReadFile(path)
+				if err != nil {
+					t.Fatalf("read %s: %v", path, err)
+				}
+				contents = []byte(strings.Replace(string(contents), "/app/public", strconv.Quote(t.TempDir()), 1))
+				loadPath = writeConfig(t, string(contents))
 			}
-			_, err := LoadProxy()
+			for _, runtime := range loads {
+				t.Run(runtime.name, func(t *testing.T) {
+					if err := runtime.load(loadPath); err != nil {
+						t.Fatalf("load %s for %s: %v", path, runtime.name, err)
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestLoadYAMLOverridesAndLists(t *testing.T) {
+	contents := strings.Replace(validConfigYAML, `  database:
+    url: postgres://postgres:postgres@localhost:5432/promptgate?sslmode=disable
+`, `  database:
+    url: postgres://custom:custom@db.example.com:5432/custom
+    connection_max_lifetime: 45m
+    max_idle_connections: 7
+    max_open_connections: 12
+`, 1)
+	contents = strings.Replace(contents, `  redis:
+    url: redis://localhost:6379/0
+`, `  redis:
+    url: redis://localhost:6379/0
+    cache_ttl: 7m
+    pool_size: 20
+    min_idle_connections: 2
+    pool_timeout: 4s
+    read_timeout: 3s
+    write_timeout: 2s
+`, 1)
+	contents = strings.Replace(contents, "  security:\n", `  cors:
+    allowed_origins:
+      - https://app.example.com
+  session:
+    cookie_name: custom_session
+    ttl: 9h
+  model_lab:
+    ticket_ttl: 90s
+    max_prompt_bytes: 65536
+    max_output_tokens: 2048
+    max_targets: 2
+    max_concurrent: 2
+    catalog_fresh_ttl: 10m
+    catalog_stale_ttl: 25m
+  usage_cost:
+    input: 1.25
+    output: 2.5
+    embedding: 0.13
+  maintenance:
+    token_cleanup_interval: 2h
+    user_access_expiration_interval: 3h
+    quota_reset_distribution_interval: 4h
+  proxy_reload_debounce: 500ms
+  security:
+`, 1)
+	contents = strings.Replace(contents, `api:
+  oidc:
+`, `api:
+  port: 9080
+  admin_api_key: admin-test-key
+  oidc:
+`, 1)
+	contents = strings.Replace(contents, `    client_id: promptgate-backend
+`, `    client_id: promptgate-backend
+    client_secret: oidc-test-secret
+`, 1)
+	contents = strings.Replace(contents, `proxy:
+  opa:
+    url: http://opa:8181
+`, `proxy:
+  port: ":9090"
+  trusted_proxies:
+    - 10.0.0.0/8
+    - 192.168.0.0/16
+  opa:
+    url: http://opa:8181
+    timeout: 4s
+    cache_ttl: 11m
+  otel:
+    enabled: true
+    endpoint: http://otel.example.com:4318
+    api_key: otel-test-key
+    project_name: custom-project
+    service_name: custom-service
+    environment: test
+    capture_prompts: true
+    capture_output: true
+    capture_thinking: true
+    export_timeout: 7s
+    batch_timeout: 3s
+    max_queue_size: 64
+    max_export_batch_size: 32
+    insecure: true
+`, 1)
+	contents += `
+worker:
+  batch_size: 42
+  block_timeout: 2s
+  pending_idle_timeout: 3s
+  consumer_name: worker-a
+schedule:
+  usage_raw_retention: 720h
+  usage_raw_cleanup_interval: 2h
+  subscription_quota_sync_interval: 7m
+`
+	path := writeConfig(t, contents)
+
+	api, err := LoadApi(path)
+	if err != nil {
+		t.Fatalf("load api: %v", err)
+	}
+	proxy, err := LoadProxy(path)
+	if err != nil {
+		t.Fatalf("load proxy: %v", err)
+	}
+	worker, err := LoadWorker(path)
+	if err != nil {
+		t.Fatalf("load worker: %v", err)
+	}
+	schedule, err := LoadSchedule(path)
+	if err != nil {
+		t.Fatalf("load schedule: %v", err)
+	}
+	migration, err := LoadMigration(path)
+	if err != nil {
+		t.Fatalf("load migration: %v", err)
+	}
+	if api.Port != "9080" || api.AdminAPIKey != "admin-test-key" || api.KeycloakClientSecret != "oidc-test-secret" {
+		t.Fatalf("unexpected API overrides: %#v", api)
+	}
+	if api.SessionCookieName != "custom_session" || api.SessionTTL != 9*time.Hour || api.TokenCleanupInterval != 2*time.Hour || api.UserAccessExpirationInterval != 3*time.Hour || api.QuotaResetDistributionInterval != 4*time.Hour {
+		t.Fatalf("unexpected common API overrides: %#v", api)
+	}
+	if api.ModelLab.TicketTTL != 90*time.Second || api.ModelLab.MaxTargets != 2 || api.ModelLab.CatalogStaleTTL != 25*time.Minute {
+		t.Fatalf("unexpected model lab overrides: %#v", api.ModelLab)
+	}
+	if proxy.Port != ":9090" || len(proxy.ProxyTrustedProxies) != 2 {
+		t.Fatalf("unexpected proxy overrides: %#v", proxy)
+	}
+	if proxy.RedisCacheTTL != 7*time.Minute || proxy.RedisPoolSize != 20 || proxy.RedisMinIdleConnections != 2 || proxy.RedisPoolTimeout != 4*time.Second || proxy.RedisReadTimeout != 3*time.Second || proxy.RedisWriteTimeout != 2*time.Second {
+		t.Fatalf("unexpected Redis overrides: %#v", proxy.RedisConfig)
+	}
+	if proxy.ConnMaxLifetime != 45*time.Minute || proxy.MaxIdleConnections != 7 || proxy.MaxOpenConnections != 12 {
+		t.Fatalf("unexpected database pool overrides: %#v", proxy.DatabaseURLConfig)
+	}
+	if proxy.OPATimeout != 4*time.Second || proxy.OPACacheTTL != 11*time.Minute || !proxy.OTel.Enabled || !proxy.OTel.Insecure || proxy.OTel.MaxQueueSize != 64 || proxy.OTel.MaxExportBatchSize != 32 {
+		t.Fatalf("unexpected proxy integration overrides: %#v", proxy)
+	}
+	if proxy.UsageCost.Input != 1.25 || proxy.UsageCost.Output != 2.5 || proxy.UsageCost.Embedding != 0.13 {
+		t.Fatalf("unexpected costs: %#v", proxy.UsageCost)
+	}
+	if worker.WorkerBatchSize != 42 || worker.WorkerBlockTimeout != 2*time.Second || worker.WorkerPendingIdleTimeout != 3*time.Second || worker.WorkerConsumerName != "worker-a" {
+		t.Fatalf("unexpected worker overrides: %#v", worker)
+	}
+	if schedule.UsageRawRetention != 720*time.Hour || schedule.UsageRawCleanupInterval != 2*time.Hour || schedule.SubscriptionQuotaSyncInterval != 7*time.Minute {
+		t.Fatalf("unexpected schedule overrides: %#v", schedule)
+	}
+	if migration.DatabaseURL != "postgres://custom:custom@db.example.com:5432/custom" || migration.ConnMaxLifetime != 45*time.Minute || migration.MaxIdleConnections != 7 || migration.MaxOpenConnections != 12 {
+		t.Fatalf("unexpected migration overrides: %#v", migration)
+	}
+}
+
+func TestLoadConfigStrictYAML(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		want    string
+	}{
+		{name: "unknown key", content: validConfigYAML + "unknown: true\n", want: "field unknown not found"},
+		{name: "unknown usage enabled", content: "common:\n  usage_cost:\n    enabled: true\n", want: "field enabled not found"},
+		{name: "duplicate key", content: "common:\n  log:\n    level: info\n    level: debug\n", want: "already defined"},
+		{name: "multiple documents", content: validConfigYAML + "\n---\ncommon: {}\n", want: "exactly one YAML document"},
+		{name: "wrong integer type", content: "worker:\n  batch_size: nope\n", want: "worker.batch_size must be an integer"},
+		{name: "wrong string type", content: "common:\n  log:\n    level: false\n", want: "common.log.level must be a string"},
+		{name: "wrong boolean type", content: "proxy:\n  opa:\n    enabled: \"false\"\n", want: "proxy.opa.enabled must be a boolean"},
+		{name: "wrong duration type", content: "common:\n  session:\n    ttl: 8\n", want: "common.session.ttl must be a duration string"},
+		{name: "wrong number type", content: "common:\n  usage_cost:\n    input: \"5.0\"\n", want: "common.usage_cost.input must be a number"},
+		{name: "null defaulted integer", content: "common:\n  database:\n    max_open_connections: null\n", want: "common.database.max_open_connections must not be null"},
+		{name: "null defaulted boolean", content: "proxy:\n  opa:\n    enabled: null\n", want: "proxy.opa.enabled must not be null"},
+		{name: "null defaulted duration", content: "common:\n  session:\n    ttl: null\n", want: "common.session.ttl must not be null"},
+		{name: "OTel CA removed", content: "proxy:\n  otel:\n    ca_file: /tmp/ca.pem\n", want: "field ca_file not found"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := LoadApi(writeConfig(t, test.content))
 			if err == nil || !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("expected error containing %q, got %v", test.want, err)
 			}
@@ -218,560 +304,173 @@ func TestLoadProxyRejectsInvalidOTelConfig(t *testing.T) {
 	}
 }
 
-// TestLoadApiDefaultSessionTTL verifies load API default session TTL.
-func TestLoadApiDefaultSessionTTL(t *testing.T) {
-	setRequiredAPIEnv(t)
+func TestLoadConfigRequiresReadableSingleFile(t *testing.T) {
+	if _, err := LoadMigration(""); err == nil || !strings.Contains(err.Error(), "--config") {
+		t.Fatalf("expected missing config error, got %v", err)
+	}
+	if _, err := LoadMigration(filepath.Join(t.TempDir(), "missing.yaml")); err == nil || !strings.Contains(err.Error(), "open config") {
+		t.Fatalf("expected missing file error, got %v", err)
+	}
+	if _, err := LoadMigration(writeConfig(t, "")); err == nil || !strings.Contains(err.Error(), "empty") {
+		t.Fatalf("expected empty config error, got %v", err)
+	}
+}
 
-	cfg, err := LoadApi()
+func TestLoadConfigResolvesRelativePaths(t *testing.T) {
+	dir := t.TempDir()
+	caPath := filepath.Join(dir, "ca.pem")
+	assetsPath := filepath.Join(dir, "public")
+	if err := os.WriteFile(caPath, []byte("test"), 0o600); err != nil {
+		t.Fatalf("write CA: %v", err)
+	}
+	if err := os.Mkdir(assetsPath, 0o700); err != nil {
+		t.Fatalf("mkdir assets: %v", err)
+	}
+	content := strings.Replace(validConfigYAML, "  security:\n", "  tls:\n    ca_file: ca.pem\n  security:\n", 1)
+	content = strings.Replace(content, "api:\n  oidc:\n", "api:\n  static_assets_dir: public\n  oidc:\n", 1)
+	path := filepath.Join(dir, "promptgate.yaml")
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	cfg, err := LoadApi(path)
 	if err != nil {
-		t.Fatalf("load api config: %v", err)
+		t.Fatalf("load api: %v", err)
 	}
-	if cfg.SessionTTL != 8*time.Hour {
-		t.Fatalf("expected default session ttl 8h, got %s", cfg.SessionTTL)
-	}
-	if cfg.QuotaResetDistributionInterval != time.Hour {
-		t.Fatalf("expected default quota reset distribution interval 1h, got %s", cfg.QuotaResetDistributionInterval)
+	if cfg.CAFile != caPath || cfg.StaticAssetsDir != assetsPath {
+		t.Fatalf("relative paths not resolved: ca=%q assets=%q", cfg.CAFile, cfg.StaticAssetsDir)
 	}
 }
 
-func TestLoadApiQuotaResetDistributionIntervalOverride(t *testing.T) {
-	setRequiredAPIEnv(t)
-	t.Setenv("PROMPTGATE_QUOTA_RESET_DISTRIBUTION_INTERVAL", "45m")
-
-	cfg, err := LoadApi()
+func TestLegacyEnvironmentDoesNotOverrideYAML(t *testing.T) {
+	t.Setenv("PROMPTGATE_DATABASE_URL", "postgres://legacy.invalid/ignored")
+	t.Setenv("PROMPTGATE_WORKER_BATCH_SIZE", "999")
+	cfg, err := LoadWorker(writeConfig(t, validConfigYAML))
 	if err != nil {
-		t.Fatalf("load api config: %v", err)
+		t.Fatalf("load worker: %v", err)
 	}
-	if cfg.QuotaResetDistributionInterval != 45*time.Minute {
-		t.Fatalf("expected quota reset distribution interval 45m, got %s", cfg.QuotaResetDistributionInterval)
-	}
-}
-
-// TestLoadApiCustomSessionTTL verifies load API custom session TTL.
-func TestLoadApiCustomSessionTTL(t *testing.T) {
-	setRequiredAPIEnv(t)
-	t.Setenv("PROMPTGATE_SESSION_TTL", "12h")
-
-	cfg, err := LoadApi()
-	if err != nil {
-		t.Fatalf("load api config: %v", err)
-	}
-	if cfg.SessionTTL != 12*time.Hour {
-		t.Fatalf("expected custom session ttl 12h, got %s", cfg.SessionTTL)
+	if strings.Contains(cfg.DatabaseURL, "legacy.invalid") || cfg.WorkerBatchSize != 100 {
+		t.Fatalf("legacy environment affected YAML config: %#v", cfg)
 	}
 }
 
-// TestLoadApiAdminAPIKey verifies the optional administration API key is trimmed and accepts any non-empty length.
-func TestLoadApiAdminAPIKey(t *testing.T) {
-	for _, test := range []struct {
-		name  string
-		value *string
-		want  string
-	}{
-		{name: "absent", want: ""},
-		{name: "whitespace only", value: stringPointer(" \t\n "), want: ""},
-		{name: "trimmed", value: stringPointer("  admin-secret\t"), want: "admin-secret"},
-		{name: "single character", value: stringPointer("x"), want: "x"},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			setRequiredAPIEnv(t)
-			if test.value == nil {
-				unsetEnv(t, "PROMPTGATE_ADMIN_API_KEY")
-			} else {
-				t.Setenv("PROMPTGATE_ADMIN_API_KEY", *test.value)
-			}
-
-			cfg, err := LoadApi()
-			if err != nil {
-				t.Fatalf("load api config: %v", err)
-			}
-			if cfg.AdminAPIKey != test.want {
-				t.Fatalf("expected admin API key %q, got %q", test.want, cfg.AdminAPIKey)
-			}
-		})
+func TestMigrationOnlyValidatesConsumedCommonConfig(t *testing.T) {
+	path := writeConfig(t, `
+common:
+  database:
+    url: postgres://postgres:postgres@localhost:5432/promptgate
+`)
+	if _, err := LoadMigration(path); err != nil {
+		t.Fatalf("load migration: %v", err)
+	}
+	if _, err := LoadWorker(path); err == nil || !strings.Contains(err.Error(), "common.redis.url") {
+		t.Fatalf("expected worker Redis requirement, got %v", err)
 	}
 }
 
-func stringPointer(value string) *string {
-	return &value
-}
-
-func unsetEnv(t *testing.T, key string) {
-	t.Helper()
-
-	previous, existed := os.LookupEnv(key)
-	if err := os.Unsetenv(key); err != nil {
-		t.Fatalf("unset %s: %v", key, err)
-	}
-	t.Cleanup(func() {
-		if existed {
-			_ = os.Setenv(key, previous)
-			return
-		}
-		_ = os.Unsetenv(key)
-	})
-}
-
-// TestLoadApiProxyBaseURLOverride verifies load API proxy base URL override.
-func TestLoadApiProxyBaseURLOverride(t *testing.T) {
-	setRequiredAPIEnv(t)
-	t.Setenv("PROMPTGATE_PROXY_BASE_URL", "https://proxy.example.com/promptgate/")
-
-	cfg, err := LoadApi()
-	if err != nil {
-		t.Fatalf("load api config: %v", err)
-	}
-	if cfg.ProxyBaseURL != "https://proxy.example.com/promptgate" {
-		t.Fatalf("expected proxy base url override, got %q", cfg.ProxyBaseURL)
-	}
-}
-
-// TestLoadApiProxyBaseURLFallback verifies load API proxy base URL fallback.
-func TestLoadApiProxyBaseURLFallback(t *testing.T) {
-	setRequiredAPIEnv(t)
-	t.Setenv("PROMPTGATE_BACKEND_BASE_URL", "http://127.0.0.1:8080")
-	t.Setenv("PROMPTGATE_PROXY_PORT", "9090")
-
-	cfg, err := LoadApi()
-	if err != nil {
-		t.Fatalf("load api config: %v", err)
-	}
-	if cfg.ProxyBaseURL != "http://127.0.0.1:9090" {
-		t.Fatalf("expected proxy fallback url, got %q", cfg.ProxyBaseURL)
-	}
-}
-
-// TestLoadApiUsageCostDefaults verifies load API usage cost defaults.
-func TestLoadApiUsageCostDefaults(t *testing.T) {
-	setRequiredAPIEnv(t)
-
-	cfg, err := LoadApi()
-	if err != nil {
-		t.Fatalf("load api config: %v", err)
-	}
-	if !cfg.UsageCost.Enabled {
-		t.Fatal("expected usage cost estimates to be enabled by default")
-	}
-	if cfg.UsageCost.Input != 5 || cfg.UsageCost.Output != 30 || cfg.UsageCost.Embedding != 0.02 {
-		t.Fatalf("unexpected usage cost defaults: %#v", cfg.UsageCost)
-	}
-}
-
-// TestLoadApiUsageCostOverrideAndDisable verifies load API usage cost override and disable.
-func TestLoadApiUsageCostOverrideAndDisable(t *testing.T) {
-	setRequiredAPIEnv(t)
-	t.Setenv("PROMPTGATE_USAGE_COST_ENABLED", "false")
-	t.Setenv("PROMPTGATE_USAGE_COST_INPUT", "1.25")
-	t.Setenv("PROMPTGATE_USAGE_COST_OUTPUT", "2.5")
-	t.Setenv("PROMPTGATE_USAGE_COST_EMBEDDING", "0.13")
-
-	cfg, err := LoadApi()
-	if err != nil {
-		t.Fatalf("load api config: %v", err)
-	}
-	if cfg.UsageCost.Enabled {
-		t.Fatal("expected usage cost estimates to be disabled")
-	}
-	if cfg.UsageCost.Input != 1.25 || cfg.UsageCost.Output != 2.5 || cfg.UsageCost.Embedding != 0.13 {
-		t.Fatalf("unexpected usage cost overrides: %#v", cfg.UsageCost)
-	}
-}
-
-// TestLoadApiRejectsInvalidUsageCostRates verifies load API rejects invalid usage cost rates.
-func TestLoadApiRejectsInvalidUsageCostRates(t *testing.T) {
-	for _, test := range []struct {
-		name  string
-		env   string
-		value string
-		want  string
-	}{
-		{name: "input non numeric", env: "PROMPTGATE_USAGE_COST_INPUT", value: "not-a-number", want: "PROMPTGATE_USAGE_COST_INPUT"},
-		{name: "output negative", env: "PROMPTGATE_USAGE_COST_OUTPUT", value: "-1", want: "PROMPTGATE_USAGE_COST_OUTPUT"},
-		{name: "embedding nan", env: "PROMPTGATE_USAGE_COST_EMBEDDING", value: "NaN", want: "PROMPTGATE_USAGE_COST_EMBEDDING"},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			setRequiredAPIEnv(t)
-			t.Setenv(test.env, test.value)
-
-			_, err := LoadApi()
-			if err == nil {
-				t.Fatal("expected invalid usage cost rate to fail")
-			}
-			if !strings.Contains(err.Error(), test.want) {
-				t.Fatalf("expected error mentioning %s, got %v", test.want, err)
-			}
-		})
-	}
-}
-
-// TestLoadApiReadsStaticAssetsDir verifies load API reads static assets dir.
-func TestLoadApiReadsStaticAssetsDir(t *testing.T) {
-	setRequiredAPIEnv(t)
-	staticDir := t.TempDir()
-	t.Setenv("PROMPTGATE_STATIC_ASSETS_DIR", staticDir)
-
-	cfg, err := LoadApi()
-	if err != nil {
-		t.Fatalf("load api config: %v", err)
-	}
-	if cfg.StaticAssetsDir != staticDir {
-		t.Fatalf("expected static assets dir %q, got %q", staticDir, cfg.StaticAssetsDir)
-	}
-}
-
-// TestLoadApiReadsCAFile verifies load API reads the global CA file.
-func TestLoadApiReadsCAFile(t *testing.T) {
-	setRequiredAPIEnv(t)
-	caFile := filepath.Join(t.TempDir(), "ca.pem")
-	if err := os.WriteFile(caFile, []byte("not validated here"), 0o600); err != nil {
-		t.Fatalf("write ca cert: %v", err)
-	}
-	t.Setenv("PROMPTGATE_CA_FILE", caFile)
-
-	cfg, err := LoadApi()
-	if err != nil {
-		t.Fatalf("load api config: %v", err)
-	}
-	if cfg.CAFile != caFile {
-		t.Fatalf("expected CA file %q, got %q", caFile, cfg.CAFile)
-	}
-}
-
-// TestLoadApiRejectsInvalidCAFile verifies load API rejects invalid CA file.
-func TestLoadApiRejectsInvalidCAFile(t *testing.T) {
-	setRequiredAPIEnv(t)
-	t.Setenv("PROMPTGATE_CA_FILE", "/definitely/not/a/ca.pem")
-
-	if _, err := LoadApi(); err == nil {
-		t.Fatal("expected invalid CA file to fail")
-	}
-}
-
-// TestLoadApiRejectsCAFileDirectory verifies load API rejects CA file directories.
-func TestLoadApiRejectsCAFileDirectory(t *testing.T) {
-	setRequiredAPIEnv(t)
-	t.Setenv("PROMPTGATE_CA_FILE", t.TempDir())
-
-	if _, err := LoadApi(); err == nil {
-		t.Fatal("expected CA file directory to fail")
-	}
-}
-
-// TestLoadApiIgnoresLegacyKeycloakCAEnv verifies the old Keycloak CA env var is not a fallback.
-func TestLoadApiIgnoresLegacyKeycloakCAEnv(t *testing.T) {
-	setRequiredAPIEnv(t)
-	t.Setenv("PROMPTGATE_KEYCLOAK_CA_CERT_PATH", "/definitely/not/a/keycloak-ca.pem")
-
-	cfg, err := LoadApi()
-	if err != nil {
-		t.Fatalf("load api config: %v", err)
-	}
-	if cfg.CAFile != "" {
-		t.Fatalf("expected legacy Keycloak CA env to be ignored, got %q", cfg.CAFile)
-	}
-}
-
-// TestLoadApiRejectsInvalidStaticAssetsDir verifies load API rejects invalid static assets dir.
-func TestLoadApiRejectsInvalidStaticAssetsDir(t *testing.T) {
-	setRequiredAPIEnv(t)
-	t.Setenv("PROMPTGATE_STATIC_ASSETS_DIR", "/definitely/not/a/static/assets/dir")
-
-	if _, err := LoadApi(); err == nil {
-		t.Fatal("expected invalid static assets dir to fail")
-	}
-}
-
-// TestLoadApiRejectsNonPositiveSessionTTL verifies load API rejects non-positive session TTL.
-func TestLoadApiRejectsNonPositiveSessionTTL(t *testing.T) {
-	setRequiredAPIEnv(t)
-	t.Setenv("PROMPTGATE_SESSION_TTL", "0")
-
-	if _, err := LoadApi(); err == nil {
-		t.Fatal("expected non-positive session ttl to fail")
-	}
-}
-
-// TestLoadApiRequiresRedisURL verifies load API requires Redis URL.
-func TestLoadApiRequiresRedisURL(t *testing.T) {
-	setRequiredAPIEnv(t)
-	t.Setenv("PROMPTGATE_REDIS_URL", "")
-
-	if _, err := LoadApi(); err == nil {
-		t.Fatal("expected missing redis url to fail")
-	}
-}
-
-// TestLoadScheduleReadsCAFile verifies load schedule reads the global CA file.
-func TestLoadScheduleReadsCAFile(t *testing.T) {
-	setRequiredScheduleEnv(t)
-	caFile := filepath.Join(t.TempDir(), "ca.pem")
-	if err := os.WriteFile(caFile, []byte("not validated here"), 0o600); err != nil {
-		t.Fatalf("write ca cert: %v", err)
-	}
-	t.Setenv("PROMPTGATE_CA_FILE", caFile)
-
-	cfg, err := LoadSchedule()
-	if err != nil {
-		t.Fatalf("load schedule config: %v", err)
-	}
-	if cfg.CAFile != caFile {
-		t.Fatalf("expected CA file %q, got %q", caFile, cfg.CAFile)
-	}
-}
-
-// TestLoadScheduleUsageRawCleanupDefaults verifies load schedule maintenance defaults.
-func TestLoadScheduleUsageRawCleanupDefaults(t *testing.T) {
-	setRequiredScheduleEnv(t)
-
-	cfg, err := LoadSchedule()
-	if err != nil {
-		t.Fatalf("load schedule config: %v", err)
-	}
-	if cfg.UsageRawRetention != 90*24*time.Hour {
-		t.Fatalf("expected raw usage retention 2160h, got %s", cfg.UsageRawRetention)
-	}
-	if cfg.UsageRawCleanupInterval != time.Hour {
-		t.Fatalf("expected raw usage cleanup interval 1h, got %s", cfg.UsageRawCleanupInterval)
-	}
-	if cfg.QuotaResetDistributionInterval != time.Hour {
-		t.Fatalf("expected quota reset distribution interval 1h, got %s", cfg.QuotaResetDistributionInterval)
-	}
-}
-
-// TestLoadScheduleQuotaResetDistributionIntervalOverride verifies operators can
-// tune how quickly the scheduler grants credits to newly eligible accounts.
-func TestLoadScheduleQuotaResetDistributionIntervalOverride(t *testing.T) {
-	setRequiredScheduleEnv(t)
-	t.Setenv("PROMPTGATE_QUOTA_RESET_DISTRIBUTION_INTERVAL", "30m")
-
-	cfg, err := LoadSchedule()
-	if err != nil {
-		t.Fatalf("load schedule config: %v", err)
-	}
-	if cfg.QuotaResetDistributionInterval != 30*time.Minute {
-		t.Fatalf("expected quota reset distribution interval 30m, got %s", cfg.QuotaResetDistributionInterval)
-	}
-}
-
-// TestLoadScheduleRejectsInvalidCAFile verifies load schedule rejects invalid CA file.
-func TestLoadScheduleRejectsInvalidCAFile(t *testing.T) {
-	setRequiredScheduleEnv(t)
-	t.Setenv("PROMPTGATE_CA_FILE", "/definitely/not/a/ca.pem")
-
-	if _, err := LoadSchedule(); err == nil {
-		t.Fatal("expected invalid CA file to fail")
-	}
-}
-
-// TestLoadScheduleRejectsCAFileDirectory verifies load schedule rejects CA file directories.
-func TestLoadScheduleRejectsCAFileDirectory(t *testing.T) {
-	setRequiredScheduleEnv(t)
-	t.Setenv("PROMPTGATE_CA_FILE", t.TempDir())
-
-	if _, err := LoadSchedule(); err == nil {
-		t.Fatal("expected CA file directory to fail")
-	}
-}
-
-// TestLoadWorkerDefaultsAndOverrides verifies worker-specific config values.
-func TestLoadWorkerDefaultsAndOverrides(t *testing.T) {
-	setRequiredWorkerEnv(t)
-	t.Setenv("PROMPTGATE_WORKER_BATCH_SIZE", "42")
-	t.Setenv("PROMPTGATE_WORKER_BLOCK_TIMEOUT", "2s")
-	t.Setenv("PROMPTGATE_WORKER_PENDING_IDLE_TIMEOUT", "3s")
-	t.Setenv("PROMPTGATE_WORKER_CONSUMER_NAME", "worker-a")
-
-	cfg, err := LoadWorker()
-	if err != nil {
-		t.Fatalf("load worker config: %v", err)
-	}
-	if cfg.WorkerBatchSize != 42 || cfg.WorkerBlockTimeout != 2*time.Second || cfg.WorkerPendingIdleTimeout != 3*time.Second || cfg.WorkerConsumerName != "worker-a" {
-		t.Fatalf("unexpected worker config: %#v", cfg)
-	}
-}
-
-// TestLoadWorkerRequiresRedisURL verifies worker startup requires Redis.
-func TestLoadWorkerRequiresRedisURL(t *testing.T) {
-	setRequiredWorkerEnv(t)
-	t.Setenv("PROMPTGATE_REDIS_URL", "")
-
-	if _, err := LoadWorker(); err == nil {
-		t.Fatal("expected missing redis url to fail")
-	}
-}
-
-// TestLoadProxyReadsSessionAndCORSConfig verifies load proxy reads session and CORS config.
-func TestLoadProxyReadsSessionAndCORSConfig(t *testing.T) {
-	t.Setenv("PROMPTGATE_DATABASE_URL", "postgres://postgres:postgres@localhost:5432/promptgate?sslmode=disable")
-	t.Setenv("PROMPTGATE_JWT_SECRET", "0123456789abcdef0123456789abcdef")
-	t.Setenv("PROMPTGATE_SECRETS_KEY", "0123456789abcdef0123456789abcdef")
-	t.Setenv("PROMPTGATE_REDIS_URL", "redis://localhost:6379/0")
-	t.Setenv("PROMPTGATE_FRONTEND_BASE_URL", "http://localhost:3000")
-	t.Setenv("PROMPTGATE_PROXY_BASE_URL", "https://proxy.example.com")
-	t.Setenv("PROMPTGATE_SESSION_COOKIE_NAME", "custom_session")
-	t.Setenv("PROMPTGATE_SESSION_TTL", "12h")
-	t.Setenv("PROMPTGATE_PROXY_MAX_BUFFERED_REQUEST_BYTES", "1024")
-	t.Setenv("PROMPTGATE_MODEL_LAB_MAX_PROMPT_BYTES", "512")
-	t.Setenv("PROMPTGATE_PROXY_MAX_BUFFERED_RESPONSE_BYTES", "2048")
-	t.Setenv("PROMPTGATE_PROXY_UPSTREAM_TIMEOUT", "3m")
-	t.Setenv("PROMPTGATE_PROXY_CLIENT_IP_DEBUG", "true")
-	t.Setenv("PROMPTGATE_PROXY_DEBUG_REQUESTS", "true")
-	t.Setenv("PROMPTGATE_OPA_URL", "http://opa:8181")
-
-	cfg, err := LoadProxy()
-	if err != nil {
-		t.Fatalf("load proxy config: %v", err)
-	}
-	if cfg.SessionCookieName != "custom_session" {
-		t.Fatalf("unexpected cookie name: %q", cfg.SessionCookieName)
-	}
-	if cfg.SessionTTL != 12*time.Hour {
-		t.Fatalf("expected custom session ttl 12h, got %s", cfg.SessionTTL)
-	}
-	if len(cfg.CORSAllowedOrigins) == 0 || cfg.CORSAllowedOrigins[0] != "http://localhost:3000" {
-		t.Fatalf("unexpected cors origins: %#v", cfg.CORSAllowedOrigins)
-	}
-	if cfg.ProxyMaxBufferedRequestBytes != 1024 {
-		t.Fatalf("unexpected request buffer limit: %d", cfg.ProxyMaxBufferedRequestBytes)
-	}
-	if !cfg.ProxyDebugRequests {
-		t.Fatal("expected proxy request debugging to be enabled")
-	}
-	if !cfg.ProxyClientIPDebug {
-		t.Fatal("expected client IP debugging to be enabled")
-	}
-	if cfg.ProxyMaxBufferedResponseBytes != 2048 {
-		t.Fatalf("unexpected response buffer limit: %d", cfg.ProxyMaxBufferedResponseBytes)
-	}
-	if cfg.ProxyUpstreamTimeout != 3*time.Minute {
-		t.Fatalf("expected custom upstream timeout 3m, got %s", cfg.ProxyUpstreamTimeout)
-	}
-}
-
-// TestLoadProxyReadsTrustedProxies verifies load proxy reads explicit trusted proxy CIDRs.
-func TestLoadProxyReadsTrustedProxies(t *testing.T) {
-	t.Setenv("PROMPTGATE_DATABASE_URL", "postgres://postgres:postgres@localhost:5432/promptgate?sslmode=disable")
-	t.Setenv("PROMPTGATE_JWT_SECRET", "0123456789abcdef0123456789abcdef")
-	t.Setenv("PROMPTGATE_SECRETS_KEY", "0123456789abcdef0123456789abcdef")
-	t.Setenv("PROMPTGATE_REDIS_URL", "redis://localhost:6379/0")
-	t.Setenv("PROMPTGATE_PROXY_BASE_URL", "https://proxy.example.com")
-	t.Setenv("PROMPTGATE_PROXY_TRUSTED_PROXIES", "10.0.0.0/8, 192.168.0.0/16")
-	t.Setenv("PROMPTGATE_OPA_URL", "http://opa:8181")
-
-	cfg, err := LoadProxy()
-	if err != nil {
-		t.Fatalf("load proxy config: %v", err)
-	}
-	if len(cfg.ProxyTrustedProxies) != 2 {
-		t.Fatalf("expected two trusted proxies, got %#v", cfg.ProxyTrustedProxies)
-	}
-	if cfg.ProxyTrustedProxies[0].String() != "10.0.0.0/8" || cfg.ProxyTrustedProxies[1].String() != "192.168.0.0/16" {
-		t.Fatalf("unexpected trusted proxies: %#v", cfg.ProxyTrustedProxies)
-	}
-}
-
-// TestLoadProxyRejectsInvalidTrustedProxyCIDR verifies invalid CIDRs fail startup validation.
-func TestLoadProxyRejectsInvalidTrustedProxyCIDR(t *testing.T) {
-	t.Setenv("PROMPTGATE_DATABASE_URL", "postgres://postgres:postgres@localhost:5432/promptgate?sslmode=disable")
-	t.Setenv("PROMPTGATE_JWT_SECRET", "0123456789abcdef0123456789abcdef")
-	t.Setenv("PROMPTGATE_SECRETS_KEY", "0123456789abcdef0123456789abcdef")
-	t.Setenv("PROMPTGATE_REDIS_URL", "redis://localhost:6379/0")
-	t.Setenv("PROMPTGATE_PROXY_TRUSTED_PROXIES", "10.0.0.0/8,not-a-cidr")
-
-	_, err := LoadProxy()
-	if err == nil {
-		t.Fatal("expected invalid trusted proxy CIDR to fail")
-	}
-	if !strings.Contains(err.Error(), "PROMPTGATE_PROXY_TRUSTED_PROXIES") {
-		t.Fatalf("expected trusted proxies error, got %v", err)
-	}
-}
-
-// TestRuntimeConfigsRejectNonPositiveDurations verifies every duration passed
-// to a ticker, cache, or timeout is validated during configuration loading.
-func TestRuntimeConfigsRejectNonPositiveDurations(t *testing.T) {
+func TestLoadProxyValidatesCostsCIDRsAndOTel(t *testing.T) {
 	tests := []struct {
 		name    string
-		prepare func(*testing.T)
-		envName string
-		load    func() error
+		content string
+		want    string
 	}{
-		{
-			name:    "api redis cache ttl",
-			prepare: setRequiredAPIEnv,
-			envName: "PROMPTGATE_REDIS_CACHE_TTL",
-			load: func() error {
-				_, err := LoadApi()
-				return err
-			},
-		},
-		{
-			name:    "api reload debounce",
-			prepare: setRequiredAPIEnv,
-			envName: "PROMPTGATE_PROXY_RELOAD_DEBOUNCE",
-			load: func() error {
-				_, err := LoadApi()
-				return err
-			},
-		},
-		{
-			name:    "schedule token cleanup interval",
-			prepare: setRequiredScheduleEnv,
-			envName: "PROMPTGATE_TOKEN_CLEANUP_INTERVAL",
-			load: func() error {
-				_, err := LoadSchedule()
-				return err
-			},
-		},
-		{
-			name:    "schedule quota reset distribution interval",
-			prepare: setRequiredScheduleEnv,
-			envName: "PROMPTGATE_QUOTA_RESET_DISTRIBUTION_INTERVAL",
-			load: func() error {
-				_, err := LoadSchedule()
-				return err
-			},
-		},
-		{
-			name:    "proxy redis cache ttl",
-			prepare: setRequiredProxyEnv,
-			envName: "PROMPTGATE_REDIS_CACHE_TTL",
-			load: func() error {
-				_, err := LoadProxy()
-				return err
-			},
-		},
-		{
-			name:    "proxy reload debounce",
-			prepare: setRequiredProxyEnv,
-			envName: "PROMPTGATE_PROXY_RELOAD_DEBOUNCE",
-			load: func() error {
-				_, err := LoadProxy()
-				return err
-			},
-		},
-		{
-			name:    "worker redis cache ttl",
-			prepare: setRequiredWorkerEnv,
-			envName: "PROMPTGATE_REDIS_CACHE_TTL",
-			load: func() error {
-				_, err := LoadWorker()
-				return err
-			},
-		},
+		{name: "negative cost", content: strings.Replace(validConfigYAML, "  security:\n", "  usage_cost:\n    input: -1\n  security:\n", 1), want: "common.usage_cost.input"},
+		{name: "zero Redis minimum idle", content: strings.Replace(validConfigYAML, "    url: redis://localhost:6379/0\n", "    url: redis://localhost:6379/0\n    min_idle_connections: 0\n", 1), want: "common.redis.min_idle_connections"},
+		{name: "invalid CIDR", content: strings.Replace(validConfigYAML, "proxy:\n", "proxy:\n  trusted_proxies: [10.0.0.0/8, not-a-cidr]\n", 1), want: "proxy.trusted_proxies"},
+		{name: "invalid model lab limit", content: strings.Replace(validConfigYAML, "  security:\n", "  model_lab:\n    max_targets: 4\n  security:\n", 1), want: "common.model_lab.max_targets"},
+		{name: "stale catalog shorter than fresh", content: strings.Replace(validConfigYAML, "  security:\n", "  model_lab:\n    catalog_fresh_ttl: 10m\n    catalog_stale_ttl: 5m\n  security:\n", 1), want: "common.model_lab.catalog_stale_ttl"},
+		{name: "invalid OPA URL", content: strings.Replace(validConfigYAML, "url: http://opa:8181", "url: file:///tmp/policy", 1), want: "proxy.opa.url"},
+		{name: "empty OPA policy path", content: strings.Replace(validConfigYAML, "    url: http://opa:8181\n", "    url: http://opa:8181\n    policy_path: \"\"\n", 1), want: "proxy.opa.policy_path"},
+		{name: "zero OPA timeout", content: strings.Replace(validConfigYAML, "    url: http://opa:8181\n", "    url: http://opa:8181\n    timeout: 0s\n", 1), want: "proxy.opa.timeout"},
+		{name: "OTel missing endpoint", content: strings.Replace(validConfigYAML, "proxy:\n", "proxy:\n  otel:\n    enabled: true\n", 1), want: "proxy.otel.endpoint"},
+		{name: "OTel HTTP requires insecure", content: strings.Replace(validConfigYAML, "proxy:\n", "proxy:\n  otel:\n    enabled: true\n    endpoint: http://otel.example.com:4318\n", 1), want: "proxy.otel.endpoint must use https"},
+		{name: "OTel batch exceeds queue", content: strings.Replace(validConfigYAML, "proxy:\n", "proxy:\n  otel:\n    enabled: true\n    endpoint: https://otel.example.com:4318\n    max_queue_size: 10\n    max_export_batch_size: 11\n", 1), want: "proxy.otel.max_export_batch_size"},
+		{name: "OTel zero export timeout", content: strings.Replace(validConfigYAML, "proxy:\n", "proxy:\n  otel:\n    enabled: true\n    endpoint: https://otel.example.com:4318\n    export_timeout: 0s\n", 1), want: "proxy.otel.export_timeout"},
 	}
-
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			test.prepare(t)
-			t.Setenv(test.envName, "0")
-			err := test.load()
-			if err == nil {
-				t.Fatalf("expected %s to reject a non-positive duration", test.envName)
-			}
-			if !strings.Contains(err.Error(), test.envName+" must be greater than zero") {
-				t.Fatalf("unexpected error: %v", err)
+			_, err := LoadProxy(writeConfig(t, test.content))
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("expected error containing %q, got %v", test.want, err)
 			}
 		})
+	}
+}
+
+func TestLoadProxyAllowsDisabledOPAWithoutURL(t *testing.T) {
+	content := strings.Replace(validConfigYAML, `proxy:
+  opa:
+    url: http://opa:8181
+`, `proxy:
+  opa:
+    enabled: false
+    url: ""
+`, 1)
+	cfg, err := LoadProxy(writeConfig(t, content))
+	if err != nil {
+		t.Fatalf("load proxy with OPA disabled: %v", err)
+	}
+	if cfg.OPAEnabled {
+		t.Fatal("expected OPA to remain disabled")
+	}
+}
+
+func TestRuntimeValidationErrorsUseYAMLPaths(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		load    func(string) error
+		want    string
+	}{
+		{
+			name:    "API maintenance duration",
+			content: strings.Replace(validConfigYAML, "  security:\n", "  maintenance:\n    token_cleanup_interval: 0s\n  security:\n", 1),
+			load:    func(path string) error { _, err := LoadApi(path); return err },
+			want:    "common.maintenance.token_cleanup_interval",
+		},
+		{
+			name:    "proxy upstream duration",
+			content: strings.Replace(validConfigYAML, "proxy:\n", "proxy:\n  upstream_timeout: 0s\n", 1),
+			load:    func(path string) error { _, err := LoadProxy(path); return err },
+			want:    "proxy.upstream_timeout",
+		},
+		{
+			name:    "worker block duration",
+			content: validConfigYAML + "worker:\n  block_timeout: 0s\n",
+			load:    func(path string) error { _, err := LoadWorker(path); return err },
+			want:    "worker.block_timeout",
+		},
+		{
+			name:    "schedule retention duration",
+			content: validConfigYAML + "schedule:\n  usage_raw_retention: 0s\n",
+			load:    func(path string) error { _, err := LoadSchedule(path); return err },
+			want:    "schedule.usage_raw_retention",
+		},
+		{
+			name:    "migration database pool",
+			content: strings.Replace(validConfigYAML, "    url: postgres://postgres:postgres@localhost:5432/promptgate?sslmode=disable\n", "    url: postgres://postgres:postgres@localhost:5432/promptgate?sslmode=disable\n    max_idle_connections: 11\n    max_open_connections: 10\n", 1),
+			load:    func(path string) error { _, err := LoadMigration(path); return err },
+			want:    "common.database.max_idle_connections",
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := test.load(writeConfig(t, test.content))
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("expected error containing %q, got %v", test.want, err)
+			}
+		})
+	}
+}
+
+func TestPublicURLHelpers(t *testing.T) {
+	urls := PublicURLConfig{BackendBaseURL: "https://api.example.com"}
+	if got := urls.OIDCCallbackURL(); got != "https://api.example.com/auth/callback" {
+		t.Fatalf("unexpected callback URL %q", got)
+	}
+	if !urls.SessionCookieSecure() {
+		t.Fatal("expected HTTPS cookie to be secure")
+	}
+	if got := deriveProxyBaseURL("http://127.0.0.1:8080", "9090"); got != "http://127.0.0.1:9090" {
+		t.Fatalf("unexpected derived proxy URL %q", got)
 	}
 }

@@ -1,6 +1,4 @@
 {{- if .Values.api.enabled -}}
-{{- $adminApiKeyValue := include "prompt-gate.adminApiKeyValue" . -}}
-{{- $adminApiKeyExistingSecretName := include "prompt-gate.adminApiKeyExistingSecretName" . -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -30,11 +28,9 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
       annotations:
-        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
-        {{- if and (ne $adminApiKeyValue "") (eq $adminApiKeyExistingSecretName "") }}
-        checksum/admin-api-key: {{ include (print $.Template.BasePath "/secret-admin-api-key.yaml") . | sha256sum }}
-        {{- else if ne $adminApiKeyExistingSecretName "" }}
-        rollout/admin-api-key: {{ default "" .Values.adminApiKey.rolloutToken | toString | quote }}
+        checksum/config: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- if .Values.configSecret.existingSecret }}
+        prompt-gate.io/config-rollout: {{ .Values.configSecret.rolloutToken | toString | quote }}
         {{- end }}
         {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
@@ -54,23 +50,13 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command:
             - /app/promptgate
+            - --config
+            - /etc/prompt-gate/promptgate.yaml
             - api
           ports:
             - name: http
-              containerPort: {{ .Values.config.port }}
+              containerPort: {{ .Values.config.api.port }}
               protocol: TCP
-          {{- include "prompt-gate.envFrom" . | nindent 10 }}
-          {{- if or (ne $adminApiKeyValue "") (ne $adminApiKeyExistingSecretName "") }}
-          env:
-            {{- if or (ne $adminApiKeyValue "") (ne $adminApiKeyExistingSecretName "") }}
-            - name: PROMPTGATE_ADMIN_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "prompt-gate.adminApiKeySecretName" . | quote }}
-                  key: {{ include "prompt-gate.adminApiKeySecretKey" . | quote }}
-                  optional: false
-            {{- end }}
-          {{- end }}
           securityContext:
             {{- include "prompt-gate.containerSecurityContext" . | nindent 12 }}
           resources:
@@ -83,13 +69,15 @@ spec:
           readinessProbe:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with .Values.extraVolumeMounts }}
           volumeMounts:
+            {{- include "prompt-gate.configVolumeMount" . | nindent 12 }}
+            {{- with .Values.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
-          {{- end }}
-      {{- with .Values.extraVolumes }}
+            {{- end }}
       volumes:
+        {{- include "prompt-gate.configVolume" . | nindent 8 }}
+        {{- with .Values.extraVolumes }}
         {{- toYaml . | nindent 8 }}
-      {{- end }}
+        {{- end }}
       {{- include "prompt-gate.podPlacement" . | nindent 6 }}
 {{- end }}

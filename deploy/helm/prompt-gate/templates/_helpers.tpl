@@ -66,103 +66,22 @@ Runtime image.
 {{- printf "%s:%s" .Values.image.repository $tag -}}
 {{- end -}}
 
-{{/*
-Existing runtime secret name.
-*/}}
-{{- define "prompt-gate.secretName" -}}
-{{- default (printf "%s-secrets" (include "prompt-gate.fullname" .)) .Values.secret.existingSecret -}}
+{{/* Runtime configuration Secret name and key. */}}
+{{- define "prompt-gate.configSecretName" -}}
+{{- default (printf "%s-config" (include "prompt-gate.fullname" .)) .Values.configSecret.existingSecret -}}
 {{- end -}}
 
-{{/* Phoenix API key Secret helpers. */}}
-{{- define "prompt-gate.otelApiKeyValue" -}}
-{{- default "" .Values.otelApiKey.value | toString | trim -}}
+{{- define "prompt-gate.configSecretKey" -}}
+{{- required "configSecret.key must not be empty" .Values.configSecret.key -}}
 {{- end -}}
 
-{{- define "prompt-gate.otelApiKeySecretName" -}}
-{{- $existing := default "" .Values.otelApiKey.existingSecret.name | toString | trim -}}
-{{- if ne $existing "" -}}{{- $existing -}}{{- else -}}{{ include "prompt-gate.fullname" . }}-otel-api-key{{- end -}}
-{{- end -}}
-
-{{- define "prompt-gate.otelApiKeySecretKey" -}}
-{{- default "PROMPTGATE_OTEL_API_KEY" .Values.otelApiKey.existingSecret.key | toString | trim -}}
-{{- end -}}
-
-{{- define "prompt-gate.validateOTelApiKey" -}}
-{{- $value := include "prompt-gate.otelApiKeyValue" . -}}
-{{- $existing := default "" .Values.otelApiKey.existingSecret.name | toString | trim -}}
-{{- if and (ne $value "") (ne $existing "") -}}{{- fail "otelApiKey.value and otelApiKey.existingSecret.name are mutually exclusive" -}}{{- end -}}
-{{- end -}}
-
-{{/*
-Trim the configured inline administration API key. The application applies the
-same normalization when loading PROMPTGATE_ADMIN_API_KEY.
-*/}}
-{{- define "prompt-gate.adminApiKeyValue" -}}
-{{- default "" .Values.adminApiKey.value | toString | trim -}}
-{{- end -}}
-
-{{/*
-Normalized existing administration API key Secret name and key.
-*/}}
-{{- define "prompt-gate.adminApiKeyExistingSecretName" -}}
-{{- default "" .Values.adminApiKey.existingSecret.name | toString | trim -}}
-{{- end -}}
-
-{{- define "prompt-gate.adminApiKeyExistingSecretKey" -}}
-{{- default "" .Values.adminApiKey.existingSecret.key | toString | trim -}}
-{{- end -}}
-
-{{/*
-Validate that the administration API key has at most one source and that an
-existing Secret reference is complete.
-*/}}
-{{- define "prompt-gate.validateAdminApiKey" -}}
-{{- $value := include "prompt-gate.adminApiKeyValue" . -}}
-{{- $existingSecretName := include "prompt-gate.adminApiKeyExistingSecretName" . -}}
-{{- $existingSecretKey := include "prompt-gate.adminApiKeyExistingSecretKey" . -}}
-{{- $runtimeSecretName := include "prompt-gate.secretName" . | trim -}}
-{{- $adminSecretName := include "prompt-gate.adminApiKeySecretName" . | trim -}}
-{{- if and (ne $value "") (ne $existingSecretName "") -}}
-{{- fail "adminApiKey.value and adminApiKey.existingSecret.name are mutually exclusive" -}}
-{{- end -}}
-{{- if and (ne $existingSecretName "") (eq $existingSecretKey "") -}}
-{{- fail "adminApiKey.existingSecret.key is required when adminApiKey.existingSecret.name is set" -}}
-{{- end -}}
-{{- if and (or (ne $value "") (ne $existingSecretName "")) (eq $adminSecretName $runtimeSecretName) -}}
-{{- fail "the administration API key Secret name must differ from the shared runtime Secret name" -}}
-{{- end -}}
-{{- end -}}
-
-{{/*
-Administration API key Secret name. Use the external name when configured,
-otherwise use the name of the chart-managed dedicated Secret.
-*/}}
-{{- define "prompt-gate.adminApiKeySecretName" -}}
-{{- $existingSecretName := include "prompt-gate.adminApiKeyExistingSecretName" . -}}
-{{- if ne $existingSecretName "" -}}
-{{- $existingSecretName -}}
-{{- else -}}
-{{- $fullname := include "prompt-gate.fullname" . -}}
-{{- if le (len $fullname) 49 -}}
-{{- printf "%s-admin-api-key" $fullname -}}
-{{- else -}}
-{{- $prefix := $fullname | trunc 36 | trimSuffix "-" -}}
-{{- $hash := $fullname | sha256sum | trunc 12 -}}
-{{- printf "%s-%s-admin-api-key" $prefix $hash -}}
-{{- end -}}
-{{- end -}}
-{{- end -}}
-
-{{/*
-Administration API key Secret data key.
-*/}}
-{{- define "prompt-gate.adminApiKeySecretKey" -}}
-{{- $existingSecretName := include "prompt-gate.adminApiKeyExistingSecretName" . -}}
-{{- if ne $existingSecretName "" -}}
-{{- include "prompt-gate.adminApiKeyExistingSecretKey" . -}}
-{{- else -}}
-PROMPTGATE_ADMIN_API_KEY
-{{- end -}}
+{{/* Render the complete runtime document and derive public URLs from Ingress. */}}
+{{- define "prompt-gate.runtimeConfig" -}}
+{{- $config := deepCopy .Values.config -}}
+{{- $_ := set $config.common.public_urls "frontend" (include "prompt-gate.frontendBaseUrl" .) -}}
+{{- $_ := set $config.common.public_urls "backend" (include "prompt-gate.backendBaseUrl" .) -}}
+{{- $_ := set $config.common.public_urls "proxy" (include "prompt-gate.proxyBaseUrl" .) -}}
+{{- toYaml $config -}}
 {{- end -}}
 
 {{/*
@@ -176,21 +95,21 @@ Public URL scheme derived from Ingress TLS.
 Public frontend URL.
 */}}
 {{- define "prompt-gate.frontendBaseUrl" -}}
-{{- default (printf "%s://%s" (include "prompt-gate.publicScheme" .) .Values.ingress.host) .Values.config.frontendBaseUrl -}}
+{{- default (printf "%s://%s" (include "prompt-gate.publicScheme" .) .Values.ingress.host) .Values.config.common.public_urls.frontend -}}
 {{- end -}}
 
 {{/*
 Public backend URL.
 */}}
 {{- define "prompt-gate.backendBaseUrl" -}}
-{{- default (printf "%s://%s" (include "prompt-gate.publicScheme" .) .Values.ingress.host) .Values.config.backendBaseUrl -}}
+{{- default (printf "%s://%s" (include "prompt-gate.publicScheme" .) .Values.ingress.host) .Values.config.common.public_urls.backend -}}
 {{- end -}}
 
 {{/*
 Public proxy URL.
 */}}
 {{- define "prompt-gate.proxyBaseUrl" -}}
-{{- default (printf "%s://%s%s" (include "prompt-gate.publicScheme" .) .Values.ingress.host .Values.ingress.proxyPath) .Values.config.proxyBaseUrl -}}
+{{- default (printf "%s://%s%s" (include "prompt-gate.publicScheme" .) .Values.ingress.host .Values.ingress.proxyPath) .Values.config.common.public_urls.proxy -}}
 {{- end -}}
 
 {{/*
@@ -200,6 +119,8 @@ Kyverno-compatible pod security context.
 runAsNonRoot: true
 runAsUser: 1000
 runAsGroup: 1000
+fsGroup: 1000
+fsGroupChangePolicy: OnRootMismatch
 seccompProfile:
   type: RuntimeDefault
 {{- end -}}
@@ -221,16 +142,22 @@ seccompProfile:
   type: RuntimeDefault
 {{- end -}}
 
-{{/*
-Shared envFrom block.
-*/}}
-{{- define "prompt-gate.envFrom" -}}
-envFrom:
-  - configMapRef:
-      name: {{ include "prompt-gate.fullname" . }}
-  - secretRef:
-      name: {{ include "prompt-gate.secretName" . }}
-      optional: false
+{{/* Shared read-only runtime configuration mount and volume. */}}
+{{- define "prompt-gate.configVolumeMount" -}}
+- name: promptgate-config
+  mountPath: /etc/prompt-gate/promptgate.yaml
+  subPath: promptgate.yaml
+  readOnly: true
+{{- end -}}
+
+{{- define "prompt-gate.configVolume" -}}
+- name: promptgate-config
+  secret:
+    secretName: {{ include "prompt-gate.configSecretName" . }}
+    defaultMode: 0440
+    items:
+      - key: {{ include "prompt-gate.configSecretKey" . | quote }}
+        path: promptgate.yaml
 {{- end -}}
 
 {{/*

@@ -30,6 +30,10 @@ Local credentials:
 The seeded provider is named `ollama` and points at
 `http://host.docker.internal:11434/v1`.
 
+Compose mounts `deploy/config/promptgate.compose.yaml` read-only into every
+Prompt Gate process. That committed file contains development-only credentials;
+edit or replace it for local experiments, then restart the affected services.
+
 ### Local Login Troubleshooting
 
 The first browser user synced into an empty Prompt Gate database becomes
@@ -46,11 +50,15 @@ When `admin` signs in but sees **Access denied** in local development:
 
 ## Source-Based Setup
 
-Create a local dotenv file:
+Create a local runtime configuration:
 
 ```sh
-cp .env.example .env
+cp promptgate.example.yaml promptgate.yaml
 ```
+
+Fill the required database, Redis, OIDC, URL, and secret values. The Makefile
+uses `CONFIG_FILE=promptgate.yaml` by default; set `CONFIG_FILE=/other/path.yaml`
+to select another file.
 
 Install dependencies and run checks:
 
@@ -63,10 +71,11 @@ make test
 make build
 ```
 
-Set `PROMPTGATE_TEST_POSTGRES_URL` to a disposable PostgreSQL database when
-running `make test` to include the PostgreSQL-specific migration, first-user
-bootstrap concurrency, and quota-reset tests. CI and the release workflow
-always run those tests against PostgreSQL 18.
+Integration-test service endpoints are read from
+[`testdata/promptgate.integration.yaml`](../testdata/promptgate.integration.yaml).
+The PostgreSQL- and Redis-specific tests run when those disposable services are
+available and otherwise skip locally. CI starts matching services for the
+endpoints in this file, so the integration coverage always runs there.
 
 Run the backend processes:
 
@@ -84,23 +93,20 @@ For convenience, run migrations, worker, scheduler, API, and proxy from one term
 make run-all
 ```
 
-## Environment Loading
+## Configuration Loading
 
-The Cobra CLI loads the nearest `.env` file automatically before running a
-command. This applies to:
+Every runtime requires an explicit YAML path:
 
 ```sh
-go run . api
-go run . proxy
-go run . worker
-go run . migrate
-go run . schedule
+go run . --config promptgate.yaml api
+go run . --config promptgate.yaml proxy
+go run . --config promptgate.yaml worker
+go run . --config promptgate.yaml migrate
+go run . --config promptgate.yaml schedule
 ```
 
-Use `--env-file /path/to/file.env` to load a specific dotenv file.
-
-The Makefile also loads `.env` for run targets and fills common local defaults
-for ports, base URLs, CORS, session name, and interval values.
+The loader does not inspect `.env`, expand environment placeholders, or accept
+environment overrides. It rejects unknown YAML keys and invalid types.
 
 ## Common Make Targets
 
@@ -124,13 +130,14 @@ for ports, base URLs, CORS, session name, and interval values.
 ## Frontend Notes
 
 The production Dockerfile builds the Nuxt frontend and copies generated static
-assets into `/app/public`. The runtime image sets:
+assets into `/app/public`. Configure that path in the mounted YAML:
 
-```sh
-PROMPTGATE_STATIC_ASSETS_DIR=/app/public
+```yaml
+api:
+  static_assets_dir: /app/public
 ```
 
-When this variable is set, the API serves frontend files directly.
+When this path is set, the API serves frontend files directly.
 
 ## OpenAPI Contract
 
@@ -169,7 +176,7 @@ Before opening a pull request:
 make fmt-check
 make vet
 make staticcheck
-PROMPTGATE_TEST_POSTGRES_URL='postgres://postgres:postgres@127.0.0.1:5432/promptgate_test?sslmode=disable' make test
+make test
 docker compose config --quiet
 docker build -t prompt-gate-backend:test .
 ```

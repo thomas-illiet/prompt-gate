@@ -5,8 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"os"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -14,6 +12,7 @@ import (
 	"promptgate/backend/internal/domain/auth"
 	"promptgate/backend/internal/domain/users"
 	"promptgate/backend/internal/platform/redisstore"
+	"promptgate/backend/internal/platform/testconfig"
 
 	"github.com/alicebob/miniredis/v2"
 	"gorm.io/driver/postgres"
@@ -22,21 +21,18 @@ import (
 
 // TestQuotaResetPostgresConcurrentGrantsRespectMaximum proves that the
 // SELECT FOR UPDATE wallet lock enforces the two-credit cap on PostgreSQL.
-// It is opt-in so the regular unit suite stays self-contained.
+// It runs when the PostgreSQL endpoint in the shared integration YAML is available.
 func TestQuotaResetPostgresConcurrentGrantsRespectMaximum(t *testing.T) {
-	databaseURL := strings.TrimSpace(os.Getenv("PROMPTGATE_TEST_POSTGRES_URL"))
-	if databaseURL == "" {
-		t.Skip("PROMPTGATE_TEST_POSTGRES_URL is not set")
-	}
+	databaseURL := testconfig.PostgresURL(t)
 
 	parsedURL, err := url.Parse(databaseURL)
 	if err != nil || parsedURL.Scheme == "" {
-		t.Fatalf("PROMPTGATE_TEST_POSTGRES_URL must be a PostgreSQL URL: %v", err)
+		t.Fatalf("integration-test database URL must be a PostgreSQL URL: %v", err)
 	}
 
 	baseDB, err := gorm.Open(postgres.Open(databaseURL), &gorm.Config{})
 	if err != nil {
-		t.Fatalf("open PostgreSQL integration database: %v", err)
+		t.Skipf("PostgreSQL integration database is unavailable: %v", err)
 	}
 	baseSQL, err := baseDB.DB()
 	if err != nil {

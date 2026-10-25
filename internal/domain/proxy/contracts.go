@@ -38,8 +38,7 @@ type CostRates struct {
 }
 
 type UsageCostConfig struct {
-	Enabled bool
-	Rates   CostRates
+	Rates CostRates
 }
 
 type EstimatedCost struct {

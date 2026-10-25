@@ -3,10 +3,10 @@
 The proxy process is started with:
 
 ```sh
-promptgate proxy
+promptgate --config /path/to/promptgate.yaml proxy
 ```
 
-It listens on `PROMPTGATE_PROXY_PORT`, defaults to port `8081`, and serves the
+It listens on `proxy.port`, defaults to port `8081`, and serves the
 LLM proxy on `/`. It also exposes:
 
 ```text
@@ -54,11 +54,11 @@ and canonicalizes the bounded text-only conversation history; then atomically
 consumes the Redis record. Messages must alternate between `user` and
 `assistant`, start with `user`, and end with the current `user` message. Replays
 and expired tickets return the same generic `401`.
-If `PROMPTGATE_PROXY_BASE_URL` contains a public routing prefix, the edge must
+If `common.public_urls.proxy` contains a public routing prefix, the edge must
 strip it before forwarding. The ticket is bound to the canonical post-rewrite
 path seen by the proxy, while the browser receives the prefixed public URL.
 
-An account can hold at most `PROMPTGATE_MODEL_LAB_MAX_CONCURRENT` active Model
+An account can hold at most `common.model_lab.max_concurrent` active Model
 Lab leases. After ticket authentication, the request rejoins the canonical
 client-IP, OPA, group, subscription/quota, AIBridge, provider, and accounting
 pipeline. Each target therefore receives an independent authorization and
@@ -68,9 +68,9 @@ end with a generic event before their rejected bytes can reach the browser.
 
 ## Request Debug Mode
 
-Set `PROMPTGATE_PROXY_DEBUG_REQUESTS=true` only for short-lived diagnostics. The
+Set `proxy.debug_requests: true` only for short-lived diagnostics. The
 proxy then emits one JSON line to stdout for every incoming proxy request,
-independently of `PROMPTGATE_LOG_LEVEL`. Each event contains the timestamp,
+independently of `common.log.level`. Each event contains the timestamp,
 `DEBUG` level, event type, method, scheme, host, path, raw query, protocol,
 remote address, every incoming header value, and the request body bytes consumed
 by the proxy. It does not drain an unread body solely for logging. JSON objects
@@ -80,7 +80,7 @@ strings.
 The middleware is the first proxy-request middleware, before authentication and
 any header mutation. It mirrors reads without pre-consuming or replacing the
 body stream. Its diagnostic copy is bounded by
-`PROMPTGATE_PROXY_MAX_BUFFERED_REQUEST_BYTES`; only oversized requests include
+`proxy.max_buffered_request_bytes`; only oversized requests include
 `body_truncated: true`, and their normal processing or rejection is unchanged.
 Responses are never logged.
 
@@ -104,7 +104,7 @@ runtime starts. Supported provider types are:
 - `anthropic`
 - `ollama`
 
-Provider API keys are stored encrypted with `PROMPTGATE_SECRETS_KEY` and are
+Provider API keys are stored encrypted with `common.security.secrets_key` and are
 decrypted only when building the runtime provider client.
 
 The setup helper returns these base URL patterns:
@@ -125,7 +125,7 @@ before group, quota, and provider processing. Both allowed and denied decisions
 are cached in Redis. OPA failures return `503 policy_unavailable` on a cache
 miss; explicit policy denials return `403 policy_denied`.
 
-`PROMPTGATE_OPA_ENABLED` defaults to `true`. Setting it to `false` is an
+`proxy.opa.enabled` defaults to `true`. Setting it to `false` is an
 emergency access-release mechanism: the proxy does not initialize or call OPA,
 does not read its decision cache, and does not include OPA in `/health`.
 Authentication, groups, quotas, and provider controls remain active. Disabling
@@ -133,15 +133,15 @@ OPA therefore fails open only for the external policy stage and emits a startup
 warning; restore it to `true` as soon as the incident is resolved.
 
 By default the proxy uses the TCP remote address. In production, prefer setting
-`PROMPTGATE_PROXY_TRUSTED_PROXIES` to the CIDRs of trusted ingress or reverse
+`proxy.trusted_proxies` to the CIDRs of trusted ingress or reverse
 proxy hops. The proxy will then trust `X-Forwarded-For` and `X-Real-IP` only
 when the direct peer is in those CIDRs.
 
-`PROMPTGATE_PROXY_TRUST_FORWARD_HEADERS=true` remains available as a legacy
+`proxy.trust_forward_headers: true` remains available as a legacy
 global trust switch. Enable it only behind infrastructure that strips or
 rewrites untrusted forwarded headers.
 
-For short-lived diagnosis, set `PROMPTGATE_PROXY_CLIENT_IP_DEBUG=true`. Each
+For short-lived diagnosis, set `proxy.client_ip_debug: true`. Each
 request then produces a structured `client IP resolved` log with only
 `peer_ip`, `client_ip`, `source`, and `peer_trusted`. Raw forwarding headers,
 request headers, paths, query strings, and bodies are not included. Disable it
@@ -180,21 +180,21 @@ is the stable value `model_lab_ticket`, never a per-ticket identifier.
 
 ## Phoenix tracing
 
-Set `PROMPTGATE_OTEL_ENABLED=true` and configure
-`PROMPTGATE_OTEL_ENDPOINT` to export spans using both OpenTelemetry GenAI and
+Set `proxy.otel.enabled: true` and configure
+`proxy.otel.endpoint` to export spans using both OpenTelemetry GenAI and
 OpenInference conventions to Phoenix over OTLP/HTTP. Traces contain the
 provider, model, complete account identity, virtual-key ID and name, session,
 token breakdowns, estimated cost, latency, tool calls, and errors. Provider
 credentials, Prompt Gate JWTs, and token hashes are never attached to spans.
 
 Prompt content requires the independent
-`PROMPTGATE_OTEL_CAPTURE_PROMPTS=true` consent switch. When enabled, prompts
+`proxy.otel.capture_prompts: true` consent switch. When enabled, prompts
 are exported in full without truncation or redaction. Model response text has
-its own independent `PROMPTGATE_OTEL_CAPTURE_OUTPUT=true` consent switch. When
+its own independent `proxy.otel.capture_output: true` consent switch. When
 enabled, assistant text is exported in full as the OpenInference `output.value`
 attribute; oversized responses are omitted rather than truncated. Provider-returned
 thinking, reasoning summaries, and commentary require the separate
-`PROMPTGATE_OTEL_CAPTURE_THINKING=true` switch and are exported in full as
+`proxy.otel.capture_thinking: true` switch and are exported in full as
 OpenInference reasoning message content. Disabling
 content capture does not make traces PII-free: textual
 account identity and tool arguments are still exported. Telemetry failures are
@@ -279,9 +279,9 @@ The proxy uses Redis for:
 - Model Lab catalog last-known-good entries, one-time ticket records, and
   per-account active-stream leases
 
-`PROMPTGATE_REDIS_CACHE_TTL` controls the default TTL for snapshots and cached
+`common.redis.cache_ttl` controls the default TTL for snapshots and cached
 auth records. Cached auth entries also never outlive the token's expiration.
-`PROMPTGATE_OPA_CACHE_TTL` independently controls policy-decision expiration.
+`proxy.opa.cache_ttl` independently controls policy-decision expiration.
 
 ## Hot Reload
 
@@ -294,7 +294,7 @@ The proxy subscribes to `promptgate:config:events`.
 | `auth` | Update the auth cache version. |
 | `subscriptions` | Refresh subscription plans and versioned account assignments through the subscription watcher. |
 
-`PROMPTGATE_PROXY_RELOAD_DEBOUNCE` controls provider rebuild debounce
+`common.proxy_reload_debounce` controls provider rebuild debounce
 time. Subscription updates use their own watcher but consume the same Redis
 event stream. The proxy also listens for `SIGHUP` and runs a full runtime reload
 when the signal is received.
@@ -304,17 +304,12 @@ bridge.
 
 ## Startup Requirements
 
-The proxy requires:
+The proxy requires `common.database.url`, `common.redis.url`,
+`common.security.jwt_secret`, `common.security.secrets_key`, and
+`common.public_urls.proxy`.
 
-```sh
-PROMPTGATE_DATABASE_URL
-PROMPTGATE_REDIS_URL
-PROMPTGATE_JWT_SECRET
-PROMPTGATE_SECRETS_KEY
-```
-
-`PROMPTGATE_OPA_URL` is additionally required when
-`PROMPTGATE_OPA_ENABLED=true` (the default).
+`proxy.opa.url` is additionally required when `proxy.opa.enabled: true` (the
+default).
 
 At least one supported enabled provider must exist before the proxy can build
 its initial runtime bridge.

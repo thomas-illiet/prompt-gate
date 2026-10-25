@@ -3,16 +3,46 @@ package database
 import (
 	"context"
 	"fmt"
-	"os"
-	"strconv"
 	"time"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
 
+const (
+	defaultConnMaxLifetime = 30 * time.Minute
+	defaultMaxIdleConns    = 5
+	defaultMaxOpenConns    = 10
+)
+
+// PoolOptions controls the PostgreSQL connection pool. Zero values retain the
+// application defaults so existing callers do not need to specify options.
+type PoolOptions struct {
+	ConnMaxLifetime time.Duration
+	MaxIdleConns    int
+	MaxOpenConns    int
+}
+
+func resolvePoolOptions(configured PoolOptions) PoolOptions {
+	options := PoolOptions{
+		ConnMaxLifetime: defaultConnMaxLifetime,
+		MaxIdleConns:    defaultMaxIdleConns,
+		MaxOpenConns:    defaultMaxOpenConns,
+	}
+	if configured.ConnMaxLifetime > 0 {
+		options.ConnMaxLifetime = configured.ConnMaxLifetime
+	}
+	if configured.MaxIdleConns > 0 {
+		options.MaxIdleConns = configured.MaxIdleConns
+	}
+	if configured.MaxOpenConns > 0 {
+		options.MaxOpenConns = configured.MaxOpenConns
+	}
+	return options
+}
+
 // OpenPostgres opens and verifies a PostgreSQL connection with sensible pool settings.
-func OpenPostgres(ctx context.Context, databaseURL string) (*gorm.DB, error) {
+func OpenPostgres(ctx context.Context, databaseURL string, poolOptions ...PoolOptions) (*gorm.DB, error) {
 	db, err := gorm.Open(postgres.Open(databaseURL), &gorm.Config{})
 	if err != nil {
 		return nil, fmt.Errorf("open postgres connection: %w", err)
@@ -23,29 +53,19 @@ func OpenPostgres(ctx context.Context, databaseURL string) (*gorm.DB, error) {
 		return nil, fmt.Errorf("expose sql db: %w", err)
 	}
 
-	sqlDB.SetConnMaxLifetime(envDuration("PROMPTGATE_DB_CONN_MAX_LIFETIME", 30*time.Minute))
-	sqlDB.SetMaxIdleConns(envInt("PROMPTGATE_DB_MAX_IDLE_CONNS", 5))
-	sqlDB.SetMaxOpenConns(envInt("PROMPTGATE_DB_MAX_OPEN_CONNS", 10))
+	configured := PoolOptions{}
+	if len(poolOptions) > 0 {
+		configured = poolOptions[0]
+	}
+	options := resolvePoolOptions(configured)
+
+	sqlDB.SetConnMaxLifetime(options.ConnMaxLifetime)
+	sqlDB.SetMaxIdleConns(options.MaxIdleConns)
+	sqlDB.SetMaxOpenConns(options.MaxOpenConns)
 
 	if err := sqlDB.PingContext(ctx); err != nil {
 		return nil, fmt.Errorf("ping postgres: %w", err)
 	}
 
 	return db, nil
-}
-
-func envInt(name string, fallback int) int {
-	value, err := strconv.Atoi(os.Getenv(name))
-	if err != nil || value <= 0 {
-		return fallback
-	}
-	return value
-}
-
-func envDuration(name string, fallback time.Duration) time.Duration {
-	value, err := time.ParseDuration(os.Getenv(name))
-	if err != nil || value <= 0 {
-		return fallback
-	}
-	return value
 }

@@ -35,15 +35,12 @@ func (s *Service) UsageSummary(ctx context.Context, userID string, days int, now
 	if _, err := s.loadAggregatedUsage(ctx, scope, resolved.StartsAt, resolved.EndsAt, &summary.Totals, dailyByDate); err != nil {
 		return UsageSummary{}, err
 	}
-	var rates usageCostRateBook
-	if s.usageCost.Enabled {
-		rates, err = s.usageCostRateBook(ctx)
-		if err != nil {
-			return UsageSummary{}, err
-		}
-		if err := s.attachEstimatedCostsWithRates(ctx, rates, scope, &summary.Totals, summary.Daily); err != nil {
-			return UsageSummary{}, err
-		}
+	rates, err := s.usageCostRateBook(ctx)
+	if err != nil {
+		return UsageSummary{}, err
+	}
+	if err := s.attachEstimatedCostsWithRates(ctx, rates, scope, &summary.Totals, summary.Daily); err != nil {
+		return UsageSummary{}, err
 	}
 
 	models, err := s.aggregatedBreakdowns(ctx, scope, resolved.StartsAt, resolved.EndsAt, dashboardBreakdownModels)
@@ -56,13 +53,11 @@ func (s *Service) UsageSummary(ctx context.Context, userID string, days int, now
 	}
 	summary.TopModels = sortedBreakdowns(models, 5)
 	summary.TopProviders = sortedBreakdowns(providers, 5)
-	if s.usageCost.Enabled {
-		if err := s.attachBreakdownEstimatedCosts(ctx, rates, scope, dashboardBreakdownModels, summary.TopModels, resolved.StartsAt, resolved.EndsAt); err != nil {
-			return UsageSummary{}, err
-		}
-		if err := s.attachBreakdownEstimatedCosts(ctx, rates, scope, dashboardBreakdownProviderNames, summary.TopProviders, resolved.StartsAt, resolved.EndsAt); err != nil {
-			return UsageSummary{}, err
-		}
+	if err := s.attachBreakdownEstimatedCosts(ctx, rates, scope, dashboardBreakdownModels, summary.TopModels, resolved.StartsAt, resolved.EndsAt); err != nil {
+		return UsageSummary{}, err
+	}
+	if err := s.attachBreakdownEstimatedCosts(ctx, rates, scope, dashboardBreakdownProviderNames, summary.TopProviders, resolved.StartsAt, resolved.EndsAt); err != nil {
+		return UsageSummary{}, err
 	}
 
 	return summary, nil
@@ -251,10 +246,6 @@ func (s *Service) averageCompletedDuration(ctx context.Context, scope dashboardU
 // dashboardCostCoverage compares durable token totals with the retained raw
 // token rows used by the current-price estimator.
 func (s *Service) dashboardCostCoverage(ctx context.Context, scope dashboardUsageScope, startsAt, endsAt time.Time, totals UsageTotals) (CostCoverage, error) {
-	if !s.usageCost.Enabled {
-		return CostCoverage{Status: CostCoverageUnavailable}, nil
-	}
-
 	type coverageRow struct {
 		Requests    int64
 		TotalTokens int64
@@ -565,14 +556,12 @@ func (s *Service) dashboardBreakdown(ctx context.Context, scope dashboardUsageSc
 		limit = 0
 	}
 	items := sortedBreakdownsByMetric(values, metric, limit)
-	if s.usageCost.Enabled {
-		rates, err := s.usageCostRateBook(ctx)
-		if err != nil {
-			return DashboardBreakdownResponse{}, err
-		}
-		if err := s.attachBreakdownEstimatedCosts(ctx, rates, scope, target, items, resolved.StartsAt, resolved.EndsAt); err != nil {
-			return DashboardBreakdownResponse{}, err
-		}
+	rates, err := s.usageCostRateBook(ctx)
+	if err != nil {
+		return DashboardBreakdownResponse{}, err
+	}
+	if err := s.attachBreakdownEstimatedCosts(ctx, rates, scope, target, items, resolved.StartsAt, resolved.EndsAt); err != nil {
+		return DashboardBreakdownResponse{}, err
 	}
 	if metric == DashboardBreakdownCost {
 		items = sortBreakdownItems(items, metric, 5)
@@ -632,14 +621,12 @@ func (s *Service) AdminDashboardTopIdentities(ctx context.Context, window UsageW
 		limit = 0
 	}
 	items := sortedBreakdownsByMetric(itemsByID, metric, limit)
-	if s.usageCost.Enabled {
-		rates, err := s.usageCostRateBook(ctx)
-		if err != nil {
-			return DashboardBreakdownResponse{}, err
-		}
-		if err := s.attachIdentityEstimatedCosts(ctx, rates, items, resolved.StartsAt, resolved.EndsAt); err != nil {
-			return DashboardBreakdownResponse{}, err
-		}
+	rates, err := s.usageCostRateBook(ctx)
+	if err != nil {
+		return DashboardBreakdownResponse{}, err
+	}
+	if err := s.attachIdentityEstimatedCosts(ctx, rates, items, resolved.StartsAt, resolved.EndsAt); err != nil {
+		return DashboardBreakdownResponse{}, err
 	}
 	if metric == DashboardBreakdownCost {
 		items = sortBreakdownItems(items, metric, 5)

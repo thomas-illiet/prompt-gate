@@ -9,9 +9,6 @@ import (
 )
 
 func (s *Service) attachEstimatedCosts(ctx context.Context, scope dashboardUsageScope, totals *UsageTotals, daily []DailyUsage) error {
-	if !s.usageCost.Enabled {
-		return nil
-	}
 	if len(daily) == 0 {
 		return nil
 	}
@@ -23,9 +20,6 @@ func (s *Service) attachEstimatedCosts(ctx context.Context, scope dashboardUsage
 }
 
 func (s *Service) attachEstimatedCostsWithRates(ctx context.Context, rates usageCostRateBook, scope dashboardUsageScope, totals *UsageTotals, daily []DailyUsage) error {
-	if !s.usageCost.Enabled {
-		return nil
-	}
 	if len(daily) == 0 {
 		return nil
 	}
@@ -49,9 +43,9 @@ func (s *Service) attachEstimatedCostsWithRates(ctx context.Context, rates usage
 	return nil
 }
 
-// attachBreakdownEstimatedCosts adds optional cost estimates to token breakdowns.
+// attachBreakdownEstimatedCosts adds cost estimates to token breakdowns.
 func (s *Service) attachBreakdownEstimatedCosts(ctx context.Context, rates usageCostRateBook, scope dashboardUsageScope, target dashboardBreakdownTarget, items []UsageBreakdown, startsAt, endsAt time.Time) error {
-	if !s.usageCost.Enabled || len(items) == 0 {
+	if len(items) == 0 {
 		return nil
 	}
 	names := make([]string, 0, len(items))
@@ -69,7 +63,7 @@ func (s *Service) attachBreakdownEstimatedCosts(ctx context.Context, rates usage
 }
 
 func (s *Service) attachIdentityEstimatedCosts(ctx context.Context, rates usageCostRateBook, items []UsageBreakdown, startsAt, endsAt time.Time) error {
-	if !s.usageCost.Enabled || len(items) == 0 {
+	if len(items) == 0 {
 		return nil
 	}
 	ids := make([]string, 0, len(items))
@@ -86,12 +80,8 @@ func (s *Service) attachIdentityEstimatedCosts(ctx context.Context, rates usageC
 	return nil
 }
 
-// estimateUsageCost converts token buckets into an optional USD cost estimate.
+// estimateUsageCost converts token buckets into a USD cost estimate.
 func (s *Service) estimateUsageCost(rates usageCostRateBook, providerName, model string, completionInputTokens, completionOutputTokens, embeddingTokens int64) *EstimatedCost {
-	if !s.usageCost.Enabled {
-		return nil
-	}
-
 	resolvedRates := rates.ratesFor(providerName, model)
 	inputTokens := completionInputTokens
 	if rates.priceEmbeddingAsInput {
@@ -110,9 +100,6 @@ func (s *Service) estimateUsageCost(rates usageCostRateBook, providerName, model
 }
 
 func (s *Service) estimateAggregateUsageCost(ctx context.Context, scope dashboardUsageScope, startsAt, endsAt time.Time) (*EstimatedCost, error) {
-	if !s.usageCost.Enabled {
-		return nil, nil
-	}
 	rates, err := s.usageCostRateBook(ctx)
 	if err != nil {
 		return nil, err
@@ -145,9 +132,6 @@ func (s *Service) estimateDailyUsageCosts(ctx context.Context, rates usageCostRa
 }
 
 func (s *Service) estimateUsageCosts(ctx context.Context, rates usageCostRateBook, scope dashboardUsageScope, startsAt, endsAt time.Time) (map[string]*EstimatedCost, *EstimatedCost, error) {
-	if !s.usageCost.Enabled {
-		return map[string]*EstimatedCost{}, nil, nil
-	}
 	type usageCostAggregateRow struct {
 		Day                   string
 		Provider              string
@@ -197,9 +181,6 @@ func (s *Service) estimateUsageCosts(ctx context.Context, rates usageCostRateBoo
 			embeddingTokens = tokenUsageTotal(tokenRow)
 		}
 		cost := s.estimateUsageCost(rates, row.Provider, row.Model, inputTokens, outputTokens, embeddingTokens)
-		if cost == nil {
-			continue
-		}
 		key := row.Day
 		bucket := byDate[key]
 		if bucket == nil {
@@ -213,7 +194,7 @@ func (s *Service) estimateUsageCosts(ctx context.Context, rates usageCostRateBoo
 }
 
 func (s *Service) estimateGroupedUsageCosts(ctx context.Context, rates usageCostRateBook, scope dashboardUsageScope, startsAt, endsAt time.Time, groupColumn string, groupValues []string) (map[string]*EstimatedCost, error) {
-	if !s.usageCost.Enabled || len(groupValues) == 0 {
+	if len(groupValues) == 0 {
 		return map[string]*EstimatedCost{}, nil
 	}
 	type usageCostAggregateRow struct {
@@ -264,9 +245,6 @@ func (s *Service) estimateGroupedUsageCosts(ctx context.Context, rates usageCost
 			embeddingTokens = tokenUsageTotal(tokenRow)
 		}
 		cost := s.estimateUsageCost(rates, row.Provider, row.Model, inputTokens, outputTokens, embeddingTokens)
-		if cost == nil {
-			continue
-		}
 		bucket := out[row.CostGroup]
 		if bucket == nil {
 			bucket = &EstimatedCost{Rates: cost.Rates}

@@ -1,5 +1,4 @@
 {{- if .Values.proxy.enabled -}}
-{{- include "prompt-gate.validateOTelApiKey" . -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -29,11 +28,9 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
       annotations:
-        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
-        {{- if ne (include "prompt-gate.otelApiKeyValue" .) "" }}
-        checksum/otel-api-key: {{ include (print $.Template.BasePath "/secret-otel-api-key.yaml") . | sha256sum }}
-        {{- else if ne (default "" .Values.otelApiKey.existingSecret.name | toString | trim) "" }}
-        prompt-gate.io/otel-api-key-rollout: {{ default "" .Values.otelApiKey.rolloutToken | quote }}
+        checksum/config: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- if .Values.configSecret.existingSecret }}
+        prompt-gate.io/config-rollout: {{ .Values.configSecret.rolloutToken | toString | quote }}
         {{- end }}
         {{- with .Values.podAnnotations }}
         {{- toYaml . | nindent 8 }}
@@ -53,22 +50,13 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command:
             - /app/promptgate
+            - --config
+            - /etc/prompt-gate/promptgate.yaml
             - proxy
           ports:
             - name: http
-              containerPort: {{ .Values.config.proxyPort }}
+              containerPort: {{ .Values.config.proxy.port }}
               protocol: TCP
-          {{- include "prompt-gate.envFrom" . | nindent 10 }}
-          {{- if or (ne (include "prompt-gate.otelApiKeyValue" .) "") (ne (default "" .Values.otelApiKey.existingSecret.name | toString | trim) "") }}
-          env:
-            {{- if or (ne (include "prompt-gate.otelApiKeyValue" .) "") (ne (default "" .Values.otelApiKey.existingSecret.name | toString | trim) "") }}
-            - name: PROMPTGATE_OTEL_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "prompt-gate.otelApiKeySecretName" . }}
-                  key: {{ include "prompt-gate.otelApiKeySecretKey" . }}
-            {{- end }}
-          {{- end }}
           securityContext:
             {{- include "prompt-gate.containerSecurityContext" . | nindent 12 }}
           resources:
@@ -81,13 +69,15 @@ spec:
           readinessProbe:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-          {{- with .Values.extraVolumeMounts }}
           volumeMounts:
+            {{- include "prompt-gate.configVolumeMount" . | nindent 12 }}
+            {{- with .Values.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
-          {{- end }}
-      {{- with .Values.extraVolumes }}
+            {{- end }}
       volumes:
+        {{- include "prompt-gate.configVolume" . | nindent 8 }}
+        {{- with .Values.extraVolumes }}
         {{- toYaml . | nindent 8 }}
-      {{- end }}
+        {{- end }}
       {{- include "prompt-gate.podPlacement" . | nindent 6 }}
 {{- end }}

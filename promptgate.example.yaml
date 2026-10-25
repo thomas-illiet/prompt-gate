@@ -1,0 +1,102 @@
+common:
+  log:
+    level: debug
+  database:
+    url: postgres://postgres:postgres@localhost:5432/promptgate?sslmode=disable
+    connection_max_lifetime: 30m
+    max_idle_connections: 5
+    max_open_connections: 10
+  redis:
+    url: redis://localhost:6379/0
+    cache_ttl: 5m
+    pool_size:
+    min_idle_connections:
+    pool_timeout:
+    read_timeout:
+    write_timeout:
+  tls:
+    ca_file: ""
+  security:
+    jwt_secret: change-me-change-me-change-me-32
+    secrets_key: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
+  public_urls:
+    frontend: http://localhost:3000
+    backend: http://localhost:8080
+    proxy: http://localhost:8081
+  session:
+    cookie_name: promptgate_session
+    ttl: 8h
+  cors:
+    allowed_origins:
+      - http://localhost:3000
+  model_lab:
+    ticket_ttl: 60s
+    max_prompt_bytes: 32768
+    max_output_tokens: 4096
+    max_targets: 3
+    max_concurrent: 3
+    catalog_fresh_ttl: 5m
+    catalog_stale_ttl: 24h
+  usage_cost:
+    input: 5.0
+    output: 30.0
+    embedding: 0.02
+  maintenance:
+    token_cleanup_interval: 1h
+    user_access_expiration_interval: 1h
+    quota_reset_distribution_interval: 1h
+  proxy_reload_debounce: 250ms
+
+api:
+  port: 8080
+  static_assets_dir: ""
+  admin_api_key: ""
+  oidc:
+    issuer_url: http://localhost:8082/realms/promptgate
+    jwks_url: http://localhost:8082/realms/promptgate/protocol/openid-connect/certs
+    client_id: promptgate-backend
+    client_secret: ""
+
+proxy:
+  port: 8081
+  trust_forward_headers: false
+  trusted_proxies: []
+  client_ip_debug: false
+  debug_requests: false
+  max_buffered_request_bytes: 8388608
+  max_buffered_response_bytes: 16777216
+  upstream_timeout: 2m
+  opa:
+    enabled: true
+    url: http://localhost:8181
+    policy_path: promptgate/proxy/decision
+    timeout: 2s
+    cache_ttl: 10m
+  otel:
+    enabled: false
+    endpoint: ""
+    api_key: ""
+    project_name: prompt-gate
+    service_name: promptgate-proxy
+    environment: development
+    capture_prompts: false
+    capture_output: false
+    capture_thinking: false
+    export_timeout: 10s
+    batch_timeout: 5s
+    max_queue_size: 2048
+    max_export_batch_size: 512
+    insecure: false
+
+worker:
+  batch_size: 100
+  block_timeout: 5s
+  pending_idle_timeout: 30s
+  consumer_name: ""
+
+schedule:
+  usage_raw_retention: 2160h
+  usage_raw_cleanup_interval: 1h
+  subscription_quota_sync_interval: 5m
+
+migrate: {}

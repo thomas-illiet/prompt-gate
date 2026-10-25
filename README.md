@@ -50,7 +50,7 @@ Useful local credentials:
 For source-based development:
 
 ```sh
-cp .env.example .env
+cp promptgate.example.yaml promptgate.yaml
 make deps
 make test
 make migrate
@@ -96,7 +96,7 @@ The Docker image builds one binary at `/app/promptgate` and exposes:
 The default container command starts the API:
 
 ```text
-/app/promptgate api
+/app/promptgate --config /etc/prompt-gate/promptgate.yaml api
 ```
 
 ## Project Shape
@@ -196,7 +196,7 @@ warns that mutating requests affect the live environment.
 Proxy requests are authorized by an external OPA server. A deny-by-default
 Kubernetes example is available under `deploy/examples/opa`.
 OPA is enabled by default and can be bypassed during an access incident with
-`PROMPTGATE_OPA_ENABLED=false`; authentication, groups, and quotas remain active.
+`proxy.opa.enabled: false`; authentication, groups, and quotas remain active.
 
 ### Monitoring
 
@@ -217,7 +217,7 @@ Start with the documentation index, then jump into the area you are working on:
 - [Security model](docs/security.md)
 - [Development guide](docs/development.md)
 - [Deployment guide](docs/deployment.md)
-- [Environment variables](docs/environment.md)
+- [YAML configuration](docs/environment.md)
 - [Release process](docs/release.md)
 - [User FAQ](faq.md)
 
@@ -230,7 +230,7 @@ docker build -t prompt-gate-backend:test .
 ```
 
 The image also builds the Nuxt frontend as static assets and serves them from
-the API process when `PROMPTGATE_STATIC_ASSETS_DIR` is set.
+the API process when `api.static_assets_dir` points to `/app/public`.
 
 Official release image:
 

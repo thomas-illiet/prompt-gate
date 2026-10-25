@@ -40,7 +40,8 @@ argoCd:
   enabled: true
 
   # Argo CD applies lower waves first. The migration Job is a Sync hook, not a
-  # PreSync hook, so ConfigMap and ServiceAccount exist before migrations run.
+  # PreSync hook, so the configuration Secret and ServiceAccount exist before
+  # migrations run.
   syncWaves:
     config: "-20"
     serviceAccount: "-20"
@@ -60,164 +61,126 @@ serviceAccount:
   # Extra annotations added to the generated ServiceAccount.
   annotations: {}
 
-secret:
-  # Existing Secret name. When set, the chart does not render its own Secret.
-  # The Secret must contain PROMPTGATE_DATABASE_URL, PROMPTGATE_REDIS_URL,
-  # PROMPTGATE_JWT_SECRET, PROMPTGATE_SECRETS_KEY, and optionally
-  # PROMPTGATE_KEYCLOAK_CLIENT_SECRET. Model Lab signs its short-lived tickets
-  # with the same PROMPTGATE_SECRETS_KEY value already used by API and proxy.
+configSecret:
+  # When set, the existing Secret must contain the complete YAML document in
+  # the configured key. config.api.port and config.proxy.port must still match
+  # the external file because Kubernetes probes reference those container ports.
   existingSecret: ""
-
-  # Extra annotations added to the generated Secret.
+  key: promptgate.yaml
   annotations: {}
 
-  # Secret values used when existingSecret is empty. These can be provided from
-  # values.yaml or with --set/--set-string. In GitOps, prefer encrypted values
-  # or an external secret mechanism for production credentials.
-  databaseUrl: ""
-  redisUrl: ""
-  jwtSecret: ""
-  secretsKey: ""
-  keycloakClientSecret: ""
-
-adminApiKey:
-  # Development-only inline value. When non-empty, the chart creates a
-  # dedicated Secret that is referenced only by the API Deployment.
-  # In production, prefer existingSecret instead of storing the key in values.
-  value: ""
-
-  existingSecret:
-    # Existing Secret containing the administration API key. This source is
-    # mutually exclusive with adminApiKey.value.
-    name: ""
-    key: PROMPTGATE_ADMIN_API_KEY
-
-  # Extra annotations added only to the generated administration key Secret.
-  annotations: {}
-
-  # Change this value when rotating an existing Secret to force an API rollout.
-  # Generated Secrets use an automatic checksum annotation instead.
+  # Change this value after rotating an externally managed Secret to trigger a
+  # workload rollout. Chart-managed configuration uses an automatic checksum.
   rolloutToken: ""
 
-otelApiKey:
-  # Development-only inline Phoenix API key. Prefer an existing Secret in production.
-  value: ""
-  existingSecret:
-    name: ""
-    key: PROMPTGATE_OTEL_API_KEY
-  # Change after rotating an externally managed Secret to force a proxy rollout.
-  rolloutToken: ""
-
+# Complete Prompt Gate runtime configuration. Because this document includes
+# credentials, the chart stores it in a Secret and mounts it read-only in every
+# Prompt Gate process.
 config:
-  # API process listen port and Service target port.
-  port: 8080
+  common:
+    log:
+      level: info
+    database:
+      url: ""
+      connection_max_lifetime: 30m
+      max_idle_connections: 5
+      max_open_connections: 10
+    redis:
+      url: ""
+      cache_ttl: 5m
+      pool_size: null
+      min_idle_connections: null
+      pool_timeout: null
+      read_timeout: null
+      write_timeout: null
+    tls:
+      # Single optional CA bundle used by every outbound TLS client, including OTEL.
+      ca_file: ""
+    security:
+      jwt_secret: ""
+      secrets_key: ""
+    public_urls:
+      # Empty values are derived from the Ingress host and proxy path.
+      frontend: ""
+      backend: ""
+      proxy: ""
+    session:
+      cookie_name: promptgate_session
+      ttl: 8h
+    cors:
+      # Empty defaults to the computed frontend URL.
+      allowed_origins: []
+    model_lab:
+      ticket_ttl: 60s
+      max_prompt_bytes: 32768
+      max_output_tokens: 4096
+      max_targets: 3
+      max_concurrent: 3
+      catalog_fresh_ttl: 5m
+      catalog_stale_ttl: 24h
+    usage_cost:
+      input: 5.00
+      output: 30.00
+      embedding: 0.02
+    maintenance:
+      token_cleanup_interval: 1h
+      user_access_expiration_interval: 1h
+      quota_reset_distribution_interval: 1h
+    proxy_reload_debounce: 250ms
 
-  # Proxy process listen port and Service target port.
-  proxyPort: 8081
+  api:
+    port: 8080
+    static_assets_dir: /app/public
+    admin_api_key: ""
+    oidc:
+      issuer_url: "https://keycloak.example.com/realms/promptgate"
+      jwks_url: "https://keycloak.example.com/realms/promptgate/protocol/openid-connect/certs"
+      client_id: promptgate-backend
+      client_secret: ""
 
-  logLevel: info
+  proxy:
+    port: 8081
+    trust_forward_headers: false
+    trusted_proxies: []
+    client_ip_debug: false
+    debug_requests: false
+    max_buffered_request_bytes: 8388608
+    max_buffered_response_bytes: 16777216
+    upstream_timeout: 2m
+    opa:
+      enabled: true
+      url: "http://prompt-gate-opa:8181"
+      policy_path: promptgate/proxy/decision
+      timeout: 2s
+      cache_ttl: 10m
+    otel:
+      enabled: false
+      endpoint: ""
+      api_key: ""
+      project_name: prompt-gate
+      service_name: promptgate-proxy
+      environment: production
+      capture_prompts: false
+      capture_output: false
+      capture_thinking: false
+      export_timeout: 10s
+      batch_timeout: 5s
+      max_queue_size: 2048
+      max_export_batch_size: 512
+      insecure: false
 
-  # OIDC/Keycloak settings used by the API process.
-  keycloakIssuerUrl: "https://keycloak.example.com/realms/promptgate"
-  keycloakJwksUrl: "https://keycloak.example.com/realms/promptgate/protocol/openid-connect/certs"
-  keycloakClientId: promptgate-backend
+  worker:
+    batch_size: 100
+    block_timeout: 5s
+    pending_idle_timeout: 30s
+    consumer_name: ""
 
-  # Optional CA bundle path mounted via extraVolumes/extraVolumeMounts.
-  # Leave empty when public trust roots are enough.
-  caFile: ""
+  schedule:
+    usage_raw_retention: 2160h
+    usage_raw_cleanup_interval: 1h
+    subscription_quota_sync_interval: 5m
 
-  # Public URLs. When empty, frontend/backend default to https://ingress.host
-  # and proxy defaults to https://ingress.host + ingress.proxyPath.
-  frontendBaseUrl: ""
-  backendBaseUrl: ""
-  proxyBaseUrl: ""
-
-  # Static assets bundled in the Docker image. Keep /app/public when the API
-  # serves the generated frontend.
-  staticAssetsDir: /app/public
-
-  sessionCookieName: promptgate_session
-  sessionTtl: 8h
-
-  # Comma-separated origins. Empty defaults to the computed frontendBaseUrl.
-  corsAllowedOrigins: ""
-
-  # Background cleanup/sync intervals. Values use Go duration syntax.
-  tokenCleanupInterval: 1h
-  userAccessExpirationInterval: 1h
-
-  # Enable only behind trusted infrastructure that sanitizes forwarded headers.
-  proxyTrustForwardHeaders: "false"
-
-  # Comma-separated CIDRs for proxies whose forwarded IP headers can be trusted.
-  # Prefer this over proxyTrustForwardHeaders in production.
-  proxyTrustedProxies: ""
-
-  # Temporarily log only the peer IP, resolved client IP, resolution source,
-  # and trust decision. No forwarding headers or request content are logged.
-  proxyClientIpDebug: "false"
-
-  # DANGER: writes credentials, prompts, and personal data to stdout in cleartext.
-  # Enable only temporarily for diagnosis and never leave enabled in production.
-  proxyDebugRequests: "false"
-
-  redisCacheTtl: 5m
-  opaEnabled: true
-  opaUrl: "http://prompt-gate-opa:8181"
-  opaPolicyPath: promptgate/proxy/decision
-  opaTimeout: 2s
-  opaCacheTtl: 10m
-  proxyReloadDebounce: 250ms
-
-  # Proxy buffer and upstream timeout limits. Byte values are strings to avoid
-  # accidental YAML/scientific notation changes in Argo CD overrides.
-  proxyMaxBufferedRequestBytes: "33554432"
-  proxyMaxBufferedResponseBytes: "67108864"
-  proxyUpstreamTimeout: 2m
-
-  # Model Lab is always available to user/admin roles and uses the shared
-  # PROMPTGATE_SECRETS_KEY already loaded by API and proxy.
-  modelLabTicketTtl: 60s
-  modelLabMaxPromptBytes: "32768"
-  modelLabMaxOutputTokens: "4096"
-  modelLabMaxTargets: "3"
-  modelLabMaxConcurrent: "3"
-  modelLabCatalogFreshTtl: 5m
-  modelLabCatalogStaleTtl: 24h
-
-  # Worker Redis stream consumer settings.
-  workerBatchSize: "100"
-  workerBlockTimeout: 5s
-  workerPendingIdleTimeout: 30s
-
-  # Scheduler retention, quota sync, and reset-credit distribution settings.
-  usageRawRetention: 2160h
-  usageRawCleanupInterval: 1h
-  subscriptionQuotaSyncInterval: 5m
-  quotaResetDistributionInterval: 1h
-
-  # Dashboard cost estimate settings. These are estimates only, not billing
-  # data from a provider invoice.
-  usageCostEnabled: "true"
-  usageCostInput: "5.00"
-  usageCostOutput: "30.00"
-  usageCostEmbedding: "0.02"
-
-  # Phoenix/OpenTelemetry trace export. Prompt content requires separate consent.
-  otelEnabled: "false"
-  otelEndpoint: ""
-  otelProjectName: prompt-gate
-  otelServiceName: promptgate-proxy
-  otelEnvironment: production
-  otelCapturePrompts: "false"
-  otelCaptureOutput: "false"
-  otelCaptureThinking: "false"
-  otelExportTimeout: 10s
-  otelBatchTimeout: 5s
-  otelMaxQueueSize: "2048"
-  otelMaxExportBatchSize: "512"
-  otelCaFile: ""
-  otelInsecure: "false"
+  migrate: {}
 
 # Extra pod annotations and labels applied to all application Pods.
 podAnnotations: {}

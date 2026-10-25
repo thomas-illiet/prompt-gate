@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -48,7 +50,7 @@ func TestProviderExportsAuthenticatedPhoenixBatch(t *testing.T) {
 		Enabled: true, Endpoint: server.URL, APIKey: "phoenix-secret", ProjectName: "platform-analysis",
 		ServiceName: "promptgate-proxy", Environment: "test", Insecure: true,
 		ExportTimeout: time.Second, BatchTimeout: time.Millisecond, MaxQueueSize: 10, MaxExportBatchSize: 10,
-	}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	}, "", slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err != nil {
 		t.Fatalf("new provider: %v", err)
 	}
@@ -119,12 +121,27 @@ func TestProviderExportsAuthenticatedPhoenixBatch(t *testing.T) {
 
 // TestProviderDisabledIsNoop verifies disabled telemetry needs no endpoint.
 func TestProviderDisabledIsNoop(t *testing.T) {
-	provider, err := NewProvider(context.Background(), config.OTelConfig{}, slog.Default())
+	provider, err := NewProvider(context.Background(), config.OTelConfig{}, "", slog.Default())
 	if err != nil {
 		t.Fatalf("disabled provider: %v", err)
 	}
 	if provider.tracerProvider != nil {
 		t.Fatal("disabled provider must not install an SDK tracer provider")
+	}
+}
+
+func TestProviderUsesSharedCAFile(t *testing.T) {
+	caFile := filepath.Join(t.TempDir(), "ca.pem")
+	if err := os.WriteFile(caFile, []byte("not a certificate"), 0o600); err != nil {
+		t.Fatalf("write CA file: %v", err)
+	}
+	_, err := NewProvider(context.Background(), config.OTelConfig{
+		Enabled: true, Endpoint: "https://collector.example/v1/traces", ProjectName: "prompt-gate",
+		ServiceName: "promptgate-proxy", Environment: "test", ExportTimeout: time.Second,
+		BatchTimeout: time.Second, MaxQueueSize: 10, MaxExportBatchSize: 10,
+	}, caFile, slog.Default())
+	if err == nil {
+		t.Fatal("expected invalid shared CA file to fail")
 	}
 }
 

@@ -46,7 +46,7 @@ func NewProxy(ctx context.Context, cfg config.ProxyConfig, logger *slog.Logger, 
 	if logger == nil {
 		logger = slog.Default()
 	}
-	telemetryProvider, err := telemetry.NewProvider(ctx, cfg.OTel, logger)
+	telemetryProvider, err := telemetry.NewProvider(ctx, cfg.OTel, cfg.CAFile, logger)
 	if err != nil {
 		return nil, fmt.Errorf("initialize telemetry: %w", err)
 	}
@@ -56,7 +56,11 @@ func NewProxy(ctx context.Context, cfg config.ProxyConfig, logger *slog.Logger, 
 			_ = telemetryProvider.Shutdown(context.Background())
 		}
 	}()
-	db, err := database.OpenPostgres(ctx, cfg.DatabaseURL)
+	db, err := database.OpenPostgres(ctx, cfg.DatabaseURL, database.PoolOptions{
+		ConnMaxLifetime: cfg.ConnMaxLifetime,
+		MaxIdleConns:    cfg.MaxIdleConnections,
+		MaxOpenConns:    cfg.MaxOpenConnections,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("initialize postgres: %w", err)
 	}
@@ -66,7 +70,13 @@ func NewProxy(ctx context.Context, cfg config.ProxyConfig, logger *slog.Logger, 
 		return nil, fmt.Errorf("initialize secret cipher: %w", err)
 	}
 	logger.Info("initializing redis connection")
-	redisStore, err := redisstore.NewRequired(ctx, cfg.RedisURL, cfg.RedisCacheTTL, logger)
+	redisStore, err := redisstore.NewRequired(ctx, cfg.RedisURL, cfg.RedisCacheTTL, logger, redisstore.ClientOptions{
+		PoolSize:     cfg.RedisPoolSize,
+		MinIdleConns: cfg.RedisMinIdleConnections,
+		PoolTimeout:  cfg.RedisPoolTimeout,
+		ReadTimeout:  cfg.RedisReadTimeout,
+		WriteTimeout: cfg.RedisWriteTimeout,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("initialize redis: %w", err)
 	}
@@ -105,9 +115,7 @@ func NewProxy(ctx context.Context, cfg config.ProxyConfig, logger *slog.Logger, 
 	redisRecorder := localproxy.NewRedisRecorder(redisStore, logger)
 	usageRecorder := localproxy.NewTelemetryRecorder(redisRecorder, cfg.OTel.CapturePrompts)
 	usageRecorder.WithThinkingCapture(cfg.OTel.CaptureThinking)
-	if cfg.UsageCost.Enabled {
-		usageRecorder.WithEstimatedCosts(cfg.UsageCost.Input, cfg.UsageCost.Output, cfg.UsageCost.Embedding)
-	}
+	usageRecorder.WithEstimatedCosts(cfg.UsageCost.Input, cfg.UsageCost.Output, cfg.UsageCost.Embedding)
 	recorder := subscriptions.NewQuotaRecorder(localproxy.NewPrivacyRecorder(usageRecorder), subscriptionStore, logger)
 	proxyHTTPClient := &http.Client{Timeout: cfg.ProxyUpstreamTimeout}
 	caHTTPClient, err := platformhttp.NewWithCAFile(cfg.CAFile, cfg.ProxyUpstreamTimeout)

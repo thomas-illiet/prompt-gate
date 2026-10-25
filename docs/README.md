@@ -21,7 +21,7 @@ used by the repository.
 | Guide | Use it for |
 | --- | --- |
 | [Deployment](deployment.md) | Production deployment order, process layout, health checks, and Docker examples. |
-| [Environment variables](environment.md) | Complete `PROMPTGATE_*` configuration reference by command. |
+| [YAML configuration](environment.md) | Complete structured runtime configuration reference by command. |
 | [Release process](release.md) | Tagging, CI verification, image publishing, and rollback. |
 
 ## Existing Package Notes

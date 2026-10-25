@@ -25,7 +25,7 @@ git pull --ff-only origin main
 make fmt-check
 make vet
 make staticcheck
-PROMPTGATE_TEST_POSTGRES_URL='postgres://postgres:postgres@127.0.0.1:5432/promptgate_test?sslmode=disable' make test
+make test
 make build
 docker compose config --quiet
 docker build -t prompt-gate-backend:test .
@@ -89,6 +89,7 @@ Each archive contains:
 
 - `promptgate` or `promptgate.exe`
 - `public/` with the generated Nuxt static frontend
+- `promptgate.example.yaml` with the complete configuration schema
 - `README.txt` with a minimal standalone launch example
 
 To run the Linux archive with the bundled frontend assets:
@@ -96,11 +97,16 @@ To run the Linux archive with the bundled frontend assets:
 ```sh
 tar -xzf promptgate_0.1.0_linux_amd64.tar.gz
 cd promptgate_0.1.0_linux_amd64
-PROMPTGATE_STATIC_ASSETS_DIR="$(pwd)/public" ./promptgate api
+cp promptgate.example.yaml promptgate.yaml
+# Fill required values. For the bundled same-origin frontend, set:
+# - api.static_assets_dir: public
+# - common.public_urls.frontend: http://localhost:8080
+# - common.cors.allowed_origins: [http://localhost:8080]
+./promptgate --config promptgate.yaml api
 ```
 
 The standalone binary still requires PostgreSQL, Redis, and OIDC/Keycloak
-configuration. See [Environment variables](environment.md) for required
+configuration. See [YAML configuration](environment.md) for required
 runtime settings.
 
 ## Published Docker Tags
@@ -150,5 +156,5 @@ release tag is published.
 Related docs:
 
 - [Deployment](deployment.md)
-- [Environment variables](environment.md)
+- [YAML configuration](environment.md)
 - [Development guide](development.md)

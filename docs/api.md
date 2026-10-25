@@ -3,12 +3,12 @@
 The API process is started with:
 
 ```sh
-promptgate api
+promptgate --config /path/to/promptgate.yaml api
 ```
 
 All API responses are JSON unless a route redirects as part of the OIDC browser
 flow. Protected browser API routes use the HTTP-only session cookie configured
-by `PROMPTGATE_SESSION_COOKIE_NAME`.
+by `common.session.cookie_name`.
 
 ## Public And Auth Routes
 
@@ -20,7 +20,7 @@ by `PROMPTGATE_SESSION_COOKIE_NAME`.
 | `GET` | `/auth/logout` | Clears the local session and redirects through OIDC logout when available. |
 | `GET` | `/auth/session` | Returns the current browser session state. |
 
-If `PROMPTGATE_STATIC_ASSETS_DIR` is set, the API also serves static frontend
+If `api.static_assets_dir` is set, the API also serves static frontend
 assets from `/` and falls back to the SPA shell for frontend routes.
 
 ## Interactive Admin Documentation
@@ -72,8 +72,7 @@ routes require `user` or `admin`.
 Common list-style routes use query parameters such as `page`, `pageSize`,
 `search`, `sortBy`, and `sortDir` where supported. Dashboard routes use the
 usage windows implemented by the proxy domain: `7d`, `30d`, and `all`. The
-personal activity route also accepts `365d`. When
-`PROMPTGATE_USAGE_COST_ENABLED=true`, usage summary, dashboard overview,
+personal activity route also accepts `365d`. Usage summary, dashboard overview,
 dashboard token, and dashboard activity responses include an optional
 `estimatedCost` object. Its `inputUsd`, `outputUsd`, `embeddingUsd`, and
 `totalUsd` values are indicative estimates based on configured
@@ -106,7 +105,7 @@ output-token limits so the playground can enforce the deployed configuration.
 Ticket requests contain one to three distinct `{providerName, model}` targets.
 The API chooses each exact proxy path and protocol, binds the ticket to the
 current account and browser origin, and returns it only once. Tickets expire
-after `PROMPTGATE_MODEL_LAB_TICKET_TTL` and cannot be replayed. Responses from
+after `common.model_lab.ticket_ttl` and cannot be replayed. Responses from
 both Model Lab endpoints use `Cache-Control: private, no-store`.
 A Redis-backed per-account budget atomically bounds unused outstanding tickets;
 consuming a ticket releases its slot, while abandoned slots expire with it.
@@ -144,7 +143,7 @@ routes; an administrator creates their token through the admin route below.
 ## Admin Routes
 
 All `/api/v1/admin/**` routes accept either a browser session with role `admin`
-or, when `PROMPTGATE_ADMIN_API_KEY` is configured, exactly one
+or, when `api.admin_api_key` is configured, exactly one
 `X-Admin-API-Key` header containing the configured value. If the header is
 absent, normal session, app-access, and role checks apply. If it is present but
 empty, duplicated, disabled, or invalid, the API returns
@@ -158,12 +157,12 @@ change browser CORS behavior. A valid key grants the complete admin surface,
 including create, update, revoke, and delete operations, without an individual
 user identity. Always transmit it over HTTPS.
 
-Load the value from a secret manager into the environment rather than putting
-the secret itself in a command or script:
+Load a client-side copy from a secret manager rather than putting the secret
+itself in a command or script:
 
 ```sh
 curl --fail-with-body \
-  --header "X-Admin-API-Key: ${PROMPTGATE_ADMIN_API_KEY:?not set}" \
+  --header "X-Admin-API-Key: ${ADMIN_API_KEY:?not set}" \
   https://promptgate.example.com/api/v1/admin/providers
 ```
 
@@ -198,7 +197,7 @@ It counts every projected human or service account at or above 80% of a finite
 5-hour or 7-day quota, treats 100% and above as critical, and returns at most
 the five most saturated accounts. `projectionSyncedAt` and each item `syncedAt`
 show the projection age. The scheduler refreshes it every
-`PROMPTGATE_SUBSCRIPTION_QUOTA_SYNC_INTERVAL` (`5m` by default); inspect those
+`schedule.subscription_quota_sync_interval` (`5m` by default); inspect those
 timestamps because a scheduler or Redis failure can make it older.
 
 ### Users

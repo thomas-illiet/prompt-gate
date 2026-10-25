@@ -2,182 +2,138 @@ package config
 
 import (
 	"errors"
-	"fmt"
 	"net/url"
 	"strings"
-
-	"github.com/spf13/viper"
-
-	"promptgate/backend/internal/platform/proxylimits"
+	"time"
 )
 
-// LoadProxy reads the configuration required to run the LLM proxy server.
-func LoadProxy() (ProxyConfig, error) {
-	v := viper.New()
-	v.SetEnvPrefix("PROMPTGATE")
-	v.AutomaticEnv()
-
-	v.SetDefault("proxy_port", "8081")
-	v.SetDefault("log_level", "info")
-	v.SetDefault("session_cookie_name", "promptgate_session")
-	v.SetDefault("session_ttl", "8h")
-	v.SetDefault("proxy_trust_forward_headers", false)
-	v.SetDefault("proxy_trusted_proxies", "")
-	v.SetDefault("proxy_client_ip_debug", false)
-	v.SetDefault("proxy_debug_requests", false)
-	v.SetDefault("redis_cache_ttl", "5m")
-	v.SetDefault("proxy_reload_debounce", "250ms")
-	v.SetDefault("proxy_max_buffered_request_bytes", proxylimits.DefaultMaxBufferedRequestBytes)
-	v.SetDefault("proxy_max_buffered_response_bytes", proxylimits.DefaultMaxBufferedResponseBytes)
-	v.SetDefault("proxy_upstream_timeout", proxylimits.DefaultUpstreamTimeout)
-	v.SetDefault("opa_enabled", true)
-	v.SetDefault("opa_policy_path", "promptgate/proxy/decision")
-	v.SetDefault("opa_timeout", "2s")
-	v.SetDefault("opa_cache_ttl", "10m")
-	v.SetDefault("otel_enabled", false)
-	v.SetDefault("otel_project_name", "prompt-gate")
-	v.SetDefault("otel_service_name", "promptgate-proxy")
-	v.SetDefault("otel_environment", "production")
-	v.SetDefault("otel_capture_prompts", false)
-	v.SetDefault("otel_capture_output", false)
-	v.SetDefault("otel_capture_thinking", false)
-	v.SetDefault("otel_export_timeout", "10s")
-	v.SetDefault("otel_batch_timeout", "5s")
-	v.SetDefault("otel_max_queue_size", 2048)
-	v.SetDefault("otel_max_export_batch_size", 512)
-	v.SetDefault("otel_insecure", false)
-	v.SetDefault("usage_cost_enabled", true)
-	v.SetDefault("usage_cost_input", "5.00")
-	v.SetDefault("usage_cost_output", "30.00")
-	v.SetDefault("usage_cost_embedding", "0.02")
-	setModelLabDefaults(v)
-
-	trustedProxies, err := parseCIDRList(
-		v.GetString("proxy_trusted_proxies"),
-		"PROMPTGATE_PROXY_TRUSTED_PROXIES",
-	)
+// LoadProxy reads the LLM proxy configuration from a strict YAML file.
+func LoadProxy(configPath string) (ProxyConfig, error) {
+	file, err := loadFile(configPath)
+	if err != nil {
+		return ProxyConfig{}, err
+	}
+	trustedProxies, err := parseCIDRList(file.Proxy.TrustedProxies, "proxy.trusted_proxies")
+	if err != nil {
+		return ProxyConfig{}, err
+	}
+	usageCost, err := file.usageCostConfig()
 	if err != nil {
 		return ProxyConfig{}, err
 	}
 
-	usageCost, err := loadUsageCostConfig(v)
-	if err != nil {
-		return ProxyConfig{}, err
-	}
 	cfg := ProxyConfig{
-		LogConfig:         loadLogConfig(v),
-		DatabaseURLConfig: loadDatabaseURLConfig(v),
-		TLSConfig:         loadTLSConfig(v),
-		RedisConfig:       loadRedisConfig(v),
-		ServerConfig:      loadServerConfig(v, "proxy_port"),
-		SessionConfig:     loadSessionConfig(v),
-		SecretsConfig:     loadSecretsConfig(v),
-		PublicURLConfig: PublicURLConfig{
-			FrontendBaseURL: strings.TrimRight(strings.TrimSpace(v.GetString("frontend_base_url")), "/"),
-			BackendBaseURL:  strings.TrimRight(strings.TrimSpace(v.GetString("backend_base_url")), "/"),
-			ProxyBaseURL:    strings.TrimRight(strings.TrimSpace(v.GetString("proxy_base_url")), "/"),
+		LogConfig:         file.logConfig(),
+		DatabaseURLConfig: file.databaseConfig(),
+		TLSConfig:         file.tlsConfig(),
+		RedisConfig:       file.redisConfig(),
+		ServerConfig: ServerConfig{
+			Port:               string(file.Proxy.Port),
+			CORSAllowedOrigins: append([]string(nil), file.Common.CORS.AllowedOrigins...),
 		},
+		SessionConfig:   file.sessionConfig(),
+		SecretsConfig:   file.secretsConfig(),
+		PublicURLConfig: file.publicURLConfig(),
 		ProxyRuntimeConfig: ProxyRuntimeConfig{
-			ProxyTrustForwardHeaders:      v.GetBool("proxy_trust_forward_headers"),
+			ProxyTrustForwardHeaders:      file.Proxy.TrustForwardHeaders,
 			ProxyTrustedProxies:           trustedProxies,
-			ProxyClientIPDebug:            v.GetBool("proxy_client_ip_debug"),
-			ProxyDebugRequests:            v.GetBool("proxy_debug_requests"),
-			ProxyReloadDebounce:           v.GetDuration("proxy_reload_debounce"),
-			ProxyMaxBufferedRequestBytes:  v.GetInt64("proxy_max_buffered_request_bytes"),
-			ProxyMaxBufferedResponseBytes: v.GetInt64("proxy_max_buffered_response_bytes"),
-			ProxyUpstreamTimeout:          v.GetDuration("proxy_upstream_timeout"),
-			OPAEnabled:                    v.GetBool("opa_enabled"),
-			OPAURL:                        strings.TrimRight(strings.TrimSpace(v.GetString("opa_url")), "/"),
-			OPAPolicyPath:                 strings.Trim(strings.TrimSpace(v.GetString("opa_policy_path")), "/"),
-			OPATimeout:                    v.GetDuration("opa_timeout"),
-			OPACacheTTL:                   v.GetDuration("opa_cache_ttl"),
+			ProxyClientIPDebug:            file.Proxy.ClientIPDebug,
+			ProxyDebugRequests:            file.Proxy.DebugRequests,
+			ProxyReloadDebounce:           time.Duration(file.Common.ProxyReloadDebounce),
+			ProxyMaxBufferedRequestBytes:  file.Proxy.MaxBufferedRequestBytes,
+			ProxyMaxBufferedResponseBytes: file.Proxy.MaxBufferedResponseBytes,
+			ProxyUpstreamTimeout:          time.Duration(file.Proxy.UpstreamTimeout),
+			OPAEnabled:                    file.Proxy.OPA.Enabled,
+			OPAURL:                        strings.TrimRight(strings.TrimSpace(file.Proxy.OPA.URL), "/"),
+			OPAPolicyPath:                 strings.Trim(strings.TrimSpace(file.Proxy.OPA.PolicyPath), "/"),
+			OPATimeout:                    time.Duration(file.Proxy.OPA.Timeout),
+			OPACacheTTL:                   time.Duration(file.Proxy.OPA.CacheTTL),
 		},
-		ModelLab: loadModelLabConfig(v),
+		ModelLab: file.modelLabConfig(),
 		OTel: OTelConfig{
-			Enabled:            v.GetBool("otel_enabled"),
-			Endpoint:           strings.TrimSpace(v.GetString("otel_endpoint")),
-			APIKey:             strings.TrimSpace(v.GetString("otel_api_key")),
-			ProjectName:        strings.TrimSpace(v.GetString("otel_project_name")),
-			ServiceName:        strings.TrimSpace(v.GetString("otel_service_name")),
-			Environment:        strings.TrimSpace(v.GetString("otel_environment")),
-			CapturePrompts:     v.GetBool("otel_capture_prompts"),
-			CaptureOutput:      v.GetBool("otel_capture_output"),
-			CaptureThinking:    v.GetBool("otel_capture_thinking"),
-			ExportTimeout:      v.GetDuration("otel_export_timeout"),
-			BatchTimeout:       v.GetDuration("otel_batch_timeout"),
-			MaxQueueSize:       v.GetInt("otel_max_queue_size"),
-			MaxExportBatchSize: v.GetInt("otel_max_export_batch_size"),
-			CAFile:             strings.TrimSpace(v.GetString("otel_ca_file")),
-			Insecure:           v.GetBool("otel_insecure"),
+			Enabled:            file.Proxy.OTel.Enabled,
+			Endpoint:           strings.TrimSpace(file.Proxy.OTel.Endpoint),
+			APIKey:             strings.TrimSpace(file.Proxy.OTel.APIKey),
+			ProjectName:        strings.TrimSpace(file.Proxy.OTel.ProjectName),
+			ServiceName:        strings.TrimSpace(file.Proxy.OTel.ServiceName),
+			Environment:        strings.TrimSpace(file.Proxy.OTel.Environment),
+			CapturePrompts:     file.Proxy.OTel.CapturePrompts,
+			CaptureOutput:      file.Proxy.OTel.CaptureOutput,
+			CaptureThinking:    file.Proxy.OTel.CaptureThinking,
+			ExportTimeout:      time.Duration(file.Proxy.OTel.ExportTimeout),
+			BatchTimeout:       time.Duration(file.Proxy.OTel.BatchTimeout),
+			MaxQueueSize:       file.Proxy.OTel.MaxQueueSize,
+			MaxExportBatchSize: file.Proxy.OTel.MaxExportBatchSize,
+			Insecure:           file.Proxy.OTel.Insecure,
 		},
 		UsageCost: usageCost,
 	}
 
-	if cfg.DatabaseURL == "" {
-		return ProxyConfig{}, errors.New("PROMPTGATE_DATABASE_URL is required")
+	if err := validateDatabaseConfig(cfg.DatabaseURLConfig); err != nil {
+		return ProxyConfig{}, err
+	}
+	if err := validateRedisConfig(cfg.RedisConfig); err != nil {
+		return ProxyConfig{}, err
+	}
+	if err := validateRedisOverrides(file.Common.Redis); err != nil {
+		return ProxyConfig{}, err
 	}
 	if cfg.JWTSecret == "" {
-		return ProxyConfig{}, errors.New("PROMPTGATE_JWT_SECRET is required")
+		return ProxyConfig{}, errors.New("common.security.jwt_secret is required")
 	}
 	if len(cfg.JWTSecret) < 32 {
-		return ProxyConfig{}, errors.New("PROMPTGATE_JWT_SECRET must be at least 32 characters")
+		return ProxyConfig{}, errors.New("common.security.jwt_secret must be at least 32 characters")
 	}
 	if cfg.SecretsKey == "" {
-		return ProxyConfig{}, errors.New("PROMPTGATE_SECRETS_KEY is required")
+		return ProxyConfig{}, errors.New("common.security.secrets_key is required")
 	}
 	if err := validateModelLabConfig(cfg.ModelLab); err != nil {
 		return ProxyConfig{}, err
 	}
 	if cfg.SessionTTL <= 0 {
-		return ProxyConfig{}, errors.New("PROMPTGATE_SESSION_TTL must be greater than zero")
-	}
-	if cfg.RedisURL == "" {
-		return ProxyConfig{}, errors.New("PROMPTGATE_REDIS_URL is required")
+		return ProxyConfig{}, errors.New("common.session.ttl must be greater than zero")
 	}
 	if cfg.ProxyBaseURL == "" {
-		return ProxyConfig{}, errors.New("PROMPTGATE_PROXY_BASE_URL is required")
+		return ProxyConfig{}, errors.New("common.public_urls.proxy is required")
 	}
 	if err := validateModelLabProxyBaseURL(cfg.ProxyBaseURL); err != nil {
 		return ProxyConfig{}, err
 	}
-	if err := validateOptionalFile("PROMPTGATE_CA_FILE", cfg.CAFile); err != nil {
+	if err := validateOptionalFile("common.tls.ca_file", cfg.CAFile); err != nil {
 		return ProxyConfig{}, err
 	}
 	if err := validateOTelConfig(cfg.OTel); err != nil {
 		return ProxyConfig{}, err
 	}
 	if cfg.ProxyMaxBufferedRequestBytes <= 0 {
-		return ProxyConfig{}, errors.New("PROMPTGATE_PROXY_MAX_BUFFERED_REQUEST_BYTES must be greater than zero")
+		return ProxyConfig{}, errors.New("proxy.max_buffered_request_bytes must be greater than zero")
 	}
 	if cfg.ModelLab.MaxPromptBytes > cfg.ProxyMaxBufferedRequestBytes {
-		return ProxyConfig{}, errors.New("PROMPTGATE_MODEL_LAB_MAX_PROMPT_BYTES must not exceed PROMPTGATE_PROXY_MAX_BUFFERED_REQUEST_BYTES")
+		return ProxyConfig{}, errors.New("common.model_lab.max_prompt_bytes must not exceed proxy.max_buffered_request_bytes")
 	}
 	if cfg.ProxyMaxBufferedResponseBytes <= 0 {
-		return ProxyConfig{}, errors.New("PROMPTGATE_PROXY_MAX_BUFFERED_RESPONSE_BYTES must be greater than zero")
+		return ProxyConfig{}, errors.New("proxy.max_buffered_response_bytes must be greater than zero")
 	}
 	if cfg.ProxyUpstreamTimeout <= 0 {
-		return ProxyConfig{}, errors.New("PROMPTGATE_PROXY_UPSTREAM_TIMEOUT must be greater than zero")
+		return ProxyConfig{}, errors.New("proxy.upstream_timeout must be greater than zero")
 	}
 	if cfg.OPAEnabled {
 		if cfg.OPAURL == "" {
-			return ProxyConfig{}, errors.New("PROMPTGATE_OPA_URL is required when PROMPTGATE_OPA_ENABLED is true")
+			return ProxyConfig{}, errors.New("proxy.opa.url is required when proxy.opa.enabled is true")
 		}
 		opaURL, err := url.Parse(cfg.OPAURL)
 		if err != nil || opaURL.Host == "" || (opaURL.Scheme != "https" && opaURL.Scheme != "http") {
-			return ProxyConfig{}, errors.New("PROMPTGATE_OPA_URL must be an absolute HTTP(S) URL")
+			return ProxyConfig{}, errors.New("proxy.opa.url must be an absolute HTTP(S) URL")
 		}
 		if cfg.OPAPolicyPath == "" {
-			return ProxyConfig{}, errors.New("PROMPTGATE_OPA_POLICY_PATH must not be empty")
+			return ProxyConfig{}, errors.New("proxy.opa.policy_path must not be empty")
 		}
 	}
-	positiveDurations := []positiveDuration{
-		positiveDuration{"PROMPTGATE_REDIS_CACHE_TTL", cfg.RedisCacheTTL},
-		positiveDuration{"PROMPTGATE_PROXY_RELOAD_DEBOUNCE", cfg.ProxyReloadDebounce},
-	}
+	positiveDurations := []positiveDuration{{"common.proxy_reload_debounce", cfg.ProxyReloadDebounce}}
 	if cfg.OPAEnabled {
 		positiveDurations = append(positiveDurations,
-			positiveDuration{"PROMPTGATE_OPA_TIMEOUT", cfg.OPATimeout},
-			positiveDuration{"PROMPTGATE_OPA_CACHE_TTL", cfg.OPACacheTTL},
+			positiveDuration{"proxy.opa.timeout", cfg.OPATimeout},
+			positiveDuration{"proxy.opa.cache_ttl", cfg.OPACacheTTL},
 		)
 	}
 	if err := validatePositiveDurations(positiveDurations...); err != nil {
@@ -187,7 +143,6 @@ func LoadProxy() (ProxyConfig, error) {
 		cfg.CORSAllowedOrigins = []string{cfg.FrontendBaseURL}
 	}
 	cfg.CORSAllowedOrigins = expandLoopbackOrigins(cfg.CORSAllowedOrigins)
-
 	return cfg, nil
 }
 
@@ -196,32 +151,29 @@ func validateOTelConfig(cfg OTelConfig) error {
 		return nil
 	}
 	if cfg.Endpoint == "" {
-		return errors.New("PROMPTGATE_OTEL_ENDPOINT is required when PROMPTGATE_OTEL_ENABLED is true")
+		return errors.New("proxy.otel.endpoint is required when proxy.otel.enabled is true")
 	}
 	endpoint, err := url.Parse(cfg.Endpoint)
 	if err != nil || endpoint.Host == "" || (endpoint.Scheme != "https" && endpoint.Scheme != "http") {
-		return errors.New("PROMPTGATE_OTEL_ENDPOINT must be an absolute HTTP(S) URL")
+		return errors.New("proxy.otel.endpoint must be an absolute HTTP(S) URL")
 	}
 	if endpoint.Scheme != "https" && !cfg.Insecure {
-		return errors.New("PROMPTGATE_OTEL_ENDPOINT must use https unless PROMPTGATE_OTEL_INSECURE is true")
+		return errors.New("proxy.otel.endpoint must use https unless proxy.otel.insecure is true")
 	}
 	if cfg.ProjectName == "" || cfg.ServiceName == "" || cfg.Environment == "" {
-		return errors.New("PROMPTGATE_OTEL_PROJECT_NAME, PROMPTGATE_OTEL_SERVICE_NAME, and PROMPTGATE_OTEL_ENVIRONMENT must not be empty")
+		return errors.New("proxy.otel.project_name, proxy.otel.service_name, and proxy.otel.environment must not be empty")
 	}
 	if err := validatePositiveDurations(
-		positiveDuration{"PROMPTGATE_OTEL_EXPORT_TIMEOUT", cfg.ExportTimeout},
-		positiveDuration{"PROMPTGATE_OTEL_BATCH_TIMEOUT", cfg.BatchTimeout},
+		positiveDuration{"proxy.otel.export_timeout", cfg.ExportTimeout},
+		positiveDuration{"proxy.otel.batch_timeout", cfg.BatchTimeout},
 	); err != nil {
 		return err
 	}
 	if cfg.MaxQueueSize <= 0 || cfg.MaxExportBatchSize <= 0 {
-		return errors.New("PROMPTGATE_OTEL queue and batch sizes must be greater than zero")
+		return errors.New("proxy.otel queue and batch sizes must be greater than zero")
 	}
 	if cfg.MaxExportBatchSize > cfg.MaxQueueSize {
-		return errors.New("PROMPTGATE_OTEL_MAX_EXPORT_BATCH_SIZE must not exceed PROMPTGATE_OTEL_MAX_QUEUE_SIZE")
-	}
-	if err := validateOptionalFile("PROMPTGATE_OTEL_CA_FILE", cfg.CAFile); err != nil {
-		return fmt.Errorf("validate OpenTelemetry CA: %w", err)
+		return errors.New("proxy.otel.max_export_batch_size must not exceed proxy.otel.max_queue_size")
 	}
 	return nil
 }

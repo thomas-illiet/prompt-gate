@@ -26,7 +26,6 @@ type Service struct {
 const usageCostTokenUnit = 1_000_000
 
 var defaultUsageCostConfig = UsageCostConfig{
-	Enabled: true,
 	Rates: CostRates{
 		InputUSDPer1MTokens:     5.00,
 		OutputUSDPer1MTokens:    30.00,

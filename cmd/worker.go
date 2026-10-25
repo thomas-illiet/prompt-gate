@@ -16,22 +16,22 @@ import (
 )
 
 // newWorkerCommand builds the CLI command that starts generic background workers.
-func newWorkerCommand() *cobra.Command {
+func newWorkerCommand(configPath *string) *cobra.Command {
 	return &cobra.Command{
 		Use:   "worker",
 		Short: "Run generic background workers",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			return runWorker()
+			return runWorker(*configPath)
 		},
 	}
 }
 
 // runWorker loads worker configuration and consumes Redis-backed background jobs.
-func runWorker() error {
+func runWorker(configPath string) error {
 	bootstrapLogger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
-	cfg, err := config.LoadWorker()
+	cfg, err := config.LoadWorker(configPath)
 	if err != nil {
 		bootstrapLogger.Error("failed to load worker configuration", "error", err)
 		return err
@@ -60,14 +60,24 @@ func runWorker() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	db, err := database.OpenPostgres(ctx, cfg.DatabaseURL)
+	db, err := database.OpenPostgres(ctx, cfg.DatabaseURL, database.PoolOptions{
+		ConnMaxLifetime: cfg.ConnMaxLifetime,
+		MaxIdleConns:    cfg.MaxIdleConnections,
+		MaxOpenConns:    cfg.MaxOpenConnections,
+	})
 	if err != nil {
 		logger.Error("failed to initialize postgres connection", "error", err)
 		return err
 	}
 
 	logger.Info("initializing redis connection")
-	redisStore, err := redisstore.NewRequired(ctx, cfg.RedisURL, cfg.RedisCacheTTL, logger)
+	redisStore, err := redisstore.NewRequired(ctx, cfg.RedisURL, cfg.RedisCacheTTL, logger, redisstore.ClientOptions{
+		PoolSize:     cfg.RedisPoolSize,
+		MinIdleConns: cfg.RedisMinIdleConnections,
+		PoolTimeout:  cfg.RedisPoolTimeout,
+		ReadTimeout:  cfg.RedisReadTimeout,
+		WriteTimeout: cfg.RedisWriteTimeout,
+	})
 	if err != nil {
 		logger.Error("failed to initialize redis connection", "error", err)
 		return err

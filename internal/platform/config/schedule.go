@@ -2,82 +2,62 @@ package config
 
 import (
 	"errors"
-	"github.com/spf13/viper"
+	"time"
 )
 
-// LoadSchedule reads configuration required to run scheduled background jobs.
-func LoadSchedule() (ScheduleConfig, error) {
-	v := viper.New()
-	v.SetEnvPrefix("PROMPTGATE")
-	v.AutomaticEnv()
-
-	v.SetDefault("log_level", "info")
-	v.SetDefault("token_cleanup_interval", "1h")
-	v.SetDefault("user_access_expiration_interval", "1h")
-	v.SetDefault("redis_cache_ttl", "5m")
-	v.SetDefault("proxy_reload_debounce", "250ms")
-	v.SetDefault("usage_raw_retention", "2160h")
-	v.SetDefault("usage_raw_cleanup_interval", "1h")
-	v.SetDefault("subscription_quota_sync_interval", "5m")
-	v.SetDefault("quota_reset_distribution_interval", "1h")
-
-	cfg := ScheduleConfig{
-		LogConfig:         loadLogConfig(v),
-		DatabaseURLConfig: loadDatabaseURLConfig(v),
-		TLSConfig:         loadTLSConfig(v),
-		RedisConfig:       loadRedisConfig(v),
-		SecretsConfig:     loadSecretsConfig(v),
-		ScheduleIntervals: ScheduleIntervals{
-			TokenCleanupInterval:           v.GetDuration("token_cleanup_interval"),
-			UserAccessExpirationInterval:   v.GetDuration("user_access_expiration_interval"),
-			UsageRawRetention:              v.GetDuration("usage_raw_retention"),
-			UsageRawCleanupInterval:        v.GetDuration("usage_raw_cleanup_interval"),
-			SubscriptionQuotaSyncInterval:  v.GetDuration("subscription_quota_sync_interval"),
-			QuotaResetDistributionInterval: v.GetDuration("quota_reset_distribution_interval"),
-		},
-		ProxyRuntimeConfig: ProxyRuntimeConfig{
-			ProxyReloadDebounce: v.GetDuration("proxy_reload_debounce"),
-		},
-	}
-
-	if cfg.DatabaseURL == "" {
-		return ScheduleConfig{}, errors.New("PROMPTGATE_DATABASE_URL is required")
-	}
-	if cfg.JWTSecret == "" {
-		return ScheduleConfig{}, errors.New("PROMPTGATE_JWT_SECRET is required")
-	}
-	if len(cfg.JWTSecret) < 32 {
-		return ScheduleConfig{}, errors.New("PROMPTGATE_JWT_SECRET must be at least 32 characters")
-	}
-	if cfg.SecretsKey == "" {
-		return ScheduleConfig{}, errors.New("PROMPTGATE_SECRETS_KEY is required")
-	}
-	if cfg.RedisURL == "" {
-		return ScheduleConfig{}, errors.New("PROMPTGATE_REDIS_URL is required")
-	}
-	if err := validateOptionalFile("PROMPTGATE_CA_FILE", cfg.CAFile); err != nil {
+// LoadSchedule reads the scheduler configuration from a strict YAML file.
+func LoadSchedule(configPath string) (ScheduleConfig, error) {
+	file, err := loadFile(configPath)
+	if err != nil {
 		return ScheduleConfig{}, err
 	}
-	if cfg.UsageRawRetention <= 0 {
-		return ScheduleConfig{}, errors.New("PROMPTGATE_USAGE_RAW_RETENTION must be greater than zero")
+	cfg := ScheduleConfig{
+		LogConfig:         file.logConfig(),
+		DatabaseURLConfig: file.databaseConfig(),
+		TLSConfig:         file.tlsConfig(),
+		RedisConfig:       file.redisConfig(),
+		SecretsConfig:     file.secretsConfig(),
+		ScheduleIntervals: ScheduleIntervals{
+			TokenCleanupInterval:           time.Duration(file.Common.Maintenance.TokenCleanupInterval),
+			UserAccessExpirationInterval:   time.Duration(file.Common.Maintenance.UserAccessExpirationInterval),
+			UsageRawRetention:              time.Duration(file.Schedule.UsageRawRetention),
+			UsageRawCleanupInterval:        time.Duration(file.Schedule.UsageRawCleanupInterval),
+			SubscriptionQuotaSyncInterval:  time.Duration(file.Schedule.SubscriptionQuotaSyncInterval),
+			QuotaResetDistributionInterval: time.Duration(file.Common.Maintenance.QuotaResetDistributionInterval),
+		},
+		ProxyRuntimeConfig: ProxyRuntimeConfig{ProxyReloadDebounce: time.Duration(file.Common.ProxyReloadDebounce)},
 	}
-	if cfg.UsageRawCleanupInterval <= 0 {
-		return ScheduleConfig{}, errors.New("PROMPTGATE_USAGE_RAW_CLEANUP_INTERVAL must be greater than zero")
+	if err := validateDatabaseConfig(cfg.DatabaseURLConfig); err != nil {
+		return ScheduleConfig{}, err
 	}
-	if cfg.SubscriptionQuotaSyncInterval <= 0 {
-		return ScheduleConfig{}, errors.New("PROMPTGATE_SUBSCRIPTION_QUOTA_SYNC_INTERVAL must be greater than zero")
+	if err := validateRedisConfig(cfg.RedisConfig); err != nil {
+		return ScheduleConfig{}, err
 	}
-	if cfg.QuotaResetDistributionInterval <= 0 {
-		return ScheduleConfig{}, errors.New("PROMPTGATE_QUOTA_RESET_DISTRIBUTION_INTERVAL must be greater than zero")
+	if err := validateRedisOverrides(file.Common.Redis); err != nil {
+		return ScheduleConfig{}, err
+	}
+	if cfg.JWTSecret == "" {
+		return ScheduleConfig{}, errors.New("common.security.jwt_secret is required")
+	}
+	if len(cfg.JWTSecret) < 32 {
+		return ScheduleConfig{}, errors.New("common.security.jwt_secret must be at least 32 characters")
+	}
+	if cfg.SecretsKey == "" {
+		return ScheduleConfig{}, errors.New("common.security.secrets_key is required")
+	}
+	if err := validateOptionalFile("common.tls.ca_file", cfg.CAFile); err != nil {
+		return ScheduleConfig{}, err
 	}
 	if err := validatePositiveDurations(
-		positiveDuration{"PROMPTGATE_TOKEN_CLEANUP_INTERVAL", cfg.TokenCleanupInterval},
-		positiveDuration{"PROMPTGATE_USER_ACCESS_EXPIRATION_INTERVAL", cfg.UserAccessExpirationInterval},
-		positiveDuration{"PROMPTGATE_REDIS_CACHE_TTL", cfg.RedisCacheTTL},
-		positiveDuration{"PROMPTGATE_PROXY_RELOAD_DEBOUNCE", cfg.ProxyReloadDebounce},
+		positiveDuration{"common.maintenance.token_cleanup_interval", cfg.TokenCleanupInterval},
+		positiveDuration{"common.maintenance.user_access_expiration_interval", cfg.UserAccessExpirationInterval},
+		positiveDuration{"schedule.usage_raw_retention", cfg.UsageRawRetention},
+		positiveDuration{"schedule.usage_raw_cleanup_interval", cfg.UsageRawCleanupInterval},
+		positiveDuration{"schedule.subscription_quota_sync_interval", cfg.SubscriptionQuotaSyncInterval},
+		positiveDuration{"common.maintenance.quota_reset_distribution_interval", cfg.QuotaResetDistributionInterval},
+		positiveDuration{"common.proxy_reload_debounce", cfg.ProxyReloadDebounce},
 	); err != nil {
 		return ScheduleConfig{}, err
 	}
-
 	return cfg, nil
 }

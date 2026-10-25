@@ -28,7 +28,6 @@ type TelemetryRecorder struct {
 	inner           aibrecorder.Recorder
 	capturePrompts  bool
 	captureThinking bool
-	costEnabled     bool
 	inputRate       float64
 	outputRate      float64
 	embeddingRate   float64
@@ -46,9 +45,8 @@ func NewTelemetryRecorder(inner aibrecorder.Recorder, capturePrompts bool) *Tele
 	return &TelemetryRecorder{inner: inner, capturePrompts: capturePrompts}
 }
 
-// WithEstimatedCosts enables estimated USD attributes using per-million-token rates.
+// WithEstimatedCosts configures estimated USD attributes using per-million-token rates.
 func (r *TelemetryRecorder) WithEstimatedCosts(input, output, embedding float64) *TelemetryRecorder {
-	r.costEnabled = true
 	r.inputRate, r.outputRate, r.embeddingRate = input, output, embedding
 	return r
 }
@@ -154,20 +152,18 @@ func (r *TelemetryRecorder) RecordTokenUsage(ctx context.Context, req *aibrecord
 					attribute.String(genAIOperationName, genAIOperationEmbeddings),
 				)
 			}
-			if r.costEnabled {
-				inputCost := float64(promptTokens) * r.inputRate / usageCostTokenUnit
-				outputCost := float64(state.output) * r.outputRate / usageCostTokenUnit
-				if isEmbedding {
-					inputCost = float64(promptTokens) * r.embeddingRate / usageCostTokenUnit
-					outputCost = 0
-				}
-				state.span.SetAttributes(
-					attribute.Float64("llm.cost.prompt", inputCost),
-					attribute.Float64("llm.cost.completion", outputCost),
-					attribute.Float64("llm.cost.total", inputCost+outputCost),
-					attribute.Bool("promptgate.cost.estimated", true),
-				)
+			inputCost := float64(promptTokens) * r.inputRate / usageCostTokenUnit
+			outputCost := float64(state.output) * r.outputRate / usageCostTokenUnit
+			if isEmbedding {
+				inputCost = float64(promptTokens) * r.embeddingRate / usageCostTokenUnit
+				outputCost = 0
 			}
+			state.span.SetAttributes(
+				attribute.Float64("llm.cost.prompt", inputCost),
+				attribute.Float64("llm.cost.completion", outputCost),
+				attribute.Float64("llm.cost.total", inputCost+outputCost),
+				attribute.Bool("promptgate.cost.estimated", true),
+			)
 			state.mu.Unlock()
 		}
 	}

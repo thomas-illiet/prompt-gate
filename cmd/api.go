@@ -18,22 +18,22 @@ import (
 )
 
 // newAPICommand builds the CLI command that starts the HTTP API server.
-func newAPICommand() *cobra.Command {
+func newAPICommand(configPath *string) *cobra.Command {
 	return &cobra.Command{
 		Use:   "api",
 		Short: "Run the HTTP API server",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			return runAPI()
+			return runAPI(*configPath)
 		},
 	}
 }
 
 // runAPI loads API configuration, initializes dependencies, and serves HTTP requests until shutdown.
-func runAPI() error {
+func runAPI(configPath string) error {
 	bootstrapLogger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
-	cfg, err := config.LoadApi()
+	cfg, err := config.LoadApi(configPath)
 	if err != nil {
 		bootstrapLogger.Error("failed to load configuration", "error", err)
 		return err

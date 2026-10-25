@@ -17,19 +17,20 @@ The image exposes:
 - `8080` for the API server
 - `8081` for the LLM proxy server
 
-The default command starts the API:
+The default command expects the shared configuration at
+`/etc/prompt-gate/promptgate.yaml` and starts the API:
 
 ```text
-/app/promptgate api
+/app/promptgate --config /etc/prompt-gate/promptgate.yaml api
 ```
 
 Use explicit commands for the other processes:
 
 ```text
-/app/promptgate proxy
-/app/promptgate migrate
-/app/promptgate schedule
-/app/promptgate worker
+/app/promptgate --config /etc/prompt-gate/promptgate.yaml proxy
+/app/promptgate --config /etc/prompt-gate/promptgate.yaml migrate
+/app/promptgate --config /etc/prompt-gate/promptgate.yaml schedule
+/app/promptgate --config /etc/prompt-gate/promptgate.yaml worker
 ```
 
 Recommended production layout:
@@ -52,9 +53,9 @@ Prompt Gate requires:
   usage event streams
 - an independently operated OPA server for every proxy decision
 - Keycloak or another OIDC-compatible provider
-- public API, proxy, and frontend origins configured with `PROMPTGATE_*`
+- one protected YAML file containing the common and per-runtime settings
 
-See [Environment variables](environment.md) for the full configuration
+See [YAML configuration](environment.md) for the full configuration
 reference.
 
 ## Deployment Order
@@ -62,21 +63,17 @@ reference.
 1. Provision PostgreSQL, Redis, and OPA.
 2. Configure the OIDC client and callback URL:
    `https://api.example.com/auth/callback`.
-3. Create runtime secrets:
-   `PROMPTGATE_JWT_SECRET`, `PROMPTGATE_SECRETS_KEY`, database credentials,
-   Redis credentials, OIDC client secret when needed, and
-   `PROMPTGATE_ADMIN_API_KEY` when enabling non-browser administration. API and
-   proxy reuse the same `PROMPTGATE_SECRETS_KEY` value for Model Lab tickets.
-4. Run migrations with `/app/promptgate migrate`.
-5. Start the API with `/app/promptgate api`.
-6. Start the proxy with `/app/promptgate proxy`.
-7. Start one or more workers with `/app/promptgate worker`.
-8. Start the scheduler with `/app/promptgate schedule`.
-9. Configure providers, users, service accounts, tokens, and the external OPA policy
-   through the admin API or frontend.
+3. Create `promptgate.yaml`, including database, Redis, signing, encryption,
+   OIDC, administration, and telemetry credentials. Protect the entire file as
+   a secret because every Prompt Gate process receives it.
+4. Run migrations with `promptgate --config /path/promptgate.yaml migrate`.
+5. Start the API, proxy, workers, and scheduler with the same required
+   `--config` option.
+6. Configure providers, users, service accounts, tokens, and the external OPA
+   policy through the admin API or frontend.
 
 Model Lab is always enabled for `user` and `admin` roles. Configure the same
-browser-visible HTTP(S) URL in `PROMPTGATE_PROXY_BASE_URL` on API and proxy. If
+browser-visible HTTP(S) URL in `common.public_urls.proxy`. If
 that URL contains a routing prefix such as the
 Helm chart's `/remote`, the edge must strip it before forwarding to the proxy.
 Control exposure through roles and access groups. Verify that tickets are one-time,
@@ -105,54 +102,36 @@ external job locking.
 
 ## Container Examples
 
-Run migrations:
+Mount the complete configuration read-only. The same mount works for every
+runtime; only the final command name changes:
 
 ```sh
 docker run --rm \
-  -e PROMPTGATE_DATABASE_URL=postgres://postgres:postgres@db:5432/promptgate?sslmode=disable \
+  -v /secure/path/promptgate.yaml:/etc/prompt-gate/promptgate.yaml:ro \
   ghcr.io/thomas-illiet/prompt-gate:v0.1.0 \
-  /app/promptgate migrate
+  /app/promptgate --config /etc/prompt-gate/promptgate.yaml migrate
 ```
 
 Run the API:
 
-If administration-key access is enabled, populate
-`PROMPTGATE_ADMIN_API_KEY` from a secret manager before running this command.
-Passing `-e PROMPTGATE_ADMIN_API_KEY` forwards the environment value without
-embedding the secret in the command; omit that line to keep the feature
-disabled.
-
 ```sh
 docker run --rm \
   -p 8080:8080 \
+  -v /secure/path/promptgate.yaml:/etc/prompt-gate/promptgate.yaml:ro \
   -v /path/to/custom-ca.pem:/run/secrets/custom-ca.pem:ro \
-  -e PROMPTGATE_PORT=8080 \
-  -e PROMPTGATE_DATABASE_URL=postgres://postgres:postgres@db:5432/promptgate?sslmode=disable \
-  -e PROMPTGATE_REDIS_URL=redis://redis:6379/0 \
-  -e PROMPTGATE_KEYCLOAK_ISSUER_URL=https://keycloak.example.com/realms/promptgate \
-  -e PROMPTGATE_KEYCLOAK_JWKS_URL=https://keycloak.example.com/realms/promptgate/protocol/openid-connect/certs \
-  -e PROMPTGATE_KEYCLOAK_CLIENT_ID=promptgate-backend \
-  -e PROMPTGATE_KEYCLOAK_CLIENT_SECRET=change-me \
-  -e PROMPTGATE_ADMIN_API_KEY \
-  -e PROMPTGATE_CA_FILE=/run/secrets/custom-ca.pem \
-  -e PROMPTGATE_FRONTEND_BASE_URL=https://app.example.com \
-  -e PROMPTGATE_BACKEND_BASE_URL=https://api.example.com \
-  -e PROMPTGATE_PROXY_BASE_URL=https://proxy.example.com \
-  -e PROMPTGATE_JWT_SECRET=change-me-change-me-change-me-32 \
-  -e PROMPTGATE_SECRETS_KEY=MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY= \
-  ghcr.io/thomas-illiet/prompt-gate:v0.1.0
+  ghcr.io/thomas-illiet/prompt-gate:v0.1.0 \
+  /app/promptgate --config /etc/prompt-gate/promptgate.yaml api
 ```
 
-Omit the CA certificate volume and `PROMPTGATE_CA_FILE` when Keycloak and
-monitored HTTPS services use publicly trusted certificates.
+Set `common.tls.ca_file: /run/secrets/custom-ca.pem` when mounting the optional
+CA bundle. This single CA setting applies to OIDC, monitoring, providers, and
+OTEL.
 
 ## Administration API Key
 
-Inject `PROMPTGATE_ADMIN_API_KEY` only into API containers. The proxy, worker,
-scheduler, and migration processes do not use it. The Docker Compose example
-does this under `services.api.environment` and leaves the feature disabled when
-the interpolated host variable is unset or empty. OIDC configuration remains
-required even when administration-key access is enabled.
+Set `api.admin_api_key` in the protected YAML. The API is the only runtime that
+consumes it, although all runtimes can read the shared configuration file. OIDC
+configuration remains required even when administration-key access is enabled.
 
 The credential is global and grants the full `/api/v1/admin/**` surface,
 including destructive operations, without per-operator attribution. Store it
@@ -164,41 +143,14 @@ restart every API replica or trigger a Deployment rollout. There is no period
 where one API process accepts both the old and new keys, so coordinate the
 client cutover with the restart.
 
-Run the proxy:
+Run the proxy, worker, or scheduler by changing only the last argument:
 
 ```sh
 docker run --rm \
   -p 8081:8081 \
-  -e PROMPTGATE_PROXY_PORT=8081 \
-  -e PROMPTGATE_DATABASE_URL=postgres://postgres:postgres@db:5432/promptgate?sslmode=disable \
-  -e PROMPTGATE_REDIS_URL=redis://redis:6379/0 \
-  -e PROMPTGATE_FRONTEND_BASE_URL=https://app.example.com \
-  -e PROMPTGATE_JWT_SECRET=change-me-change-me-change-me-32 \
-  -e PROMPTGATE_SECRETS_KEY=MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY= \
+  -v /secure/path/promptgate.yaml:/etc/prompt-gate/promptgate.yaml:ro \
   ghcr.io/thomas-illiet/prompt-gate:v0.1.0 \
-  /app/promptgate proxy
-```
-
-Run the worker:
-
-```sh
-docker run --rm \
-  -e PROMPTGATE_DATABASE_URL=postgres://postgres:postgres@db:5432/promptgate?sslmode=disable \
-  -e PROMPTGATE_REDIS_URL=redis://redis:6379/0 \
-  ghcr.io/thomas-illiet/prompt-gate:v0.1.0 \
-  /app/promptgate worker
-```
-
-Run the scheduler:
-
-```sh
-docker run --rm \
-  -e PROMPTGATE_DATABASE_URL=postgres://postgres:postgres@db:5432/promptgate?sslmode=disable \
-  -e PROMPTGATE_REDIS_URL=redis://redis:6379/0 \
-  -e PROMPTGATE_JWT_SECRET=change-me-change-me-change-me-32 \
-  -e PROMPTGATE_SECRETS_KEY=MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY= \
-  ghcr.io/thomas-illiet/prompt-gate:v0.1.0 \
-  /app/promptgate schedule
+  /app/promptgate --config /etc/prompt-gate/promptgate.yaml proxy
 ```
 
 ## Static Frontend Assets
@@ -209,10 +161,11 @@ The Dockerfile builds the Nuxt frontend and copies generated assets to:
 /app/public
 ```
 
-The runtime image sets:
+Configure the bundled directory in the API section:
 
-```sh
-PROMPTGATE_STATIC_ASSETS_DIR=/app/public
+```yaml
+api:
+  static_assets_dir: /app/public
 ```
 
 When set, the API process serves frontend files from `/` and falls back to the
@@ -222,13 +175,13 @@ SPA shell for frontend routes.
 
 - Route browser/API traffic to the API process.
 - Route LLM SDK traffic to the proxy process.
-- Set `PROMPTGATE_BACKEND_BASE_URL` to the browser-visible API origin.
-- Set `PROMPTGATE_FRONTEND_BASE_URL` to the browser-visible frontend origin.
-- Set `PROMPTGATE_PROXY_BASE_URL` when the proxy is exposed on a different
+- Set `common.public_urls.backend` to the browser-visible API origin.
+- Set `common.public_urls.frontend` to the browser-visible frontend origin.
+- Set `common.public_urls.proxy` when the proxy is exposed on a different
   origin, path, or externally mapped port.
-- Prefer `PROMPTGATE_PROXY_TRUSTED_PROXIES` with explicit ingress or
+- Prefer `proxy.trusted_proxies` with explicit ingress or
   reverse-proxy CIDRs when the proxy needs the real client IP.
-- Enable `PROMPTGATE_PROXY_TRUST_FORWARD_HEADERS` only when the proxy is behind
+- Enable `proxy.trust_forward_headers` only when the proxy is behind
   trusted infrastructure that sanitizes forwarded headers.
 
 ## Kubernetes NGINX Ingress
@@ -262,10 +215,14 @@ spec:
 
 Use matching public URLs:
 
-```sh
-PROMPTGATE_FRONTEND_BASE_URL=https://promptgate.example.com
-PROMPTGATE_BACKEND_BASE_URL=https://promptgate.example.com
-PROMPTGATE_CORS_ALLOWED_ORIGINS=https://promptgate.example.com
+```yaml
+common:
+  public_urls:
+    frontend: https://promptgate.example.com
+    backend: https://promptgate.example.com
+  cors:
+    allowed_origins:
+      - https://promptgate.example.com
 ```
 
 Register the OIDC redirect URI as:
@@ -280,7 +237,7 @@ For a separate frontend service behind the same host, route `/auth/*` and
 need rewrites in separate Ingress objects because nginx applies
 `rewrite-target` to every path in the same object.
 
-If `PROMPTGATE_BACKEND_BASE_URL` includes `/api`, add a compatibility rule for
+If `common.public_urls.backend` includes `/api`, add a compatibility rule for
 the OIDC callback:
 
 ```yaml
@@ -343,11 +300,11 @@ and [externalTrafficPolicy FAQ](https://kubernetes.github.io/ingress-nginx/faq/#
 
 For HAProxy Ingress, ensure the controller overwrites or sanitizes inbound
 `X-Forwarded-For` before forwarding the client address. Temporarily enable
-`PROMPTGATE_PROXY_CLIENT_IP_DEBUG=true`, send a known external request, and use
+`proxy.client_ip_debug: true`, send a known external request, and use
 the structured `peer_ip` field to determine whether Prompt Gate sees an HAProxy
 pod IP, node IP, or SNAT address. Configure only the narrow stable CIDR that
-contains that peer in `PROMPTGATE_PROXY_TRUSTED_PROXIES`, keep
-`PROMPTGATE_PROXY_TRUST_FORWARD_HEADERS=false`, then disable the diagnostic.
+contains that peer in `proxy.trusted_proxies`, keep
+`proxy.trust_forward_headers: false`, then disable the diagnostic.
 If the trusted CIDR is shared with other workloads, restrict the proxy Service
 with a NetworkPolicy selecting the HAProxy namespace and controller pods.
 
@@ -376,7 +333,7 @@ Returns `200 OK` with `{"status":"ok"}` when the proxy process is serving.
 - Avoid deploying `latest` to production unless the platform also records the
   resolved image digest.
 - Store all secrets in a secret manager.
-- Keep `PROMPTGATE_SECRETS_KEY` stable across deployments unless you are
+- Keep `common.security.secrets_key` stable across deployments unless you are
   intentionally rotating encrypted provider secrets.
 - Run exactly one scheduler replica unless you add external job locking.
 - Ensure at least one supported enabled provider exists before starting proxy

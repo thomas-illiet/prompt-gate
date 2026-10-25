@@ -157,7 +157,7 @@ Provider updates trigger a debounced bridge rebuild. Group updates refresh the
 proxy access snapshot. Auth updates bump the token auth cache version, which
 invalidates old cache keys. A separate subscription watcher refreshes plan and
 versioned assignment snapshots. OPA decisions expire only through
-`PROMPTGATE_OPA_CACHE_TTL`.
+`proxy.opa.cache_ttl`.
 
 ## Migrations
 

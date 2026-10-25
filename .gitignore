@@ -18,7 +18,8 @@ go.work.sum
 # Environment and local configuration
 .env
 .env.*
-!.env.example
+promptgate.yaml
+promptgate.local.yaml
 .local/
 
 # Logs and runtime files

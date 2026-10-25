@@ -6,8 +6,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -15,21 +13,19 @@ import (
 
 	"promptgate/backend/internal/domain/provider"
 	"promptgate/backend/internal/platform/redisstore"
+	"promptgate/backend/internal/platform/testconfig"
 
 	"github.com/google/uuid"
 )
 
 func TestRedisTicketConsumptionIsAtomicAcrossConcurrentClients(t *testing.T) {
-	rawRedisURL := strings.TrimSpace(os.Getenv("PROMPTGATE_TEST_REDIS_URL"))
-	if rawRedisURL == "" {
-		t.Skip("PROMPTGATE_TEST_REDIS_URL is not configured")
-	}
+	rawRedisURL := testconfig.RedisURL(t)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	store, err := redisstore.NewRequired(ctx, rawRedisURL, time.Minute, nil)
 	if err != nil {
-		t.Fatalf("connect to integration Redis: %v", err)
+		t.Skipf("integration Redis from %s is unavailable: %v", testconfig.Path(t), err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
 

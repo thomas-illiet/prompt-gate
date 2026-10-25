@@ -15,22 +15,22 @@ import (
 )
 
 // newMigrateCommand builds the CLI command that runs database migrations.
-func newMigrateCommand() *cobra.Command {
+func newMigrateCommand(configPath *string) *cobra.Command {
 	return &cobra.Command{
 		Use:   "migrate",
 		Short: "Run database migrations",
 		Args:  cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {
-			return runMigrate()
+			return runMigrate(*configPath)
 		},
 	}
 }
 
 // runMigrate loads migration configuration and applies all pending database migrations.
-func runMigrate() error {
+func runMigrate(configPath string) error {
 	bootstrapLogger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 
-	cfg, err := config.LoadMigration()
+	cfg, err := config.LoadMigration(configPath)
 	if err != nil {
 		bootstrapLogger.Error("failed to load migration configuration", "error", err)
 		return err
@@ -54,7 +54,11 @@ func runMigrate() error {
 	defer stop()
 
 	logger.Info("initializing postgres connection")
-	db, err := database.OpenPostgres(ctx, cfg.DatabaseURL)
+	db, err := database.OpenPostgres(ctx, cfg.DatabaseURL, database.PoolOptions{
+		ConnMaxLifetime: cfg.ConnMaxLifetime,
+		MaxIdleConns:    cfg.MaxIdleConnections,
+		MaxOpenConns:    cfg.MaxOpenConnections,
+	})
 	if err != nil {
 		logger.Error("failed to initialize postgres connection", "error", err)
 		return err

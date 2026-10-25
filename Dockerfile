@@ -40,10 +40,8 @@ WORKDIR /app
 COPY --from=builder /out/ /app/
 COPY --from=frontend-builder /src/frontend/.output/public /app/public
 
-ENV PROMPTGATE_STATIC_ASSETS_DIR=/app/public
-
 USER 10001:10001
 
 EXPOSE 8080 8081
 
-CMD ["/app/promptgate", "api"]
+CMD ["/app/promptgate", "--config", "/etc/prompt-gate/promptgate.yaml", "api"]

@@ -10,11 +10,8 @@ import (
 	"net/url"
 	"os"
 	"path"
-	"strconv"
 	"strings"
 	"time"
-
-	"github.com/spf13/viper"
 )
 
 // LogConfig contains process-wide logging settings shared by every runtime.
@@ -24,7 +21,10 @@ type LogConfig struct {
 
 // DatabaseURLConfig contains the database connection string shared by database-backed runtimes.
 type DatabaseURLConfig struct {
-	DatabaseURL string
+	DatabaseURL        string
+	ConnMaxLifetime    time.Duration
+	MaxIdleConnections int
+	MaxOpenConnections int
 }
 
 // TLSConfig contains the optional global CA file used by outbound HTTP clients.
@@ -34,8 +34,13 @@ type TLSConfig struct {
 
 // RedisConfig contains Redis connectivity and cache settings.
 type RedisConfig struct {
-	RedisURL      string
-	RedisCacheTTL time.Duration
+	RedisURL                string
+	RedisCacheTTL           time.Duration
+	RedisPoolSize           int
+	RedisMinIdleConnections int
+	RedisPoolTimeout        time.Duration
+	RedisReadTimeout        time.Duration
+	RedisWriteTimeout       time.Duration
 }
 
 // ServerConfig contains settings shared by HTTP servers.
@@ -113,7 +118,6 @@ type WorkerRuntimeConfig struct {
 }
 
 type UsageCostConfig struct {
-	Enabled   bool
 	Input     float64
 	Output    float64
 	Embedding float64
@@ -147,7 +151,6 @@ type OTelConfig struct {
 	BatchTimeout       time.Duration
 	MaxQueueSize       int
 	MaxExportBatchSize int
-	CAFile             string
 	Insecure           bool
 }
 
@@ -215,8 +218,8 @@ type MigrationConfig struct {
 }
 
 type positiveDuration struct {
-	envName string
-	value   time.Duration
+	path  string
+	value time.Duration
 }
 
 // validatePositiveDurations validates durations before they reach tickers,
@@ -224,95 +227,33 @@ type positiveDuration struct {
 func validatePositiveDurations(values ...positiveDuration) error {
 	for _, item := range values {
 		if item.value <= 0 {
-			return fmt.Errorf("%s must be greater than zero", item.envName)
+			return fmt.Errorf("%s must be greater than zero", item.path)
 		}
 	}
 	return nil
 }
 
-func loadLogConfig(v *viper.Viper) LogConfig {
-	return LogConfig{LogLevel: v.GetString("log_level")}
-}
-
-func loadDatabaseURLConfig(v *viper.Viper) DatabaseURLConfig {
-	return DatabaseURLConfig{DatabaseURL: strings.TrimSpace(v.GetString("database_url"))}
-}
-
-func loadTLSConfig(v *viper.Viper) TLSConfig {
-	return TLSConfig{CAFile: strings.TrimSpace(v.GetString("ca_file"))}
-}
-
-func loadRedisConfig(v *viper.Viper) RedisConfig {
-	return RedisConfig{
-		RedisURL:      strings.TrimSpace(v.GetString("redis_url")),
-		RedisCacheTTL: v.GetDuration("redis_cache_ttl"),
-	}
-}
-
-func loadServerConfig(v *viper.Viper, portKey string) ServerConfig {
-	return ServerConfig{
-		Port:               v.GetString(portKey),
-		CORSAllowedOrigins: v.GetStringSlice("cors_allowed_origins"),
-	}
-}
-
-func loadSessionConfig(v *viper.Viper) SessionConfig {
-	return SessionConfig{
-		SessionCookieName: v.GetString("session_cookie_name"),
-		SessionTTL:        v.GetDuration("session_ttl"),
-	}
-}
-
-func loadSecretsConfig(v *viper.Viper) SecretsConfig {
-	return SecretsConfig{
-		JWTSecret:  strings.TrimSpace(v.GetString("jwt_secret")),
-		SecretsKey: strings.TrimSpace(v.GetString("secrets_key")),
-	}
-}
-
-func setModelLabDefaults(v *viper.Viper) {
-	v.SetDefault("model_lab_ticket_ttl", "60s")
-	v.SetDefault("model_lab_max_prompt_bytes", 32*1024)
-	v.SetDefault("model_lab_max_output_tokens", 4096)
-	v.SetDefault("model_lab_max_targets", 3)
-	v.SetDefault("model_lab_max_concurrent", 3)
-	v.SetDefault("model_lab_catalog_fresh_ttl", "5m")
-	v.SetDefault("model_lab_catalog_stale_ttl", "24h")
-}
-
-func loadModelLabConfig(v *viper.Viper) ModelLabConfig {
-	return ModelLabConfig{
-		TicketTTL:       v.GetDuration("model_lab_ticket_ttl"),
-		MaxPromptBytes:  v.GetInt64("model_lab_max_prompt_bytes"),
-		MaxOutputTokens: v.GetInt("model_lab_max_output_tokens"),
-		MaxTargets:      v.GetInt("model_lab_max_targets"),
-		MaxConcurrent:   v.GetInt("model_lab_max_concurrent"),
-		CatalogFreshTTL: v.GetDuration("model_lab_catalog_fresh_ttl"),
-		CatalogStaleTTL: v.GetDuration("model_lab_catalog_stale_ttl"),
-	}
-}
-
 func validateModelLabConfig(cfg ModelLabConfig) error {
 	if cfg.TicketTTL <= 0 || cfg.TicketTTL > 5*time.Minute {
-		return errors.New("PROMPTGATE_MODEL_LAB_TICKET_TTL must be greater than zero and at most 5m")
+		return errors.New("common.model_lab.ticket_ttl must be greater than zero and at most 5m")
 	}
 	if cfg.MaxPromptBytes <= 0 {
-		return errors.New("PROMPTGATE_MODEL_LAB_MAX_PROMPT_BYTES must be greater than zero")
+		return errors.New("common.model_lab.max_prompt_bytes must be greater than zero")
 	}
 	if cfg.MaxOutputTokens <= 0 {
-		return errors.New("PROMPTGATE_MODEL_LAB_MAX_OUTPUT_TOKENS must be greater than zero")
+		return errors.New("common.model_lab.max_output_tokens must be greater than zero")
 	}
 	if cfg.MaxTargets <= 0 || cfg.MaxTargets > 3 {
-		return errors.New("PROMPTGATE_MODEL_LAB_MAX_TARGETS must be between 1 and 3")
+		return errors.New("common.model_lab.max_targets must be between 1 and 3")
 	}
 	if cfg.MaxConcurrent <= 0 || cfg.MaxConcurrent > 3 {
-		return errors.New("PROMPTGATE_MODEL_LAB_MAX_CONCURRENT must be between 1 and 3")
+		return errors.New("common.model_lab.max_concurrent must be between 1 and 3")
 	}
 	if cfg.CatalogFreshTTL <= 0 {
-		return errors.New("PROMPTGATE_MODEL_LAB_CATALOG_FRESH_TTL must be greater than zero")
+		return errors.New("common.model_lab.catalog_fresh_ttl must be greater than zero")
 	}
 	if cfg.CatalogStaleTTL < cfg.CatalogFreshTTL {
-		return errors.New("PROMPTGATE_MODEL_LAB_CATALOG_STALE_TTL must be greater than or equal to the fresh TTL")
+		return errors.New("common.model_lab.catalog_stale_ttl must be greater than or equal to common.model_lab.catalog_fresh_ttl")
 	}
 	return nil
 }
@@ -324,53 +265,25 @@ func validateModelLabProxyBaseURL(value string) error {
 		parsed.EscapedPath() != parsed.Path ||
 		(parsed.Path != "" && path.Clean(parsed.Path) != parsed.Path) ||
 		parsed.RawQuery != "" || parsed.ForceQuery || parsed.Fragment != "" {
-		return errors.New("PROMPTGATE_PROXY_BASE_URL must be an HTTP(S) public URL with an optional normalized path and without credentials, encoded path, query, or fragment")
+		return errors.New("common.public_urls.proxy must be an HTTP(S) public URL with an optional normalized path and without credentials, encoded path, query, or fragment")
 	}
 	return nil
 }
 
-// loadUsageCostConfig reads dashboard-only usage cost settings.
-func loadUsageCostConfig(v *viper.Viper) (UsageCostConfig, error) {
-	input, err := parseNonNegativeFloat(v, "usage_cost_input", "PROMPTGATE_USAGE_COST_INPUT")
-	if err != nil {
-		return UsageCostConfig{}, err
-	}
-	output, err := parseNonNegativeFloat(v, "usage_cost_output", "PROMPTGATE_USAGE_COST_OUTPUT")
-	if err != nil {
-		return UsageCostConfig{}, err
-	}
-	embedding, err := parseNonNegativeFloat(v, "usage_cost_embedding", "PROMPTGATE_USAGE_COST_EMBEDDING")
-	if err != nil {
-		return UsageCostConfig{}, err
-	}
-	return UsageCostConfig{
-		Enabled:   v.GetBool("usage_cost_enabled"),
-		Input:     input,
-		Output:    output,
-		Embedding: embedding,
-	}, nil
-}
-
-// parseNonNegativeFloat parses a non-negative float from a viper key.
-func parseNonNegativeFloat(v *viper.Viper, key string, envName string) (float64, error) {
-	raw := strings.TrimSpace(v.GetString(key))
-	value, err := strconv.ParseFloat(raw, 64)
-	if err != nil || math.IsNaN(value) || math.IsInf(value, 0) {
-		return 0, fmt.Errorf("%s must be a valid number", envName)
+func validateNonNegativeFloat(value float64, configPath string) error {
+	if math.IsNaN(value) || math.IsInf(value, 0) {
+		return fmt.Errorf("%s must be a valid number", configPath)
 	}
 	if value < 0 {
-		return 0, fmt.Errorf("%s must be greater than or equal to zero", envName)
+		return fmt.Errorf("%s must be greater than or equal to zero", configPath)
 	}
-	return value, nil
+	return nil
 }
 
-func parseCIDRList(raw string, envName string) ([]netip.Prefix, error) {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
+func parseCIDRList(values []string, configPath string) ([]netip.Prefix, error) {
+	if len(values) == 0 {
 		return nil, nil
 	}
-
-	values := strings.Split(raw, ",")
 	prefixes := make([]netip.Prefix, 0, len(values))
 	for _, value := range values {
 		value = strings.TrimSpace(value)
@@ -379,24 +292,24 @@ func parseCIDRList(raw string, envName string) ([]netip.Prefix, error) {
 		}
 		prefix, err := netip.ParsePrefix(value)
 		if err != nil {
-			return nil, fmt.Errorf("%s contains invalid CIDR %q", envName, value)
+			return nil, fmt.Errorf("%s contains invalid CIDR %q", configPath, value)
 		}
 		prefixes = append(prefixes, prefix.Masked())
 	}
 	return prefixes, nil
 }
 
-func validateOptionalFile(envName string, filePath string) error {
+func validateOptionalFile(configPath string, filePath string) error {
 	filePath = strings.TrimSpace(filePath)
 	if filePath == "" {
 		return nil
 	}
 	info, err := os.Stat(filePath)
 	if err != nil {
-		return fmt.Errorf("%s is not accessible: %w", envName, err)
+		return fmt.Errorf("%s is not accessible: %w", configPath, err)
 	}
 	if info.IsDir() {
-		return fmt.Errorf("%s must be a file", envName)
+		return fmt.Errorf("%s must be a file", configPath)
 	}
 	return nil
 }

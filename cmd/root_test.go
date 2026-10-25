@@ -1,87 +1,30 @@
 package cli
 
 import (
-	"os"
-	"path/filepath"
+	"strings"
 	"testing"
 )
 
-// TestRootCommandIncludesRuntimeSubcommands verifies root command includes runtime subcommands.
 func TestRootCommandIncludesRuntimeSubcommands(t *testing.T) {
 	root := NewRootCommand()
-	for _, name := range []string{"api", "proxy", "migrate", "schedule"} {
+	for _, name := range []string{"api", "proxy", "migrate", "schedule", "worker"} {
 		if _, _, err := root.Find([]string{name}); err != nil {
 			t.Fatalf("expected %q subcommand: %v", name, err)
 		}
 	}
 }
 
-// TestRootCommandIncludesEnvFileFlag verifies root command includes env file flag.
-func TestRootCommandIncludesEnvFileFlag(t *testing.T) {
+func TestRootCommandRequiresConfigFlag(t *testing.T) {
 	root := NewRootCommand()
-	if flag := root.PersistentFlags().Lookup("env-file"); flag == nil {
-		t.Fatal("expected env-file persistent flag to exist")
+	if flag := root.PersistentFlags().Lookup("config"); flag == nil {
+		t.Fatal("expected config persistent flag to exist")
 	}
-}
-
-// TestLoadEnvFileSearchesParentDirectories verifies load env file searches parent directories.
-func TestLoadEnvFileSearchesParentDirectories(t *testing.T) {
-	tempDir := t.TempDir()
-	nestedDir := filepath.Join(tempDir, "dev", "backend")
-	if err := os.MkdirAll(nestedDir, 0o755); err != nil {
-		t.Fatalf("mkdir nested dir: %v", err)
+	if flag := root.PersistentFlags().Lookup("env-file"); flag != nil {
+		t.Fatal("did not expect legacy env-file flag")
 	}
-
-	envFilePath := filepath.Join(tempDir, ".env")
-	if err := os.WriteFile(envFilePath, []byte("PROMPTGATE_DATABASE_URL=postgres://from-dotenv\n"), 0o600); err != nil {
-		t.Fatalf("write env file: %v", err)
-	}
-
-	t.Setenv("PROMPTGATE_DATABASE_URL", "")
-
-	if err := loadEnvFile(nestedDir, ""); err != nil {
-		t.Fatalf("load env file: %v", err)
-	}
-
-	if got := os.Getenv("PROMPTGATE_DATABASE_URL"); got != "postgres://from-dotenv" {
-		t.Fatalf("expected database url from .env, got %q", got)
-	}
-}
-
-// TestLoadEnvFileDoesNotOverrideNonEmptyEnvironment verifies load env file does not override non empty environment.
-func TestLoadEnvFileDoesNotOverrideNonEmptyEnvironment(t *testing.T) {
-	tempDir := t.TempDir()
-	envFilePath := filepath.Join(tempDir, ".env")
-	if err := os.WriteFile(envFilePath, []byte("PROMPTGATE_DATABASE_URL=postgres://from-dotenv\n"), 0o600); err != nil {
-		t.Fatalf("write env file: %v", err)
-	}
-
-	t.Setenv("PROMPTGATE_DATABASE_URL", "postgres://from-env")
-
-	if err := loadEnvFile(tempDir, ""); err != nil {
-		t.Fatalf("load env file: %v", err)
-	}
-
-	if got := os.Getenv("PROMPTGATE_DATABASE_URL"); got != "postgres://from-env" {
-		t.Fatalf("expected existing env var to win, got %q", got)
-	}
-}
-
-// TestLoadEnvFileUsesExplicitPath verifies load env file uses explicit path.
-func TestLoadEnvFileUsesExplicitPath(t *testing.T) {
-	tempDir := t.TempDir()
-	explicitEnvFilePath := filepath.Join(tempDir, "local.env")
-	if err := os.WriteFile(explicitEnvFilePath, []byte("PROMPTGATE_DATABASE_URL=postgres://from-explicit\n"), 0o600); err != nil {
-		t.Fatalf("write explicit env file: %v", err)
-	}
-
-	t.Setenv("PROMPTGATE_DATABASE_URL", "")
-
-	if err := loadEnvFile(filepath.Join(tempDir, "missing"), explicitEnvFilePath); err != nil {
-		t.Fatalf("load env file: %v", err)
-	}
-
-	if got := os.Getenv("PROMPTGATE_DATABASE_URL"); got != "postgres://from-explicit" {
-		t.Fatalf("expected database url from explicit env file, got %q", got)
+	root.SetArgs([]string{"migrate"})
+	err := root.Execute()
+	if err == nil || !strings.Contains(err.Error(), "required flag") || !strings.Contains(err.Error(), "config") {
+		t.Fatalf("expected missing config error, got %v", err)
 	}
 }

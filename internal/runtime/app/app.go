@@ -95,7 +95,11 @@ func NewSchedule(ctx context.Context, cfg config.ScheduleConfig) (*App, error) {
 
 func newServices(ctx context.Context, cfg serviceConfig, apiCfg *config.APIConfig) (*App, error) {
 	slog.Info("initializing postgres connection")
-	db, err := database.OpenPostgres(ctx, cfg.Database.DatabaseURL)
+	db, err := database.OpenPostgres(ctx, cfg.Database.DatabaseURL, database.PoolOptions{
+		ConnMaxLifetime: cfg.Database.ConnMaxLifetime,
+		MaxIdleConns:    cfg.Database.MaxIdleConnections,
+		MaxOpenConns:    cfg.Database.MaxOpenConnections,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -119,15 +123,17 @@ func newServices(ctx context.Context, cfg serviceConfig, apiCfg *config.APIConfi
 	if err != nil {
 		return nil, fmt.Errorf("initialize CA HTTP client: %w", err)
 	}
+	providerModelHTTPClient := &http.Client{Timeout: 3 * time.Second}
 	if caHTTPClient != nil {
 		slog.Info("loaded CA file", "path", cfg.TLS.CAFile)
+		providerModelHTTPClient.Transport = caHTTPClient.Transport
 		monitoringService.SetHTTPClient(&http.Client{
 			Transport: caHTTPClient.Transport,
 			Timeout:   monitoring.DefaultCheckTimeout,
 		})
 	}
+	providerService.SetModelHTTPClient(providerModelHTTPClient)
 	proxyService := proxy.NewService(db, proxy.WithUsageCost(proxy.UsageCostConfig{
-		Enabled: cfg.Usage.Enabled,
 		Rates: proxy.CostRates{
 			InputUSDPer1MTokens:     cfg.Usage.Input,
 			OutputUSDPer1MTokens:    cfg.Usage.Output,
@@ -135,7 +141,13 @@ func newServices(ctx context.Context, cfg serviceConfig, apiCfg *config.APIConfi
 		},
 	}), proxy.WithPriceResolver(pricingService))
 	slog.Info("initializing redis connection")
-	redisStore, err := redisstore.NewRequired(ctx, cfg.Redis.RedisURL, cfg.Redis.RedisCacheTTL, slog.Default())
+	redisStore, err := redisstore.NewRequired(ctx, cfg.Redis.RedisURL, cfg.Redis.RedisCacheTTL, slog.Default(), redisstore.ClientOptions{
+		PoolSize:     cfg.Redis.RedisPoolSize,
+		MinIdleConns: cfg.Redis.RedisMinIdleConnections,
+		PoolTimeout:  cfg.Redis.RedisPoolTimeout,
+		ReadTimeout:  cfg.Redis.RedisReadTimeout,
+		WriteTimeout: cfg.Redis.RedisWriteTimeout,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("initialize redis: %w", err)
 	}

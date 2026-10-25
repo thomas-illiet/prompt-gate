@@ -1,26 +1,17 @@
 package config
 
-import (
-	"errors"
-	"github.com/spf13/viper"
-)
-
-// LoadMigration reads the configuration required to run database migrations.
-func LoadMigration() (MigrationConfig, error) {
-	v := viper.New()
-	v.SetEnvPrefix("PROMPTGATE")
-	v.AutomaticEnv()
-
-	v.SetDefault("log_level", "info")
-
+// LoadMigration reads database migration configuration from a strict YAML file.
+func LoadMigration(configPath string) (MigrationConfig, error) {
+	file, err := loadFile(configPath)
+	if err != nil {
+		return MigrationConfig{}, err
+	}
 	cfg := MigrationConfig{
-		LogConfig:         loadLogConfig(v),
-		DatabaseURLConfig: loadDatabaseURLConfig(v),
+		LogConfig:         file.logConfig(),
+		DatabaseURLConfig: file.databaseConfig(),
 	}
-
-	if cfg.DatabaseURL == "" {
-		return MigrationConfig{}, errors.New("PROMPTGATE_DATABASE_URL is required")
+	if err := validateDatabaseConfig(cfg.DatabaseURLConfig); err != nil {
+		return MigrationConfig{}, err
 	}
-
 	return cfg, nil
 }

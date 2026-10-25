@@ -4,32 +4,28 @@ import (
 	"context"
 	"fmt"
 	"net/url"
-	"os"
-	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"promptgate/backend/internal/domain/auth"
 	"promptgate/backend/internal/platform/database"
+	"promptgate/backend/internal/platform/testconfig"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
 
 func TestSyncUserPostgresBootstrapsExactlyOneAdminConcurrently(t *testing.T) {
-	databaseURL := strings.TrimSpace(os.Getenv("PROMPTGATE_TEST_POSTGRES_URL"))
-	if databaseURL == "" {
-		t.Skip("PROMPTGATE_TEST_POSTGRES_URL is not set")
-	}
+	databaseURL := testconfig.PostgresURL(t)
 
 	parsedURL, err := url.Parse(databaseURL)
 	if err != nil || parsedURL.Scheme == "" {
-		t.Fatalf("PROMPTGATE_TEST_POSTGRES_URL must be a PostgreSQL URL: %v", err)
+		t.Fatalf("integration-test database URL must be a PostgreSQL URL: %v", err)
 	}
 	baseDB, err := gorm.Open(postgres.Open(databaseURL), &gorm.Config{})
 	if err != nil {
-		t.Fatalf("open PostgreSQL integration database: %v", err)
+		t.Skipf("PostgreSQL integration database is unavailable: %v", err)
 	}
 	baseSQL, err := baseDB.DB()
 	if err != nil {
@@ -114,18 +110,15 @@ func TestSyncUserPostgresBootstrapsExactlyOneAdminConcurrently(t *testing.T) {
 // TestUserMigrationPostgresMakesSSOFieldsNullable validates the production
 // NOT NULL migration and composite identity constraint on PostgreSQL.
 func TestUserMigrationPostgresMakesSSOFieldsNullable(t *testing.T) {
-	databaseURL := strings.TrimSpace(os.Getenv("PROMPTGATE_TEST_POSTGRES_URL"))
-	if databaseURL == "" {
-		t.Skip("PROMPTGATE_TEST_POSTGRES_URL is not set")
-	}
+	databaseURL := testconfig.PostgresURL(t)
 
 	parsedURL, err := url.Parse(databaseURL)
 	if err != nil || parsedURL.Scheme == "" {
-		t.Fatalf("PROMPTGATE_TEST_POSTGRES_URL must be a PostgreSQL URL: %v", err)
+		t.Fatalf("integration-test database URL must be a PostgreSQL URL: %v", err)
 	}
 	baseDB, err := gorm.Open(postgres.Open(databaseURL), &gorm.Config{})
 	if err != nil {
-		t.Fatalf("open PostgreSQL integration database: %v", err)
+		t.Skipf("PostgreSQL integration database is unavailable: %v", err)
 	}
 	baseSQL, err := baseDB.DB()
 	if err != nil {

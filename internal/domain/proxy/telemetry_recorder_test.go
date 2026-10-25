@@ -57,7 +57,7 @@ func TestTelemetryRecorderMapsOpenInferenceAttributes(t *testing.T) {
 	}
 }
 
-func TestTelemetryRecorderClassifiesEmbeddingsWithoutCosts(t *testing.T) {
+func TestTelemetryRecorderClassifiesEmbeddingsWithDefaultZeroCosts(t *testing.T) {
 	spans := tracetest.NewSpanRecorder()
 	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(spans))
 	bridgeAttrs := []attribute.KeyValue{
@@ -88,8 +88,11 @@ func TestTelemetryRecorderClassifiesEmbeddingsWithoutCosts(t *testing.T) {
 			t.Errorf("attribute %s: got %#v, want %#v", key, got, want)
 		}
 	}
-	if _, exists := attrs["llm.cost.total"]; exists {
-		t.Fatal("cost attributes must not be emitted when cost calculation is disabled")
+	if got := attrs["llm.cost.total"]; got != float64(0) {
+		t.Fatalf("expected an always-present zero cost with default rates, got %#v", got)
+	}
+	if got := attrs["promptgate.cost.estimated"]; got != true {
+		t.Fatalf("expected cost estimate marker, got %#v", got)
 	}
 }
 

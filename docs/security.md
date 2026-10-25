@@ -48,8 +48,8 @@ inactive or assigned role `none`, or revoke the identity's access at the OIDC
 provider.
 
 Browser sessions are stored in Redis when Redis is configured. Session cookies
-are HTTP-only, use `PROMPTGATE_SESSION_COOKIE_NAME`, and inherit secure-cookie
-behavior from `PROMPTGATE_BACKEND_BASE_URL`: HTTPS backend URLs produce secure
+are HTTP-only, use `common.session.cookie_name`, and inherit secure-cookie
+behavior from `common.public_urls.backend`: HTTPS backend URLs produce secure
 cookies.
 
 ## Roles
@@ -69,7 +69,7 @@ administration API key is used.
 
 ## Administration API Key
 
-`PROMPTGATE_ADMIN_API_KEY` optionally enables a second authentication method
+`api.admin_api_key` optionally enables a second authentication method
 for `/api/v1/admin/**`. A trusted CLI or server sends the configured value in
 exactly one `X-Admin-API-Key` header. Empty or whitespace-only configuration
 keeps the feature disabled. OIDC remains required for the API and continues to
@@ -115,7 +115,7 @@ stores only a SHA-256 hash of the raw token plus metadata and lifecycle fields.
 
 Token validation checks:
 
-- JWT signature with `PROMPTGATE_JWT_SECRET`
+- JWT signature with `common.security.jwt_secret`
 - expected signing method
 - required subject and token id claims
 - stored token hash
@@ -137,14 +137,14 @@ a missed Pub/Sub event cannot keep an older generation active. If Redis cannot
 increment the auth version after the database mutation, however, an already
 cached principal can remain usable for at most its remaining auth-cache TTL.
 Treat the corresponding Redis warning as security-relevant and restore Redis
-promptly; `PROMPTGATE_REDIS_CACHE_TTL` bounds this residual stale-cache window.
+promptly; `common.redis.cache_ttl` bounds this residual stale-cache window.
 
 ## Model Lab tickets and privacy
 
 Model Lab uses a separate ticket type from normal API tokens. The API signs
-`pgml_` tickets with the exact `PROMPTGATE_SECRETS_KEY` value already used to
+`pgml_` tickets with the exact `common.security.secrets_key` value already used to
 encrypt stored provider credentials; API and proxy must therefore share that
-value. It remains unrelated to `PROMPTGATE_JWT_SECRET`. Each ticket is bound to one account, role, provider,
+value. It remains unrelated to `common.security.jwt_secret`. Each ticket is bound to one account, role, provider,
 model, protocol, operation, method, exact proxy path, comparison, browser
 origin, issue time, expiry, and unique ID. Redis stores only its SHA-256 hash
 and signed binding summary. Atomic `GETDEL` makes it single-use, and a Redis
@@ -152,7 +152,7 @@ failure fails closed.
 An atomic per-account reservation ZSET bounds tickets issued but not yet
 consumed; reservations are released on consumption or expire with the ticket.
 
-`PROMPTGATE_PROXY_BASE_URL` may include a browser-visible routing prefix such
+`common.public_urls.proxy` may include a browser-visible routing prefix such
 as `/remote` only when the edge removes it before forwarding. The signed path
 is the canonical post-rewrite path observed by the proxy; mixed-case method
 variants are rejected before quota or provider middleware can run.
@@ -204,20 +204,20 @@ role/type, sorted technical access-group names in `input.identity.groups`,
 virtual-key metadata, resolved client IP, method, path, and host.
 Tokens, personal profile fields, headers, and request bodies are never sent.
 OPA is the sole policy source and the supplied example denies by default.
-`PROMPTGATE_OPA_ENABLED=false` is an emergency fail-open switch for this policy
+`proxy.opa.enabled: false` is an emergency fail-open switch for this policy
 stage. It must be time-bounded and operationally monitored because every
 authenticated request then bypasses OPA; group, quota, and provider controls
 still apply.
 
 The proxy normally uses the TCP remote address. In production, prefer
-`PROMPTGATE_PROXY_TRUSTED_PROXIES` with explicit ingress or reverse-proxy CIDRs
+`proxy.trusted_proxies` with explicit ingress or reverse-proxy CIDRs
 so forwarded headers are accepted only from known peers.
-`PROMPTGATE_PROXY_TRUST_FORWARD_HEADERS` should be enabled only behind trusted
+`proxy.trust_forward_headers` should be enabled only behind trusted
 infrastructure that strips or rewrites untrusted forwarding headers.
 
 ## Secret Storage
 
-`PROMPTGATE_SECRETS_KEY` must be a base64-encoded 32-byte key. It initializes
+`common.security.secrets_key` must be a base64-encoded 32-byte key. It initializes
 an AES-256-GCM cipher used for stored downstream secrets:
 
 - provider API keys
@@ -229,11 +229,11 @@ re-encrypted.
 
 ## CORS
 
-The API and proxy use `PROMPTGATE_CORS_ALLOWED_ORIGINS`. When no explicit
+The API and proxy use `common.cors.allowed_origins`. When no explicit
 origins are configured:
 
-- the API defaults to `PROMPTGATE_FRONTEND_BASE_URL`
-- the proxy defaults to `PROMPTGATE_FRONTEND_BASE_URL` when present
+- the API defaults to `common.public_urls.frontend`
+- the proxy defaults to `common.public_urls.frontend` when present
 
 Loopback origins are expanded across `localhost`, `127.0.0.1`, and `::1` for
 local development. Credentialed browser API requests allow the methods `GET`,
@@ -244,15 +244,15 @@ manually exposed through CORS.
 
 ## Operational Checklist
 
-- Store `PROMPTGATE_JWT_SECRET`, `PROMPTGATE_SECRETS_KEY`, database
-  credentials, Redis credentials, OIDC client secrets, and any configured
-  `PROMPTGATE_ADMIN_API_KEY` in a secret manager.
-- Use HTTPS origins for production `PROMPTGATE_BACKEND_BASE_URL` and
-  `PROMPTGATE_FRONTEND_BASE_URL`.
+- Store the complete runtime YAML in a secret manager because it contains JWT
+  and encryption keys, database and Redis credentials, OIDC credentials, and
+  the administration and optional OTEL API keys.
+- Use HTTPS origins for production `common.public_urls.backend` and
+  `common.public_urls.frontend`.
 - Run migrations before serving traffic.
 - Keep Redis available for sessions, hot reload, and proxy auth cache
   invalidation.
-- Prefer explicit `PROMPTGATE_PROXY_TRUSTED_PROXIES` CIDRs over global
+- Prefer explicit `proxy.trusted_proxies` CIDRs over global
   forwarded-header trust.
 - Review OPA rules for service accounts before issuing long-lived tokens.
 - Restrict the administration API key to trusted CLI and server workloads, and

@@ -104,6 +104,29 @@ func TestNewRequiredFailsWithoutURL(t *testing.T) {
 	}
 }
 
+func TestNewRequiredAppliesExplicitClientOptions(t *testing.T) {
+	srv := miniredis.RunT(t)
+	want := ClientOptions{
+		PoolSize:     17,
+		MinIdleConns: 3,
+		PoolTimeout:  7 * time.Second,
+		ReadTimeout:  8 * time.Second,
+		WriteTimeout: 9 * time.Second,
+	}
+	store, err := NewRequired(context.Background(), "redis://"+srv.Addr(), time.Minute, nil, want)
+	if err != nil {
+		t.Fatalf("new redis store: %v", err)
+	}
+	defer store.Close()
+
+	got := store.Client().Options()
+	if got.PoolSize != want.PoolSize || got.MinIdleConns != want.MinIdleConns ||
+		got.PoolTimeout != want.PoolTimeout || got.ReadTimeout != want.ReadTimeout ||
+		got.WriteTimeout != want.WriteTimeout {
+		t.Fatalf("unexpected redis client options: %#v", got)
+	}
+}
+
 // TestNewRequiredFailsWhenRedisUnavailable verifies API startup can fail fast when Redis cannot be reached.
 func TestNewRequiredFailsWhenRedisUnavailable(t *testing.T) {
 	srv := miniredis.RunT(t)

@@ -2,41 +2,11 @@ SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
 GO ?= go
-ENV_FILE ?= .env
+CONFIG_FILE ?= promptgate.yaml
 BIN_DIR ?= bin
 GO_PACKAGE_DIRS ?= $(shell find . -path './frontend' -prune -o -name '*.go' -print | xargs -n1 dirname | sort -u)
 GO_PACKAGES ?= $(shell $(GO) list $(GO_PACKAGE_DIRS))
 GO_FILES ?= $(shell find . -path './frontend' -prune -o -name '*.go' -print)
-
-define LOAD_ENV
-set -a; \
-if [ -f "$(ENV_FILE)" ]; then source "$(ENV_FILE)"; fi; \
-set +a; \
-export PROMPTGATE_PORT="$${PROMPTGATE_PORT:-8080}"; \
-export PROMPTGATE_LOG_LEVEL="$${PROMPTGATE_LOG_LEVEL:-info}"; \
-export PROMPTGATE_BACKEND_BASE_URL="$${PROMPTGATE_BACKEND_BASE_URL:-http://localhost:8080}"; \
-export PROMPTGATE_FRONTEND_BASE_URL="$${PROMPTGATE_FRONTEND_BASE_URL:-http://localhost:3000}"; \
-export PROMPTGATE_SESSION_COOKIE_NAME="$${PROMPTGATE_SESSION_COOKIE_NAME:-promptgate_session}"; \
-export PROMPTGATE_CORS_ALLOWED_ORIGINS="$${PROMPTGATE_CORS_ALLOWED_ORIGINS:-http://localhost:3000}"; \
-export PROMPTGATE_USER_ACCESS_EXPIRATION_INTERVAL="$${PROMPTGATE_USER_ACCESS_EXPIRATION_INTERVAL:-1h}"; \
-export PROMPTGATE_PROXY_PORT="$${PROMPTGATE_PROXY_PORT:-8081}"; \
-export PROMPTGATE_PROXY_TRUST_FORWARD_HEADERS="$${PROMPTGATE_PROXY_TRUST_FORWARD_HEADERS:-false}"; \
-export PROMPTGATE_REDIS_CACHE_TTL="$${PROMPTGATE_REDIS_CACHE_TTL:-5m}"; \
-export PROMPTGATE_PROXY_RELOAD_DEBOUNCE="$${PROMPTGATE_PROXY_RELOAD_DEBOUNCE:-250ms}"; \
-export PROMPTGATE_MODEL_LAB_TICKET_TTL="$${PROMPTGATE_MODEL_LAB_TICKET_TTL:-60s}"; \
-export PROMPTGATE_MODEL_LAB_MAX_PROMPT_BYTES="$${PROMPTGATE_MODEL_LAB_MAX_PROMPT_BYTES:-32768}"; \
-export PROMPTGATE_MODEL_LAB_MAX_OUTPUT_TOKENS="$${PROMPTGATE_MODEL_LAB_MAX_OUTPUT_TOKENS:-4096}"; \
-export PROMPTGATE_MODEL_LAB_MAX_TARGETS="$${PROMPTGATE_MODEL_LAB_MAX_TARGETS:-3}"; \
-export PROMPTGATE_MODEL_LAB_MAX_CONCURRENT="$${PROMPTGATE_MODEL_LAB_MAX_CONCURRENT:-3}"; \
-export PROMPTGATE_MODEL_LAB_CATALOG_FRESH_TTL="$${PROMPTGATE_MODEL_LAB_CATALOG_FRESH_TTL:-5m}"; \
-export PROMPTGATE_MODEL_LAB_CATALOG_STALE_TTL="$${PROMPTGATE_MODEL_LAB_CATALOG_STALE_TTL:-24h}"; \
-export PROMPTGATE_WORKER_BATCH_SIZE="$${PROMPTGATE_WORKER_BATCH_SIZE:-100}"; \
-export PROMPTGATE_WORKER_BLOCK_TIMEOUT="$${PROMPTGATE_WORKER_BLOCK_TIMEOUT:-5s}"; \
-export PROMPTGATE_WORKER_PENDING_IDLE_TIMEOUT="$${PROMPTGATE_WORKER_PENDING_IDLE_TIMEOUT:-30s}"; \
-export PROMPTGATE_USAGE_RAW_RETENTION="$${PROMPTGATE_USAGE_RAW_RETENTION:-2160h}"; \
-export PROMPTGATE_USAGE_RAW_CLEANUP_INTERVAL="$${PROMPTGATE_USAGE_RAW_CLEANUP_INTERVAL:-1h}"; \
-export PROMPTGATE_QUOTA_RESET_DISTRIBUTION_INTERVAL="$${PROMPTGATE_QUOTA_RESET_DISTRIBUTION_INTERVAL:-1h}"
-endef
 
 .PHONY: help all deps fmt fmt-check vet staticcheck test build clean migrate run-api run-proxy run-worker run-schedule run-all
 
@@ -75,35 +45,29 @@ clean: ## Remove built binaries.
 	rm -rf "$(BIN_DIR)"
 
 migrate: ## Run database migrations.
-	@$(LOAD_ENV); \
-	$(GO) run . migrate
+	$(GO) run . --config "$(CONFIG_FILE)" migrate
 
 run-api: ## Run API server.
-	@$(LOAD_ENV); \
-	$(GO) run . api
+	$(GO) run . --config "$(CONFIG_FILE)" api
 
 run-proxy: ## Run proxy server.
-	@$(LOAD_ENV); \
-	$(GO) run . proxy
+	$(GO) run . --config "$(CONFIG_FILE)" proxy
 
 run-worker: ## Run generic background worker.
-	@$(LOAD_ENV); \
-	$(GO) run . worker
+	$(GO) run . --config "$(CONFIG_FILE)" worker
 
 run-schedule: ## Run scheduled background jobs.
-	@$(LOAD_ENV); \
-	$(GO) run . schedule
+	$(GO) run . --config "$(CONFIG_FILE)" schedule
 
 run-all: ## Run migrations, worker, scheduler, API server, and proxy server.
-	@$(LOAD_ENV); \
-	$(GO) run . migrate; \
-	$(GO) run . worker & \
+	$(GO) run . --config "$(CONFIG_FILE)" migrate; \
+	$(GO) run . --config "$(CONFIG_FILE)" worker & \
 	worker_pid=$$!; \
-	$(GO) run . schedule & \
+	$(GO) run . --config "$(CONFIG_FILE)" schedule & \
 	schedule_pid=$$!; \
-	$(GO) run . api & \
+	$(GO) run . --config "$(CONFIG_FILE)" api & \
 	api_pid=$$!; \
-	$(GO) run . proxy & \
+	$(GO) run . --config "$(CONFIG_FILE)" proxy & \
 	proxy_pid=$$!; \
 	trap 'kill $$worker_pid $$schedule_pid $$api_pid $$proxy_pid 2>/dev/null || true; wait $$worker_pid $$schedule_pid $$api_pid $$proxy_pid 2>/dev/null || true' INT TERM EXIT; \
 	wait $$worker_pid $$schedule_pid $$api_pid $$proxy_pid

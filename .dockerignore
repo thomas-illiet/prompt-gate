@@ -13,10 +13,10 @@ docs/
 
 .env
 .env.*
-!.env.example
 **/.env
 **/.env.*
-!**/.env.example
+promptgate.yaml
+promptgate.local.yaml
 .local/
 **/.local/
 

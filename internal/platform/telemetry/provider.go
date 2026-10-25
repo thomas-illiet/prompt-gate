@@ -28,7 +28,8 @@ type Provider struct {
 }
 
 // NewProvider builds and installs the global tracer provider when export is enabled.
-func NewProvider(ctx context.Context, cfg config.OTelConfig, logger *slog.Logger) (*Provider, error) {
+// caFile is the process-wide CA bundle shared with other outbound HTTP clients.
+func NewProvider(ctx context.Context, cfg config.OTelConfig, caFile string, logger *slog.Logger) (*Provider, error) {
 	provider := &Provider{}
 	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
 		propagation.TraceContext{},
@@ -49,8 +50,8 @@ func NewProvider(ctx context.Context, cfg config.OTelConfig, logger *slog.Logger
 	if cfg.Insecure {
 		opts = append(opts, otlptracehttp.WithInsecure())
 	}
-	if cfg.CAFile != "" {
-		tlsConfig, err := tlsConfigFromCAFile(cfg.CAFile)
+	if caFile != "" {
+		tlsConfig, err := tlsConfigFromCAFile(caFile)
 		if err != nil {
 			return nil, err
 		}

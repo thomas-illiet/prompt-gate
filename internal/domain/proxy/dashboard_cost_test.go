@@ -135,11 +135,11 @@ func TestDashboardTokensDifferentiatesCompletionAndEmbeddingTokens(t *testing.T)
 	assertFloatClose(t, embeddingModel.EstimatedCost.EmbeddingUSD, 0.00000034)
 }
 
-// TestUsageCostEstimatesCanBeOverriddenAndDisabled verifies usage cost estimates can be overridden and disabled.
-func TestUsageCostEstimatesCanBeOverriddenAndDisabled(t *testing.T) {
+// TestUsageCostEstimatesCanBeOverriddenAndRemainEnabled verifies usage cost
+// estimates use configured rates and cannot be disabled through configuration.
+func TestUsageCostEstimatesCanBeOverriddenAndRemainEnabled(t *testing.T) {
 	db, _ := newProxyServiceTestDB(t)
 	service := NewService(db, WithUsageCost(UsageCostConfig{
-		Enabled: true,
 		Rates: CostRates{
 			InputUSDPer1MTokens:     100,
 			OutputUSDPer1MTokens:    200,
@@ -186,28 +186,30 @@ func TestUsageCostEstimatesCanBeOverriddenAndDisabled(t *testing.T) {
 	assertFloatClose(t, tokens.EstimatedCost.OutputUSD, 0.0012)
 	assertFloatClose(t, tokens.EstimatedCost.TotalUSD, 0.002)
 
-	disabled := NewService(db, WithUsageCost(UsageCostConfig{Enabled: false}))
-	disabledTokens, err := disabled.DashboardTokens(context.Background(), userID, UsageWindow7Days, now)
+	zeroRates := NewService(db, WithUsageCost(UsageCostConfig{}))
+	zeroRateTokens, err := zeroRates.DashboardTokens(context.Background(), userID, UsageWindow7Days, now)
 	if err != nil {
-		t.Fatalf("dashboard tokens disabled: %v", err)
+		t.Fatalf("dashboard tokens with zero rates: %v", err)
 	}
-	if disabledTokens.EstimatedCost != nil {
-		t.Fatalf("expected no dashboard estimated cost when disabled, got %#v", disabledTokens.EstimatedCost)
+	if zeroRateTokens.EstimatedCost == nil {
+		t.Fatal("expected dashboard estimated cost to remain enabled with zero rates")
 	}
-	disabledSummary, err := disabled.UsageSummary(context.Background(), userID, 7, now)
+	assertFloatClose(t, zeroRateTokens.EstimatedCost.TotalUSD, 0)
+
+	zeroRateSummary, err := zeroRates.UsageSummary(context.Background(), userID, 7, now)
 	if err != nil {
-		t.Fatalf("usage summary disabled: %v", err)
+		t.Fatalf("usage summary with zero rates: %v", err)
 	}
-	if disabledSummary.Totals.EstimatedCost != nil {
-		t.Fatalf("expected no summary estimated cost when disabled, got %#v", disabledSummary.Totals.EstimatedCost)
+	if zeroRateSummary.Totals.EstimatedCost == nil {
+		t.Fatal("expected summary estimated cost to remain enabled with zero rates")
 	}
-	disabledActivity, err := disabled.DashboardActivity(context.Background(), userID, UsageWindow7Days, now)
+	zeroRateActivity, err := zeroRates.DashboardActivity(context.Background(), userID, UsageWindow7Days, now)
 	if err != nil {
-		t.Fatalf("dashboard activity disabled: %v", err)
+		t.Fatalf("dashboard activity with zero rates: %v", err)
 	}
-	for _, daily := range disabledActivity.Daily {
-		if daily.EstimatedCost != nil {
-			t.Fatalf("expected no daily estimated cost when disabled, got %#v", daily.EstimatedCost)
+	for _, daily := range zeroRateActivity.Daily {
+		if daily.TotalTokens > 0 && daily.EstimatedCost == nil {
+			t.Fatalf("expected daily estimated cost to remain enabled, got %#v", daily)
 		}
 	}
 }
