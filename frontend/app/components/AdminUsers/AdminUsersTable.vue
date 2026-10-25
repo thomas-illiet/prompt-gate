@@ -9,6 +9,7 @@ import { formatNumber } from '~/utils/formatters'
 import { appTableCenteredColumn } from '~/utils/table'
 
 const props = defineProps<{
+  exporting: boolean
   items: AdminUser[]
   loading: boolean
   page: number
@@ -22,6 +23,7 @@ const emit = defineEmits<{
   create: []
   delete: [user: AdminUser]
   edit: [user: AdminUser]
+  export: []
   manageIps: [user: AdminUser]
   manageGroups: [user: AdminUser]
   manageTokens: [user: AdminUser]
@@ -201,6 +203,18 @@ const rowActions: AppRowAction<AdminUser>[] = [
         @click.stop="emit('create')"
       >
         Pre-create user
+      </v-btn>
+      <v-btn
+        data-test="export-users"
+        color="primary"
+        prepend-icon="mdi-download-outline"
+        rounded="xl"
+        variant="tonal"
+        :disabled="props.loading"
+        :loading="props.exporting"
+        @click.stop="emit('export')"
+      >
+        Export CSV
       </v-btn>
       <v-btn
         color="primary"

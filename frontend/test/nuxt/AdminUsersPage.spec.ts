@@ -110,6 +110,7 @@ const UsersTableStub = defineComponent({
   },
   emits: [
     'create',
+    'export',
     'manageIps',
     'manageTokens',
     'offerQuotaReset',
@@ -119,6 +120,9 @@ const UsersTableStub = defineComponent({
     <div>
       <button data-test="open-create-user" @click="$emit('create')">
         Pre-create user
+      </button>
+      <button data-test="export-users" @click="$emit('export')">
+        Export CSV
       </button>
       <button
         data-test="open-ips"
@@ -265,8 +269,7 @@ function mountPage() {
         VContainer: { template: '<main><slot /></main>' },
         VBtn: {
           emits: ['click'],
-          template:
-            '<button data-test="export-users" @click="$emit(\'click\')"><slot /></button>',
+          template: '<button @click="$emit(\'click\')"><slot /></button>',
         },
         VRow: { template: '<div><slot /></div>' },
       },
@@ -299,7 +302,7 @@ describe('Admin users page usage statistics dialog', () => {
     expect(adminUsers.loadIPAddresses).toHaveBeenCalledWith(user.id)
   })
 
-  it('exports users from the page action', async () => {
+  it('exports users from the directory card action', async () => {
     const adminUsers = createAdminUsersMock()
     useAdminUsersMock.mockReturnValue(adminUsers)
     const wrapper = mountPage()

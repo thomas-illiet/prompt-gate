@@ -358,20 +358,6 @@ async function confirmQuotaResetGrant() {
       </v-col>
 
       <v-col cols="12">
-        <div class="admin-users-page__actions">
-          <v-btn
-            color="primary"
-            prepend-icon="mdi-download-outline"
-            rounded="xl"
-            variant="tonal"
-            :disabled="adminUsers.loading.value"
-            :loading="adminUsers.exporting.value"
-            @click="adminUsers.exportUsers"
-          >
-            Export CSV
-          </v-btn>
-        </div>
-
         <AdminUsersFilters
           :role="adminUsers.role.value"
           :search="adminUsers.search.value"
@@ -416,6 +402,7 @@ async function confirmQuotaResetGrant() {
         </v-alert>
 
         <AdminUsersTable
+          :exporting="adminUsers.exporting.value"
           :items="adminUsers.users.value"
           :loading="adminUsers.loading.value"
           :page="adminUsers.page.value"
@@ -426,6 +413,7 @@ async function confirmQuotaResetGrant() {
           @create="createDialogOpen = true"
           @delete="openDeleteDialog"
           @edit="openEditDialog"
+          @export="adminUsers.exportUsers"
           @manage-ips="openIPDialog"
           @manage-groups="openGroupsDialog"
           @manage-tokens="openTokenDialog"
@@ -576,12 +564,6 @@ async function confirmQuotaResetGrant() {
 </template>
 
 <style scoped>
-.admin-users-page__actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 12px;
-}
-
 .admin-users-page__recovery-alert {
   display: flex;
   align-items: center;

@@ -30,6 +30,7 @@ const user: AdminUser = {
 function mountTable(item: AdminUser = user) {
   return mount(AdminUsersTable, {
     props: {
+      exporting: false,
       items: [item],
       loading: false,
       page: 1,
@@ -88,9 +89,10 @@ function mountTable(item: AdminUser = user) {
             '<button data-test="access-toggle">{{ active ? activeLabel : inactiveLabel }}</button>',
         },
         VBtn: {
+          props: ['disabled', 'loading'],
           emits: ['click'],
           template:
-            '<button @click="$emit(\'click\', $event)"><slot /></button>',
+            '<button :disabled="disabled" :data-loading="loading" @click="$emit(\'click\', $event)"><slot /></button>',
         },
         VChip: { template: '<span><slot /></span>' },
       },
@@ -105,6 +107,14 @@ describe('AdminUsersTable', () => {
     await wrapper.get('[data-test="pre-create-user"]').trigger('click')
 
     expect(wrapper.emitted('create')).toEqual([[]])
+  })
+
+  it('emits export from the directory card action', async () => {
+    const wrapper = mountTable()
+
+    await wrapper.get('[data-test="export-users"]').trigger('click')
+
+    expect(wrapper.emitted('export')).toEqual([[]])
   })
 
   it('exposes an IP addresses row action', async () => {
