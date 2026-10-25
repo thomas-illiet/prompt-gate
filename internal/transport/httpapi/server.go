@@ -79,7 +79,7 @@ func NewHandler(deps Dependencies) http.Handler {
 
 	mux := http.NewServeMux()
 	registerRoutes(mux, publicRoutes(srv))
-	registerRoutes(mux, sessionRoutes(), sessionAccessMiddlewares(deps.Sessions, deps.Config)...)
+	registerRoutes(mux, sessionRoutes(openAPIHandler), sessionAccessMiddlewares(deps.Sessions, deps.Config)...)
 	registerRoutes(mux, limitedRoutes(srv), limitedAccessMiddlewares(deps.Sessions, deps.Config)...)
 	registerRoutes(mux, userRoutes(srv), userAccessMiddlewares(deps.Sessions, deps.Config)...)
 	registerRoutes(mux, userModelLabRoutes(srv), modelLabAccessMiddlewares(deps.Sessions, deps.Config)...)

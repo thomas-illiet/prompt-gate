@@ -39,7 +39,7 @@ func assembledAPIRoutes(t *testing.T) map[string]struct{} {
 	adminHandler := admin.NewHandler(admin.Dependencies{})
 	openAPIHandler := func(http.ResponseWriter, *http.Request) {}
 	routeGroups := [][]routeDefinition{
-		sessionRoutes(),
+		sessionRoutes(openAPIHandler),
 		limitedRoutes(srv),
 		userRoutes(srv),
 		userModelLabRoutes(srv),
@@ -68,7 +68,7 @@ func runtimeOpenAPIRoutes(t *testing.T) map[string]struct{} {
 	t.Helper()
 
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/admin/openapi.json", nil)
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/openapi.json", nil)
 	openapidoc.NewHandler(config.APIConfig{}).ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("serve runtime OpenAPI document: status %d: %s", recorder.Code, recorder.Body.String())

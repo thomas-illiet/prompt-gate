@@ -97,19 +97,21 @@ period.
 
 ## Browser API Documentation
 
-The Swagger UI at `/admin/documentation` and its OpenAPI document at
-`/api/v1/admin/openapi.json` are protected by the same administrator session
-checks as the rest of the browser administration surface. The UI authenticates
-Try it out requests only with the current HTTP-only session cookie. JavaScript
-does not read or persist the cookie, and it does not inject bearer credentials
-or `X-Admin-API-Key` headers.
+The Swagger UI at `/documentation` and its OpenAPI document at
+`/api/v1/openapi.json` are available to active `limited`, `user`, and `admin`
+sessions from the user menu. The UI authenticates Try it out requests only with
+the current HTTP-only session cookie. JavaScript does not read or persist the
+cookie, and it does not inject bearer credentials or `X-Admin-API-Key` headers.
+Each operation still enforces the current user's role; viewing an administrator
+operation does not grant permission to execute it.
 
 Swagger Try it out executes against the configured backend and can perform live
 create, update, and delete operations. Keep the frontend and API same-site so
 the `SameSite=Lax` session cookie remains usable, serve production deployments
-over HTTPS, and grant administrator sessions only to trusted operators. The
+over HTTPS, and grant elevated roles only to trusted operators. The
 administration API key remains reserved for trusted CLI and server-to-server
-clients.
+clients, including the deprecated `/api/v1/admin/openapi.json` compatibility
+endpoint.
 
 ## API Tokens
 

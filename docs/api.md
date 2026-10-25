@@ -27,20 +27,22 @@ configured. The frontend uses it only for the persistent limited-access banner.
 If `api.static_assets_dir` is set, the API also serves static frontend
 assets from `/` and falls back to the SPA shell for frontend routes.
 
-## Interactive Admin Documentation
+## Interactive API Documentation
 
-Administrators can open the native Swagger UI at `/admin/documentation`. The
-page documents the complete control API under `/api/v1/**`; authentication
-routes, the health check, and the LLM proxy are intentionally excluded.
+Active `limited`, `user`, and `admin` accounts can open the native Swagger UI
+at `/documentation` from the user menu. The page documents the complete control
+API under `/api/v1/**`; authentication routes, the health check, and the LLM
+proxy are intentionally excluded.
 
 The page loads its OpenAPI 3.0 document from the protected
-`GET /api/v1/admin/openapi.json` endpoint and uses the current HTTP-only browser
+`GET /api/v1/openapi.json` endpoint and uses the current HTTP-only browser
 session for Try it out requests. The browser sends the session cookie directly;
 the frontend never reads it or copies it into a header. The documentation does
 not expose `X-Admin-API-Key` as an interactive authentication option.
 
 Try it out is enabled for reads and mutations. `POST`, `PUT`, `PATCH`, and
-`DELETE` requests affect the current environment immediately.
+`DELETE` requests affect the current environment immediately, but every
+operation remains subject to the current user's role and access policy.
 
 ## User Routes
 
@@ -52,6 +54,7 @@ routes require `user` or `admin`.
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/api/v1/me` | Current authenticated user profile. |
+| `GET` | `/api/v1/openapi.json` | Runtime OpenAPI document used by the authenticated Swagger UI. |
 | `GET` | `/api/v1/me/usage` | Usage summary for the current user. |
 | `GET` | `/api/v1/me/quota` | Current subscription quota state and reset windows. |
 | `GET` | `/api/v1/me/quota-resets` | Current quota-reset credit balance, applicability, and pending state. |
@@ -175,7 +178,7 @@ curl --fail-with-body \
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `GET` | `/api/v1/admin/openapi.json` | Return the runtime OpenAPI document used by the admin Swagger UI. |
+| `GET` | `/api/v1/admin/openapi.json` | Deprecated administrator-compatible alias for the runtime OpenAPI document. |
 
 ### Dashboard
 

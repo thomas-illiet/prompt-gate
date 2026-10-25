@@ -30,6 +30,11 @@ function openProfile() {
   void navigateTo('/profile')
 }
 
+// openDocumentation opens the API explorer for the authenticated user.
+function openDocumentation() {
+  void navigateTo('/documentation')
+}
+
 // logout signs out through the auth store.
 async function logout() {
   try {
@@ -97,6 +102,14 @@ async function logout() {
           class="toolbar-user-action toolbar-user-action--profile"
           data-test="user-menu-profile"
           @click="openProfile"
+        />
+        <v-list-item
+          prepend-icon="mdi-api"
+          title="API documentation"
+          rounded="lg"
+          class="toolbar-user-action toolbar-user-action--documentation"
+          data-test="user-menu-documentation"
+          @click="openDocumentation"
         />
         <v-list-item
           prepend-icon="mdi-logout"
@@ -227,7 +240,8 @@ async function logout() {
   font-weight: 700;
 }
 
-.toolbar-user-action--profile {
+.toolbar-user-action--profile,
+.toolbar-user-action--documentation {
   color: rgb(var(--app-shell-text-secondary));
 }
 

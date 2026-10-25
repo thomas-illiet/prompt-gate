@@ -67,7 +67,7 @@ function mountDocumentation() {
   })
 }
 
-describe('Admin Swagger documentation', () => {
+describe('Swagger documentation', () => {
   beforeEach(() => {
     apiFetch.mockReset()
     createRoot.mockReset()
@@ -123,7 +123,7 @@ describe('Admin Swagger documentation', () => {
     await vi.waitFor(() => expect(swaggerUI).toHaveBeenCalledOnce())
 
     expect(useApiFetchMock).toHaveBeenCalledOnce()
-    expect(apiFetch).toHaveBeenCalledWith('/api/v1/admin/openapi.json')
+    expect(apiFetch).toHaveBeenCalledWith('/api/v1/openapi.json')
     expect(swaggerUI).toHaveBeenCalledWith(
       expect.objectContaining({
         deepLinking: true,
@@ -140,11 +140,35 @@ describe('Admin Swagger documentation', () => {
     )
 
     const swaggerOptions = swaggerUI.mock.calls[0]?.[0] as
-      { domNode?: HTMLElement } | undefined
+      | {
+          domNode?: HTMLElement
+          requestInterceptor?: (request: {
+            headers: Record<string, string>
+            method: string
+            url: string
+          }) => {
+            headers: Record<string, string>
+            method: string
+            url: string
+          }
+        }
+      | undefined
     expect(swaggerOptions?.domNode).toBeInstanceOf(HTMLElement)
     expect(createRoot).toHaveBeenCalledWith(swaggerOptions?.domNode)
     expect(reactRootRender).toHaveBeenCalledOnce()
-    expect(swaggerOptions).not.toHaveProperty('requestInterceptor')
+
+    const interceptedRequest = swaggerOptions?.requestInterceptor?.({
+      headers: { Accept: 'application/json' },
+      method: 'GET',
+      url: 'https://frontend.example.test/api/v1/me?window=7d',
+    })
+    expect(interceptedRequest).toEqual({
+      headers: { Accept: 'application/json' },
+      method: 'GET',
+      url: `${window.location.origin}/api/v1/me?window=7d`,
+    })
+    expect(interceptedRequest?.headers).not.toHaveProperty('Authorization')
+    expect(interceptedRequest?.headers).not.toHaveProperty('X-Admin-API-Key')
     expect(JSON.stringify(swaggerOptions)).not.toContain('X-Admin-API-Key')
     expect(wrapper.text()).not.toContain('Requests can change data')
     expect(wrapper.text()).not.toContain('Try it out sends real requests')

@@ -182,6 +182,7 @@ describe('AppDrawer', () => {
     expect(routeNames[0]).toBe('admin-dashboard')
     expect(routeNames).toContain('admin-users')
     expect(routeNames).toContain('admin-monitoring')
+    expect(routeNames).not.toContain('admin-documentation')
     expect(routeNames).not.toContain('dashboard')
     expect(sections).toEqual([
       'Content',
@@ -189,7 +190,6 @@ describe('AppDrawer', () => {
       'Access',
       'Infrastructure',
       'Observability',
-      'Developer tools',
     ])
     expect(contextSwitch.attributes('data-to')).toBe('/dashboard')
     expect(contextSwitch.attributes('aria-label')).toBe('Back to user space')

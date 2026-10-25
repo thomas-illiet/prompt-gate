@@ -142,9 +142,9 @@ When this path is set, the API serves frontend files directly.
 ## OpenAPI Contract
 
 `internal/transport/httpapi/openapi/openapi.yaml` is the source document loaded
-by the protected administrator explorer at `/admin/documentation`. When a
-runtime route under `/api/v1/**`, its request, or its response changes, update
-this document in the same change.
+by the protected user explorer at `/documentation`. When a runtime route under
+`/api/v1/**`, its request, or its response changes, update this document in the
+same change.
 
 The HTTP API tests validate the document, representative schemas, and
 bidirectional parity between runtime operations and OpenAPI operations. Run the

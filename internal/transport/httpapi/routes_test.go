@@ -20,14 +20,14 @@ func TestRouteInventoryIsCompleteAndUnique(t *testing.T) {
 		want   int
 	}{
 		{name: "public", routes: publicRoutes(srv), want: 5},
-		{name: "session", routes: sessionRoutes(), want: 1},
+		{name: "session", routes: sessionRoutes(openAPIHandler), want: 2},
 		{name: "limited", routes: limitedRoutes(srv), want: 16},
 		{name: "user", routes: userRoutes(srv), want: 5},
 		{name: "model-lab", routes: userModelLabRoutes(srv), want: 2},
 		{name: "admin", routes: adminRoutes(adminHandler, openAPIHandler), want: 91},
 	}
 
-	seen := make(map[string]string, 120)
+	seen := make(map[string]string, 121)
 	for _, group := range groups {
 		if len(group.routes) != group.want {
 			t.Errorf("%s routes: got %d, want %d", group.name, len(group.routes), group.want)
@@ -47,8 +47,8 @@ func TestRouteInventoryIsCompleteAndUnique(t *testing.T) {
 		}
 	}
 
-	if len(seen) != 120 {
-		t.Errorf("route inventory: got %d routes, want 120", len(seen))
+	if len(seen) != 121 {
+		t.Errorf("route inventory: got %d routes, want 121", len(seen))
 	}
 	for _, removed := range []string{
 		"GET /api/v1/me/prompts",

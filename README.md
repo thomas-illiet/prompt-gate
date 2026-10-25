@@ -247,10 +247,11 @@ latency, and incident-banner readiness.
 
 #### API documentation
 
-![Prompt Gate administrator API documentation](docs/assets/screenshots/api-documentation.jpg)
+![Prompt Gate user API documentation](docs/assets/screenshots/api-documentation.jpg)
 
-The protected Swagger UI reuses the current HttpOnly administrator session and
-warns that mutating requests affect the live environment.
+The protected Swagger UI is available from the user menu to every active role.
+It reuses the current HttpOnly session, and every request remains subject to
+that user's permissions.
 
 ## Documentation
 

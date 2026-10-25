@@ -14,7 +14,6 @@ import (
 )
 
 const (
-	defaultBackendBaseURL    = "/"
 	defaultSessionCookieName = "promptgate_session"
 	sessionSecurityScheme    = "sessionCookie"
 )
@@ -41,7 +40,7 @@ func NewHandler(cfg config.APIConfig) http.HandlerFunc {
 }
 
 // buildDocument parses and validates the embedded specification after applying
-// the externally visible API URL and configured browser session cookie name.
+// the configured browser session cookie name.
 func buildDocument(cfg config.APIConfig) ([]byte, error) {
 	loader := openapi3.NewLoader()
 	loader.IsExternalRefsAllowed = false
@@ -50,12 +49,6 @@ func buildDocument(cfg config.APIConfig) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	backendBaseURL := strings.TrimRight(strings.TrimSpace(cfg.BackendBaseURL), "/")
-	if backendBaseURL == "" {
-		backendBaseURL = defaultBackendBaseURL
-	}
-	document.Servers = openapi3.Servers{{URL: backendBaseURL}}
 
 	cookieName := strings.TrimSpace(cfg.SessionCookieName)
 	if cookieName == "" {

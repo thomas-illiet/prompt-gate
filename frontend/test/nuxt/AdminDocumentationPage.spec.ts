@@ -2,7 +2,7 @@ import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 import { mount } from '@vue/test-utils'
 import { describe, expect, it, vi } from 'vitest'
 
-import DocumentationPage from '../../app/pages/admin/documentation.vue'
+import DocumentationPage from '../../app/pages/documentation.vue'
 
 const { definePageMetaMock } = vi.hoisted(() => ({
   definePageMetaMock: vi.fn(),
@@ -10,8 +10,8 @@ const { definePageMetaMock } = vi.hoisted(() => ({
 
 mockNuxtImport('definePageMeta', () => definePageMetaMock)
 
-describe('Admin documentation page', () => {
-  it('is admin-only and composes the current-session Swagger surface', () => {
+describe('Documentation page', () => {
+  it('is available to every authenticated role and composes the current-session Swagger surface', () => {
     const wrapper = mount(DocumentationPage, {
       global: {
         stubs: {
@@ -32,11 +32,8 @@ describe('Admin documentation page', () => {
     })
 
     expect(definePageMetaMock).toHaveBeenCalledWith({
-      requiredRoles: ['admin'],
+      requiredRoles: ['limited', 'user', 'admin'],
       title: 'API documentation',
-      icon: 'mdi-api',
-      drawerIndex: 11,
-      drawerSection: 'Developer tools',
     })
     expect(wrapper.text()).toContain('Developer tools')
     expect(wrapper.text()).toContain('Authentication Current session')

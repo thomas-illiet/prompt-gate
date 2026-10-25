@@ -102,6 +102,14 @@ describe('AppUserMenu', () => {
     expect(navigateToMock).toHaveBeenCalledWith('/profile')
   })
 
+  it('opens API documentation from the user menu', async () => {
+    const wrapper = mountMenu()
+
+    await wrapper.get('[data-test="user-menu-documentation"]').trigger('click')
+
+    expect(navigateToMock).toHaveBeenCalledWith('/documentation')
+  })
+
   it('logs out through the auth store with the login redirect', async () => {
     const authStore = useAuthStore()
     const logout = vi.spyOn(authStore, 'logout').mockResolvedValue()

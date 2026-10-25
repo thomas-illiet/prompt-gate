@@ -5,8 +5,6 @@ info:
   description: |
     Administrative and self-service API for Prompt Gate. Browser clients
     authenticate with the current HTTP-only session cookie.
-servers:
-  - url: __PROMPTGATE_BACKEND_BASE_URL__
 security:
   - sessionCookie: []
 tags:
@@ -382,11 +380,22 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         default: { $ref: '#/components/responses/InternalError' }
-  /api/v1/admin/openapi.json:
+  /api/v1/openapi.json:
     get:
       tags: [Documentation]
-      operationId: getAdminOpenAPIDocument
+      operationId: getOpenAPIDocument
       summary: Get the runtime OpenAPI document
+      responses:
+        '200': { $ref: '#/components/responses/OpenAPIDocumentResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/openapi.json:
+    get:
+      deprecated: true
+      tags: [Documentation]
+      operationId: getAdminOpenAPIDocument
+      summary: Get the runtime OpenAPI document through the legacy admin route
       responses:
         '200': { $ref: '#/components/responses/OpenAPIDocumentResponse' }
         '401': { $ref: '#/components/responses/Unauthorized' }

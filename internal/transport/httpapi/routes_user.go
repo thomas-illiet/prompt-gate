@@ -1,8 +1,11 @@
 package httpapi
 
-func sessionRoutes() []routeDefinition {
+import "net/http"
+
+func sessionRoutes(openAPIHandler http.HandlerFunc) []routeDefinition {
 	return []routeDefinition{
 		{pattern: "GET /api/v1/me", handler: handleCurrentUser},
+		{pattern: "GET /api/v1/openapi.json", handler: openAPIHandler},
 	}
 }
 

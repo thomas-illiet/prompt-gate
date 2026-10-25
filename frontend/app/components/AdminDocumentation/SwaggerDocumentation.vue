@@ -4,11 +4,17 @@ import 'swagger-ui/dist/swagger-ui.css'
 import type { Root } from 'react-dom/client'
 
 import { toApiErrorMessage } from '~/utils/api-error'
+import { resolveRuntimeApiBaseUrl } from '~/utils/auth'
 import { createSwaggerLifecyclePreset } from '~/utils/swagger-lifecycle'
+import {
+  rebaseSwaggerRequest,
+  type SwaggerRequest,
+} from '~/utils/swagger-request'
 
 type OpenAPIDocument = Record<string, unknown>
 
 const apiFetch = useApiFetch()
+const runtimeConfig = useRuntimeConfig()
 const swaggerRoot = useTemplateRef<HTMLDivElement>('swaggerRoot')
 const initializationError = shallowRef<string | null>(null)
 const loading = shallowRef(false)
@@ -38,7 +44,7 @@ async function initializeSwagger() {
   try {
     const [spec, swaggerModule, reactModule, reactDOMModule] =
       await Promise.all([
-        apiFetch<OpenAPIDocument>('/api/v1/admin/openapi.json'),
+        apiFetch<OpenAPIDocument>('/api/v1/openapi.json'),
         import('swagger-ui'),
         import('react'),
         import('react-dom/client'),
@@ -65,6 +71,13 @@ async function initializeSwagger() {
       persistAuthorization: false,
       presets: [swaggerModule.default.presets.apis, lifecyclePreset],
       queryConfigEnabled: false,
+      requestInterceptor(request: SwaggerRequest) {
+        return rebaseSwaggerRequest(
+          request,
+          resolveRuntimeApiBaseUrl(runtimeConfig.public.apiBaseUrl),
+          window.location.origin,
+        )
+      },
       spec,
       supportedSubmitMethods: ['get', 'post', 'put', 'patch', 'delete'],
       validatorUrl: null,
@@ -106,7 +119,7 @@ onBeforeUnmount(() => {
   <AppSectionCard
     icon="mdi-api"
     title="Interactive API explorer"
-    subtitle="Try it out requests reuse your current administrator session."
+    subtitle="Try it out requests reuse your current user session."
   >
     <v-progress-linear v-if="loading" indeterminate />
 

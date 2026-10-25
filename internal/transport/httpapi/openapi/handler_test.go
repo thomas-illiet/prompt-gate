@@ -24,7 +24,7 @@ func TestNewHandlerServesConfiguredRuntimeDocument(t *testing.T) {
 	handler := NewHandler(cfg)
 
 	recorder := httptest.NewRecorder()
-	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/admin/openapi.json", nil))
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/openapi.json", nil))
 
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, recorder.Code, recorder.Body.String())
@@ -37,9 +37,6 @@ func TestNewHandlerServesConfiguredRuntimeDocument(t *testing.T) {
 	}
 
 	var document struct {
-		Servers []struct {
-			URL string `json:"url"`
-		} `json:"servers"`
 		Components struct {
 			SecuritySchemes map[string]struct {
 				Type string `json:"type"`
@@ -51,8 +48,12 @@ func TestNewHandlerServesConfiguredRuntimeDocument(t *testing.T) {
 	if err := json.Unmarshal(recorder.Body.Bytes(), &document); err != nil {
 		t.Fatalf("decode OpenAPI response: %v", err)
 	}
-	if len(document.Servers) != 1 || document.Servers[0].URL != "https://api.example.test" {
-		t.Fatalf("unexpected servers %#v", document.Servers)
+	var rawDocument map[string]json.RawMessage
+	if err := json.Unmarshal(recorder.Body.Bytes(), &rawDocument); err != nil {
+		t.Fatalf("decode raw OpenAPI response: %v", err)
+	}
+	if _, ok := rawDocument["servers"]; ok {
+		t.Fatal("OpenAPI response unexpectedly contains servers")
 	}
 	securityScheme, ok := document.Components.SecuritySchemes[sessionSecurityScheme]
 	if !ok {
@@ -69,16 +70,13 @@ func TestNewHandlerUsesSafeRuntimeDefaults(t *testing.T) {
 	}
 	handler := NewHandler(config.APIConfig{})
 	recorder := httptest.NewRecorder()
-	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/admin/openapi.json", nil))
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/openapi.json", nil))
 
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("expected status %d, got %d: %s", http.StatusOK, recorder.Code, recorder.Body.String())
 	}
 
 	var document struct {
-		Servers []struct {
-			URL string `json:"url"`
-		} `json:"servers"`
 		Components struct {
 			SecuritySchemes map[string]struct {
 				Name string `json:"name"`
@@ -88,8 +86,12 @@ func TestNewHandlerUsesSafeRuntimeDefaults(t *testing.T) {
 	if err := json.Unmarshal(recorder.Body.Bytes(), &document); err != nil {
 		t.Fatalf("decode OpenAPI response: %v", err)
 	}
-	if len(document.Servers) != 1 || document.Servers[0].URL != defaultBackendBaseURL {
-		t.Fatalf("unexpected default servers %#v", document.Servers)
+	var rawDocument map[string]json.RawMessage
+	if err := json.Unmarshal(recorder.Body.Bytes(), &rawDocument); err != nil {
+		t.Fatalf("decode raw OpenAPI response: %v", err)
+	}
+	if _, ok := rawDocument["servers"]; ok {
+		t.Fatal("OpenAPI response unexpectedly contains servers")
 	}
 	if got := document.Components.SecuritySchemes[sessionSecurityScheme].Name; got != defaultSessionCookieName {
 		t.Fatalf("unexpected default session cookie name %q", got)
