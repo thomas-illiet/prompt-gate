@@ -4,11 +4,12 @@ SHELL := /bin/bash
 GO ?= go
 CONFIG_FILE ?= promptgate.yaml
 BIN_DIR ?= bin
+COVERAGE_MIN ?= 70
 GO_PACKAGE_DIRS ?= $(shell find . -path './frontend' -prune -o -name '*.go' -print | xargs -n1 dirname | sort -u)
 GO_PACKAGES ?= $(shell $(GO) list $(GO_PACKAGE_DIRS))
 GO_FILES ?= $(shell find . -path './frontend' -prune -o -name '*.go' -print)
 
-.PHONY: help all deps fmt fmt-check vet staticcheck test build clean migrate run-api run-proxy run-worker run-schedule run-all
+.PHONY: help all deps fmt fmt-check vet staticcheck test coverage build clean migrate run-api run-proxy run-worker run-schedule run-all
 
 help: ## Show available targets.
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z0-9_-]+:.*##/ {printf "  %-12s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -36,6 +37,9 @@ staticcheck: ## Run Staticcheck.
 
 test: ## Run tests.
 	$(GO) test $(GO_PACKAGES)
+
+coverage: ## Run tests and enforce the minimum aggregate statement coverage.
+	@GO="$(GO)" GO_PACKAGES="$(GO_PACKAGES)" COVERAGE_MIN="$(COVERAGE_MIN)" bash scripts/check-go-coverage.sh
 
 build: ## Build the backend binary.
 	mkdir -p "$(BIN_DIR)"

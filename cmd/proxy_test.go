@@ -1,12 +1,16 @@
 package cli
 
 import (
+	"bufio"
+	"bytes"
 	"errors"
 	"io"
 	"net"
 	"net/http"
 	"testing"
 	"time"
+
+	cdrslog "cdr.dev/slog/v3"
 )
 
 // TestProxyHTTPServerTimesOutSlowRequestBody verifies ReadTimeout is a real
@@ -140,4 +144,137 @@ func startProxyTestServer(t *testing.T, readTimeout time.Duration, handler http.
 		}
 	}()
 	return server, listener.Addr().String()
+}
+
+func TestWriteDeadlineResponseWriterOptionalInterfaces(t *testing.T) {
+	base := &proxyControllerWriter{header: make(http.Header)}
+	writer := &writeDeadlineResponseWriter{ResponseWriter: base, timeout: time.Second}
+
+	written, err := writer.ReadFrom(&proxyTestReader{data: []byte("streamed")})
+	if err != nil {
+		t.Fatalf("read from: %v", err)
+	}
+	if written != int64(len("streamed")) || base.body.String() != "streamed" {
+		t.Fatalf("unexpected copied body: bytes=%d body=%q", written, base.body.String())
+	}
+	if base.deadline.IsZero() || time.Until(base.deadline) <= 0 {
+		t.Fatalf("expected a future write deadline, got %v", base.deadline)
+	}
+
+	writer.Flush()
+	if base.flushes != 1 {
+		t.Fatalf("expected one flush, got %d", base.flushes)
+	}
+	if err := writer.Push("/asset.js", &http.PushOptions{Method: http.MethodGet}); err != nil {
+		t.Fatalf("push: %v", err)
+	}
+	if base.pushed != "/asset.js" {
+		t.Fatalf("unexpected pushed target: %q", base.pushed)
+	}
+	if writer.Unwrap() != base {
+		t.Fatal("unwrap did not return the underlying response writer")
+	}
+
+	connection, _, err := writer.Hijack()
+	if err != nil {
+		t.Fatalf("hijack: %v", err)
+	}
+	_ = connection.Close()
+	_ = base.hijackPeer.Close()
+}
+
+func TestWriteDeadlineResponseWriterPropagatesDeadlineErrors(t *testing.T) {
+	errDeadline := errors.New("deadline unavailable")
+	base := &proxyControllerWriter{header: make(http.Header), deadlineErr: errDeadline}
+	writer := &writeDeadlineResponseWriter{ResponseWriter: base, timeout: time.Second}
+
+	if written, err := writer.Write([]byte("body")); written != 0 || !errors.Is(err, errDeadline) {
+		t.Fatalf("write = (%d, %v), want (0, %v)", written, err, errDeadline)
+	}
+	if written, err := writer.ReadFrom(&proxyTestReader{data: []byte("body")}); written != 0 || !errors.Is(err, errDeadline) {
+		t.Fatalf("read from = (%d, %v), want (0, %v)", written, err, errDeadline)
+	}
+	writer.Flush()
+	if base.flushes != 0 {
+		t.Fatalf("flush reached the underlying writer after a deadline error: %d", base.flushes)
+	}
+
+	withoutPusher := &writeDeadlineResponseWriter{ResponseWriter: &statusOnlyWriter{header: make(http.Header)}}
+	if err := withoutPusher.Push("/asset.js", nil); !errors.Is(err, http.ErrNotSupported) {
+		t.Fatalf("unsupported push error = %v", err)
+	}
+}
+
+func TestCDRLevel(t *testing.T) {
+	tests := map[string]cdrslog.Level{
+		"debug":      cdrslog.LevelDebug,
+		" WARN ":     cdrslog.LevelWarn,
+		"warning":    cdrslog.LevelWarn,
+		"ERROR":      cdrslog.LevelError,
+		"info":       cdrslog.LevelInfo,
+		"unexpected": cdrslog.LevelInfo,
+	}
+	for input, expected := range tests {
+		t.Run(input, func(t *testing.T) {
+			if got := cdrLevel(input); got != expected {
+				t.Fatalf("cdrLevel(%q) = %v, want %v", input, got, expected)
+			}
+		})
+	}
+}
+
+type proxyControllerWriter struct {
+	header      http.Header
+	body        bytes.Buffer
+	status      int
+	deadline    time.Time
+	deadlineErr error
+	flushes     int
+	pushed      string
+	hijackPeer  net.Conn
+}
+
+func (w *proxyControllerWriter) Header() http.Header { return w.header }
+
+func (w *proxyControllerWriter) Write(raw []byte) (int, error) { return w.body.Write(raw) }
+
+func (w *proxyControllerWriter) WriteHeader(statusCode int) { w.status = statusCode }
+
+func (w *proxyControllerWriter) SetWriteDeadline(deadline time.Time) error {
+	w.deadline = deadline
+	return w.deadlineErr
+}
+
+func (w *proxyControllerWriter) Flush() { w.flushes++ }
+
+func (w *proxyControllerWriter) Push(target string, _ *http.PushOptions) error {
+	w.pushed = target
+	return nil
+}
+
+func (w *proxyControllerWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	connection, peer := net.Pipe()
+	w.hijackPeer = peer
+	return connection, bufio.NewReadWriter(bufio.NewReader(connection), bufio.NewWriter(connection)), nil
+}
+
+type statusOnlyWriter struct {
+	header http.Header
+}
+
+func (w *statusOnlyWriter) Header() http.Header           { return w.header }
+func (w *statusOnlyWriter) Write(raw []byte) (int, error) { return len(raw), nil }
+func (w *statusOnlyWriter) WriteHeader(int)               {}
+
+type proxyTestReader struct {
+	data []byte
+}
+
+func (r *proxyTestReader) Read(raw []byte) (int, error) {
+	if len(r.data) == 0 {
+		return 0, io.EOF
+	}
+	written := copy(raw, r.data)
+	r.data = r.data[written:]
+	return written, nil
 }

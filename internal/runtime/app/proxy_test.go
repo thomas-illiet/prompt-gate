@@ -1,7 +1,9 @@
 package app
 
 import (
+	"bytes"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10,6 +12,8 @@ import (
 	"time"
 
 	"promptgate/backend/internal/domain/policy"
+	"promptgate/backend/internal/platform/config"
+	httpmiddleware "promptgate/backend/internal/transport/httpmiddleware"
 )
 
 func TestRequestTimeoutAddsRequestDeadline(t *testing.T) {
@@ -78,6 +82,65 @@ func TestProxyHealthSkipsOPAWhenDisabled(t *testing.T) {
 
 	if recorder.Code != http.StatusOK || recorder.Body.String() != `{"status":"ok"}` {
 		t.Fatalf("unexpected disabled OPA health: %d %q", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestBuildHandlerComposesOptionalLayersAndKeepsHealthIndependent(t *testing.T) {
+	var debugOutput bytes.Buffer
+	runtime := &ProxyRuntime{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	cfg := config.ProxyConfig{
+		ServerConfig: config.ServerConfig{
+			CORSAllowedOrigins: []string{"https://frontend.example.test"},
+		},
+		ProxyRuntimeConfig: config.ProxyRuntimeConfig{
+			ProxyMaxBufferedRequestBytes:  1 << 20,
+			ProxyMaxBufferedResponseBytes: 1 << 20,
+			ProxyUpstreamTimeout:          time.Second,
+			OPAEnabled:                    true,
+		},
+		ModelLab: config.ModelLabConfig{
+			MaxPromptBytes:  1024,
+			MaxOutputTokens: 16,
+		},
+		OTel: config.OTelConfig{
+			CaptureOutput:   true,
+			CaptureThinking: true,
+		},
+	}
+	handler := runtime.buildHandler(
+		cfg,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		httpmiddleware.NewJSONLineWriter(&debugOutput),
+	)
+
+	healthRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(healthRecorder, httptest.NewRequest(http.MethodGet, "/health", nil))
+	if healthRecorder.Code != http.StatusServiceUnavailable || healthRecorder.Body.String() != `{"status":"degraded","dependency":"opa"}` {
+		t.Fatalf("unexpected health response: %d %q", healthRecorder.Code, healthRecorder.Body.String())
+	}
+	if got := healthRecorder.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Fatalf("security header = %q", got)
+	}
+
+	proxyRequest := httptest.NewRequest(http.MethodPost, "/openai/v1/responses", strings.NewReader(`{"model":"gpt-test"}`))
+	proxyRequest.Header.Set("Origin", "https://frontend.example.test")
+	proxyRecorder := httptest.NewRecorder()
+	handler.ServeHTTP(proxyRecorder, proxyRequest)
+	if proxyRecorder.Code != http.StatusUnauthorized {
+		t.Fatalf("expected unauthenticated proxy request to stop at 401, got %d: %s", proxyRecorder.Code, proxyRecorder.Body.String())
+	}
+	if got := proxyRecorder.Header().Get("Access-Control-Allow-Origin"); got != "https://frontend.example.test" {
+		t.Fatalf("CORS origin = %q", got)
+	}
+	if !strings.Contains(debugOutput.String(), `"event":"proxy_request_debug"`) {
+		t.Fatalf("debug middleware did not observe proxy request: %s", debugOutput.String())
 	}
 }
 
