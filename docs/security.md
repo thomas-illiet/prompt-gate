@@ -2,7 +2,9 @@
 
 Prompt Gate separates browser administration from proxy traffic. Browser users
 authenticate with OIDC sessions. Applications and service accounts call the LLM
-proxy with Prompt Gate API tokens.
+proxy with Prompt Gate API tokens. Model Lab is the deliberate browser-to-proxy
+exception: the authenticated API issues short-lived, single-use tickets that
+authorize one exact provider request without exposing a reusable API token.
 
 ## Identity And Sessions
 
@@ -201,15 +203,17 @@ underscores and have a maximum length of 64 characters.
 
 ## External OPA policy
 
-After token authentication, the proxy sends OPA only stable identity IDs,
-role/type, sorted technical access-group names in `input.identity.groups`,
+After API-token or Model Lab ticket authentication, the proxy sends OPA only
+stable identity IDs, role/type, sorted technical access-group names in
+`input.identity.groups`,
 virtual-key metadata, resolved client IP, method, host, the full routed path,
 and structured provider routing fields. `input.request.provider` is the route's
 provider name, `provider_type` is its configured protocol (`openai`, `ollama`,
 or `anthropic`), and `provider_path` is relative to the provider prefix. For
 example, `/openai-main/v1/responses` is represented with provider
 `openai-main` and provider path `/v1/responses`.
-Tokens, personal profile fields, headers, and request bodies are never sent.
+Tokens, tickets, personal profile fields, headers, and request bodies are never
+sent.
 OPA is the sole policy source and the supplied example denies by default.
 Prompt Gate caches only OPA denials; positive decisions are always re-evaluated,
 so an allow cannot outlive a policy or data revocation. The Kubernetes example
@@ -269,8 +273,8 @@ manually exposed through CORS.
 - Use HTTPS origins for production `common.public_urls.backend` and
   `common.public_urls.frontend`.
 - Run migrations before serving traffic.
-- Keep Redis available for sessions, hot reload, and proxy auth cache
-  invalidation.
+- Keep Redis available for sessions, hot reload, proxy auth cache invalidation,
+  rolling quotas, Model Lab tickets and leases, and asynchronous usage events.
 - Prefer explicit `proxy.trusted_proxies` CIDRs over global
   forwarded-header trust.
 - Review OPA rules for service accounts before issuing long-lived tokens.

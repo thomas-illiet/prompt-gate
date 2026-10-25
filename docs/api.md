@@ -100,7 +100,8 @@ Discovery uses the provider's OpenAI-compatible `/models` endpoint or
 Anthropic `/v1/models`. Administrators can set `config.modelLabModels` to an
 array of model IDs as an explicit fallback when live discovery is unavailable.
 The response `limits` object exposes the effective target, prompt-byte, and
-output-token limits so the playground can enforce the deployed configuration.
+output-token limits so the Model Lab frontend can enforce the deployed
+configuration.
 
 Ticket requests contain one to three distinct `{providerName, model}` targets.
 The API chooses each exact proxy path and protocol, binds the ticket to the

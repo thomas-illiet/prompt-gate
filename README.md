@@ -8,20 +8,25 @@ management, API token issuance, a provider-aware LLM proxy,
 external OPA policy checks, usage recording, quota enforcement, and scheduled
 maintenance jobs.
 
-Model Lab provides a group-filtered model catalog and an ephemeral, text-only
-multi-turn chat. A completed response can be compared on demand with up to two
-alternative models. It uses short-lived, single-use browser tickets while
-keeping every run on the existing OPA, group, quota, provider, and accounting
-path. Prompt and response content is excluded from Prompt Gate persistence and
-telemetry for these runs.
+Model Lab is a chat-first workspace backed by the group-filtered model catalog.
+Users can run one model or select a second model for a side-by-side response;
+only the primary response continues into the next turn. Short-lived,
+single-use browser tickets keep every run on the existing OPA, group, quota,
+provider, and accounting path. Prompt and response content is excluded from
+Prompt Gate persistence and telemetry for these runs.
+
+Personal and administrator dashboards combine live quota state with durable
+usage aggregates, provider and model breakdowns, cost coverage, and rankings of
+the tools reported by model responses.
 
 The product is designed as a small set of deployable processes built from one
 binary:
 
 - `api` runs the HTTP API, OIDC login flow, admin endpoints, and
   optional static frontend hosting.
-- `proxy` runs the LLM proxy that validates Prompt Gate API tokens,
-  evaluates external OPA policy, routes to configured providers, and enqueues usage.
+- `proxy` runs the LLM proxy that validates Prompt Gate API tokens or Model Lab
+  tickets, evaluates external OPA policy, routes to configured providers, and
+  enqueues usage.
 - `worker` consumes proxy usage events, stores raw operational usage data, and
   updates dashboard KPI aggregates.
 - `schedule` runs recurring background jobs, including raw usage cleanup,
@@ -106,7 +111,9 @@ PostgreSQL. Redis holds browser sessions, proxy auth caches, configuration
 snapshots, live quota windows, and hot-reload events. Proxy usage events also
 flow through Redis before workers persist them to PostgreSQL.
 OIDC handles browser identity, while Prompt Gate API tokens authenticate proxy
-traffic from applications and service accounts.
+traffic from applications and service accounts. Model Lab uses dedicated,
+single-use proxy tickets rather than exposing a reusable API token to the
+browser.
 
 ```mermaid
 flowchart LR
@@ -120,90 +127,130 @@ flowchart LR
     Worker --> Redis
     Schedule --> Redis
     API --> OIDC["OIDC provider"]
+    API -->|Model Lab catalog discovery| Providers
     Proxy --> Providers["OpenAI, Anthropic, Ollama"]
 ```
 
+### External policy enforcement
+
+Proxy requests, including Model Lab runs, are authorized by an external OPA
+server. A deny-by-default Kubernetes example is available under
+`deploy/examples/opa`. OPA is enabled by default and can be bypassed during an
+access incident with `proxy.opa.enabled: false`; authentication, groups, and
+quotas remain active.
+
 ## Screenshots
 
-These populated states use representative local data so the core product
-surfaces are easier to review at a glance.
+These screenshots were generated from the current frontend with deterministic,
+fictional local data. They contain no production identity, token, provider
+credential, prompt, or endpoint.
 
-### Dashboard
+### User workspace
 
-![Prompt Gate dashboard with live quota, usage KPIs, and activity charts](docs/assets/screenshots/dashboard.jpg)
+#### Sign in
 
-Live quota consumption, period-over-period KPIs, request and token trends, and
-model/provider breakdowns.
+![Prompt Gate sign-in page with the playful Green Room visual](docs/assets/screenshots/login.jpg)
 
-### Virtual Keys
+The browser entry point explains the control-plane boundary before redirecting
+through the configured OIDC provider.
+
+#### Usage dashboard
+
+![Prompt Gate usage cockpit with live quota and selected-period KPIs](docs/assets/screenshots/dashboard.jpg)
+
+Live five-hour and seven-day quota windows stay separate from the selected
+reporting period and its request, token, tool-call, cost, and latency KPIs.
+
+![Prompt Gate dashboard insights with daily trends and model breakdowns](docs/assets/screenshots/dashboard-insights.jpg)
+
+The lower cockpit continues from trends and model/provider breakdowns into
+durable top tool-call rankings and the annual activity heatmap.
+
+#### Model Lab
+
+![Prompt Gate Model Lab showing a chat and side-by-side model responses](docs/assets/screenshots/model-lab.jpg)
+
+The ephemeral chat workspace runs one primary model or two selected models side
+by side while preserving the normal policy, quota, and accounting controls.
+
+#### Virtual keys
 
 ![Prompt Gate virtual keys table with active keys](docs/assets/screenshots/virtual-keys.jpg)
 
 Personal virtual key inventory with status, creation dates, expiry dates, and
 row actions.
 
-### Setup Guide
+#### Setup guide
 
 ![Prompt Gate setup guide showing provider and model configuration](docs/assets/screenshots/setup-guide.jpg)
 
 Client setup flow for selecting providers, matching routes, and copying
 ready-to-use snippets.
 
-### Service Accounts
+#### Profile and quota controls
 
-![Prompt Gate service accounts table with current access and usage](docs/assets/screenshots/service-accounts.jpg)
+![Prompt Gate profile with identity, access groups, and quota-reset controls](docs/assets/screenshots/profile.jpg)
 
-Non-human account management with activation status, usage totals, and
-integration key actions.
+The profile brings identity, access groups, token activity, live quota, and
+available reset credits into one user-owned surface.
 
-### User Management
-
-![Prompt Gate user management table with access, status, plan, and activity](docs/assets/screenshots/user-management.jpg)
-
-Admin directory view for reviewing access, active state, subscription plan,
-30-day activity, pre-created accounts, and account-level actions.
-
-### Administrator Account Actions
-
-![Prompt Gate administrator actions for a limited-access user](docs/assets/screenshots/admin-user-actions.jpg)
-
-Centralized access to identity details, virtual keys, groups, usage statistics,
-notes, deletion, and the audited quota-reset credit workflow.
-
-### Quota Reset Credits
-
-![Prompt Gate profile with quota usage and an available reset credit](docs/assets/screenshots/quota-resets.jpg)
-
-Users with a finite quota can spend an available credit to reset their live
-5-hour and 7-day windows without erasing historical usage analytics.
-
-### Quota Reset History
+#### Quota reset history
 
 ![Prompt Gate quota reset history with grants and a consumed credit](docs/assets/screenshots/quota-reset-history.jpg)
 
 The profile keeps an audit-friendly history of monthly grants, administrator
 grants, and applied resets.
 
-### API Documentation
+### Administration and operations
 
-![Prompt Gate administrator API documentation](docs/assets/screenshots/api-documentation.jpg)
+#### User management
 
-The protected Swagger UI reuses the current HttpOnly administrator session and
-warns that mutating requests affect the live environment.
+![Prompt Gate user management table with access, status, plan, and activity](docs/assets/screenshots/user-management.jpg)
 
-### External policy
+The administrator directory shows access, state, subscription, recent activity,
+and whether an account was pre-created before its first OIDC login.
 
-Proxy requests are authorized by an external OPA server. A deny-by-default
-Kubernetes example is available under `deploy/examples/opa`.
-OPA is enabled by default and can be bypassed during an access incident with
-`proxy.opa.enabled: false`; authentication, groups, and quotas remain active.
+#### Account actions
 
-### Monitoring
+![Prompt Gate administrator account actions for a limited-access user](docs/assets/screenshots/admin-user-actions.jpg)
+
+Account-scoped actions cover access, virtual keys, groups, usage, IP history,
+notes, quota-reset credits, and deletion from a single menu.
+
+#### Service accounts
+
+![Prompt Gate service accounts table with current access and usage](docs/assets/screenshots/service-accounts.jpg)
+
+Non-human identities have explicit status, plan, usage, group membership, and
+integration-key controls.
+
+#### Access groups
+
+![Prompt Gate access groups with provider and model rules](docs/assets/screenshots/groups.jpg)
+
+Groups connect users and service accounts to approved providers and model
+patterns, including deny rules and validation before saving.
+
+#### Providers
+
+![Prompt Gate provider administration with protocol and status details](docs/assets/screenshots/providers.jpg)
+
+Provider administration keeps protocol type, base URL, status, model discovery,
+and routing names visible without exposing stored credentials.
+
+#### Monitoring
 
 ![Prompt Gate monitoring services table with health check status](docs/assets/screenshots/monitoring.jpg)
 
 Operations view for reviewing HTTP/S service checks, current status, latest
 latency, and incident-banner readiness.
+
+#### API documentation
+
+![Prompt Gate administrator API documentation](docs/assets/screenshots/api-documentation.jpg)
+
+The protected Swagger UI reuses the current HttpOnly administrator session and
+warns that mutating requests affect the live environment.
 
 ## Documentation
 

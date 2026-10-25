@@ -49,11 +49,17 @@ Prompt Gate requires:
 
 - PostgreSQL for durable data
 - Redis for sessions, auth and OPA denial caches, group/provider/subscription
-  snapshots, rolling quota state and reset barriers, config reload events, and
-  usage event streams
+  snapshots, Model Lab catalogs, one-time tickets and concurrency leases,
+  rolling quota state and reset barriers, config reload events, and usage event
+  streams
 - an independently operated OPA server for every proxy decision
 - Keycloak or another OIDC-compatible provider
 - one protected YAML file containing the common and per-runtime settings
+
+Allow API replicas to reach each configured provider's model-catalog endpoint;
+Model Lab performs discovery from the API process. Proxy replicas separately
+need provider egress for generation traffic. Apply `common.tls.ca_file` to both
+paths when those endpoints use a private certificate authority.
 
 See [YAML configuration](environment.md) for the full configuration
 reference.
@@ -72,29 +78,31 @@ reference.
 6. Configure providers, users, service accounts, tokens, and the external OPA
    policy through the admin API or frontend.
 
-Model Lab is always enabled for `user` and `admin` roles. Configure the same
-browser-visible HTTP(S) URL in `common.public_urls.proxy`. If
-that URL contains a routing prefix such as the
-Helm chart's `/remote`, configure the same value in `proxy.base_path`; the edge
-must forward the original path without rewriting it.
-Control exposure through roles and access groups. Verify that tickets are one-time,
-three-stream limits hold, quota/accounting are exact, and a unique canary prompt
-is absent from logs, Redis event payloads, PostgreSQL content, OTel spans,
-browser storage, URLs, and error responses before broadening access. Rolling
-back the release invalidates no durable Model Lab state; outstanding tickets
-expire after their configured short TTL.
+Model Lab is always enabled for `user` and `admin` roles. Configure its
+browser-visible HTTP(S) proxy URL in `common.public_urls.proxy`. If that URL
+contains a routing prefix such as the Helm chart's `/remote`, configure the
+same value in `proxy.base_path`; the edge must forward the original path
+without rewriting it.
+Control exposure through roles and access groups. Verify that tickets are
+one-time, the configured target and concurrent-stream limits hold, quota and
+accounting are exact, and a unique canary prompt is absent from logs, Redis
+event payloads, PostgreSQL content, OTel spans, browser storage, URLs, and error
+responses before broadening access. Both `common.model_lab.max_targets` and
+`common.model_lab.max_concurrent` are configurable from 1 to 3. Rolling back
+the release invalidates no durable Model Lab state; outstanding tickets expire
+after their configured short TTL.
 
-When upgrading from the one-turn playground to multi-turn chat, deploy the API
-and proxy before the frontend. The expanded validator remains compatible with
-old one-message requests, while the new frontend requires the backend to accept
-alternating conversation history.
+Historical compatibility note: when upgrading from a release with the original
+one-turn playground to the first multi-turn release, deploy the API and proxy
+before the frontend. The expanded validator accepts the older one-message
+requests, while the multi-turn frontend requires alternating conversation
+history support.
 
-The user pre-creation migration makes the OIDC subject and last-login columns
-nullable. During an upgrade to the first version that supports pre-creation,
-run the migration, replace every API replica, and only then deploy or use the
-frontend action and `POST /api/v1/admin/users`. Do not create an active limited,
-SSO-unlinked user while older API replicas remain in service, because those binaries
-still expect the two columns to be non-null when reading administration responses.
+Historical compatibility note: during the first upgrade that introduced user
+pre-creation, the migration made OIDC subject and last-login fields nullable.
+That transition required migrations and every API replica to be replaced before
+using the frontend action or `POST /api/v1/admin/users`; older API binaries
+expected both fields to be non-null.
 
 The scheduler runs monthly reset-credit distribution and pending-reset
 reconciliation immediately on startup. Always complete migrations before
@@ -188,6 +196,69 @@ SPA shell for frontend routes.
 - Keep `proxy.trust_forward_headers` disabled when using explicit trusted CIDRs;
   the global switch is only for an entirely trusted network boundary that
   sanitizes every forwarded header.
+
+## Kubernetes Helm And HAProxy Technologies Ingress
+
+The maintained Helm chart targets the HAProxy Technologies Kubernetes Ingress
+Controller. It renders one `networking.k8s.io/v1` Ingress with one hostname and
+ordinary `Prefix` routes:
+
+- `/remote` routes to the proxy Service
+- `/` routes to the API Service and bundled frontend
+
+The edge does not use a regular expression or rewrite the URL. Prompt Gate
+derives `proxy.base_path` from `ingress.proxyPath`, validates that the public
+proxy URL has the same path, and removes the prefix inside the proxy before
+authentication, OPA, quota, or provider routing.
+
+```yaml
+ingress:
+  enabled: true
+  className: haproxy
+  host: promptgate.example.com
+  proxyPath: /remote
+  tls:
+    enabled: true
+    secretName: promptgate-tls
+  annotations:
+    haproxy.org/forwarded-for: "true"
+
+config:
+  proxy:
+    trust_forward_headers: false
+    trusted_proxies:
+      - "YOUR_HAPROXY_PEER_CIDR"
+```
+
+Replace the placeholder only after observing the actual direct peer. The chart
+does not guess trusted networks. When `configSecret.existingSecret` is used,
+the external runtime file must set `proxy.base_path: /remote` and
+`common.public_urls.proxy: https://promptgate.example.com/remote` itself.
+
+For F5 -> HAProxy Ingress, require the F5 to overwrite or sanitize inbound
+`X-Forwarded-For`. HAProxy appends the TCP source it actually observes as the
+last header occurrence; this can be the F5 or a controlled node/SNAT hop when
+the Kubernetes Service masks the original source. Configure
+`proxy.trusted_proxies` with the narrow direct HAProxy peer range and every
+controlled upstream hop that actually appears in the chain. Prompt Gate walks
+the chain from right to left to select the nearest untrusted client address.
+Do not set `haproxy.org/src-ip-header` or enable the legacy global
+`proxy.trust_forward_headers` for this topology.
+
+Temporarily enable `proxy.client_ip_debug: true`, send a known external request,
+and use the structured `peer_ip` field to determine whether Prompt Gate sees an
+HAProxy pod IP, node IP, or SNAT address. Configure only the narrow stable CIDR
+that contains that peer, then disable the diagnostic. If that CIDR is shared
+with other workloads, restrict the proxy Service with a NetworkPolicy selecting
+the HAProxy namespace and controller pods. `externalTrafficPolicy: Local` is an
+optional source-preservation choice only when the F5/operator topology supports
+it; it does not replace the sanitized forwarding-header contract.
+
+Chart `0.2.x` moves `/remote` removal from HAProxy into Prompt Gate. Upgrade
+from `0.1.x` during a short F5 maintenance window after the selected `v2.1.x`
+image exists: close external traffic, perform a full Argo CD sync, wait for the
+proxy rollout and unified Ingress to become healthy, validate
+`/remote/health` and a provider request, then reopen traffic.
 
 ## Kubernetes NGINX Ingress
 
@@ -308,30 +379,6 @@ for your load balancer, ingress nodes, or upstream proxies. See the
 [ingress-nginx ConfigMap reference](https://kubernetes.github.io/ingress-nginx/user-guide/nginx-configuration/configmap/),
 [source IP notes](https://kubernetes.github.io/ingress-nginx/user-guide/miscellaneous/#source-ip-address),
 and [externalTrafficPolicy FAQ](https://kubernetes.github.io/ingress-nginx/faq/#client-ipaddress-on-single-node-cluster).
-
-For F5 -> HAProxy Ingress, require the F5 to overwrite or sanitize inbound
-`X-Forwarded-For` and explicitly enable
-`haproxy.org/forwarded-for: "true"` on the Ingress. HAProxy appends the TCP
-source it actually observes as the last header occurrence; this can be the F5
-or a controlled node/SNAT hop when the Kubernetes Service masks the original
-source. Configure `proxy.trusted_proxies` with the narrow direct HAProxy peer
-range and every controlled upstream hop that actually appears in the chain.
-Prompt Gate walks the chain from right to left to select the nearest untrusted
-client address. Do not set `haproxy.org/src-ip-header` or enable the legacy
-global `proxy.trust_forward_headers` for this topology. Temporarily enable
-`proxy.client_ip_debug: true`, send a known external request, and use
-the structured `peer_ip` field to determine whether Prompt Gate sees an HAProxy
-pod IP, node IP, or SNAT address. Configure only the narrow stable CIDR that
-contains that peer in `proxy.trusted_proxies`, keep
-`proxy.trust_forward_headers: false`, then disable the diagnostic.
-If the trusted CIDR is shared with other workloads, restrict the proxy Service
-with a NetworkPolicy selecting the HAProxy namespace and controller pods.
-
-Chart `0.2.x` moves `/remote` removal from HAProxy into Prompt Gate. Upgrade
-from `0.1.x` during a short F5 maintenance window after the `v2.1.0` image is
-available: close external traffic, perform a full Argo CD sync, wait for the
-proxy rollout and unified Ingress to become healthy, validate
-`/remote/health` and a provider request, then reopen traffic.
 
 ## Health Checks
 

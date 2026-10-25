@@ -8,9 +8,10 @@ same domain packages.
 
 ```mermaid
 flowchart LR
-    Browser["Browser session"] --> API["promptgate api"]
+    Browser["Browser session"] -->|UI, catalog, ticket issuance| API["promptgate api"]
+    Browser -->|pgml_ ticket + streamed chat| Proxy["promptgate proxy"]
     Admin["Admin UI"] --> API
-    Client["LLM client"] --> Proxy["promptgate proxy"]
+    Client["LLM client"] -->|Prompt Gate API token| Proxy
     Worker["promptgate worker"] --> WorkerJobs["Usage event jobs"]
     Schedule["promptgate schedule"] --> Jobs["Maintenance and quota jobs"]
     Migrate["promptgate migrate"] --> DB["PostgreSQL"]
@@ -19,20 +20,21 @@ flowchart LR
     WorkerJobs --> DB
     Jobs --> DB
 
-    API --> Redis["Redis"]
-    Proxy --> Redis
+    API -->|sessions, catalogs, tickets, reservations| Redis["Redis"]
+    Proxy -->|ticket consumption, leases, quotas, usage| Redis
     Proxy --> OPA["External OPA"]
     WorkerJobs --> Redis
     Jobs --> Redis
 
     API --> OIDC["OIDC provider"]
+    API -->|Model Lab catalog discovery| Providers
     Proxy --> Providers["OpenAI, Anthropic, Ollama"]
 ```
 
 | Command | Responsibility |
 | --- | --- |
-| `promptgate api` | HTTP API, OIDC browser login, sessions, user/admin routes, token creation, provider configuration, optional static frontend hosting. |
-| `promptgate proxy` | API-token authentication for LLM traffic, external OPA authorization, provider routing, Redis usage event enqueueing, hot reload. |
+| `promptgate api` | HTTP API, OIDC browser login, sessions, user/admin routes, token creation, Model Lab catalog and ticket issuance, provider configuration, optional static frontend hosting. |
+| `promptgate proxy` | API-token or Model Lab ticket authentication for LLM traffic, external OPA authorization, provider routing, Redis usage event enqueueing, hot reload. |
 | `promptgate worker` | Redis Stream consumer for proxy usage events, raw usage persistence, and dashboard KPI aggregation. |
 | `promptgate schedule` | Background token and access expiration, monitoring checks, raw usage cleanup, quota projection, monthly reset-credit distribution, and pending-reset reconciliation. |
 | `promptgate migrate` | Ordered migrations for all durable domain models, including subscription and quota-reset state, plus removal of retired schemas. |
@@ -45,6 +47,7 @@ flowchart LR
 | `internal/runtime/app` | Shared application wiring for API and scheduler. |
 | `internal/runtime/proxy` | AIBridge proxy manager, provider adapters, and hot reload. |
 | `internal/domain/auth` | OIDC, sessions, roles, user profile context, proxy actor injection. |
+| `internal/domain/modellab` | Group-filtered model catalog, one-time browser tickets, text-chat validation, concurrency leases, and metadata-only privacy policy. |
 | `internal/domain/tokens` | Prompt Gate API token creation, validation, revocation, cleanup, Redis auth cache. |
 | `internal/domain/users` | Human users, service accounts, role management, access expiration. |
 | `internal/domain/policy` | OPA client, Redis decision cache, policy middleware, and observability. |
@@ -63,6 +66,8 @@ PostgreSQL is the source of truth for durable application data:
 - users and service accounts
 - Prompt Gate API token records and token hashes
 - LLM provider definitions
+- access groups, provider/model rules, and membership
+- FAQ entries, setup guides, pricing, and monitoring definitions
 - subscription plans and account assignments
 - projected live quota state, quota-reset wallets, and the reset ledger
 - proxy interceptions, token usage, and tool usage for operational metrics
@@ -74,6 +79,8 @@ Redis is required by the current runtime configuration. It is used for:
 - proxy auth cache entries
 - provider snapshots
 - access-group and subscription-plan snapshots
+- Model Lab catalog last-known-good entries, one-time ticket hashes, pending
+  reservations, and active-stream leases
 - versioned subscription assignments and rolling 5-hour and 7-day quota state
 - quota-reset sequence and cutoff barriers
 - cached OPA deny decisions (allows are always re-evaluated)
@@ -111,7 +118,7 @@ the database, reject inactive or `none` users, and enforce route-level roles.
 
 ```mermaid
 sequenceDiagram
-    participant C as LLM client
+    participant C as LLM client or Model Lab browser
     participant P as Proxy
     participant R as Redis
     participant D as PostgreSQL
@@ -119,9 +126,18 @@ sequenceDiagram
     participant W as Worker
     participant U as Provider
 
-    C->>P: Bearer Prompt Gate API token
-    P->>R: Check auth cache
-    P->>D: Validate token hash and user when cache misses
+    C->>P: HTTP request under optional public proxy.base_path
+    P->>P: Validate and remove base path
+    alt Prompt Gate API token
+        P->>R: Check versioned auth cache
+        P->>D: Validate token hash and account on cache miss
+    else Model Lab browser ticket
+        P->>P: Parse ticket and validate canonical text-only payload
+        P->>R: Consume bound one-time ticket
+        P->>D: Reload authoritative account
+        P->>R: Acquire account concurrency lease
+    end
+    P->>P: Resolve client IP; enforce route and method allowlist
     P->>R: Check cached policy denial
     P->>O: Evaluate policy unless denied by cache
     P->>P: Enforce group, provider, and model access snapshot

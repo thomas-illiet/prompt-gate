@@ -6,23 +6,34 @@ The proxy process is started with:
 promptgate --config /path/to/promptgate.yaml proxy
 ```
 
-It listens on `proxy.port`, defaults to port `8081`, and serves the
-LLM proxy on `/`. It also exposes:
+It listens on `proxy.port`, defaults to port `8081`, and serves the LLM proxy
+from its internal `/` root. A deployment can expose it under the validated
+`proxy.base_path`; that prefix is an edge-facing mount point and is removed
+before routing. The direct health endpoint remains available for probes:
 
 ```text
 GET /health
 ```
 
+When `proxy.base_path` is `/remote`, `GET /remote/health` reaches the same
+handler through the public edge while `GET /health` remains available directly.
+
 ## Request Pipeline
 
 ```mermaid
 flowchart TD
-    A["Incoming LLM request"] --> Z["Optional request debug mirror"]
-    Z --> B["Bearer token middleware"]
-    B --> C{"Valid Prompt Gate token?"}
-    C -->|No| D["401 invalid_token or missing_auth_credentials"]
-    C -->|Yes| E["Load user profile and cache it in Redis"]
-    E --> E2["Provider route and method allowlist"]
+    A["Incoming LLM request"] --> P{"Canonical configured base path?"}
+    P -->|No| P2["404 without redirect"]
+    P -->|Yes| Z["Remove prefix; apply privacy-aware debug policy"]
+    Z --> B{"Credential kind"}
+    B -->|Prompt Gate API token| C["Validate token and versioned Redis cache"]
+    B -->|pgml_ ticket| ML["Parse ticket; validate canonical text-only request"]
+    B -->|Missing or invalid| D["401 invalid_token or missing_auth_credentials"]
+    ML --> MLC["Consume one-time ticket"]
+    MLC --> MLA["Reload account; acquire concurrency lease"]
+    C --> IP["Resolve client IP through explicit trusted proxies"]
+    MLA --> IP
+    IP --> E2["Provider route and method allowlist"]
     E2 --> F["External OPA decision (denials Redis-cached)"]
     F --> G{"Policy allows?"}
     G -->|No| H["403 policy_denied or 503 policy_unavailable"]
@@ -63,7 +74,9 @@ Streaming reservations remain held until the provider stream is complete.
 Partial or aborted streams keep the conservative charge instead of reconciling
 to an early input-only usage event. Prompt Gate also reads the final bounded
 Responses API SSE usage event because the current AI Bridge does not emit that
-usage callback when MCP is disabled.
+usage callback when its provider-facing MCP support is disabled. This refers to
+the upstream protocol feature inside AI Bridge, not the retired Prompt Gate
+managed MCP administration integration.
 
 Every provider POST body is parsed once with a strict, bounded JSON parser
 before policy, quota, or upstream dispatch. Duplicate keys (including
@@ -80,6 +93,10 @@ input variants fail closed. Inline text/base64/data URLs and ordinary local
 tool correlation IDs remain supported. This deliberately disables stateful
 provider continuations until Prompt Gate has a per-account ownership registry
 for them.
+
+Here `MCP` describes provider-request content understood by the upstream
+protocol. Prompt Gate's former managed MCP configuration, persistence, API, and
+frontend domain has been removed and is not reintroduced by this validation.
 
 ### Model Lab ticket path
 
@@ -161,8 +178,8 @@ Provider names must be lowercase DNS-like names such as `openai-main` or
 
 ## OPA policy behavior
 
-The proxy evaluates an external OPA decision after token authentication and
-before group, quota, and provider processing. Only denied decisions are cached
+The proxy evaluates an external OPA decision after credential authentication
+and before group, quota, and provider processing. Only denied decisions are cached
 in Redis: every allow is re-evaluated so a policy revocation takes effect on the
 next request without waiting for a cache TTL. OPA failures return
 `503 policy_unavailable` on a cache miss; explicit policy denials return
@@ -212,8 +229,9 @@ The proxy recorder stores:
 - tool invocation names, arguments, and errors reported by providers
 - the normalized client IP and its most recent use per user or service account
 
-This data powers the current-user dashboard and user or service-account usage
-totals. Prompt contents are never stored in PostgreSQL.
+This data powers the current-user and administrator dashboards, user or
+service-account usage totals, and durable top-tool rankings. Prompt contents
+are never stored in PostgreSQL.
 
 Usage events are injected into the `promptgate:usage:events` Redis Stream. When
 the worker processes an `interception_started` event, it upserts the
