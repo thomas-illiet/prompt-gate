@@ -102,9 +102,7 @@ async function confirmDelete() {
           @add-missing="openMissingDialog"
           @refresh="adminPricing.loadCheck"
         />
-      </v-col>
 
-      <v-col cols="12">
         <AdminPricingFallbackCard
           :fallback="adminPricing.fallback.value"
           :loading="adminPricing.saving.value"

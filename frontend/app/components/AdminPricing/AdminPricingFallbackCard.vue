@@ -67,11 +67,7 @@ function save() {
       </v-btn>
     </template>
 
-    <form
-      :id="formId"
-      class="admin-pricing-fallback"
-      @submit.prevent="save"
-    >
+    <form :id="formId" class="admin-pricing-fallback" @submit.prevent="save">
       <div class="admin-pricing-fallback__grid">
         <div class="admin-pricing-fallback__rate-card">
           <label
@@ -100,7 +96,7 @@ function save() {
             v-model.number="input"
             aria-label="Input USD per 1M tokens"
             class="admin-pricing-fallback__field"
-            density="comfortable"
+            density="compact"
             hide-details="auto"
             min="0"
             prefix="$"
@@ -139,7 +135,7 @@ function save() {
             v-model.number="output"
             aria-label="Output USD per 1M tokens"
             class="admin-pricing-fallback__field"
-            density="comfortable"
+            density="compact"
             hide-details="auto"
             min="0"
             prefix="$"
@@ -157,21 +153,22 @@ function save() {
 
 <style scoped>
 .admin-pricing-fallback {
-  padding: 4px 24px 24px;
+  padding: 12px 20px 16px;
 }
 
 .admin-pricing-fallback__grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(240px, 1fr));
   gap: 16px;
-  max-width: 1120px;
 }
 
 .admin-pricing-fallback__rate-card {
   display: grid;
-  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 0.9fr);
+  align-items: center;
+  gap: 12px;
   min-width: 0;
-  padding: 16px;
+  padding: 12px;
   border: 1px solid rgba(var(--app-shell-border), 0.52);
   border-radius: var(--app-card-radius);
   background: rgba(var(--app-shell-surface-muted), 0.58);
@@ -224,7 +221,12 @@ function save() {
 
 @media (max-width: 720px) {
   .admin-pricing-fallback {
-    padding: 8px 16px 16px;
+    padding: 12px 16px 16px;
+  }
+
+  .admin-pricing-fallback__rate-card {
+    grid-template-columns: 1fr;
+    gap: 10px;
   }
 }
 </style>
