@@ -332,6 +332,11 @@ html {
   outline-offset: 2px;
 }
 
+/* Vuetify focuses the non-interactive dialog container when it opens. */
+.v-dialog > .v-overlay__content[tabindex='-1']:focus-visible {
+  outline: none;
+}
+
 /* Vuetify already renders focus on the rounded field container. */
 .v-field :where(input, textarea, select):focus-visible {
   outline: none;
