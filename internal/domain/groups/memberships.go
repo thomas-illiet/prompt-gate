@@ -3,10 +3,14 @@ package groups
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
+	"time"
 
+	"promptgate/backend/internal/domain/notifications"
 	"promptgate/backend/internal/platform/configevents"
 
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
@@ -24,8 +28,12 @@ func (s *Service) AddMember(ctx context.Context, groupIDRaw, userID string) erro
 			return err
 		}
 		member := GroupMember{GroupID: groupID, UserID: userID}
-		if err := tx.WithContext(ctx).FirstOrCreate(&member, "group_id = ? AND user_id = ?", groupID, userID).Error; err != nil {
-			return fmt.Errorf("add group member: %w", err)
+		result := tx.WithContext(ctx).FirstOrCreate(&member, "group_id = ? AND user_id = ?", groupID, userID)
+		if result.Error != nil {
+			return fmt.Errorf("add group member: %w", result.Error)
+		}
+		if result.RowsAffected > 0 {
+			return s.enqueueGroupChange(ctx, tx, userID, []uuid.UUID{groupID}, nil)
 		}
 		return nil
 	})
@@ -49,8 +57,12 @@ func (s *Service) RemoveMember(ctx context.Context, groupIDRaw, userID string) e
 		if err := s.ensureUserExists(ctx, tx, userID); err != nil {
 			return err
 		}
-		if err := tx.WithContext(ctx).Where("group_id = ? AND user_id = ?", groupID, userID).Delete(&GroupMember{}).Error; err != nil {
-			return fmt.Errorf("remove group member: %w", err)
+		result := tx.WithContext(ctx).Where("group_id = ? AND user_id = ?", groupID, userID).Delete(&GroupMember{})
+		if result.Error != nil {
+			return fmt.Errorf("remove group member: %w", result.Error)
+		}
+		if result.RowsAffected > 0 {
+			return s.enqueueGroupChange(ctx, tx, userID, nil, []uuid.UUID{groupID})
 		}
 		return nil
 	})
@@ -114,6 +126,33 @@ func (s *Service) ReplaceUserGroups(ctx context.Context, userID string, groupIDs
 		if err := s.ensureGroupsExist(ctx, tx, groupIDs); err != nil {
 			return err
 		}
+		var previous []GroupMember
+		if err := tx.WithContext(ctx).Where("user_id = ?", userID).Find(&previous).Error; err != nil {
+			return err
+		}
+		previousSet := make(map[uuid.UUID]struct{}, len(previous))
+		for _, membership := range previous {
+			previousSet[membership.GroupID] = struct{}{}
+		}
+		desiredSet := make(map[uuid.UUID]struct{}, len(groupIDs))
+		for _, groupID := range groupIDs {
+			desiredSet[groupID] = struct{}{}
+		}
+		added := make([]uuid.UUID, 0)
+		removed := make([]uuid.UUID, 0)
+		for groupID := range desiredSet {
+			if _, exists := previousSet[groupID]; !exists {
+				added = append(added, groupID)
+			}
+		}
+		for groupID := range previousSet {
+			if _, exists := desiredSet[groupID]; !exists {
+				removed = append(removed, groupID)
+			}
+		}
+		if len(added) == 0 && len(removed) == 0 {
+			return nil
+		}
 		if err := tx.WithContext(ctx).Where("user_id = ?", userID).Delete(&GroupMember{}).Error; err != nil {
 			return fmt.Errorf("delete user group memberships: %w", err)
 		}
@@ -122,11 +161,53 @@ func (s *Service) ReplaceUserGroups(ctx context.Context, userID string, groupIDs
 				return fmt.Errorf("create user group membership: %w", err)
 			}
 		}
-		return nil
+		return s.enqueueGroupChange(ctx, tx, userID, added, removed)
 	})
 	if err != nil {
 		return nil, err
 	}
 	s.notifier.Notify(ctx, configevents.DomainGroups)
 	return s.ListUserGroups(ctx, userID)
+}
+
+func (s *Service) enqueueGroupChange(ctx context.Context, tx *gorm.DB, userID string, addedIDs, removedIDs []uuid.UUID) error {
+	if s.notifications == nil {
+		return nil
+	}
+	loadNames := func(ids []uuid.UUID) ([]string, error) {
+		if len(ids) == 0 {
+			return nil, nil
+		}
+		var groups []Group
+		if err := tx.WithContext(ctx).Where("id IN ?", ids).Find(&groups).Error; err != nil {
+			return nil, err
+		}
+		names := make([]string, 0, len(groups))
+		for _, group := range groups {
+			name := strings.TrimSpace(group.DisplayName)
+			if name == "" {
+				name = group.Name
+			}
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		return names, nil
+	}
+	added, err := loadNames(addedIDs)
+	if err != nil {
+		return err
+	}
+	removed, err := loadNames(removedIDs)
+	if err != nil {
+		return err
+	}
+	lines := []string{"# Access groups updated"}
+	if len(added) > 0 {
+		lines = append(lines, "", "**Added:** "+strings.Join(added, ", "))
+	}
+	if len(removed) > 0 {
+		lines = append(lines, "", "**Removed:** "+strings.Join(removed, ", "))
+	}
+	dedupe := fmt.Sprintf("group-change:%s:%d", userID, time.Now().UTC().UnixNano())
+	return s.notifications.EnqueueAutomaticTx(ctx, tx, notifications.KindGroupChanged, userID, dedupe, "Your access just changed 🧩", strings.Join(lines, "\n"))
 }

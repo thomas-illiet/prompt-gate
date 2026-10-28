@@ -71,19 +71,27 @@ type fileConfig struct {
 }
 
 type commonFileConfig struct {
-	Environment         string                `yaml:"environment"`
-	Log                 logFileConfig         `yaml:"log"`
-	Database            databaseFileConfig    `yaml:"database"`
-	Redis               redisFileConfig       `yaml:"redis"`
-	TLS                 tlsFileConfig         `yaml:"tls"`
-	Security            securityFileConfig    `yaml:"security"`
-	PublicURLs          publicURLsFileConfig  `yaml:"public_urls"`
-	Session             sessionFileConfig     `yaml:"session"`
-	CORS                corsFileConfig        `yaml:"cors"`
-	ModelLab            modelLabFileConfig    `yaml:"model_lab"`
-	UsageCost           usageCostFileConfig   `yaml:"usage_cost"`
-	Maintenance         maintenanceFileConfig `yaml:"maintenance"`
-	ProxyReloadDebounce durationValue         `yaml:"proxy_reload_debounce"`
+	Environment         string                 `yaml:"environment"`
+	Log                 logFileConfig          `yaml:"log"`
+	Database            databaseFileConfig     `yaml:"database"`
+	Redis               redisFileConfig        `yaml:"redis"`
+	TLS                 tlsFileConfig          `yaml:"tls"`
+	Security            securityFileConfig     `yaml:"security"`
+	PublicURLs          publicURLsFileConfig   `yaml:"public_urls"`
+	Session             sessionFileConfig      `yaml:"session"`
+	CORS                corsFileConfig         `yaml:"cors"`
+	ModelLab            modelLabFileConfig     `yaml:"model_lab"`
+	UsageCost           usageCostFileConfig    `yaml:"usage_cost"`
+	Maintenance         maintenanceFileConfig  `yaml:"maintenance"`
+	Notifications       notificationFileConfig `yaml:"notifications"`
+	ProxyReloadDebounce durationValue          `yaml:"proxy_reload_debounce"`
+}
+
+type notificationFileConfig struct {
+	Enabled     bool   `yaml:"enabled"`
+	FromName    string `yaml:"from_name"`
+	FromAddress string `yaml:"from_address"`
+	ReplyTo     string `yaml:"reply_to"`
 }
 
 type logFileConfig struct {
@@ -209,16 +217,34 @@ type otelFileConfig struct {
 }
 
 type workerFileConfig struct {
-	BatchSize          int64         `yaml:"batch_size"`
-	BlockTimeout       durationValue `yaml:"block_timeout"`
-	PendingIdleTimeout durationValue `yaml:"pending_idle_timeout"`
-	ConsumerName       string        `yaml:"consumer_name"`
+	BatchSize          int64          `yaml:"batch_size"`
+	BlockTimeout       durationValue  `yaml:"block_timeout"`
+	PendingIdleTimeout durationValue  `yaml:"pending_idle_timeout"`
+	ConsumerName       string         `yaml:"consumer_name"`
+	SMTP               smtpFileConfig `yaml:"smtp"`
+}
+
+type smtpFileConfig struct {
+	Host          string        `yaml:"host"`
+	Port          int           `yaml:"port"`
+	Username      string        `yaml:"username"`
+	Password      string        `yaml:"password"`
+	TLSMode       string        `yaml:"tls_mode"`
+	Timeout       durationValue `yaml:"timeout"`
+	PollInterval  durationValue `yaml:"poll_interval"`
+	BatchSize     int           `yaml:"batch_size"`
+	LeaseDuration durationValue `yaml:"lease_duration"`
+	MaxAttempts   int           `yaml:"max_attempts"`
+	RetryBase     durationValue `yaml:"retry_base"`
 }
 
 type scheduleFileConfig struct {
 	UsageRawRetention             durationValue `yaml:"usage_raw_retention"`
 	UsageRawCleanupInterval       durationValue `yaml:"usage_raw_cleanup_interval"`
 	SubscriptionQuotaSyncInterval durationValue `yaml:"subscription_quota_sync_interval"`
+	NotificationCleanupInterval   durationValue `yaml:"notification_cleanup_interval"`
+	NotificationRetention         durationValue `yaml:"notification_retention"`
+	QuotaNotificationInterval     durationValue `yaml:"quota_notification_interval"`
 }
 
 type migrateFileConfig struct{}

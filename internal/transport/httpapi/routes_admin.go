@@ -7,7 +7,7 @@ import (
 )
 
 func adminRoutes(handler *admin.Handler, openAPIHandler http.HandlerFunc) []routeDefinition {
-	routes := make([]routeDefinition, 0, 93)
+	routes := make([]routeDefinition, 0, 99)
 	routes = append(routes, adminUserRoutes(handler)...)
 	routes = append(routes, adminDashboardRoutes(handler)...)
 	routes = append(routes, adminQuotaResetRoutes(handler)...)
@@ -19,8 +19,20 @@ func adminRoutes(handler *admin.Handler, openAPIHandler http.HandlerFunc) []rout
 	routes = append(routes, adminMonitoringRoutes(handler)...)
 	routes = append(routes, adminFAQRoutes(handler)...)
 	routes = append(routes, adminSetupGuideRoutes(handler)...)
+	routes = append(routes, adminNotificationRoutes(handler)...)
 	routes = append(routes, adminDocumentationRoutes(openAPIHandler)...)
 	return routes
+}
+
+func adminNotificationRoutes(handler *admin.Handler) []routeDefinition {
+	return []routeDefinition{
+		{pattern: "POST /api/v1/admin/mail/preview", handler: handler.HandleAdminPreviewNotification},
+		{pattern: "POST /api/v1/admin/mail/audience", handler: handler.HandleAdminResolveNotificationAudience},
+		{pattern: "POST /api/v1/admin/mail/messages", handler: handler.HandleAdminSendNotification},
+		{pattern: "GET /api/v1/admin/mail/messages", handler: handler.HandleAdminListNotifications},
+		{pattern: "GET /api/v1/admin/mail/messages/{id}", handler: handler.HandleAdminGetNotification},
+		{pattern: "POST /api/v1/admin/mail/messages/{id}/retry-failed", handler: handler.HandleAdminRetryNotification},
+	}
 }
 
 func adminQuotaResetRoutes(handler *admin.Handler) []routeDefinition {

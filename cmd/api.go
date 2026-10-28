@@ -123,6 +123,7 @@ func newAPIHandler(a *app.App) http.Handler {
 		Groups:        a.Groups,
 		Providers:     a.Providers,
 		Monitoring:    a.Monitoring,
+		Notifications: a.Notifications,
 		ModelLab:      a.ModelLab,
 		Pricing:       a.Pricing,
 		Proxy:         a.Proxy,

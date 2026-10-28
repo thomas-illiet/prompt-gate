@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"promptgate/backend/internal/domain/auth"
+	"promptgate/backend/internal/domain/notifications"
 	"promptgate/backend/internal/domain/users"
 
 	"gorm.io/gorm"
@@ -141,6 +142,12 @@ func (s *Service) GrantQuotaResetCredit(
 		}
 		if err := tx.WithContext(ctx).Create(&event).Error; err != nil {
 			return fmt.Errorf("record quota reset grant: %w", err)
+		}
+		if s.notifications != nil {
+			body := fmt.Sprintf("# Quota reset credit granted\n\n**New balance:** %d reset credits.\n\nThis reset is available immediately and can be applied in one click when a quota window runs out.\n\nYour next monthly credit stays unchanged.", wallet.Available)
+			if err := s.notifications.EnqueueAutomaticTx(ctx, tx, notifications.KindQuotaReset, account.ID, "quota-reset:"+event.ID, "Good news: one extra life ✨", body); err != nil {
+				return err
+			}
 		}
 		summary, err = quotaResetSummaryWithWallet(ctx, tx, wallet, hasResettableQuota)
 		return err
@@ -518,6 +525,12 @@ func (s *Service) distributeMonthlyQuotaResetCredit(
 		}
 		if err := tx.WithContext(ctx).Create(&event).Error; err != nil {
 			return fmt.Errorf("record monthly quota reset grant: %w", err)
+		}
+		if s.notifications != nil {
+			body := fmt.Sprintf("# Monthly quota reset credit\n\n**New balance:** %d reset credits.\n\nThis reset is available immediately and can be applied in one click when a quota window runs out.\n\nYour next monthly credit will arrive on the usual schedule.", wallet.Available)
+			if err := s.notifications.EnqueueAutomaticTx(ctx, tx, notifications.KindQuotaReset, account.ID, "quota-reset:"+event.ID, "Good news: one extra life ✨", body); err != nil {
+				return err
+			}
 		}
 		outcome = monthlyQuotaResetGranted
 		return nil

@@ -146,6 +146,36 @@ type WorkerRuntimeConfig struct {
 	WorkerConsumerName       string
 }
 
+// NotificationConfig controls whether durable email notification enqueueing is active.
+type NotificationConfig struct {
+	NotificationsEnabled bool
+	MailFromName         string
+	MailFromAddress      string
+	MailReplyToAddress   string
+}
+
+// SMTPConfig configures the worker SMTP dispatcher.
+type SMTPConfig struct {
+	SMTPHost          string
+	SMTPPort          int
+	SMTPUsername      string
+	SMTPPassword      string
+	SMTPTLSMode       string
+	SMTPTimeout       time.Duration
+	MailPollInterval  time.Duration
+	MailBatchSize     int
+	MailLeaseDuration time.Duration
+	MailMaxAttempts   int
+	MailRetryBase     time.Duration
+}
+
+// NotificationScheduleConfig controls notification scans and retention jobs.
+type NotificationScheduleConfig struct {
+	NotificationCleanupInterval time.Duration
+	NotificationRetention       time.Duration
+	QuotaNotificationInterval   time.Duration
+}
+
 type UsageCostConfig struct {
 	Input     float64
 	Output    float64
@@ -198,6 +228,7 @@ type APIConfig struct {
 	APIHTTPConfig
 	ScheduleIntervals
 	ProxyRuntimeConfig
+	NotificationConfig
 	ModelLab  ModelLabConfig
 	UsageCost UsageCostConfig
 }
@@ -215,6 +246,10 @@ type ScheduleConfig struct {
 	SecretsConfig
 	ScheduleIntervals
 	ProxyRuntimeConfig
+	NotificationConfig
+	NotificationScheduleConfig
+	PublicURLConfig
+	UsageCost UsageCostConfig
 }
 
 // ProxyConfig contains the settings loaded by the proxy server.
@@ -239,6 +274,8 @@ type WorkerConfig struct {
 	DatabaseURLConfig
 	RedisConfig
 	WorkerRuntimeConfig
+	NotificationConfig
+	SMTPConfig
 }
 
 // MigrationConfig contains the settings loaded by database migrations.

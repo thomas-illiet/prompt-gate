@@ -491,6 +491,30 @@ service URLs.
 | `PATCH` | `/api/v1/admin/setup-guides/{id}` | Update one setup guide. |
 | `DELETE` | `/api/v1/admin/setup-guides/{id}` | Delete one setup guide. |
 
+### Email notifications
+
+Email administration is session-authenticated and restricted to administrators.
+Messages are queued in PostgreSQL and delivered asynchronously by the worker;
+an accepted response does not mean SMTP delivery has completed.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `POST` | `/api/v1/admin/mail/preview` | Render a subject and Markdown body into the final branded HTML and plain-text alternatives. |
+| `POST` | `/api/v1/admin/mail/audience` | Resolve users, access groups, all human accounts, or an external address. |
+| `POST` | `/api/v1/admin/mail/messages` | Queue a manual message. Requires an `Idempotency-Key`. |
+| `GET` | `/api/v1/admin/mail/messages` | List message history with type, status, search, and pagination filters. |
+| `GET` | `/api/v1/admin/mail/messages/{id}` | Inspect retained content and each recipient attempt. |
+| `POST` | `/api/v1/admin/mail/messages/{id}/retry-failed` | Requeue failed deliveries only. |
+
+The `all` audience includes every human account with a valid address, including
+inactive and expired accounts. Service accounts are never recipients. Group
+and user audiences are deduplicated by account. Markdown is sanitized on the
+server; line breaks in mail headers and invalid addresses are rejected. Manual
+messages and automatic events share the same responsive email shell. Welcome,
+quota, reset, access-group, token lifecycle, monthly-report, and manual emails
+each use dedicated English copy and artwork served from `/email/` on the public
+frontend URL.
+
 ## Error Shape
 
 Middleware failures use a simple JSON error shape:

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"promptgate/backend/internal/domain/auth"
+	"promptgate/backend/internal/domain/notifications"
 	"promptgate/backend/internal/platform/configevents"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -39,9 +40,10 @@ const (
 const tokenSearchCondition = "LOWER(name) LIKE ? OR LOWER(description) LIKE ? OR LOWER(CAST(id AS TEXT)) LIKE ?"
 
 type Service struct {
-	db        *gorm.DB
-	jwtSecret []byte
-	notifier  configevents.Notifier
+	db            *gorm.DB
+	jwtSecret     []byte
+	notifier      configevents.Notifier
+	notifications *notifications.Service
 }
 
 type UserResolver interface {
@@ -76,6 +78,11 @@ func (s *Service) SetNotifier(notifier configevents.Notifier) {
 		notifier = configevents.NoopNotifier{}
 	}
 	s.notifier = notifier
+}
+
+// SetNotificationService enables transactional token lifecycle notifications.
+func (s *Service) SetNotificationService(service *notifications.Service) {
+	s.notifications = service
 }
 
 // AutoMigrate migrates token tables.
@@ -161,7 +168,16 @@ func (s *Service) CreateToken(ctx context.Context, user auth.UserProfile, name, 
 		ExpiresAt:   expiresAt,
 	}
 
-	if err := s.db.WithContext(ctx).Create(&record).Error; err != nil {
+	if err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&record).Error; err != nil {
+			return err
+		}
+		if s.notifications == nil || user.Type != auth.UserTypeUser {
+			return nil
+		}
+		body := fmt.Sprintf("# Virtual key created\n\n**Key:** %s.\n\n**Expires:** %s UTC.\n\nKeep this key private. Revoke it as soon as the integration no longer needs access.", record.Name, record.ExpiresAt.UTC().Format("2 January 2006 at 15:04"))
+		return s.notifications.EnqueueAutomaticTx(ctx, tx, notifications.KindTokenCreated, user.ID, "token-created:"+record.ID, "Your new key is ready 🔑", body)
+	}); err != nil {
 		return CreateTokenResponse{}, err
 	}
 
@@ -315,23 +331,25 @@ func (s *Service) ListTokensPaged(ctx context.Context, userID string, params Lis
 
 // RevokeToken marks a token as revoked. Only the owning user can revoke their own token.
 func (s *Service) RevokeToken(ctx context.Context, userID, tokenID string) error {
-	var record Token
-	if err := s.db.WithContext(ctx).
-		Where("id = ? AND user_id = ?", tokenID, userID).
-		First(&record).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return ErrTokenNotFound
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var record Token
+		if err := tx.Where("id = ? AND user_id = ?", tokenID, userID).First(&record).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrTokenNotFound
+			}
+			return err
 		}
-		return err
-	}
-
-	if record.RevokedAt != nil {
-		return nil
-	}
-
-	now := time.Now().UTC()
-	record.RevokedAt = &now
-	if err := s.db.WithContext(ctx).Save(&record).Error; err != nil {
+		if record.RevokedAt != nil {
+			return nil
+		}
+		now := time.Now().UTC()
+		record.RevokedAt = &now
+		if err := tx.Save(&record).Error; err != nil {
+			return err
+		}
+		return s.enqueueTokenNotification(ctx, tx, record, notifications.KindTokenRevoked, "revoked")
+	})
+	if err != nil {
 		return err
 	}
 	s.notifier.Notify(ctx, configevents.DomainAuth)
@@ -355,27 +373,41 @@ func (s *Service) AdminListTokens(ctx context.Context, userID string) ([]TokenRe
 
 // AdminRevokeToken revokes any token by ID regardless of owner.
 func (s *Service) AdminRevokeToken(ctx context.Context, tokenID string) error {
-	var record Token
-	if err := s.db.WithContext(ctx).
-		Where("id = ?", tokenID).
-		First(&record).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return ErrTokenNotFound
+	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var record Token
+		if err := tx.Where("id = ?", tokenID).First(&record).Error; err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return ErrTokenNotFound
+			}
+			return err
 		}
-		return err
-	}
-
-	if record.RevokedAt != nil {
-		return nil
-	}
-
-	now := time.Now().UTC()
-	record.RevokedAt = &now
-	if err := s.db.WithContext(ctx).Save(&record).Error; err != nil {
+		if record.RevokedAt != nil {
+			return nil
+		}
+		now := time.Now().UTC()
+		record.RevokedAt = &now
+		if err := tx.Save(&record).Error; err != nil {
+			return err
+		}
+		return s.enqueueTokenNotification(ctx, tx, record, notifications.KindTokenRevoked, "revoked")
+	})
+	if err != nil {
 		return err
 	}
 	s.notifier.Notify(ctx, configevents.DomainAuth)
 	return nil
+}
+
+func (s *Service) enqueueTokenNotification(ctx context.Context, tx *gorm.DB, record Token, kind notifications.Kind, action string) error {
+	if s.notifications == nil {
+		return nil
+	}
+	body := fmt.Sprintf("# Virtual key %s\n\n**Key:** %s.\n\n**Status:** %s. It can no longer authenticate requests.\n\nRemove the old key from scripts and secret stores. If this change was unexpected, contact an administrator.", action, record.Name, action)
+	subject := "This key has finished its shift"
+	if kind == notifications.KindTokenRevoked {
+		subject = "Key revoked: access denied"
+	}
+	return s.notifications.EnqueueAutomaticTx(ctx, tx, kind, record.UserID, string(kind)+":"+record.ID, subject, body)
 }
 
 // normalizeListParams applies default token pagination and sorting values.

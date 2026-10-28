@@ -53,6 +53,7 @@ func LoadApi(configPath string) (APIConfig, error) {
 			QuotaResetDistributionInterval: time.Duration(file.Common.Maintenance.QuotaResetDistributionInterval),
 		},
 		ProxyRuntimeConfig: ProxyRuntimeConfig{ProxyReloadDebounce: time.Duration(file.Common.ProxyReloadDebounce)},
+		NotificationConfig: notificationConfig(file),
 		ModelLab:           file.modelLabConfig(),
 		UsageCost:          usageCost,
 	}
@@ -112,6 +113,9 @@ func LoadApi(configPath string) (APIConfig, error) {
 		return APIConfig{}, errors.New("common.security.secrets_key is required")
 	}
 	if err := validateModelLabConfig(cfg.ModelLab); err != nil {
+		return APIConfig{}, err
+	}
+	if err := validateNotificationConfig(cfg.NotificationConfig); err != nil {
 		return APIConfig{}, err
 	}
 	if err := validatePositiveDurations(

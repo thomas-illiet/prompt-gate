@@ -130,6 +130,11 @@ config:
       token_cleanup_interval: 1h
       user_access_expiration_interval: 1h
       quota_reset_distribution_interval: 1h
+    notifications:
+      enabled: false
+      from_name: Prompt Gate
+      from_address: no-reply@promptgate.local
+      reply_to: ""
     proxy_reload_debounce: 250ms
 
   api:
@@ -189,11 +194,26 @@ config:
     block_timeout: 5s
     pending_idle_timeout: 30s
     consumer_name: ""
+    smtp:
+      host: ""
+      port: 587
+      username: ""
+      password: ""
+      tls_mode: starttls
+      timeout: 10s
+      poll_interval: 5s
+      batch_size: 25
+      lease_duration: 1m
+      max_attempts: 8
+      retry_base: 1m
 
   schedule:
     usage_raw_retention: 2160h
     usage_raw_cleanup_interval: 1h
     subscription_quota_sync_interval: 5m
+    notification_cleanup_interval: 1h
+    notification_retention: 720h
+    quota_notification_interval: 5m
 
   migrate: {}
 

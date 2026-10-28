@@ -32,6 +32,8 @@ tags:
     description: Usage-cost pricing configuration.
   - name: Monitoring
     description: User-visible status and administrator-managed HTTP checks.
+  - name: Email notifications
+    description: Administrative email composition and durable delivery history.
   - name: FAQ
     description: Published and administrator-managed frequently asked questions.
   - name: Guides
@@ -1444,6 +1446,140 @@ paths:
         '200': { $ref: '#/components/responses/PricingCheckResponse' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/mail/preview:
+    post:
+      tags: [Email notifications]
+      operationId: previewAdminEmail
+      summary: Render the final branded email preview
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [subject, markdown]
+              properties:
+                subject: { type: string, minLength: 1, maxLength: 255 }
+                markdown: { type: string, minLength: 1 }
+      responses:
+        '200':
+          description: Safe text and HTML alternatives.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NotificationPreview' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/mail/audience:
+    post:
+      tags: [Email notifications]
+      operationId: resolveAdminEmailAudience
+      summary: Resolve and count an email audience
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/NotificationAudienceRequest' }
+      responses:
+        '200':
+          description: Resolved valid recipients and ignored-account count.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NotificationAudienceResult' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/mail/messages:
+    get:
+      tags: [Email notifications]
+      operationId: listAdminEmailMessages
+      summary: List durable email history
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Search'
+        - in: query
+          name: kind
+          schema: { $ref: '#/components/schemas/NotificationKind' }
+        - in: query
+          name: status
+          schema: { $ref: '#/components/schemas/NotificationDeliveryStatus' }
+        - $ref: '#/components/parameters/SortBy'
+        - $ref: '#/components/parameters/SortDir'
+      responses:
+        '200':
+          description: Paginated email history.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NotificationMessageList' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        default: { $ref: '#/components/responses/InternalError' }
+    post:
+      tags: [Email notifications]
+      operationId: sendAdminEmailMessage
+      summary: Enqueue an administrator-composed email
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 512 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SendNotificationRequest' }
+      responses:
+        '202':
+          description: Message accepted for asynchronous delivery.
+          content:
+            application/json:
+              schema: { type: object }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/mail/messages/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      tags: [Email notifications]
+      operationId: getAdminEmailMessage
+      summary: Get email content and recipient delivery attempts
+      responses:
+        '200':
+          description: Complete retained message detail.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NotificationMessageDetail' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/mail/messages/{id}/retry-failed:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    post:
+      tags: [Email notifications]
+      operationId: retryAdminEmailMessageFailures
+      summary: Requeue failed deliveries for one message
+      responses:
+        '200':
+          description: Number of deliveries requeued.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [retried]
+                properties:
+                  retried: { type: integer, format: int64, minimum: 0 }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
         default: { $ref: '#/components/responses/InternalError' }
   /api/v1/admin/monitoring/services:
     get:
@@ -3907,6 +4043,105 @@ components:
         items:
           type: array
           items: { $ref: '#/components/schemas/SetupGuide' }
+    NotificationKind:
+      type: string
+      enum: [welcome, quota_exhausted, quota_reset_granted, group_changed, token_created, token_expired, token_revoked, monthly_usage_report, manual]
+    NotificationDeliveryStatus:
+      type: string
+      enum: [pending, processing, sent, failed]
+    NotificationAudienceRequest:
+      type: object
+      additionalProperties: false
+      required: [mode, externalAddress, userIds, groupIds]
+      properties:
+        mode: { type: string, enum: [external, users, groups, all] }
+        externalAddress: { type: string }
+        userIds:
+          type: array
+          items: { type: string, format: uuid }
+        groupIds:
+          type: array
+          items: { type: string, format: uuid }
+    NotificationRecipient:
+      type: object
+      required: [userId, email, name]
+      properties:
+        userId: { type: string, format: uuid, nullable: true }
+        email: { type: string, format: email }
+        name: { type: string }
+    NotificationAudienceResult:
+      type: object
+      required: [recipients, valid, ignored]
+      properties:
+        recipients:
+          type: array
+          items: { $ref: '#/components/schemas/NotificationRecipient' }
+        valid: { type: integer, minimum: 0 }
+        ignored: { type: integer, minimum: 0 }
+    NotificationPreview:
+      type: object
+      required: [textBody, htmlBody]
+      properties:
+        textBody: { type: string }
+        htmlBody: { type: string }
+    SendNotificationRequest:
+      type: object
+      additionalProperties: false
+      required: [subject, markdown, audience]
+      properties:
+        subject: { type: string, minLength: 1, maxLength: 255 }
+        markdown: { type: string, minLength: 1 }
+        audience: { $ref: '#/components/schemas/NotificationAudienceRequest' }
+    NotificationMessageSummary:
+      type: object
+      required: [id, kind, subject, audience, recipients, pending, processing, sent, failed, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { $ref: '#/components/schemas/NotificationKind' }
+        subject: { type: string }
+        audience: { type: string }
+        recipients: { type: integer, format: int64 }
+        pending: { type: integer, format: int64 }
+        processing: { type: integer, format: int64 }
+        sent: { type: integer, format: int64 }
+        failed: { type: integer, format: int64 }
+        createdAt: { type: string, format: date-time }
+    NotificationDelivery:
+      type: object
+      required: [id, userId, recipientEmail, recipientName, status, attempts, nextAttemptAt, sentAt, lastAttemptAt, lastError]
+      properties:
+        id: { type: string, format: uuid }
+        userId: { type: string, format: uuid, nullable: true }
+        recipientEmail: { type: string, format: email }
+        recipientName: { type: string }
+        status: { $ref: '#/components/schemas/NotificationDeliveryStatus' }
+        attempts: { type: integer, minimum: 0 }
+        nextAttemptAt: { type: string, format: date-time }
+        sentAt: { type: string, format: date-time, nullable: true }
+        lastAttemptAt: { type: string, format: date-time, nullable: true }
+        lastError: { type: string }
+    NotificationMessageDetail:
+      allOf:
+        - $ref: '#/components/schemas/NotificationMessageSummary'
+        - type: object
+          required: [markdownBody, textBody, htmlBody, deliveries]
+          properties:
+            markdownBody: { type: string }
+            textBody: { type: string }
+            htmlBody: { type: string }
+            deliveries:
+              type: array
+              items: { $ref: '#/components/schemas/NotificationDelivery' }
+    NotificationMessageList:
+      type: object
+      required: [items, page, pageSize, total]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/NotificationMessageSummary' }
+        page: { type: integer, minimum: 1 }
+        pageSize: { type: integer, minimum: 1, maximum: 100 }
+        total: { type: integer, format: int64, minimum: 0 }
     ModelLabProtocol:
       type: string
       enum: [openai-chat, anthropic-messages]

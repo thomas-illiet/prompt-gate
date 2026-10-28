@@ -6,7 +6,9 @@ Prompt Gate is the Go service layer for Prompt Gate, a control plane
 for safely exposing LLM providers to teams. It combines browser login, role
 management, API token issuance, a provider-aware LLM proxy,
 external OPA policy checks, usage recording, quota enforcement, and scheduled
-maintenance jobs.
+maintenance jobs. An optional durable SMTP outbox notifies users about
+onboarding, quotas, reset credits, access groups, virtual keys, and monthly
+usage while exposing delivery operations to administrators.
 
 Model Lab is a chat-first workspace backed by the group-filtered model catalog.
 Users can run one model or select a second model for a side-by-side response;

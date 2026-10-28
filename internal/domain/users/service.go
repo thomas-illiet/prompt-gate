@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"promptgate/backend/internal/domain/auth"
+	"promptgate/backend/internal/domain/notifications"
 	"promptgate/backend/internal/platform/configevents"
 	"promptgate/backend/internal/platform/database"
 
@@ -168,10 +169,11 @@ type UpdateAccountNoteInput struct {
 }
 
 type Service struct {
-	db           *gorm.DB
-	notifier     configevents.Notifier
-	tokenRevoker tokenRevoker
-	now          func() time.Time
+	db            *gorm.DB
+	notifier      configevents.Notifier
+	tokenRevoker  tokenRevoker
+	notifications *notifications.Service
+	now           func() time.Time
 }
 
 type tokenConsumption struct {
@@ -202,6 +204,11 @@ func (s *Service) SetTokenRevoker(revoker tokenRevoker) {
 	s.tokenRevoker = revoker
 }
 
+// SetNotificationService enables transactional account notifications.
+func (s *Service) SetNotificationService(service *notifications.Service) {
+	s.notifications = service
+}
+
 // BeforeCreate generates a UUID for the user if one is not already set.
 func (u *User) BeforeCreate(_ *gorm.DB) error {
 	if strings.TrimSpace(u.ID) == "" {
@@ -230,6 +237,14 @@ func (s *Service) SyncUser(ctx context.Context, identity auth.Identity) (auth.Us
 	externalSub := identity.Sub
 
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		firstLogin := false
+		var previous User
+		previousErr := tx.WithContext(ctx).Where("type = ? AND preferred_username = ?", auth.UserTypeUser, identity.PreferredUsername).Take(&previous).Error
+		if errors.Is(previousErr, gorm.ErrRecordNotFound) || (previousErr == nil && previous.LastLoginAt == nil) {
+			firstLogin = true
+		} else if previousErr != nil {
+			return previousErr
+		}
 		role := defaultHumanRole
 		var total int64
 		if err := tx.Model(&User{}).Count(&total).Error; err != nil {
@@ -275,17 +290,33 @@ func (s *Service) SyncUser(ctx context.Context, identity auth.Identity) (auth.Us
 			return err
 		}
 
-		return tx.Where(
+		if err := tx.Where(
 			"type = ? AND preferred_username = ?",
 			auth.UserTypeUser,
 			identity.PreferredUsername,
-		).Take(&record).Error
+		).Take(&record).Error; err != nil {
+			return err
+		}
+		if firstLogin && s.notifications != nil {
+			body := "# Welcome to Prompt Gate\n\n**Choose a model.** Find the one that fits the work you want to do.\n\n**Check your quota.** See what is available before a longer session.\n\n**Send your first prompt.** Your workspace is ready when you are."
+			if err := s.notifications.EnqueueAutomaticTx(ctx, tx, notifications.KindWelcome, record.ID, "welcome:"+record.ID, "Welcome to the Green Room 🌱", body); err != nil {
+				return fmt.Errorf("enqueue welcome notification: %w", err)
+			}
+		}
+		return nil
 	})
 	if err != nil {
 		return auth.UserProfile{}, fmt.Errorf("sync user: %w", err)
 	}
 
 	return record.profile(), nil
+}
+
+func displayName(user User) string {
+	if value := strings.TrimSpace(user.Name); value != "" {
+		return value
+	}
+	return user.PreferredUsername
 }
 
 // CreateUser creates an active limited human user identified only by its exact SSO preferred username.

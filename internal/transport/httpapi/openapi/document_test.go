@@ -14,7 +14,7 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 )
 
-const expectedOperationCount = 119
+const expectedOperationCount = 125
 
 var expectedTagOrder = []string{
 	"Deployment",
@@ -29,6 +29,7 @@ var expectedTagOrder = []string{
 	"Providers",
 	"Pricing",
 	"Monitoring",
+	"Email notifications",
 	"FAQ",
 	"Guides",
 	"Model Lab",
@@ -118,11 +119,12 @@ func TestSourceDocumentOperationMetadataAndContracts(t *testing.T) {
 	}
 
 	noBodyMutations := map[string]struct{}{
-		"POST /api/v1/admin/monitoring/services/{id}/check": {},
-		"POST /api/v1/admin/users/{id}/quota-resets":        {},
-		"POST /api/v1/me/quota-resets/use":                  {},
-		"PUT /api/v1/admin/subscriptions/{id}/default":      {},
-		"PUT /api/v1/admin/groups/{id}/members/{userId}":    {},
+		"POST /api/v1/admin/mail/messages/{id}/retry-failed": {},
+		"POST /api/v1/admin/monitoring/services/{id}/check":  {},
+		"POST /api/v1/admin/users/{id}/quota-resets":         {},
+		"POST /api/v1/me/quota-resets/use":                   {},
+		"PUT /api/v1/admin/subscriptions/{id}/default":       {},
+		"PUT /api/v1/admin/groups/{id}/members/{userId}":     {},
 	}
 	operationIDs := make(map[string]string, expectedOperationCount)
 	operationCount := 0

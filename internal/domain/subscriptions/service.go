@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"promptgate/backend/internal/domain/auth"
+	"promptgate/backend/internal/domain/notifications"
 	"promptgate/backend/internal/domain/users"
 	"promptgate/backend/internal/platform/configevents"
 
@@ -30,8 +31,9 @@ const (
 )
 
 type Service struct {
-	db       *gorm.DB
-	notifier configevents.Notifier
+	db            *gorm.DB
+	notifier      configevents.Notifier
+	notifications *notifications.Service
 }
 
 type userPlanRow struct {
@@ -60,6 +62,11 @@ func (s *Service) SetNotifier(notifier configevents.Notifier) {
 		notifier = configevents.NoopNotifier{}
 	}
 	s.notifier = notifier
+}
+
+// SetNotificationService enables transactional quota notifications.
+func (s *Service) SetNotificationService(service *notifications.Service) {
+	s.notifications = service
 }
 
 func (s *Service) AutoMigrate(ctx context.Context) error {

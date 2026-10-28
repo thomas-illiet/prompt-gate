@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"promptgate/backend/internal/domain/auth"
+	"promptgate/backend/internal/domain/notifications"
 	"promptgate/backend/internal/domain/users"
 
 	"github.com/glebarez/sqlite"
@@ -162,6 +163,46 @@ func TestTokenCleanupRejectsInvalidIntervalAndPropagatesCancellation(t *testing.
 	cancel()
 	if err := tokenService.markExpired(ctx); !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected cleanup SQL to preserve context cancellation, got %v", err)
+	}
+}
+
+func TestTokenCleanupDoesNotNotifyRevokedTokensAgain(t *testing.T) {
+	tokenService, _, db, user := newTokenTestServices(t)
+	notificationService := notifications.NewService(db, true, "https://promptgate.example")
+	if err := notificationService.AutoMigrate(context.Background()); err != nil {
+		t.Fatalf("migrate notifications: %v", err)
+	}
+	tokenService.SetNotificationService(notificationService)
+
+	revokedAt := time.Now().UTC().Add(-2 * time.Hour)
+	record := Token{
+		ID:        "77777777-7777-7777-7777-777777777777",
+		UserID:    user.ID,
+		Name:      "already_revoked",
+		TokenHash: "already-revoked-hash",
+		ExpiresAt: time.Now().UTC().Add(-time.Hour),
+		RevokedAt: &revokedAt,
+	}
+	if err := db.Create(&record).Error; err != nil {
+		t.Fatalf("seed revoked token: %v", err)
+	}
+	if err := tokenService.markExpired(context.Background()); err != nil {
+		t.Fatalf("mark expired: %v", err)
+	}
+
+	var reloaded Token
+	if err := db.First(&reloaded, "id = ?", record.ID).Error; err != nil {
+		t.Fatalf("reload token: %v", err)
+	}
+	if reloaded.ExpiredAt != nil {
+		t.Fatal("revoked token was marked expired")
+	}
+	var messages int64
+	if err := db.Model(&notifications.Message{}).Where("kind = ?", notifications.KindTokenExpired).Count(&messages).Error; err != nil {
+		t.Fatalf("count expiration notifications: %v", err)
+	}
+	if messages != 0 {
+		t.Fatalf("expected no expiration notification, got %d", messages)
 	}
 }
 

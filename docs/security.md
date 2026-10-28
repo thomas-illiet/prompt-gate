@@ -119,6 +119,15 @@ Prompt Gate API tokens are signed JWTs and are used only for proxy
 authentication. The raw token is returned once at creation time. The database
 stores only a SHA-256 hash of the raw token plus metadata and lifecycle fields.
 
+Email delivery is disabled by default. When enabled, SMTP credentials live in
+the mounted configuration Secret and are consumed only by the worker process.
+The durable notification history contains recipient addresses, subjects,
+rendered bodies, delivery errors, and actor identifiers until retention cleanup;
+database access and backups must therefore be treated as sensitive. Markdown is
+rendered through Goldmark and Bluemonday, and mail headers reject CR/LF
+injection. Logs contain delivery IDs and aggregate counts, not bodies,
+recipient addresses, or SMTP secrets.
+
 Token validation checks:
 
 - JWT signature with `common.security.jwt_secret`

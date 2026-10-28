@@ -22,6 +22,8 @@ func LoadWorker(configPath string) (WorkerConfig, error) {
 			WorkerPendingIdleTimeout: time.Duration(file.Worker.PendingIdleTimeout),
 			WorkerConsumerName:       strings.TrimSpace(file.Worker.ConsumerName),
 		},
+		NotificationConfig: notificationConfig(file),
+		SMTPConfig:         smtpConfig(file),
 	}
 	if err := validateDatabaseConfig(cfg.DatabaseURLConfig); err != nil {
 		return WorkerConfig{}, err
@@ -40,6 +42,12 @@ func LoadWorker(configPath string) (WorkerConfig, error) {
 	}
 	if cfg.WorkerPendingIdleTimeout <= 0 {
 		return WorkerConfig{}, errors.New("worker.pending_idle_timeout must be greater than zero")
+	}
+	if err := validateNotificationConfig(cfg.NotificationConfig); err != nil {
+		return WorkerConfig{}, err
+	}
+	if err := validateSMTPConfig(cfg); err != nil {
+		return WorkerConfig{}, err
 	}
 	return cfg, nil
 }

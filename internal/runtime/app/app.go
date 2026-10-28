@@ -15,6 +15,7 @@ import (
 	"promptgate/backend/internal/domain/groups"
 	"promptgate/backend/internal/domain/modellab"
 	"promptgate/backend/internal/domain/monitoring"
+	"promptgate/backend/internal/domain/notifications"
 	"promptgate/backend/internal/domain/pricing"
 	"promptgate/backend/internal/domain/provider"
 	"promptgate/backend/internal/domain/proxy"
@@ -40,6 +41,7 @@ type App struct {
 	Groups        *groups.Service
 	Providers     *provider.Service
 	Monitoring    *monitoring.Service
+	Notifications *notifications.Service
 	ModelLab      *modellab.Service
 	Pricing       *pricing.Service
 	Proxy         *proxy.Service
@@ -55,21 +57,25 @@ type App struct {
 }
 
 type serviceConfig struct {
-	Database config.DatabaseURLConfig
-	TLS      config.TLSConfig
-	Redis    config.RedisConfig
-	Secrets  config.SecretsConfig
-	Usage    config.UsageCostConfig
+	Database      config.DatabaseURLConfig
+	TLS           config.TLSConfig
+	Redis         config.RedisConfig
+	Secrets       config.SecretsConfig
+	Usage         config.UsageCostConfig
+	Notifications config.NotificationConfig
+	FrontendURL   string
 }
 
 // New initializes the services and authentication components used by the API.
 func New(ctx context.Context, cfg config.APIConfig) (*App, error) {
 	application, err := newServices(ctx, serviceConfig{
-		Database: cfg.DatabaseURLConfig,
-		TLS:      cfg.TLSConfig,
-		Redis:    cfg.RedisConfig,
-		Secrets:  cfg.SecretsConfig,
-		Usage:    cfg.UsageCost,
+		Database:      cfg.DatabaseURLConfig,
+		TLS:           cfg.TLSConfig,
+		Redis:         cfg.RedisConfig,
+		Secrets:       cfg.SecretsConfig,
+		Usage:         cfg.UsageCost,
+		Notifications: cfg.NotificationConfig,
+		FrontendURL:   cfg.FrontendBaseURL,
 	}, &cfg)
 	if err != nil {
 		return nil, err
@@ -81,10 +87,13 @@ func New(ctx context.Context, cfg config.APIConfig) (*App, error) {
 // NewSchedule initializes the services used by scheduled background jobs.
 func NewSchedule(ctx context.Context, cfg config.ScheduleConfig) (*App, error) {
 	application, err := newServices(ctx, serviceConfig{
-		Database: cfg.DatabaseURLConfig,
-		TLS:      cfg.TLSConfig,
-		Redis:    cfg.RedisConfig,
-		Secrets:  cfg.SecretsConfig,
+		Database:      cfg.DatabaseURLConfig,
+		TLS:           cfg.TLSConfig,
+		Redis:         cfg.RedisConfig,
+		Secrets:       cfg.SecretsConfig,
+		Usage:         cfg.UsageCost,
+		Notifications: cfg.NotificationConfig,
+		FrontendURL:   cfg.FrontendBaseURL,
 	}, nil)
 	if err != nil {
 		return nil, err
@@ -119,6 +128,12 @@ func newServices(ctx context.Context, cfg serviceConfig, apiCfg *config.APIConfi
 	pricingService := pricing.NewService(db, providerService)
 	monitoringService := monitoring.NewService(db)
 	setupGuideService := setupguide.NewService(db)
+	notificationService := notifications.NewService(db, cfg.Notifications.NotificationsEnabled, cfg.FrontendURL)
+	notificationService.SetUsageCostRates(cfg.Usage.Input, cfg.Usage.Output, cfg.Usage.Embedding)
+	userService.SetNotificationService(notificationService)
+	tokenService.SetNotificationService(notificationService)
+	groupService.SetNotificationService(notificationService)
+	subscriptionService.SetNotificationService(notificationService)
 	caHTTPClient, err := platformhttp.NewWithCAFile(cfg.TLS.CAFile, 0)
 	if err != nil {
 		return nil, fmt.Errorf("initialize CA HTTP client: %w", err)
@@ -233,6 +248,7 @@ func newServices(ctx context.Context, cfg serviceConfig, apiCfg *config.APIConfi
 		Groups:        groupService,
 		Providers:     providerService,
 		Monitoring:    monitoringService,
+		Notifications: notificationService,
 		ModelLab:      modelLabService,
 		Pricing:       pricingService,
 		Proxy:         proxyService,
@@ -355,5 +371,63 @@ func (a *App) StartBackgroundJobs(ctx context.Context) {
 		a.StartQuotaResetDistribution(ctx, a.Schedule.QuotaResetDistributionInterval)
 		slog.Info("starting subscription quota maintenance goroutine", "interval", a.Schedule.SubscriptionQuotaSyncInterval)
 		a.StartQuotaStateMaintenance(ctx, a.Schedule.SubscriptionQuotaSyncInterval)
+	}
+	if a.Notifications != nil && a.Notifications.Enabled() {
+		a.StartNotificationJobs(ctx)
+	}
+}
+
+// StartNotificationJobs launches quota scans, monthly reports, and history cleanup.
+func (a *App) StartNotificationJobs(ctx context.Context) {
+	cleanup := func() {
+		count, err := a.Notifications.Cleanup(ctx, a.Schedule.NotificationRetention, time.Now().UTC())
+		if err != nil {
+			slog.Error("failed to clean notification history", "error", err)
+			return
+		}
+		if count > 0 {
+			slog.Info("cleaned notification history", "messages", count)
+		}
+	}
+	quota := func() {
+		count, err := a.Notifications.ScanQuotaExhaustion(ctx, time.Now().UTC())
+		if err != nil {
+			slog.Error("failed to scan quota notifications", "error", err)
+			return
+		}
+		if count > 0 {
+			slog.Info("enqueued quota exhaustion notifications", "messages", count)
+		}
+	}
+	location, err := time.LoadLocation("Europe/Paris")
+	if err != nil {
+		location = time.FixedZone("Europe/Paris", 3600)
+	}
+	reports := func() {
+		count, err := a.Notifications.GenerateMonthlyReports(ctx, time.Now(), location)
+		if err != nil {
+			slog.Error("failed to generate monthly usage reports", "error", err)
+			return
+		}
+		if count > 0 {
+			slog.Info("generated monthly usage reports", "messages", count)
+		}
+	}
+	go runScheduledNotificationJob(ctx, a.Schedule.NotificationCleanupInterval, cleanup)
+	go runScheduledNotificationJob(ctx, a.Schedule.QuotaNotificationInterval, quota)
+	go runScheduledNotificationJob(ctx, time.Hour, reports)
+}
+
+func runScheduledNotificationJob(ctx context.Context, interval time.Duration, run func()) {
+	run()
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			run()
+		}
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 
+	"promptgate/backend/internal/domain/notifications"
 	"promptgate/backend/internal/domain/provider"
 	"promptgate/backend/internal/domain/users"
 	"promptgate/backend/internal/platform/configevents"
@@ -33,8 +34,9 @@ var groupNameRegexp = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 const defaultAllModelsPattern = ".*"
 
 type Service struct {
-	db       *gorm.DB
-	notifier configevents.Notifier
+	db            *gorm.DB
+	notifier      configevents.Notifier
+	notifications *notifications.Service
 }
 
 // NewService creates an access group service backed by GORM.
@@ -48,6 +50,11 @@ func (s *Service) SetNotifier(notifier configevents.Notifier) {
 		notifier = configevents.NoopNotifier{}
 	}
 	s.notifier = notifier
+}
+
+// SetNotificationService enables transactional membership notifications.
+func (s *Service) SetNotificationService(service *notifications.Service) {
+	s.notifications = service
 }
 
 // AutoMigrate migrates access group tables.
@@ -364,6 +371,15 @@ func (s *Service) DeleteGroup(ctx context.Context, id string) error {
 		return ErrGroupNotFound
 	}
 	err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var memberships []GroupMember
+		if err := tx.WithContext(ctx).Where("group_id = ?", groupID).Find(&memberships).Error; err != nil {
+			return fmt.Errorf("load group members: %w", err)
+		}
+		for _, membership := range memberships {
+			if err := s.enqueueGroupChange(ctx, tx, membership.UserID, nil, []uuid.UUID{groupID}); err != nil {
+				return err
+			}
+		}
 		if err := tx.WithContext(ctx).Where("group_id = ?", groupID).Delete(&GroupProvider{}).Error; err != nil {
 			return fmt.Errorf("delete group providers: %w", err)
 		}

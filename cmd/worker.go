@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"promptgate/backend/internal/domain/notifications"
 	"promptgate/backend/internal/domain/proxy"
 	"promptgate/backend/internal/platform/config"
 	"promptgate/backend/internal/platform/database"
@@ -95,7 +96,30 @@ func runWorker(configPath string) error {
 		BlockTimeout:       cfg.WorkerBlockTimeout,
 		PendingIdleTimeout: cfg.WorkerPendingIdleTimeout,
 	}, logger)
-	if err := worker.Run(ctx); err != nil {
+	runCtx, cancelRun := context.WithCancel(ctx)
+	defer cancelRun()
+	errorsCh := make(chan error, 2)
+	go func() { errorsCh <- worker.Run(runCtx) }()
+	workers := 1
+	if cfg.NotificationsEnabled {
+		mailWorker := notifications.NewWorker(db, notifications.WorkerOptions{
+			FromName: cfg.MailFromName, FromAddress: cfg.MailFromAddress, ReplyTo: cfg.MailReplyToAddress,
+			Host: cfg.SMTPHost, Port: cfg.SMTPPort, Username: cfg.SMTPUsername, Password: cfg.SMTPPassword,
+			TLSMode: cfg.SMTPTLSMode, Timeout: cfg.SMTPTimeout, PollInterval: cfg.MailPollInterval,
+			BatchSize: cfg.MailBatchSize, LeaseDuration: cfg.MailLeaseDuration, MaxAttempts: cfg.MailMaxAttempts, RetryBase: cfg.MailRetryBase,
+		}, logger)
+		workers++
+		go func() { errorsCh <- mailWorker.Run(runCtx) }()
+	}
+	var runErr error
+	for range workers {
+		if err := <-errorsCh; err != nil && runErr == nil {
+			runErr = err
+			cancelRun()
+		}
+	}
+	if runErr != nil {
+		err := runErr
 		logger.Error("worker stopped with error", "error", err)
 		return err
 	}

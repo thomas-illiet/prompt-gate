@@ -20,6 +20,9 @@ It does not expose HTTP routes. It runs until the process receives `SIGINT` or
 | Subscription quota sync | `5m` | Copies live Redis quota counters into PostgreSQL for admin/profile display and audit. |
 | Quota reset distribution | `1h` | Idempotently grants the current UTC calendar month's reset credit to eligible users, up to the two-credit cap. |
 | Pending quota reset reconciliation | `5m` | Retries durable reset consumptions that have not yet been applied to Redis. |
+| Quota notification scan | `5m` | Detects fresh exhausted 5-hour or 7-day quota transitions and queues one consolidated email. |
+| Monthly usage reports | `1h` check | At 08:00 Europe/Paris on the first day, queues the previous month's report for active users with usage; later checks catch up if that window was missed. |
+| Notification cleanup | `1h` | Deletes complete message and delivery history older than its retention. |
 
 The access expiration job runs once immediately on startup and then repeats on
 its interval. The token cleanup job starts its ticker and runs on the first
@@ -96,6 +99,9 @@ Optional scheduler settings:
 | `schedule.usage_raw_cleanup_interval` | `1h` | Interval for raw proxy usage cleanup. |
 | `schedule.subscription_quota_sync_interval` | `5m` | Interval for syncing Redis subscription quota state to PostgreSQL. |
 | `common.maintenance.quota_reset_distribution_interval` | `1h` | Interval for idempotently granting the current UTC calendar month's reset credit. |
+| `schedule.quota_notification_interval` | `5m` | Interval for quota-exhaustion transition detection. |
+| `schedule.notification_cleanup_interval` | `1h` | Interval for retained email-history cleanup. |
+| `schedule.notification_retention` | `720h` | Retention for bodies, recipients, attempts, and errors. |
 
 Durations use Go duration syntax such as `30m`, `1h`, or `24h`.
 
