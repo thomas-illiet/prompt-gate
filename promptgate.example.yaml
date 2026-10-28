@@ -1,4 +1,6 @@
 common:
+  # Required deployment identity: development, staging, or production.
+  environment: development
   log:
     level: debug
   database:

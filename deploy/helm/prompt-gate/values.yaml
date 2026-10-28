@@ -78,6 +78,8 @@ configSecret:
 # Prompt Gate process.
 config:
   common:
+    # Required deployment identity shown throughout the UI.
+    environment: production
     log:
       level: info
     database:

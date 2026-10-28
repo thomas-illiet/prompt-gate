@@ -31,10 +31,12 @@ const currentTitle = computed(() =>
       />
 
       <div class="app-shell-bar__context">
-        <span class="app-shell-bar__eyebrow">
-          <span class="app-shell-bar__beacon" aria-hidden="true" />
-          {{ contextLabel }}
-        </span>
+        <div class="app-shell-bar__identity">
+          <span class="app-shell-bar__eyebrow">
+            <span class="app-shell-bar__beacon" aria-hidden="true" />
+            {{ contextLabel }}
+          </span>
+        </div>
         <v-breadcrumbs :items="breadcrumbs" class="app-shell-breadcrumbs">
           <template #divider>
             <v-icon icon="mdi-chevron-right" size="14" />
@@ -78,6 +80,11 @@ const currentTitle = computed(() =>
   align-content: center;
   gap: 1px;
   min-width: 0;
+}
+
+.app-shell-bar__identity {
+  display: flex;
+  align-items: center;
 }
 
 .app-shell-bar__eyebrow {

@@ -39,6 +39,7 @@ func assembledAPIRoutes(t *testing.T) map[string]struct{} {
 	adminHandler := admin.NewHandler(admin.Dependencies{})
 	openAPIHandler := func(http.ResponseWriter, *http.Request) {}
 	routeGroups := [][]routeDefinition{
+		publicRoutes(srv),
 		sessionRoutes(openAPIHandler),
 		limitedRoutes(srv),
 		userRoutes(srv),

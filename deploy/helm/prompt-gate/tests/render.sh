@@ -48,6 +48,7 @@ helm template audit "${chart_dir}" "${required_values[@]}" >"${default_render}"
 assert_contains "${default_render}" 'kind: Secret'
 assert_contains "${default_render}" '"promptgate.yaml": |'
 assert_contains "${default_render}" 'database:'
+assert_contains "${default_render}" 'environment: production'
 assert_contains "${default_render}" 'url: postgres://user:pass@db/promptgate'
 assert_contains "${default_render}" 'base_path: /remote'
 assert_contains "${default_render}" 'proxy: https://promptgate.example.com/remote'
@@ -57,6 +58,14 @@ if grep -Eq -- '^kind: ConfigMap$|envFrom:|PROMPTGATE_' "${default_render}"; the
   echo "runtime configuration must be mounted as YAML without PROMPTGATE_* environment variables" >&2
   exit 1
 fi
+
+invalid_environment="${tmp_dir}/invalid-environment.txt"
+if helm template audit "${chart_dir}" "${required_values[@]}" \
+  --set-string config.common.environment=qa >"${invalid_environment}" 2>&1; then
+  echo "expected an unsupported environment to fail rendering" >&2
+  exit 1
+fi
+assert_contains "${invalid_environment}" 'config.common.environment must be one of development, staging, or production'
 if [[ "$(grep -c '^kind: Ingress$' "${default_render}")" -ne 1 ]]; then
   echo "expected the chart to render one Ingress object" >&2
   exit 1

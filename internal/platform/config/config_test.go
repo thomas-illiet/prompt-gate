@@ -11,6 +11,7 @@ import (
 
 const validConfigYAML = `
 common:
+  environment: development
   database:
     url: postgres://postgres:postgres@localhost:5432/promptgate?sslmode=disable
   redis:
@@ -67,6 +68,9 @@ func TestLoadRuntimeConfigsFromYAML(t *testing.T) {
 	if api.Port != "8080" || proxy.Port != "8081" {
 		t.Fatalf("unexpected ports: api=%q proxy=%q", api.Port, proxy.Port)
 	}
+	if api.Environment != EnvironmentDevelopment {
+		t.Fatalf("unexpected environment %q", api.Environment)
+	}
 	if proxy.ProxyBasePath != "" {
 		t.Fatalf("expected root-mounted proxy by default, got base path %q", proxy.ProxyBasePath)
 	}
@@ -87,6 +91,37 @@ func TestLoadRuntimeConfigsFromYAML(t *testing.T) {
 	}
 	if api.OIDCRedirectURL != "http://localhost:8080/auth/callback" {
 		t.Fatalf("unexpected default OIDC redirect URL %q", api.OIDCRedirectURL)
+	}
+}
+
+func TestLoadConfigRequiresKnownEnvironment(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		environment string
+		want        string
+	}{
+		{name: "missing", want: "common.environment is required"},
+		{name: "unknown", environment: "qa", want: "common.environment must be one of"},
+		{name: "wrong case", environment: "Production", want: "common.environment must be one of"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			content := strings.Replace(validConfigYAML, "  environment: development\n", "", 1)
+			if test.environment != "" {
+				content = strings.Replace(content, "common:\n", "common:\n  environment: "+test.environment+"\n", 1)
+			}
+			if _, err := LoadApi(writeConfig(t, content)); err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("expected error containing %q, got %v", test.want, err)
+			}
+		})
+	}
+
+	for _, environment := range []string{"development", "staging", "production"} {
+		t.Run(environment, func(t *testing.T) {
+			content := strings.Replace(validConfigYAML, "environment: development", "environment: "+environment, 1)
+			if _, err := LoadApi(writeConfig(t, content)); err != nil {
+				t.Fatalf("load %s environment: %v", environment, err)
+			}
+		})
 	}
 }
 
@@ -460,6 +495,7 @@ func TestLegacyEnvironmentDoesNotOverrideYAML(t *testing.T) {
 func TestMigrationOnlyValidatesConsumedCommonConfig(t *testing.T) {
 	path := writeConfig(t, `
 common:
+  environment: development
   database:
     url: postgres://postgres:postgres@localhost:5432/promptgate
 `)

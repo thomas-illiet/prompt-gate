@@ -8,6 +8,8 @@ info:
 security:
   - sessionCookie: []
 tags:
+  - name: Deployment
+    description: Public deployment identity.
   - name: Current account
     description: Current account profile, quota, groups, and usage.
   - name: Dashboard
@@ -39,6 +41,25 @@ tags:
   - name: Documentation
     description: Runtime OpenAPI document.
 paths:
+  /api/v1/public/instance:
+    get:
+      tags: [Deployment]
+      operationId: getInstance
+      summary: Get the deployment environment
+      security: []
+      responses:
+        '200':
+          description: Deployment environment.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [environment]
+                properties:
+                  environment:
+                    type: string
+                    enum: [development, staging, production]
   /api/v1/me:
     get:
       tags: [Current account]

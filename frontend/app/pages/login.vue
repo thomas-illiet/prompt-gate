@@ -18,6 +18,10 @@ definePageMeta({
 
 const route = useRoute()
 const authStore = useAuthStore()
+const instanceStore = useInstanceStore()
+const environmentAccent = computed(
+  () => instancePresentation(instanceStore.environment).accent,
+)
 const { initializationError, isAuthenticated, isConfigured, isReady, user } =
   storeToRefs(authStore)
 const loginPending = shallowRef(false)
@@ -90,6 +94,11 @@ async function retrySession() {
 <template>
   <v-container fluid class="login-page">
     <div class="login-composition">
+      <div
+        class="login-composition__environment-line"
+        :style="{ backgroundColor: environmentAccent }"
+        aria-hidden="true"
+      />
       <LoginVisual
         :status-label="visualStatus.label"
         :status-tone="visualStatus.tone"
@@ -102,6 +111,7 @@ async function retrySession() {
         :is-ready="isReady"
         :login-pending="loginPending"
         :status-label="visualStatus.label"
+        :environment="instanceStore.environment"
         :user-label="sessionLabel"
         @retry="retrySession"
         @sign-in="signIn"
@@ -133,6 +143,15 @@ async function retrySession() {
     -8px -8px 0 rgba(var(--app-accent-butter), 0.13),
     0 44px 92px -48px
       rgba(var(--app-shell-shadow), var(--app-shell-shadow-strong-opacity));
+}
+
+.login-composition__environment-line {
+  position: absolute;
+  z-index: 5;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 6px;
 }
 
 @media (max-width: 960px) {

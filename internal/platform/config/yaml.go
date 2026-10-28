@@ -71,6 +71,7 @@ type fileConfig struct {
 }
 
 type commonFileConfig struct {
+	Environment         string                `yaml:"environment"`
 	Log                 logFileConfig         `yaml:"log"`
 	Database            databaseFileConfig    `yaml:"database"`
 	Redis               redisFileConfig       `yaml:"redis"`
@@ -470,6 +471,9 @@ func loadFile(configPath string) (fileConfig, error) {
 	baseDir := filepath.Dir(absPath)
 	cfg.Common.TLS.CAFile = resolveFilePath(baseDir, cfg.Common.TLS.CAFile)
 	cfg.API.StaticAssetsDir = resolveFilePath(baseDir, cfg.API.StaticAssetsDir)
+	if _, err := parseEnvironment(cfg.Common.Environment); err != nil {
+		return fileConfig{}, err
+	}
 	return cfg, nil
 }
 
@@ -497,6 +501,11 @@ func optionalDuration(value *durationValue) time.Duration {
 
 func (cfg fileConfig) logConfig() LogConfig {
 	return LogConfig{LogLevel: strings.TrimSpace(cfg.Common.Log.Level)}
+}
+
+func (cfg fileConfig) environmentConfig() EnvironmentConfig {
+	environment, _ := parseEnvironment(cfg.Common.Environment)
+	return EnvironmentConfig{Environment: environment}
 }
 
 func (cfg fileConfig) databaseConfig() DatabaseURLConfig {

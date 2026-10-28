@@ -2,6 +2,7 @@
 # credentials below are intentionally local defaults; never reuse them in a
 # shared or production environment.
 common:
+  environment: development
   log:
     level: debug
   database:

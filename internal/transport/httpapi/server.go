@@ -92,6 +92,13 @@ func NewHandler(deps Dependencies) http.Handler {
 	return withCommonMiddlewares(mux, deps.Config)
 }
 
+// handleInstance returns the non-sensitive identity of this deployment.
+func (s *server) handleInstance(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]config.Environment{
+		"environment": s.config.Environment,
+	})
+}
+
 // handleCurrentUser returns the authenticated user's profile from the request context.
 func handleCurrentUser(w http.ResponseWriter, r *http.Request) {
 	user, ok := auth.UserFromContext(r.Context())

@@ -24,6 +24,7 @@ Git because it contains credentials.
 
 | YAML path | Used by | Default | Description |
 | --- | --- | --- | --- |
+| `common.environment` | all | none | Required deployment identity: `development`, `staging`, or `production`. Displayed on the login page and in the application shell. |
 | `common.log.level` | all | `info` | `debug`, `info`, `warn`, `warning`, or `error`; unknown values fall back to `info`. |
 | `common.database.url` | all | none | Required PostgreSQL connection URL. |
 | `common.database.connection_max_lifetime` | all | `30m` | Maximum lifetime of a pooled PostgreSQL connection. |

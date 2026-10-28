@@ -4,6 +4,11 @@ This chart is designed to be rendered by Argo CD and deploys only the Prompt
 Gate application components. PostgreSQL, Redis, and OIDC/Keycloak must already
 exist outside the chart.
 
+Set `config.common.environment` to `development`, `staging`, or `production`
+for every release. Prompt Gate displays it on the login page and in the
+authenticated shell. The chart default is `production`; override it explicitly
+for development and staging releases.
+
 ## Argo CD Application Example
 
 ```yaml

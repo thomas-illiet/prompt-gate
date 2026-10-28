@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { InstanceEnvironmentState } from '~/types/instance'
+
 const props = defineProps<{
   canLogin: boolean
   canRetry: boolean
@@ -7,6 +9,7 @@ const props = defineProps<{
   isReady: boolean
   loginPending: boolean
   statusLabel: string
+  environment: InstanceEnvironmentState
   userLabel: string
 }>()
 
@@ -31,6 +34,7 @@ const emit = defineEmits<{
           <span>Prompt<span class="text-primary">Gate</span></span>
           <small>Secure model access</small>
         </div>
+        <AppEnvironmentBadge :environment="props.environment" />
       </div>
 
       <div class="login-copy">

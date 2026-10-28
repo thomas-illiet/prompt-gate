@@ -14,6 +14,32 @@ import (
 	"time"
 )
 
+// Environment identifies the deployment tier shown to Prompt Gate users.
+type Environment string
+
+const (
+	EnvironmentDevelopment Environment = "development"
+	EnvironmentStaging     Environment = "staging"
+	EnvironmentProduction  Environment = "production"
+)
+
+// EnvironmentConfig contains the deployment identity shared by all runtimes.
+type EnvironmentConfig struct {
+	Environment Environment
+}
+
+func parseEnvironment(value string) (Environment, error) {
+	environment := Environment(strings.TrimSpace(value))
+	switch environment {
+	case EnvironmentDevelopment, EnvironmentStaging, EnvironmentProduction:
+		return environment, nil
+	case "":
+		return "", errors.New("common.environment is required")
+	default:
+		return "", errors.New("common.environment must be one of development, staging, or production")
+	}
+}
+
 // LogConfig contains process-wide logging settings shared by every runtime.
 type LogConfig struct {
 	LogLevel string
@@ -159,6 +185,7 @@ type OTelConfig struct {
 
 // APIConfig contains the settings loaded by the management API runtime.
 type APIConfig struct {
+	EnvironmentConfig
 	LogConfig
 	DatabaseURLConfig
 	TLSConfig

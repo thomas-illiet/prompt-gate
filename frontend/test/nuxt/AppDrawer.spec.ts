@@ -103,6 +103,9 @@ function mountDrawer(mode: 'admin' | 'user') {
       plugins: [vuetify],
       stubs: {
         AppDrawerItem: DrawerItemStub,
+        AppEnvironmentBadge: {
+          template: '<span data-test="environment-badge">Development</span>',
+        },
         VIcon: true,
         VList: { template: '<div><slot /></div>' },
         VListItem: ListItemStub,
@@ -149,7 +152,10 @@ describe('AppDrawer', () => {
     expect(wrapper.get('aside').attributes('aria-label')).toBe(
       'Primary navigation',
     )
-    expect(wrapper.text()).toContain('Secure model access')
+    expect(wrapper.get('[data-test="environment-badge"]').text()).toBe(
+      'Development',
+    )
+    expect(wrapper.text()).not.toContain('Secure model access')
   })
 
   it('does not expose administration from the user menu to other roles', () => {
@@ -202,7 +208,10 @@ describe('AppDrawer', () => {
     expect(wrapper.get('aside').attributes('aria-label')).toBe(
       'Administration navigation',
     )
-    expect(wrapper.text()).toContain('Admin console')
+    expect(wrapper.get('[data-test="environment-badge"]').text()).toBe(
+      'Development',
+    )
+    expect(wrapper.text()).not.toContain('Admin console')
     expect(wrapper.text()).not.toContain('Secure model access')
   })
 })

@@ -23,6 +23,7 @@ func LoadApi(configPath string) (APIConfig, error) {
 	}
 
 	cfg := APIConfig{
+		EnvironmentConfig: file.environmentConfig(),
 		LogConfig:         file.logConfig(),
 		DatabaseURLConfig: file.databaseConfig(),
 		TLSConfig:         file.tlsConfig(),

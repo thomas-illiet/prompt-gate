@@ -1,6 +1,7 @@
 # Shared, disposable service endpoints used by the Go integration tests.
 # Tests skip locally when these services are unavailable; CI starts both.
 common:
+  environment: development
   log:
     level: debug
   database:

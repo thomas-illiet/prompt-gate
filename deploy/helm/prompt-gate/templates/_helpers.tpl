@@ -112,6 +112,10 @@ path is equivalent to no application base path.
 {{/* Render the complete runtime document and derive public URLs from Ingress. */}}
 {{- define "prompt-gate.runtimeConfig" -}}
 {{- $config := deepCopy .Values.config -}}
+{{- $environment := required "config.common.environment must not be empty" $config.common.environment -}}
+{{- if not (has $environment (list "development" "staging" "production")) -}}
+{{- fail "config.common.environment must be one of development, staging, or production" -}}
+{{- end -}}
 {{- $configuredBasePath := trim (default "" $config.proxy.base_path) -}}
 {{- $configuredProxyURL := trim (default "" $config.common.public_urls.proxy) -}}
 {{- $_ := set $config.proxy "base_path" $configuredBasePath -}}

@@ -10,6 +10,7 @@ const { mode } = defineProps<{
 
 const router = useRouter()
 const authStore = useAuthStore()
+const instanceStore = useInstanceStore()
 const { user } = storeToRefs(authStore)
 const drawerState = useState('drawer', () => true)
 
@@ -23,9 +24,6 @@ const drawer = computed({
   },
 })
 const rail = computed(() => !drawerState.value && !mobile.value)
-const brandSubtitle = computed(() =>
-  mode === 'admin' ? 'Admin console' : 'Secure model access',
-)
 const navigationLabel = computed(() =>
   mode === 'admin' ? 'Administration navigation' : 'Primary navigation',
 )
@@ -178,8 +176,10 @@ drawerState.value = lgAndUp.value && width.value !== 1280
             Prompt<span class="text-primary">Gate</span>
           </v-list-item-title>
           <v-list-item-subtitle class="drawer-brand__subtitle">
-            <span class="drawer-brand__beacon" aria-hidden="true" />
-            {{ brandSubtitle }}
+            <AppEnvironmentBadge
+              :environment="instanceStore.environment"
+              subtle
+            />
           </v-list-item-subtitle>
         </v-list-item>
       </v-list>
@@ -357,21 +357,7 @@ drawerState.value = lgAndUp.value && width.value !== 1280
   .drawer-brand__subtitle {
     display: flex;
     align-items: center;
-    gap: 7px;
     margin-top: -2px;
-    font-family: var(--app-font-mono);
-    font-size: 0.64rem;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-  }
-  .drawer-brand__beacon {
-    display: inline-block;
-    width: 6px;
-    height: 6px;
-    flex: 0 0 auto;
-    border-radius: 50%;
-    background: rgb(var(--v-theme-primary));
-    animation: app-signal-pulse 2.4s var(--app-ease-standard) infinite;
   }
   .v-list-group__items {
     --v-list-indent: 28px;

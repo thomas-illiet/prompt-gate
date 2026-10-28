@@ -14,9 +14,10 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 )
 
-const expectedOperationCount = 118
+const expectedOperationCount = 119
 
 var expectedTagOrder = []string{
+	"Deployment",
 	"Current account",
 	"Dashboard",
 	"Quota resets",
@@ -94,6 +95,9 @@ func TestSourceDocumentUsesOnlyBrowserSessionSecurity(t *testing.T) {
 	for path, item := range document.Paths.Map() {
 		for method, operation := range item.Operations() {
 			if operation.Security != nil {
+				if path == "/api/v1/public/instance" && len(*operation.Security) == 0 {
+					continue
+				}
 				checkRequirements(strings.ToUpper(method)+" "+path, *operation.Security)
 			}
 		}

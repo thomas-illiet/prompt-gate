@@ -7,6 +7,10 @@ const props = defineProps<{
 }>()
 
 const authStore = useAuthStore()
+const instanceStore = useInstanceStore()
+const environmentAccent = computed(
+  () => instancePresentation(instanceStore.environment).accent,
+)
 const quotaExhaustionDialog = useQuotaExhaustionDialog()
 const isLimited = computed(
   () => authStore.user?.isActive === true && authStore.user.role === 'limited',
@@ -21,6 +25,11 @@ const contextLabel = computed(() =>
 
 <template>
   <v-app>
+    <div
+      class="app-authenticated-shell__environment-line"
+      :style="{ backgroundColor: environmentAccent }"
+      aria-hidden="true"
+    />
     <AppDrawer :mode="props.mode" />
     <AppBar :context-label="contextLabel" />
     <v-main class="app-authenticated-shell__main">
@@ -48,6 +57,15 @@ const contextLabel = computed(() =>
 </template>
 
 <style scoped>
+.app-authenticated-shell__environment-line {
+  position: fixed;
+  z-index: 2500;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 4px;
+}
+
 .app-authenticated-shell__main {
   padding-top: 0;
   padding-bottom: 0;
