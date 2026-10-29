@@ -312,13 +312,6 @@ func (s *Service) SyncUser(ctx context.Context, identity auth.Identity) (auth.Us
 	return record.profile(), nil
 }
 
-func displayName(user User) string {
-	if value := strings.TrimSpace(user.Name); value != "" {
-		return value
-	}
-	return user.PreferredUsername
-}
-
 // CreateUser creates an active limited human user identified only by its exact SSO preferred username.
 func (s *Service) CreateUser(ctx context.Context, preferredUsername string) (AdminUser, error) {
 	preferredUsername = strings.TrimSpace(preferredUsername)
