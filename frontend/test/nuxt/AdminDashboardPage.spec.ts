@@ -11,16 +11,14 @@ import AdminDashboardOverview from '../../app/components/AdminDashboards/AdminDa
 import AdminUsageDashboard from '../../app/components/AdminDashboards/AdminUsageDashboard.vue'
 import AdminQuotaResetsDashboard from '../../app/components/AdminQuotaResets/AdminQuotaResetsDashboard.vue'
 
-const { definePageMetaMock, routeQuery, useRouteMock } = vi.hoisted(() => {
+const { routeQuery, useRouteMock } = vi.hoisted(() => {
   const routeQuery: Record<string, string> = {}
   return {
-    definePageMetaMock: vi.fn(),
     routeQuery,
     useRouteMock: vi.fn(() => ({ query: routeQuery })),
   }
 })
 
-mockNuxtImport('definePageMeta', () => definePageMetaMock)
 mockNuxtImport('useRoute', () => useRouteMock)
 
 let routerReplace: ReturnType<typeof vi.spyOn>
@@ -49,7 +47,7 @@ describe('AdminDashboardPage', () => {
       },
     })
 
-    expect(definePageMetaMock).toHaveBeenCalledWith({
+    expect(useRouter().getRoutes().find(route => route.path === '/admin/dashboard')?.meta).toMatchObject({
       requiredRoles: ['admin'],
       title: 'Overview',
       icon: 'mdi-view-dashboard-outline',
@@ -89,6 +87,7 @@ describe('AdminDashboardPage', () => {
     const routes = [
       {
         component: AdminDashboardPage,
+        path: '/admin/dashboard',
         meta: {
           drawerIndex: 0,
           drawerSection: 'Dashboards',
@@ -100,6 +99,7 @@ describe('AdminDashboardPage', () => {
       },
       {
         component: AdminUsagePage,
+        path: '/admin/usage',
         meta: {
           drawerIndex: 1,
           drawerSection: 'Dashboards',
@@ -111,6 +111,7 @@ describe('AdminDashboardPage', () => {
       },
       {
         component: AdminActivityPage,
+        path: '/admin/activity',
         meta: {
           drawerIndex: 2,
           drawerSection: 'Dashboards',
@@ -122,6 +123,7 @@ describe('AdminDashboardPage', () => {
       },
       {
         component: AdminQuotaResetsPage,
+        path: '/admin/quota-resets',
         meta: {
           drawerIndex: 3,
           drawerSection: 'Dashboards',
@@ -137,7 +139,7 @@ describe('AdminDashboardPage', () => {
       mount(route.component, {
         global: { stubs: { [route.stub]: true } },
       })
-      expect(definePageMetaMock).toHaveBeenCalledWith(route.meta)
+      expect(useRouter().getRoutes().find(record => record.path === route.path)?.meta).toMatchObject(route.meta)
     }
   })
 

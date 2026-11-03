@@ -39,6 +39,7 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
       automountServiceAccountToken: false
       serviceAccountName: {{ include "prompt-gate.serviceAccountName" . }}
       {{- include "prompt-gate.imagePullSecrets" . | nindent 6 }}

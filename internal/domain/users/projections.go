@@ -7,6 +7,10 @@ import (
 )
 
 func (u *User) profile() auth.UserProfile {
+	role := u.Role
+	if u.ExpiresAt != nil && !time.Now().UTC().Before(*u.ExpiresAt) {
+		role = auth.RoleNone
+	}
 	var sub string
 	if u.ExternalSub != nil {
 		sub = *u.ExternalSub
@@ -23,7 +27,8 @@ func (u *User) profile() auth.UserProfile {
 		Email:             u.Email,
 		Name:              u.Name,
 		Type:              u.Type,
-		Role:              u.Role,
+		Role:              role,
+		ExpiresAt:         u.ExpiresAt,
 		IsActive:          u.IsActive,
 		LastLoginAt:       lastLoginAt,
 	}

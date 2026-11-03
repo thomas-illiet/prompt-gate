@@ -11,11 +11,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"promptgate/backend/internal/domain/provider"
 	"promptgate/backend/internal/platform/redisstore"
 	"promptgate/backend/internal/platform/testconfig"
-
-	"github.com/google/uuid"
 )
 
 func TestRedisTicketConsumptionIsAtomicAcrossConcurrentClients(t *testing.T) {
@@ -25,7 +25,7 @@ func TestRedisTicketConsumptionIsAtomicAcrossConcurrentClients(t *testing.T) {
 	defer cancel()
 	store, err := redisstore.NewRequired(ctx, rawRedisURL, time.Minute, nil)
 	if err != nil {
-		t.Skipf("integration Redis from %s is unavailable: %v", testconfig.Path(t), err)
+		testconfig.Unavailable(t, "Redis", err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"sync"
 	"time"
 
@@ -173,7 +174,10 @@ func (s *SessionStore) Session(ctx context.Context, sessionID string) (Session, 
 		var session Session
 		key := redisstore.AuthSessionKey(sessionID)
 		ok, err := s.redis.GetJSON(ctx, key, &session)
-		if err != nil || !ok || time.Now().After(session.ExpiresAt) {
+		if err != nil || !ok {
+			return Session{}, false
+		}
+		if !time.Now().Before(session.ExpiresAt) {
 			_ = s.redis.Del(ctx, key)
 			return Session{}, false
 		}
@@ -202,17 +206,21 @@ func (s *SessionStore) refreshSessionUser(ctx context.Context, session Session) 
 
 	user, err := s.userResolver.UserByID(ctx, session.UserID)
 	if err != nil {
-		s.DeleteSession(session.ID)
+		if errors.Is(err, ErrUserNotFound) {
+			s.DeleteSession(session.ID)
+		}
 		return Session{}, false
 	}
 
 	session.User = user
+	if !time.Now().Before(session.ExpiresAt) {
+		return Session{}, false
+	}
 	if s.redis.Enabled() {
-		if err := s.redis.SetJSON(ctx, redisstore.AuthSessionKey(session.ID), session, time.Until(session.ExpiresAt)); err != nil {
-			s.DeleteSession(session.ID)
-			return Session{}, false
-		}
-		return session, true
+		// The user profile is loaded on every request. Never rewrite the stored
+		// session here: a concurrent logout may already have deleted it.
+		exists, err := s.redis.Client().Exists(ctx, redisstore.AuthSessionKey(session.ID)).Result()
+		return session, err == nil && exists == 1
 	}
 
 	s.mu.Lock()
@@ -220,6 +228,9 @@ func (s *SessionStore) refreshSessionUser(ctx context.Context, session Session) 
 		existing.User = user
 		s.sessions[session.ID] = existing
 		session = existing
+	} else {
+		s.mu.Unlock()
+		return Session{}, false
 	}
 	s.mu.Unlock()
 

@@ -66,5 +66,6 @@ func withCommonMiddlewares(handler http.Handler, cfg config.APIConfig) http.Hand
 		middleware.RequestLogger(slog.Default()),
 		middleware.SecurityHeaders(),
 		middleware.CORS(cfg.CORSAllowedOrigins),
+		middleware.BrowserRequests(append(append([]string{}, cfg.CORSAllowedOrigins...), cfg.BackendBaseURL, cfg.FrontendBaseURL)),
 	))
 }

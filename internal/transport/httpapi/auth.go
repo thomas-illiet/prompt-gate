@@ -1,8 +1,10 @@
 package httpapi
 
 import (
+	"crypto/subtle"
 	"log/slog"
 	"net/http"
+	"net/url"
 
 	"gorm.io/gorm"
 
@@ -19,9 +21,11 @@ import (
 	"promptgate/backend/internal/domain/tokens"
 	"promptgate/backend/internal/domain/users"
 	"promptgate/backend/internal/platform/config"
+	"promptgate/backend/internal/platform/redisstore"
 )
 
 type server struct {
+	redis         *redisstore.Store
 	config        config.APIConfig
 	db            *gorm.DB
 	oidcService   *auth.OIDCService
@@ -69,6 +73,13 @@ func (s *server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	parsed, err := url.Parse(loginURL)
+	if err != nil || parsed.Query().Get("state") == "" {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "authentication_unavailable"})
+		return
+	}
+	http.SetCookie(w, &http.Cookie{Name: oidcStateCookieName(s.config), Value: parsed.Query().Get("state"),
+		Path: "/", HttpOnly: true, Secure: s.config.SessionCookieSecure(), SameSite: http.SameSiteLaxMode, MaxAge: 600})
 	http.Redirect(w, r, loginURL, http.StatusFound)
 }
 
@@ -77,6 +88,13 @@ func (s *server) handleCallback(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 	state := query.Get("state")
 	redirectPath := query.Get("redirect")
+	cookie, cookieErr := r.Cookie(oidcStateCookieName(s.config))
+	if cookieErr != nil || state == "" || subtle.ConstantTimeCompare([]byte(cookie.Value), []byte(state)) != 1 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_authorization_state"})
+		return
+	}
+	http.SetCookie(w, &http.Cookie{Name: oidcStateCookieName(s.config), Path: "/", HttpOnly: true,
+		Secure: s.config.SessionCookieSecure(), SameSite: http.SameSiteLaxMode, MaxAge: -1})
 
 	if query.Get("error") != "" {
 		frontendBaseURL := ""
@@ -160,6 +178,13 @@ func (s *server) handleCallback(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, redirectURL, http.StatusFound)
 }
 
+func oidcStateCookieName(cfg config.APIConfig) string {
+	if cfg.SessionCookieSecure() {
+		return "__Host-promptgate_oidc_state"
+	}
+	return "promptgate_oidc_state"
+}
+
 // handleLogout deletes the current session and redirects to the OIDC end-session or frontend login page.
 func (s *server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	redirectPath := r.URL.Query().Get("redirect")
@@ -213,7 +238,7 @@ func (s *server) handleSession(w http.ResponseWriter, r *http.Request) {
 	session, ok := sessionFromRequest(r, s.sessionStore, s.config.SessionCookieName)
 	if !ok {
 		slog.Debug("session lookup failed")
-		clearSessionCookie(w, s.config)
+		// A temporary profile-store failure must not erase a still-valid browser cookie.
 		writeJSON(w, http.StatusUnauthorized, map[string]string{
 			"error": "not authenticated",
 		})

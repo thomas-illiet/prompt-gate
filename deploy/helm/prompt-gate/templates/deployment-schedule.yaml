@@ -11,6 +11,8 @@ metadata:
     argocd.argoproj.io/sync-wave: {{ .Values.argoCd.syncWaves.workload | quote }}
   {{- end }}
 spec:
+  strategy:
+    type: Recreate
   replicas: {{ .Values.schedule.replicas }}
   selector:
     matchLabels:
@@ -39,6 +41,7 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
       automountServiceAccountToken: false
       serviceAccountName: {{ include "prompt-gate.serviceAccountName" . }}
       {{- include "prompt-gate.imagePullSecrets" . | nindent 6 }}
@@ -53,6 +56,20 @@ spec:
             - --config
             - /etc/prompt-gate/promptgate.yaml
             - schedule
+          ports:
+            - name: health
+              containerPort: {{ include "prompt-gate.healthPort" (dict "root" . "component" "schedule") }}
+          livenessProbe:
+            httpGet:
+              path: /live
+              port: health
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: health
+            periodSeconds: 10
           securityContext:
             {{- include "prompt-gate.containerSecurityContext" . | nindent 12 }}
           resources:

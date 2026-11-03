@@ -9,14 +9,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
+
 	"promptgate/backend/internal/domain/auth"
 	"promptgate/backend/internal/domain/users"
 	"promptgate/backend/internal/platform/redisstore"
 	"promptgate/backend/internal/platform/testconfig"
-
-	"github.com/alicebob/miniredis/v2"
-	"gorm.io/driver/postgres"
-	"gorm.io/gorm"
 )
 
 // TestQuotaResetPostgresConcurrentGrantsRespectMaximum proves that the
@@ -32,7 +32,7 @@ func TestQuotaResetPostgresConcurrentGrantsRespectMaximum(t *testing.T) {
 
 	baseDB, err := gorm.Open(postgres.Open(databaseURL), &gorm.Config{})
 	if err != nil {
-		t.Skipf("PostgreSQL integration database is unavailable: %v", err)
+		testconfig.Unavailable(t, "PostgreSQL", err)
 	}
 	baseSQL, err := baseDB.DB()
 	if err != nil {

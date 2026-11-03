@@ -6,10 +6,11 @@ import (
 	"log/slog"
 	"time"
 
+	"gorm.io/gorm"
+
 	"promptgate/backend/internal/domain/auth"
 	"promptgate/backend/internal/platform/configevents"
-
-	"gorm.io/gorm"
+	"promptgate/backend/internal/platform/health"
 )
 
 // ExpireAccess removes roles whose access expiration date has passed and revokes their tokens.
@@ -57,7 +58,7 @@ func (s *Service) StartAccessExpiration(ctx context.Context, interval time.Durat
 	}
 
 	go func() {
-		s.expireAccessLog(ctx)
+		health.Run(ctx, "access-expiration", interval, func() { s.expireAccessLog(ctx) })
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		for {
@@ -65,7 +66,7 @@ func (s *Service) StartAccessExpiration(ctx context.Context, interval time.Durat
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				s.expireAccessLog(ctx)
+				health.Run(ctx, "access-expiration", interval, func() { s.expireAccessLog(ctx) })
 			}
 		}
 	}()

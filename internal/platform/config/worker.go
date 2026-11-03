@@ -17,6 +17,7 @@ func LoadWorker(configPath string) (WorkerConfig, error) {
 		DatabaseURLConfig: file.databaseConfig(),
 		RedisConfig:       file.redisConfig(),
 		WorkerRuntimeConfig: WorkerRuntimeConfig{
+			HealthListenAddress:      file.Worker.HealthListenAddress,
 			WorkerBatchSize:          file.Worker.BatchSize,
 			WorkerBlockTimeout:       time.Duration(file.Worker.BlockTimeout),
 			WorkerPendingIdleTimeout: time.Duration(file.Worker.PendingIdleTimeout),
@@ -24,6 +25,9 @@ func LoadWorker(configPath string) (WorkerConfig, error) {
 		},
 		NotificationConfig: notificationConfig(file),
 		SMTPConfig:         smtpConfig(file),
+	}
+	if err := validateHealthAddress("worker.health_listen_address", cfg.HealthListenAddress); err != nil {
+		return WorkerConfig{}, err
 	}
 	if err := validateDatabaseConfig(cfg.DatabaseURLConfig); err != nil {
 		return WorkerConfig{}, err

@@ -1,17 +1,18 @@
 # syntax=docker/dockerfile:1.7
 
-FROM node:26-alpine AS frontend-builder
+FROM node:24-alpine AS frontend-builder
 
 WORKDIR /src/frontend
 
 COPY frontend/package.json frontend/package-lock.json frontend/.npmrc ./
+COPY frontend/vendor ./vendor
 RUN npm ci
 
 COPY frontend/ ./
 ENV NUXT_PUBLIC_API_BASE_URL=
 RUN npm run generate
 
-FROM golang:1.26.6-bookworm AS builder
+FROM golang:1.26.10-bookworm AS builder
 
 WORKDIR /src
 
@@ -42,6 +43,6 @@ COPY --from=frontend-builder /src/frontend/.output/public /app/public
 
 USER 10001:10001
 
-EXPOSE 8080 8081
+EXPOSE 8080 8081 8084 8085
 
 CMD ["/app/promptgate", "--config", "/etc/prompt-gate/promptgate.yaml", "api"]

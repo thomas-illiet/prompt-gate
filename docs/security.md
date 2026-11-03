@@ -12,7 +12,7 @@ OIDC login uses:
 
 - authorization code flow
 - PKCE verifier
-- state
+- state tied to a short-lived HttpOnly, SameSite=Lax browser cookie
 - nonce
 - ID token verification
 - OIDC access-token validation against the configured JWKS URL
@@ -22,8 +22,9 @@ The first account created by an OIDC login in an empty database receives role
 active with role `limited`. This default applies only when a human account is
 created: existing roles are not migrated, and later OIDC logins preserve the
 stored role, including an explicit `none`. Pre-created accounts are matched by
-the exact, case-sensitive `preferred_username` claim. Their OIDC subject, email,
-display name, and last-login timestamp are filled or refreshed at login, while
+the exact, case-sensitive `preferred_username` claim. The first login binds their OIDC subject. Later logins match that stable subject;
+a different subject cannot claim the same username. Email, display name and
+last-login timestamp are refreshed, while
 the local ID, role, active state, expiration, subscription, note, groups, and
 virtual keys are preserved.
 
@@ -67,7 +68,7 @@ Prompt Gate uses these application roles:
 | `user` | Has `limited` access plus setup, monitoring, and personal token management. |
 | `admin` | Can access all admin routes. |
 
-Protected routes reject inactive users, users with role `none`, and unknown or
+Protected routes immediately reject expired accounts, inactive users, users with role `none`, and unknown or
 legacy role values. Admin routes require role `admin` unless a valid
 administration API key is used.
 
@@ -293,3 +294,20 @@ manually exposed through CORS.
 - Review OPA rules for service accounts before issuing long-lived tokens.
 - Restrict the administration API key to trusted CLI and server workloads, and
   restart or roll out every API replica after rotating it.
+
+## Request and redirect boundaries
+
+Mutating management requests require an allowed Origin (or Referer when present)
+and `application/json` for nonempty bodies. Origin-less JSON clients remain
+supported. Bodies are limited to 1 MiB; API read/write timeouts are 30 seconds.
+CORS alone is not used as a CSRF defense. OAuth callback state must match the
+login browser cookie before any authorization request is consumed.
+
+Provider redirects may keep the same scheme, host and effective port only.
+This protects provider credentials and request bodies, including Anthropic's
+`X-Api-Key`, with both default and custom TLS transports.
+
+Session profile refresh does not rewrite the Redis session: concurrent logout
+cannot recreate it. A temporary profile lookup failure rejects that request but
+keeps the session and browser cookie available for recovery. Missing users
+invalidate sessions. Cached proxy principals expire no later than account access.

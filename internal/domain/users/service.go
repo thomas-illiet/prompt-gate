@@ -8,18 +8,19 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
+
 	"promptgate/backend/internal/domain/auth"
 	"promptgate/backend/internal/domain/notifications"
 	"promptgate/backend/internal/platform/configevents"
 	"promptgate/backend/internal/platform/database"
-
-	"github.com/google/uuid"
-	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 var (
-	ErrUserNotFound                    = errors.New("user not found")
+	ErrUserNotFound                    = auth.ErrUserNotFound
+	ErrIdentityConflict                = errors.New("OIDC identity is already linked to a different account")
 	ErrInvalidExpiration               = errors.New("expires_at must be in the future")
 	ErrInvalidNote                     = errors.New("note must be 2000 characters or fewer")
 	ErrInvalidServiceAccountName       = errors.New("service account name is required")
@@ -240,15 +241,40 @@ func (s *Service) SyncUser(ctx context.Context, identity auth.Identity) (auth.Us
 	if strings.TrimSpace(identity.PreferredUsername) == "" {
 		return auth.UserProfile{}, ErrPreferredUsernameRequired
 	}
+	if strings.TrimSpace(identity.Sub) == "" {
+		return auth.UserProfile{}, ErrIdentityConflict
+	}
 
 	var record User
 	now := s.nowUTC()
 	externalSub := identity.Sub
 
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Once linked, the stable OIDC subject owns the account. A renamed or
+		// recycled username must never transfer its managed rights to another subject.
+		var linked User
+		linkedErr := tx.Where("type = ? AND external_sub = ?", auth.UserTypeUser, identity.Sub).Take(&linked).Error
+		if linkedErr == nil {
+			if err := tx.Model(&linked).Updates(map[string]any{
+				"preferred_username": identity.PreferredUsername, "email": identity.Email,
+				"name": identity.Name, "last_login_at": &now, "updated_at": now,
+			}).Error; err != nil {
+				if database.IsUniqueViolation(err) {
+					return ErrIdentityConflict
+				}
+				return err
+			}
+			return tx.First(&record, "id = ?", linked.ID).Error
+		}
+		if !errors.Is(linkedErr, gorm.ErrRecordNotFound) {
+			return linkedErr
+		}
 		firstLogin := false
 		var previous User
 		previousErr := tx.WithContext(ctx).Where("type = ? AND preferred_username = ?", auth.UserTypeUser, identity.PreferredUsername).Take(&previous).Error
+		if previousErr == nil && previous.ExternalSub != nil && *previous.ExternalSub != identity.Sub {
+			return ErrIdentityConflict
+		}
 		if errors.Is(previousErr, gorm.ErrRecordNotFound) || (previousErr == nil && previous.LastLoginAt == nil) {
 			firstLogin = true
 		} else if previousErr != nil {
@@ -295,6 +321,7 @@ func (s *Service) SyncUser(ctx context.Context, identity auth.Identity) (auth.Us
 				"last_login_at": &now,
 				"updated_at":    now,
 			}),
+			Where: clause.Where{Exprs: []clause.Expression{clause.Expr{SQL: "users.external_sub IS NULL OR users.external_sub = excluded.external_sub"}}},
 		}).Create(&candidate).Error; err != nil {
 			return err
 		}
@@ -305,6 +332,9 @@ func (s *Service) SyncUser(ctx context.Context, identity auth.Identity) (auth.Us
 			identity.PreferredUsername,
 		).Take(&record).Error; err != nil {
 			return err
+		}
+		if record.ExternalSub == nil || *record.ExternalSub != identity.Sub {
+			return ErrIdentityConflict
 		}
 		if firstLogin && s.notifications != nil {
 			body := "# Welcome to Prompt Gate\n\n**Choose a model.** Find the one that fits the work you want to do.\n\n**Check your quota.** See what is available before a longer session.\n\n**Send your first prompt.** Your workspace is ready when you are."

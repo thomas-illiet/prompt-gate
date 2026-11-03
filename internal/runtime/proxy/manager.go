@@ -57,6 +57,14 @@ type bridgeEntry struct {
 	bridge managedBridge
 }
 
+func (m *Manager) Ready() bool {
+	if m == nil {
+		return false
+	}
+	entry, _ := m.current.Load().(*bridgeEntry)
+	return entry != nil && entry.bridge != nil
+}
+
 // NewManager creates a swappable proxy runtime and builds the initial bridge.
 func NewManager(ctx context.Context, opts Options) (*Manager, error) {
 	if opts.Logger == nil {

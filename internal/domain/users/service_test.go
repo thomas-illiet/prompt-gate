@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"promptgate/backend/internal/domain/auth"
-
 	"github.com/glebarez/sqlite"
 	"gorm.io/gorm"
+
+	"promptgate/backend/internal/domain/auth"
 )
 
 type recordingTokenRevoker struct {
@@ -175,8 +175,8 @@ func TestSyncUserBootstrapsFirstAdminThenDefaultsToLimited(t *testing.T) {
 	}
 }
 
-// TestSyncUserMatchesPreferredUsernameAndPreservesManagedFields verifies SSO matching ignores subject changes.
-func TestSyncUserMatchesPreferredUsernameAndPreservesManagedFields(t *testing.T) {
+// TestSyncUserKeepsSubjectAndPreservesManagedFields verifies an established subject retains its managed access settings.
+func TestSyncUserKeepsSubjectAndPreservesManagedFields(t *testing.T) {
 	service := newTestService(t)
 	ctx := context.Background()
 
@@ -201,7 +201,7 @@ func TestSyncUserMatchesPreferredUsernameAndPreservesManagedFields(t *testing.T)
 	time.Sleep(10 * time.Millisecond)
 
 	resynced, err := service.SyncUser(ctx, auth.Identity{
-		Sub:               "replacement-sub",
+		Sub:               "sub-1",
 		PreferredUsername: "promptgate-user",
 		Email:             "manager@example.com",
 		Name:              "PromptGate Limited",
@@ -222,7 +222,7 @@ func TestSyncUserMatchesPreferredUsernameAndPreservesManagedFields(t *testing.T)
 		t.Fatalf("expected preferred username to match the existing user, got ids %q and %q", created.ID, resynced.ID)
 	}
 
-	if resynced.Sub != "replacement-sub" || resynced.Email != "manager@example.com" || resynced.Name != "PromptGate Limited" || resynced.PreferredUsername != "promptgate-user" {
+	if resynced.Sub != "sub-1" || resynced.Email != "manager@example.com" || resynced.Name != "PromptGate Limited" || resynced.PreferredUsername != "promptgate-user" {
 		t.Fatalf("expected identity fields to be refreshed, got %#v", resynced)
 	}
 

@@ -1,14 +1,8 @@
-import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 import { mount } from '@vue/test-utils'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
 import DocumentationPage from '../../app/pages/documentation.vue'
 
-const { definePageMetaMock } = vi.hoisted(() => ({
-  definePageMetaMock: vi.fn(),
-}))
-
-mockNuxtImport('definePageMeta', () => definePageMetaMock)
 
 describe('Documentation page', () => {
   it('is available to every authenticated role and composes the current-session Swagger surface', () => {
@@ -31,7 +25,7 @@ describe('Documentation page', () => {
       },
     })
 
-    expect(definePageMetaMock).toHaveBeenCalledWith({
+    expect(useRouter().getRoutes().find(route => route.path === '/documentation')?.meta).toMatchObject({
       requiredRoles: ['limited', 'user', 'admin'],
       title: 'API documentation',
     })

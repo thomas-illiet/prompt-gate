@@ -201,4 +201,24 @@ if grep -Fq -- '"promptgate.yaml": |' "${external_render}"; then
   exit 1
 fi
 
+
+helm_render="${tmp_dir}/direct-helm.yaml"
+helm template audit "${chart_dir}" "${required_values[@]}" --set argoCd.enabled=false --set-string config.worker.health_listen_address=:9082 >"${helm_render}"
+assert_contains "${helm_render}" 'helm.sh/hook: pre-install,pre-upgrade'
+assert_contains "${helm_render}" 'helm.sh/hook-weight: "-20"'
+assert_contains "${helm_render}" 'helm.sh/hook-weight: "-10"'
+assert_contains "${helm_render}" 'secretName: audit-prompt-gate-migrate-config'
+assert_contains "${helm_render}" 'serviceAccountName: default'
+assert_contains "${helm_render}" 'containerPort: 9082'
+assert_contains "${helm_render}" 'path: /live'
+assert_contains "${helm_render}" 'path: /ready'
+assert_contains "${helm_render}" 'terminationGracePeriodSeconds: 180'
+assert_contains "${helm_render}" 'type: Recreate'
+helm template audit "${chart_dir}" --set argoCd.enabled=false --set-string configSecret.existingSecret=existing --set worker.healthPort=9084 >"${helm_render}"
+assert_contains "${helm_render}" 'secretName: existing'
+assert_contains "${helm_render}" 'containerPort: 9084'
+if grep -Fq -- 'secretName: audit-prompt-gate-migrate-config' "${helm_render}"; then
+  echo "external config must not use a generated migration Secret" >&2
+  exit 1
+fi
 echo "Helm runtime configuration and ingress render checks passed"

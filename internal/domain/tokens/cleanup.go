@@ -7,9 +7,10 @@ import (
 	"log/slog"
 	"time"
 
-	"promptgate/backend/internal/domain/notifications"
-
 	"gorm.io/gorm"
+
+	"promptgate/backend/internal/domain/notifications"
+	"promptgate/backend/internal/platform/health"
 )
 
 // RevokeUserTokensTx marks all non-revoked tokens for the given users as revoked inside tx.
@@ -47,6 +48,7 @@ func (s *Service) StartCleanup(ctx context.Context, interval time.Duration) {
 	}
 
 	go func() {
+		health.Beat(ctx, "token-cleanup", interval+time.Minute)
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		for {
@@ -54,9 +56,11 @@ func (s *Service) StartCleanup(ctx context.Context, interval time.Duration) {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				if err := s.markExpired(ctx); err != nil && !errors.Is(err, context.Canceled) {
-					slog.Error("failed to mark expired tokens", "error", err)
-				}
+				health.Run(ctx, "token-cleanup", interval, func() {
+					if err := s.markExpired(ctx); err != nil && !errors.Is(err, context.Canceled) {
+						slog.Error("failed to mark expired tokens", "error", err)
+					}
+				})
 			}
 		}
 	}()

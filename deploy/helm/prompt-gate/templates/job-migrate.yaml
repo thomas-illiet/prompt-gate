@@ -6,14 +6,18 @@ metadata:
   labels:
     {{- include "prompt-gate.labels" . | nindent 4 }}
     app.kubernetes.io/component: migrate
-  {{- if .Values.argoCd.enabled }}
   annotations:
+    {{- if .Values.argoCd.enabled }}
     argocd.argoproj.io/sync-wave: {{ .Values.argoCd.syncWaves.migrate | quote }}
     {{- if .Values.migrate.hook.enabled }}
     argocd.argoproj.io/hook: {{ .Values.migrate.hook.phase | quote }}
     argocd.argoproj.io/hook-delete-policy: {{ .Values.migrate.hook.deletePolicy | quote }}
     {{- end }}
-  {{- end }}
+    {{- else }}
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-10"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+    {{- end }}
 spec:
   backoffLimit: {{ .Values.migrate.backoffLimit }}
   ttlSecondsAfterFinished: {{ .Values.migrate.ttlSecondsAfterFinished }}
@@ -42,7 +46,7 @@ spec:
     spec:
       restartPolicy: Never
       automountServiceAccountToken: false
-      serviceAccountName: {{ include "prompt-gate.serviceAccountName" . }}
+      serviceAccountName: {{ if .Values.argoCd.enabled }}{{ include "prompt-gate.serviceAccountName" . }}{{ else }}default{{ end }}
       {{- include "prompt-gate.imagePullSecrets" . | nindent 6 }}
       securityContext:
         {{- include "prompt-gate.podSecurityContext" . | nindent 8 }}
@@ -65,7 +69,17 @@ spec:
             {{- toYaml . | nindent 12 }}
             {{- end }}
       volumes:
+        {{- if and (not .Values.argoCd.enabled) (not .Values.configSecret.existingSecret) }}
+        - name: promptgate-config
+          secret:
+            secretName: {{ include "prompt-gate.fullname" . }}-migrate-config
+            defaultMode: 0440
+            items:
+              - key: {{ include "prompt-gate.configSecretKey" . | quote }}
+                path: promptgate.yaml
+        {{- else }}
         {{- include "prompt-gate.configVolume" . | nindent 8 }}
+        {{- end }}
         {{- with .Values.extraVolumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}

@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"gorm.io/gorm"
+
 	"promptgate/backend/internal/domain/auth"
 	"promptgate/backend/internal/domain/faq"
 	"promptgate/backend/internal/domain/groups"
@@ -18,13 +20,13 @@ import (
 	"promptgate/backend/internal/domain/tokens"
 	"promptgate/backend/internal/domain/users"
 	"promptgate/backend/internal/platform/config"
+	"promptgate/backend/internal/platform/redisstore"
 	"promptgate/backend/internal/transport/httpapi/admin"
 	openapidoc "promptgate/backend/internal/transport/httpapi/openapi"
-
-	"gorm.io/gorm"
 )
 
 type Dependencies struct {
+	Redis         *redisstore.Store
 	Config        config.APIConfig
 	DB            *gorm.DB
 	Users         *users.Service
@@ -47,6 +49,7 @@ type Dependencies struct {
 // NewHandler builds and returns the HTTP handler with all routes and middleware configured.
 func NewHandler(deps Dependencies) http.Handler {
 	srv := &server{
+		redis:         deps.Redis,
 		config:        deps.Config,
 		db:            deps.DB,
 		oidcService:   deps.OIDC,

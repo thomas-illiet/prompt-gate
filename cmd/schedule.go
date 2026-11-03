@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"promptgate/backend/internal/platform/config"
+	"promptgate/backend/internal/platform/health"
 	"promptgate/backend/internal/runtime/app"
 )
 
@@ -78,6 +79,13 @@ func runSchedule(configPath string) error {
 		}
 	}()
 
+	progress := health.NewProgress()
+	ctx = health.WithProgress(ctx, progress)
+	closeDiagnostics, err := startDiagnostics(ctx, cfg.HealthListenAddress, a.DB, a.Redis, progress)
+	if err != nil {
+		return err
+	}
+	defer closeDiagnostics()
 	a.StartBackgroundJobs(ctx)
 	logger.Info("schedule worker started")
 

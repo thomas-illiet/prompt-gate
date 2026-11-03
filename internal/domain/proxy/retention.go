@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 	"time"
+
+	"promptgate/backend/internal/platform/health"
 )
 
 // StartRawUsageCleanup periodically deletes raw proxy usage rows older than retention.
@@ -13,6 +15,7 @@ func (s *Service) StartRawUsageCleanup(ctx context.Context, retention, interval 
 		return
 	}
 	go func() {
+		health.Beat(ctx, "raw-usage-cleanup", interval+time.Minute)
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		for {
@@ -20,7 +23,7 @@ func (s *Service) StartRawUsageCleanup(ctx context.Context, retention, interval 
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				s.cleanupRawUsageLog(context.Background(), retention)
+				health.Run(ctx, "raw-usage-cleanup", interval, func() { s.cleanupRawUsageLog(ctx, retention) })
 			}
 		}
 	}()

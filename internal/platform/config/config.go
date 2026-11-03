@@ -112,6 +112,7 @@ type APIHTTPConfig struct {
 
 // ScheduleIntervals contains intervals used by scheduled background jobs.
 type ScheduleIntervals struct {
+	HealthListenAddress            string
 	TokenCleanupInterval           time.Duration
 	UserAccessExpirationInterval   time.Duration
 	UsageRawRetention              time.Duration
@@ -140,6 +141,7 @@ type ProxyRuntimeConfig struct {
 
 // WorkerRuntimeConfig contains Redis stream worker settings.
 type WorkerRuntimeConfig struct {
+	HealthListenAddress      string
 	WorkerBatchSize          int64
 	WorkerBlockTimeout       time.Duration
 	WorkerPendingIdleTimeout time.Duration

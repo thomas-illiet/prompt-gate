@@ -13,6 +13,7 @@ import (
 	"promptgate/backend/internal/domain/proxy"
 	"promptgate/backend/internal/platform/config"
 	"promptgate/backend/internal/platform/database"
+	"promptgate/backend/internal/platform/health"
 	"promptgate/backend/internal/platform/redisstore"
 )
 
@@ -90,6 +91,13 @@ func runWorker(configPath string) error {
 	}()
 	logger.Info("redis connection ready")
 
+	progress := health.NewProgress()
+	ctx = health.WithProgress(ctx, progress)
+	closeDiagnostics, err := startDiagnostics(ctx, cfg.HealthListenAddress, db, redisStore, progress)
+	if err != nil {
+		return err
+	}
+	defer closeDiagnostics()
 	worker := proxy.NewWorker(db, redisStore, proxy.WorkerOptions{
 		ConsumerName:       cfg.WorkerConsumerName,
 		BatchSize:          cfg.WorkerBatchSize,

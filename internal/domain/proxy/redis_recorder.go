@@ -9,15 +9,16 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"promptgate/backend/internal/platform/clientip"
-	"promptgate/backend/internal/platform/redisstore"
-	"promptgate/backend/internal/platform/requestprivacy"
-
 	aibrecorder "github.com/coder/aibridge/recorder"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+
+	"promptgate/backend/internal/platform/clientip"
+	"promptgate/backend/internal/platform/redisstore"
+	"promptgate/backend/internal/platform/requestprivacy"
+	"promptgate/backend/internal/platform/usagecontext"
 )
 
 const maxPolicyDenialReasonCharacters = 2048
@@ -106,6 +107,9 @@ func (r *RedisRecorder) RecordInterceptionEnded(ctx context.Context, req *aibrec
 // RecordTokenUsage enqueues token usage for a proxied request.
 func (r *RedisRecorder) RecordTokenUsage(ctx context.Context, req *aibrecorder.TokenUsageRecord) error {
 	event := newUsageEvent(UsageEventTokenUsage)
+	if id := usagecontext.EventID(ctx); id != "" {
+		event.EventID = id
+	}
 	event.TokenUsage = &TokenUsageEvent{
 		InterceptionID:        req.InterceptionID,
 		ProviderResponseID:    req.MsgID,

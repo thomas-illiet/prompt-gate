@@ -8,6 +8,33 @@ import (
 	"time"
 )
 
+// EstimateReportCost uses the dashboard estimator for exactly one UTC period.
+// A report must not label a partially retained estimate as the full cost.
+func (s *Service) EstimateReportCost(ctx context.Context, userID string, start, end time.Time) (*float64, error) {
+	scope := currentUserDashboardScope(userID)
+	var row struct {
+		Requests    int64
+		TotalTokens int64
+	}
+	if err := scope.applyInitiatorFilter(s.db.WithContext(ctx).Table("proxy_daily_usage_kpis"), "initiator_id").
+		Select("COALESCE(SUM(requests),0) requests, COALESCE(SUM(total_tokens),0) total_tokens").
+		Where("day >= ? AND day < ?", start.UTC().Format("2006-01-02"), end.UTC().AddDate(0, 0, 1).Format("2006-01-02")).Scan(&row).Error; err != nil {
+		return nil, err
+	}
+	coverage, err := s.dashboardCostCoverage(ctx, scope, start, end, UsageTotals{Requests: row.Requests, TotalTokens: row.TotalTokens})
+	if err != nil {
+		return nil, err
+	}
+	if coverage.Status != CostCoverageComplete {
+		return nil, nil
+	}
+	cost, err := s.estimateAggregateUsageCost(ctx, scope, start, end)
+	if err != nil || cost == nil {
+		return nil, err
+	}
+	return &cost.TotalUSD, nil
+}
+
 func (s *Service) attachEstimatedCosts(ctx context.Context, scope dashboardUsageScope, totals *UsageTotals, daily []DailyUsage) error {
 	if len(daily) == 0 {
 		return nil

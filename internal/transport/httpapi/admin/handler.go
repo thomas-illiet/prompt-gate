@@ -3,6 +3,7 @@ package admin
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -19,6 +20,7 @@ import (
 	"promptgate/backend/internal/domain/subscriptions"
 	"promptgate/backend/internal/domain/tokens"
 	"promptgate/backend/internal/domain/users"
+	middleware "promptgate/backend/internal/transport/httpmiddleware"
 )
 
 type quotaStateCleaner interface {
@@ -42,9 +44,15 @@ type Handler struct {
 }
 
 func decodeRequestBody(w http.ResponseWriter, r *http.Request, dst any) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, middleware.MaxAPIRequestBytes)
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(dst); err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			writeJSON(w, http.StatusRequestEntityTooLarge, map[string]string{"error": "request_body_too_large"})
+			return false
+		}
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_request_body"})
 		return false
 	}

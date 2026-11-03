@@ -26,6 +26,7 @@ func LoadSchedule(configPath string) (ScheduleConfig, error) {
 		NotificationScheduleConfig: notificationScheduleConfig(file),
 		UsageCost:                  usageCost,
 		ScheduleIntervals: ScheduleIntervals{
+			HealthListenAddress:            file.Schedule.HealthListenAddress,
 			TokenCleanupInterval:           time.Duration(file.Common.Maintenance.TokenCleanupInterval),
 			UserAccessExpirationInterval:   time.Duration(file.Common.Maintenance.UserAccessExpirationInterval),
 			UsageRawRetention:              time.Duration(file.Schedule.UsageRawRetention),
@@ -34,6 +35,9 @@ func LoadSchedule(configPath string) (ScheduleConfig, error) {
 			QuotaResetDistributionInterval: time.Duration(file.Common.Maintenance.QuotaResetDistributionInterval),
 		},
 		ProxyRuntimeConfig: ProxyRuntimeConfig{ProxyReloadDebounce: time.Duration(file.Common.ProxyReloadDebounce)},
+	}
+	if err := validateHealthAddress("schedule.health_listen_address", cfg.HealthListenAddress); err != nil {
+		return ScheduleConfig{}, err
 	}
 	if err := validateDatabaseConfig(cfg.DatabaseURLConfig); err != nil {
 		return ScheduleConfig{}, err

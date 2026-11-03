@@ -1,10 +1,13 @@
 package auth
 
 import (
+	"errors"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 )
+
+var ErrUserNotFound = errors.New("user not found")
 
 type AppRole string
 
@@ -43,15 +46,20 @@ func (t UserType) IsValid() bool {
 }
 
 type UserProfile struct {
-	ID                string    `json:"id"`
-	Sub               string    `json:"sub"`
-	PreferredUsername string    `json:"preferredUsername"`
-	Email             string    `json:"email"`
-	Name              string    `json:"name"`
-	Type              UserType  `json:"type"`
-	Role              AppRole   `json:"role"`
-	IsActive          bool      `json:"isActive"`
-	LastLoginAt       time.Time `json:"lastLoginAt"`
+	ID                string     `json:"id"`
+	Sub               string     `json:"sub"`
+	PreferredUsername string     `json:"preferredUsername"`
+	Email             string     `json:"email"`
+	Name              string     `json:"name"`
+	Type              UserType   `json:"type"`
+	Role              AppRole    `json:"role"`
+	IsActive          bool       `json:"isActive"`
+	LastLoginAt       time.Time  `json:"lastLoginAt"`
+	ExpiresAt         *time.Time `json:"expiresAt,omitempty"`
+}
+
+func (u UserProfile) AccessExpired(now time.Time) bool {
+	return u.ExpiresAt != nil && !now.Before(*u.ExpiresAt)
 }
 
 // Principal identifies both the account and the virtual key used to authenticate a proxy call.

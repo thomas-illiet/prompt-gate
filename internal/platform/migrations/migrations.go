@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -20,8 +21,40 @@ import (
 	"promptgate/backend/internal/domain/users"
 )
 
-// Run applies all database schema migrations in dependency order.
+// schemaMigration records committed schema versions.
+type schemaMigration struct {
+	Version   int64     `gorm:"primaryKey"`
+	Name      string    `gorm:"not null"`
+	AppliedAt time.Time `gorm:"not null"`
+}
+
+// Run serializes schema changes and records them in the same transaction as
+// their DDL/data changes. Failed migrations can be retried without a false mark.
 func Run(ctx context.Context, db *gorm.DB) error {
+	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if tx.Dialector.Name() == "postgres" {
+			if err := tx.Exec("SELECT pg_advisory_xact_lock(?)", int64(0x5052474154454d47)).Error; err != nil {
+				return err
+			}
+		}
+		if err := tx.AutoMigrate(&schemaMigration{}); err != nil {
+			return err
+		}
+		var applied int64
+		if err := tx.Model(&schemaMigration{}).Where("version = ?", 1).Count(&applied).Error; err != nil {
+			return err
+		}
+		if applied > 0 {
+			return nil
+		}
+		if err := migrateBaseline(ctx, tx); err != nil {
+			return err
+		}
+		return tx.Create(&schemaMigration{Version: 1, Name: "release_baseline", AppliedAt: time.Now().UTC()}).Error
+	})
+}
+
+func migrateBaseline(ctx context.Context, db *gorm.DB) error {
 	slog.Info("running database migrations", "models", "users")
 	if err := users.NewService(db).AutoMigrate(ctx); err != nil {
 		return fmt.Errorf("migrate users: %w", err)

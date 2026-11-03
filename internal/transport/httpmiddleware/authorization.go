@@ -3,6 +3,7 @@ package middleware
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"promptgate/backend/internal/domain/auth"
 )
@@ -17,7 +18,7 @@ func RequireAppAccess() Middleware {
 				return
 			}
 
-			if !user.IsActive {
+			if !user.IsActive || user.AccessExpired(time.Now()) {
 				writeAuthorizationFailure(w, http.StatusForbidden, "account_inactive")
 				return
 			}
@@ -46,7 +47,7 @@ func RequireRoles(roles ...auth.AppRole) Middleware {
 				return
 			}
 
-			if !user.IsActive {
+			if !user.IsActive || user.AccessExpired(time.Now()) {
 				writeAuthorizationFailure(w, http.StatusForbidden, "account_inactive")
 				return
 			}

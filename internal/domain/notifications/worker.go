@@ -19,6 +19,8 @@ import (
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+
+	"promptgate/backend/internal/platform/health"
 )
 
 // WorkerOptions controls durable claiming, SMTP, and retry behavior.
@@ -93,6 +95,7 @@ func (w *Worker) Run(ctx context.Context) error {
 	ticker := time.NewTicker(w.opts.PollInterval)
 	defer ticker.Stop()
 	for {
+		health.Beat(ctx, "mail", w.opts.PollInterval+w.opts.Timeout+time.Minute)
 		if err := w.runOnce(ctx); err != nil && ctx.Err() == nil {
 			w.logger.Error("notification dispatch failed", "error", err)
 		}
@@ -110,6 +113,7 @@ func (w *Worker) runOnce(ctx context.Context) error {
 		return err
 	}
 	for _, delivery := range deliveries {
+		health.Beat(ctx, "mail", w.opts.Timeout+time.Minute)
 		if ctx.Err() != nil {
 			return nil
 		}
@@ -138,9 +142,11 @@ func (w *Worker) runOnce(ctx context.Context) error {
 			continue
 		}
 		now := w.now().UTC()
-		if err := w.db.WithContext(ctx).Model(&Delivery{}).Where("id = ? AND status = ? AND attempts = ?", delivery.ID, DeliveryProcessing, delivery.Attempts).Updates(map[string]any{"status": DeliverySent, "sent_at": now, "last_attempt_at": now, "lease_until": nil, "last_error": ""}).Error; err != nil {
+		completedCtx, cancelCompleted := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		if err := w.db.WithContext(completedCtx).Model(&Delivery{}).Where("id = ? AND status = ? AND attempts = ?", delivery.ID, DeliveryProcessing, delivery.Attempts).Updates(map[string]any{"status": DeliverySent, "sent_at": now, "last_attempt_at": now, "lease_until": nil, "last_error": ""}).Error; err != nil {
 			w.logger.Error("failed to mark notification sent", "delivery_id", delivery.ID, "error", err)
 		}
+		cancelCompleted()
 	}
 	return nil
 }
@@ -269,9 +275,9 @@ func (s *networkSMTPSender) Send(ctx context.Context, envelope smtpEnvelope) err
 	if err := wc.Close(); err != nil {
 		return fmt.Errorf("finish smtp data: %w", err)
 	}
-	if err := client.Quit(); err != nil {
-		return fmt.Errorf("quit smtp: %w", err)
-	}
+	// The final DATA reply has accepted this message. A failed QUIT cannot
+	// retract that acceptance and must not schedule another delivery.
+	_ = client.Quit()
 	return nil
 }
 

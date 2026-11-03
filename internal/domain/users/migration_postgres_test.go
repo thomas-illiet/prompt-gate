@@ -8,12 +8,12 @@ import (
 	"testing"
 	"time"
 
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
+
 	"promptgate/backend/internal/domain/auth"
 	"promptgate/backend/internal/platform/database"
 	"promptgate/backend/internal/platform/testconfig"
-
-	"gorm.io/driver/postgres"
-	"gorm.io/gorm"
 )
 
 func TestSyncUserPostgresBootstrapsExactlyOneAdminConcurrently(t *testing.T) {
@@ -25,7 +25,7 @@ func TestSyncUserPostgresBootstrapsExactlyOneAdminConcurrently(t *testing.T) {
 	}
 	baseDB, err := gorm.Open(postgres.Open(databaseURL), &gorm.Config{})
 	if err != nil {
-		t.Skipf("PostgreSQL integration database is unavailable: %v", err)
+		testconfig.Unavailable(t, "PostgreSQL", err)
 	}
 	baseSQL, err := baseDB.DB()
 	if err != nil {
@@ -118,7 +118,7 @@ func TestUserMigrationPostgresMakesSSOFieldsNullable(t *testing.T) {
 	}
 	baseDB, err := gorm.Open(postgres.Open(databaseURL), &gorm.Config{})
 	if err != nil {
-		t.Skipf("PostgreSQL integration database is unavailable: %v", err)
+		testconfig.Unavailable(t, "PostgreSQL", err)
 	}
 	baseSQL, err := baseDB.DB()
 	if err != nil {

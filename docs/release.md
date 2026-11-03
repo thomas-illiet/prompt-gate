@@ -13,7 +13,7 @@ Container Registry, and creates a GitHub Release with downloadable assets.
 - GitHub Packages enabled for the repository or organization.
 - Workflow token permissions for package publishing and release creation.
 - A clean local validation run before tagging.
-- A disposable PostgreSQL 18 database for the concurrency and migration tests.
+- Disposable PostgreSQL 18 and Redis 8 services for integration tests.
 
 ## Pre-Release Verification
 
@@ -25,7 +25,10 @@ git pull --ff-only origin main
 make fmt-check
 make vet
 make staticcheck
-make test
+PROMPTGATE_REQUIRE_INTEGRATION=1 make coverage
+go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+bash deploy/helm/prompt-gate/tests/render.sh
+bash deploy/examples/opa/test.sh
 make build
 docker compose config --quiet
 docker build -t prompt-gate-backend:test .
@@ -36,6 +39,7 @@ If the frontend changed, also run:
 ```sh
 cd frontend
 npm ci
+npm audit --audit-level=low
 npm run lint:check
 npm run typecheck
 npm test -- --run
@@ -57,12 +61,18 @@ The tag push starts the `Release` workflow.
 
 ## Pipeline Behavior
 
+Pull requests and tags call the same `validate.yml` workflow. Release publication
+depends on successful validation. Required integration services fail the run when
+unavailable; they cannot silently turn into skipped tests in CI.
+
 The release pipeline:
 
 - checks Go formatting
 - runs `go vet`
 - runs the pinned Staticcheck tool
-- runs backend tests, including PostgreSQL-specific migration, bootstrap
+- enforces 70% aggregate Go statement coverage and scans Go/npm vulnerabilities
+- validates Helm rendering and the OPA policy and API boundary
+- runs backend tests with Redis, including PostgreSQL-specific migration, bootstrap
   concurrency, and quota-reset coverage against PostgreSQL 18
 - installs frontend dependencies
 - runs frontend lint, typecheck, and tests
@@ -72,7 +82,9 @@ The release pipeline:
 - cross-builds standalone release archives for macOS ARM64, Linux AMD64, and
   Windows AMD64
 - verifies each archive contains the expected binary and `public/index.html`
-- builds and pushes the Docker image
+- packages a Helm chart with appVersion equal to the release tag
+- creates SHA256SUMS for every archive and the chart
+- builds and pushes the Docker image with SBOM and provenance attestations
 - creates a GitHub Release with generated notes and release archives
 
 ## Published Release Assets
@@ -83,6 +95,8 @@ For Git tag `v0.1.0`, the workflow attaches:
 promptgate_0.1.0_darwin_arm64.tar.gz
 promptgate_0.1.0_linux_amd64.tar.gz
 promptgate_0.1.0_windows_amd64.zip
+prompt-gate-0.1.0.tgz
+SHA256SUMS
 ```
 
 Each archive contains:
@@ -158,3 +172,13 @@ Related docs:
 - [Deployment](deployment.md)
 - [YAML configuration](environment.md)
 - [Development guide](development.md)
+
+## Local dependency patches
+
+`frontend/vendor/deepmerge` preserves deepmerge 4.3.1's API and MIT license while
+rejecting prototype-sensitive keys in both operands (GHSA-gcqx-w48m-w2h4).
+There is no upstream fixed release at the time of this change. Its local override
+and regression tests must remain until a fixed upstream release replaces it.
+`frontend/vendor/minimatch-compat` adapts the import-x lint rule's `.test()` use
+to the patched minimatch 11 matcher without reconstructing vulnerable regexes.
+Both are installed from versioned local sources by `npm ci`.

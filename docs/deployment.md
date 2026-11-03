@@ -429,8 +429,8 @@ API:
 GET /health
 ```
 
-Returns `200 OK` when the API can reach the database and `503 Service
-Unavailable` when the database check fails.
+Returns `200 OK` when the API can reach PostgreSQL and Redis, and `503 Service
+Unavailable` when either dependency check fails.
 
 Proxy:
 
@@ -438,7 +438,8 @@ Proxy:
 GET /health
 ```
 
-Returns `200 OK` with `{"status":"ok"}` when the proxy process is serving.
+Returns `200 OK` with `{"status":"ok"}` when the bridge is ready, Redis is
+reachable and OPA is healthy (when enabled). `/live` checks only process liveness.
 When `proxy.base_path` is `/remote`, `GET /remote/health` reaches the same
 handler through the public Ingress while the direct path remains available to
 Kubernetes probes.
@@ -462,3 +463,30 @@ Related docs:
 - [Scheduler](scheduler.md)
 - [Security model](security.md)
 - [Release process](release.md)
+
+## Migration and shutdown guarantees
+
+`migrate` takes a PostgreSQL advisory transaction lock, applies the baseline once,
+and records it in `schema_migrations` in the same transaction. Existing databases
+are adopted on their first run; later runs do not repeat data/schema rewrites.
+Future schema changes must use a new numbered migration rather than editing an
+already applied baseline. Back up the database before upgrading; image rollback
+does not reverse schema migrations.
+
+Direct Helm installs/upgrades run a pre-install/pre-upgrade migration Job before
+rolling out workloads. A dedicated earlier Secret hook supplies generated config;
+an externally managed config Secret must already exist. The migration hook uses
+the default ServiceAccount without an API token. Argo CD keeps its ordered Sync
+hook. Scheduler updates use Recreate to avoid overlapping scheduler replicas.
+
+API and proxy shutdown wait for active requests. The chart grants 180 seconds;
+keep this greater than the configured proxy upstream timeout plus 20 seconds.
+Proxy `/live` checks the process without depending on OPA; `/health` checks bridge
+readiness, Redis and OPA. API `/health` checks PostgreSQL and Redis.
+
+Worker and scheduler diagnostics listen on `:8084` and `:8085` by default through
+`worker.health_listen_address` and `schedule.health_listen_address`. `/live`
+checks actual job progress and `/ready` additionally checks PostgreSQL/Redis.
+Keep these ports internal. Generated Helm config automatically aligns probe
+ports; with `configSecret.existingSecret`, set `worker.healthPort` and
+`schedule.healthPort` to match the external configuration.

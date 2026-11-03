@@ -244,3 +244,17 @@ tolerations:
 {{- toYaml . | nindent 2 }}
 {{- end }}
 {{- end -}}
+
+{{/* Probe ports follow generated config; existing Secrets use explicit healthPort. */}}
+{{- define "prompt-gate.healthPort" -}}
+{{- $component := index .root.Values .component -}}
+{{- $config := index .root.Values.config .component -}}
+{{- $port := int $component.healthPort -}}
+{{- if not .root.Values.configSecret.existingSecret -}}
+{{- $port = int (regexFind "[0-9]+$" $config.health_listen_address) -}}
+{{- end -}}
+{{- if or (lt $port 1) (gt $port 65535) -}}
+{{- fail "worker/schedule health port must be between 1 and 65535" -}}
+{{- end -}}
+{{- $port -}}
+{{- end -}}

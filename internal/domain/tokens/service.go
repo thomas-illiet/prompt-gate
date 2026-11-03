@@ -10,13 +10,13 @@ import (
 	"strings"
 	"time"
 
-	"promptgate/backend/internal/domain/auth"
-	"promptgate/backend/internal/domain/notifications"
-	"promptgate/backend/internal/platform/configevents"
-
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+
+	"promptgate/backend/internal/domain/auth"
+	"promptgate/backend/internal/domain/notifications"
+	"promptgate/backend/internal/platform/configevents"
 )
 
 var (
@@ -244,12 +244,16 @@ func (s *Service) ValidatePrincipalWithExpiry(ctx context.Context, rawToken stri
 	if err != nil {
 		return auth.Principal{}, time.Time{}, err
 	}
-	if !user.IsActive {
+	if !user.IsActive || user.AccessExpired(now) {
 		return auth.Principal{}, time.Time{}, ErrAccountInactive
 	}
 	switch user.Role {
 	case auth.RoleLimited, auth.RoleUser, auth.RoleAdmin:
-		return auth.Principal{User: user, CredentialID: record.ID, CredentialName: record.Name}, record.ExpiresAt, nil
+		expiresAt := record.ExpiresAt
+		if user.ExpiresAt != nil && user.ExpiresAt.Before(expiresAt) {
+			expiresAt = *user.ExpiresAt
+		}
+		return auth.Principal{User: user, CredentialID: record.ID, CredentialName: record.Name}, expiresAt, nil
 	default:
 		return auth.Principal{}, time.Time{}, ErrInsufficientRole
 	}

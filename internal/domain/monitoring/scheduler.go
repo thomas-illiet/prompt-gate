@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"net/http"
 	"time"
+
+	"promptgate/backend/internal/platform/health"
 )
 
 // CheckService runs one immediate HTTP check and persists the result.
@@ -93,7 +95,7 @@ func (s *Service) StartScheduler(ctx context.Context, tick time.Duration) {
 	}
 
 	go func() {
-		s.runDueChecksLog(ctx)
+		health.Run(ctx, "monitoring", tick, func() { s.runDueChecksLog(ctx) })
 		ticker := time.NewTicker(tick)
 		defer ticker.Stop()
 		for {
@@ -101,7 +103,7 @@ func (s *Service) StartScheduler(ctx context.Context, tick time.Duration) {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				s.runDueChecksLog(ctx)
+				health.Run(ctx, "monitoring", tick, func() { s.runDueChecksLog(ctx) })
 			}
 		}
 	}()

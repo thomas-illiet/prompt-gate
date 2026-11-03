@@ -131,12 +131,25 @@ func (s *Service) GenerateMonthlyReports(ctx context.Context, now time.Time, loc
 		if err != nil {
 			return created, err
 		}
-		cost := (float64(totals.InputTokens)*s.inputRate + float64(totals.OutputTokens)*s.outputRate + float64(totals.EmbeddingTokens)*s.embeddingRate) / 1_000_000
+		costText := "unavailable because complete pricing data is not retained"
+		if s.costEstimator != nil {
+			// KPI days and dashboard cost windows use UTC, independently of the
+			// timezone used to schedule delivery of the report.
+			startUTC, _ := time.Parse("2006-01-02", startDay)
+			endUTC, _ := time.Parse("2006-01-02", endDay)
+			cost, err := s.costEstimator.EstimateReportCost(ctx, recipient.ID, startUTC, endUTC.Add(-time.Nanosecond))
+			if err != nil {
+				return created, err
+			}
+			if cost != nil {
+				costText = fmt.Sprintf("**$%.4f USD** at current dashboard prices", *cost)
+			}
+		}
 		latency := float64(0)
 		if totals.Requests > 0 {
 			latency = float64(totals.TotalDurationMs) / float64(totals.Requests)
 		}
-		body := fmt.Sprintf("# Your %s usage report\n\n**Requests:** %d across **%d active days**.\n\n**Total tokens:** %d — %d input, %d output, and %d embedding.\n\n**Cache activity:** %d read tokens and %d write tokens.\n\n**Performance:** %.0f ms average latency, with an estimated cost of **$%.4f USD** for the complete retained period.\n\n**Most used models:** %s.\n\n**Most used providers:** %s.%s", startLocal.Format("January 2006"), totals.Requests, totals.ActiveDays, totals.TotalTokens, totals.InputTokens, totals.OutputTokens, totals.EmbeddingTokens, totals.CacheReadInputTokens, totals.CacheWriteInputTokens, latency, cost, formatNamedUsage(models), formatNamedUsage(providers), s.currentQuotaSummary(ctx, recipient.ID))
+		body := fmt.Sprintf("# Your %s usage report (UTC)\n\n**Requests:** %d across **%d active days**.\n\n**Total tokens:** %d — %d input (including %d embedding), %d output, %d cache read, and %d cache write.\n\n**Performance:** %.0f ms average latency.\n\n**Estimated cost:** %s.\n\n**Most used models:** %s.\n\n**Most used providers:** %s.%s", startLocal.Format("January 2006"), totals.Requests, totals.ActiveDays, totals.TotalTokens, totals.InputTokens, totals.EmbeddingTokens, totals.OutputTokens, totals.CacheReadInputTokens, totals.CacheWriteInputTokens, latency, costText, formatNamedUsage(models), formatNamedUsage(providers), s.currentQuotaSummary(ctx, recipient.ID))
 		err = s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 			return s.EnqueueAutomaticTx(ctx, tx, KindMonthlyReport, recipient.ID, "monthly-report:"+recipient.ID+":"+startLocal.Format("2006-01"), "Your month in prompts — "+startLocal.Format("January 2006"), body)
 		})

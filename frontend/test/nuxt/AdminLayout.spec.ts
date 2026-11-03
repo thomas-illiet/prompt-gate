@@ -1,16 +1,10 @@
-import { mockNuxtImport } from '@nuxt/test-utils/runtime'
 import { mount } from '@vue/test-utils'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { defineComponent } from 'vue'
 
 import AdminLayout from '../../app/layouts/admin.vue'
 import AdminPage from '../../app/pages/admin.vue'
 
-const { definePageMetaMock } = vi.hoisted(() => ({
-  definePageMetaMock: vi.fn(),
-}))
-
-mockNuxtImport('definePageMeta', () => definePageMetaMock)
 
 const AuthenticatedShellStub = defineComponent({
   props: { mode: String },
@@ -40,11 +34,11 @@ describe('AdminLayout', () => {
       global: { stubs: { NuxtPage: true } },
     })
 
-    expect(definePageMetaMock).toHaveBeenCalledWith({
+    expect(useRouter().getRoutes().find(route => route.path === '/admin')?.meta).toMatchObject({
       layout: 'admin',
       title: 'Administration',
       requiredRoles: ['admin'],
-      redirect: '/admin/dashboard',
     })
+    expect(useRouter().getRoutes().find(route => route.path === '/admin')?.redirect).toBe('/admin/dashboard')
   })
 })

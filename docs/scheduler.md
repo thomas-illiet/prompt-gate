@@ -22,7 +22,7 @@ It does not expose HTTP routes. It runs until the process receives `SIGINT` or
 | Pending quota reset reconciliation | `5m` | Retries durable reset consumptions that have not yet been applied to Redis. |
 | Quota notification scan | `5m` | Detects fresh exhausted 5-hour or 7-day quota transitions and queues one consolidated email. |
 | Monthly usage reports | `1h` check | At 08:00 Europe/Paris on the first day, queues the previous month's report for active users with usage; later checks catch up if that window was missed. |
-| Notification cleanup | `1h` | Deletes complete message and delivery history older than its retention. |
+| Notification cleanup | `1h` | Deletes messages only when all deliveries were sent before the retention cutoff. |
 
 The access expiration job runs once immediately on startup and then repeats on
 its interval. The token cleanup job starts its ticker and runs on the first
@@ -101,7 +101,7 @@ Optional scheduler settings:
 | `common.maintenance.quota_reset_distribution_interval` | `1h` | Interval for idempotently granting the current UTC calendar month's reset credit. |
 | `schedule.quota_notification_interval` | `5m` | Interval for quota-exhaustion transition detection. |
 | `schedule.notification_cleanup_interval` | `1h` | Interval for retained email-history cleanup. |
-| `schedule.notification_retention` | `720h` | Retention for bodies, recipients, attempts, and errors. |
+| `schedule.notification_retention` | `720h` | Retention for fully sent messages; unfinished deliveries remain. |
 
 Durations use Go duration syntax such as `30m`, `1h`, or `24h`.
 
@@ -116,3 +116,15 @@ Durations use Go duration syntax such as `30m`, `1h`, or `24h`.
   and token state may lag until the process is restored. Monthly reset-credit
   distribution, pending reset reconciliation, and the PostgreSQL quota
   projection also stop advancing while the scheduler is unavailable.
+
+## Notification retention and costs
+
+Retention deletes messages only when every delivery was sent before the retention
+cutoff. Pending, processing, failed, and recently sent deliveries remain available.
+A positive SMTP DATA acknowledgement counts as delivery even when QUIT fails;
+shutdown cancellation does not prevent recording that accepted delivery.
+
+Monthly reports use UTC KPI days and the dashboard's current model-price estimator,
+including embedding and cache token semantics. If retained raw usage does not
+cover the complete period, the report marks cost unavailable instead of showing a
+partial amount as the total. The scheduling timezone controls delivery time only.

@@ -2,6 +2,7 @@
 package testconfig
 
 import (
+	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -39,4 +40,13 @@ func RedisURL(t testing.TB) string {
 		t.Fatalf("load integration-test Redis configuration: %v", err)
 	}
 	return cfg.RedisURL
+}
+
+// Unavailable permits an explicit local skip, but never hides a missing CI service.
+func Unavailable(t testing.TB, service string, err error) {
+	t.Helper()
+	if os.Getenv("CI") == "true" || os.Getenv("PROMPTGATE_REQUIRE_INTEGRATION") == "1" {
+		t.Fatalf("required %s integration service unavailable: %v", service, err)
+	}
+	t.Skipf("%s integration service unavailable: %v", service, err)
 }

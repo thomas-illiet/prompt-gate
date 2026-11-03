@@ -11,10 +11,10 @@ import (
 	"strings"
 	"time"
 
-	"promptgate/backend/internal/platform/config"
-
 	"github.com/coreos/go-oidc/v3/oidc"
 	"golang.org/x/oauth2"
+
+	"promptgate/backend/internal/platform/config"
 )
 
 const (
@@ -365,12 +365,17 @@ func normalizeFrontendPath(value string, fallback string) string {
 	if parsed.IsAbs() || parsed.Host != "" {
 		return fallback
 	}
+	// Keep the escaped representation stable across repeated normalization.
+	// Decoding %2F here would turn a path into a network-path URL on a later pass.
+	if strings.HasPrefix(parsed.Path, "//") || strings.Contains(parsed.Path, "\\") {
+		return fallback
+	}
 
 	if parsed.Path == "" || !strings.HasPrefix(parsed.Path, "/") {
 		return fallback
 	}
 
-	result := parsed.Path
+	result := parsed.EscapedPath()
 	if parsed.RawQuery != "" {
 		result += "?" + parsed.RawQuery
 	}

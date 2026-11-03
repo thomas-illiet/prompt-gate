@@ -80,9 +80,11 @@ type Service struct {
 	renderer      *Renderer
 	enabled       bool
 	frontendURL   string
-	inputRate     float64
-	outputRate    float64
-	embeddingRate float64
+	costEstimator UsageCostEstimator
+}
+
+type UsageCostEstimator interface {
+	EstimateReportCost(context.Context, string, time.Time, time.Time) (*float64, error)
 }
 
 // NewService constructs a notification service.
@@ -93,10 +95,8 @@ func NewService(db *gorm.DB, enabled bool, frontendURL string) *Service {
 // Enabled reports whether automatic and manual email enqueueing is active.
 func (s *Service) Enabled() bool { return s != nil && s.enabled }
 
-// SetUsageCostRates configures estimated USD-per-million-token report rates.
-func (s *Service) SetUsageCostRates(input, output, embedding float64) {
-	s.inputRate, s.outputRate, s.embeddingRate = input, output, embedding
-}
+// SetUsageCostEstimator shares dashboard pricing and raw-data coverage rules.
+func (s *Service) SetUsageCostEstimator(estimator UsageCostEstimator) { s.costEstimator = estimator }
 
 // AutoMigrate creates notification persistence tables.
 func (s *Service) AutoMigrate(ctx context.Context) error {
@@ -382,7 +382,9 @@ func (s *Service) Cleanup(ctx context.Context, retention time.Duration, now time
 		batchSize := 0
 		err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 			var messageIDs []string
-			if err := tx.Model(&Message{}).Where("created_at < ?", cutoff).Order("created_at ASC").Limit(cleanupBatchSize).Pluck("id", &messageIDs).Error; err != nil {
+			if err := tx.Model(&Message{}).Where("created_at < ?", cutoff).
+				Where("NOT EXISTS (SELECT 1 FROM deliveries d WHERE d.message_id = messages.id AND (d.status <> ? OR d.sent_at IS NULL OR d.sent_at >= ?))", DeliverySent, cutoff).
+				Order("created_at ASC").Limit(cleanupBatchSize).Pluck("id", &messageIDs).Error; err != nil {
 				return err
 			}
 			batchSize = len(messageIDs)

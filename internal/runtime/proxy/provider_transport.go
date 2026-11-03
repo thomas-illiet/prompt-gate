@@ -4,6 +4,8 @@ import (
 	"context"
 	"net/http"
 	"sync"
+
+	platformhttp "promptgate/backend/internal/platform/httpclient"
 )
 
 // AI Bridge v1.1.2 does not expose an HTTP-client hook for its OpenAI and
@@ -33,20 +35,28 @@ func ensureContextualProviderTransport() {
 }
 
 func (t *contextualProviderTransport) RoundTrip(r *http.Request) (*http.Response, error) {
-	if transport, ok := r.Context().Value(providerTransportContextKey{}).(http.RoundTripper); ok && transport != nil && transport != t {
-		return transport.RoundTrip(r)
+	if scoped, ok := r.Context().Value(providerTransportContextKey{}).(providerTransportScope); ok {
+		if err := platformhttp.CheckRedirectRequest(r); err != nil {
+			return nil, err
+		}
+		if scoped.transport != nil && scoped.transport != t {
+			return scoped.transport.RoundTrip(r)
+		}
 	}
 	return t.fallback.RoundTrip(r)
 }
+
+type providerTransportScope struct{ transport http.RoundTripper }
 
 func withProviderTransport(ctx context.Context, client *http.Client) context.Context {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if client == nil || client.Transport == nil {
-		return ctx
+	scope := providerTransportScope{}
+	if client != nil {
+		scope.transport = client.Transport
 	}
-	return context.WithValue(ctx, providerTransportContextKey{}, client.Transport)
+	return context.WithValue(ctx, providerTransportContextKey{}, scope)
 }
 
 func providerRoundTripper(client *http.Client) http.RoundTripper {

@@ -217,11 +217,12 @@ type otelFileConfig struct {
 }
 
 type workerFileConfig struct {
-	BatchSize          int64          `yaml:"batch_size"`
-	BlockTimeout       durationValue  `yaml:"block_timeout"`
-	PendingIdleTimeout durationValue  `yaml:"pending_idle_timeout"`
-	ConsumerName       string         `yaml:"consumer_name"`
-	SMTP               smtpFileConfig `yaml:"smtp"`
+	HealthListenAddress string         `yaml:"health_listen_address"`
+	BatchSize           int64          `yaml:"batch_size"`
+	BlockTimeout        durationValue  `yaml:"block_timeout"`
+	PendingIdleTimeout  durationValue  `yaml:"pending_idle_timeout"`
+	ConsumerName        string         `yaml:"consumer_name"`
+	SMTP                smtpFileConfig `yaml:"smtp"`
 }
 
 type smtpFileConfig struct {
@@ -239,6 +240,7 @@ type smtpFileConfig struct {
 }
 
 type scheduleFileConfig struct {
+	HealthListenAddress           string        `yaml:"health_listen_address"`
 	UsageRawRetention             durationValue `yaml:"usage_raw_retention"`
 	UsageRawCleanupInterval       durationValue `yaml:"usage_raw_cleanup_interval"`
 	SubscriptionQuotaSyncInterval durationValue `yaml:"subscription_quota_sync_interval"`
@@ -434,11 +436,13 @@ func defaultFileConfig() fileConfig {
 			},
 		},
 		Worker: workerFileConfig{
-			BatchSize:          100,
-			BlockTimeout:       duration(5 * time.Second),
-			PendingIdleTimeout: duration(30 * time.Second),
+			HealthListenAddress: ":8084",
+			BatchSize:           100,
+			BlockTimeout:        duration(5 * time.Second),
+			PendingIdleTimeout:  duration(30 * time.Second),
 		},
 		Schedule: scheduleFileConfig{
+			HealthListenAddress:           ":8085",
 			UsageRawRetention:             duration(90 * 24 * time.Hour),
 			UsageRawCleanupInterval:       duration(time.Hour),
 			SubscriptionQuotaSyncInterval: duration(5 * time.Minute),

@@ -3,7 +3,6 @@ package cli
 import (
 	"bufio"
 	"context"
-	"errors"
 	"io"
 	"log/slog"
 	"net"
@@ -90,23 +89,8 @@ func runProxy(configPath string) error {
 
 	server := newProxyHTTPServer(cfg.ListenAddress(), proxyRuntime.Handler, cfg.ProxyUpstreamTimeout)
 
-	go func() {
-		<-ctx.Done()
-		stdLogger.Info("shutdown signal received, stopping proxy server")
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if err := server.Shutdown(shutdownCtx); err != nil {
-			stdLogger.Error("failed to shut down proxy server cleanly", "error", err)
-		}
-	}()
-
 	stdLogger.Info("proxy server listening", "address", server.Addr)
-	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		stdLogger.Error("proxy server stopped unexpectedly", "error", err)
-		return err
-	}
-
-	return nil
+	return serveHTTP(ctx, server, cfg.ProxyUpstreamTimeout+10*time.Second, server.ListenAndServe)
 }
 
 // newProxyHTTPServer bounds header and request-body reads at the connection

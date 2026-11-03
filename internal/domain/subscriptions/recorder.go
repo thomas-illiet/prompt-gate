@@ -2,11 +2,15 @@ package subscriptions
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"sync"
 	"time"
 
 	aibrecorder "github.com/coder/aibridge/recorder"
+	"github.com/google/uuid"
+
+	"promptgate/backend/internal/platform/usagecontext"
 )
 
 type QuotaRecorder struct {
@@ -21,8 +25,16 @@ type interceptorQuotaActor struct {
 	CreatedAt time.Time
 	State     *quotaRequestState
 
-	mu             sync.Mutex
-	usageByMessage map[string]quotaUsageCounters
+	mu                 sync.Mutex
+	usageByMessage     map[string]quotaUsageCounters
+	persistedByMessage map[string]quotaUsageCounters
+	pendingByMessage   map[string]*pendingTokenUsage
+}
+
+type pendingTokenUsage struct {
+	id       string
+	record   aibrecorder.TokenUsageRecord
+	counters quotaUsageCounters
 }
 
 type quotaUsageCounters struct {
@@ -44,10 +56,12 @@ func (r *QuotaRecorder) RecordInterception(ctx context.Context, req *aibrecorder
 	if req != nil && req.ID != "" && req.InitiatorID != "" {
 		state, _ := quotaRequestStateFromContext(ctx)
 		r.interceptors.Store(req.ID, &interceptorQuotaActor{
-			UserID:         req.InitiatorID,
-			CreatedAt:      time.Now().UTC(),
-			State:          state,
-			usageByMessage: make(map[string]quotaUsageCounters),
+			UserID:             req.InitiatorID,
+			CreatedAt:          time.Now().UTC(),
+			State:              state,
+			usageByMessage:     make(map[string]quotaUsageCounters),
+			persistedByMessage: make(map[string]quotaUsageCounters),
+			pendingByMessage:   make(map[string]*pendingTokenUsage),
 		})
 		storedID = req.ID
 	}
@@ -61,92 +75,98 @@ func (r *QuotaRecorder) RecordInterception(ctx context.Context, req *aibrecorder
 }
 
 func (r *QuotaRecorder) RecordInterceptionEnded(ctx context.Context, req *aibrecorder.InterceptionRecordEnded) error {
+	var retryErr error
 	if req != nil && req.ID != "" {
 		id := req.ID
+		if raw, ok := r.interceptors.Load(id); ok {
+			actor := raw.(*interceptorQuotaActor)
+			actor.mu.Lock()
+			retryCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+			for key, pending := range actor.pendingByMessage {
+				retryErr = errors.Join(retryErr, r.persistTokenUsage(retryCtx, actor, key, pending))
+			}
+			cancel()
+			actor.mu.Unlock()
+		}
 		time.AfterFunc(5*time.Minute, func() {
 			r.interceptors.Delete(id)
 		})
 	}
-	return r.inner.RecordInterceptionEnded(ctx, req)
+	return errors.Join(retryErr, r.inner.RecordInterceptionEnded(ctx, req))
 }
 
 func (r *QuotaRecorder) RecordTokenUsage(ctx context.Context, req *aibrecorder.TokenUsageRecord) error {
-	if req != nil {
-		if raw, ok := r.interceptors.Load(req.InterceptionID); ok {
-			actor, _ := raw.(*interceptorQuotaActor)
-			if actor == nil {
-				return r.inner.RecordTokenUsage(ctx, req)
-			}
-			delta := actor.observeTokenUsage(req)
-			tokens := quotaTokenTotal(delta.input, delta.output, delta.cacheRead, delta.cacheWrite)
-			if tokens == 0 {
-				return nil
-			}
-			// Forward the same positive deltas to telemetry and durable KPI storage.
-			// Do this before privacy filtering removes provider response identifiers.
-			normalized := *req
-			normalized.Input = delta.input
-			normalized.Output = delta.output
-			normalized.CacheReadInputTokens = delta.cacheRead
-			normalized.CacheWriteInputTokens = delta.cacheWrite
-			req = &normalized
-			if tokens > 0 && actor.UserID != "" && r.store != nil {
-				when := req.CreatedAt
-				if when.IsZero() {
-					when = time.Now().UTC()
-				}
-				var err error
-				if actor.State != nil && actor.State.reservation.ID != "" && actor.State.reservation.UserID == actor.UserID {
-					// Keep the Redis hold intact for the whole upstream request. Streaming
-					// providers emit partial/cumulative callbacks before generation ends;
-					// the middleware commits the aggregate only after the bridge has waited
-					// for all asynchronous recorder calls.
-					actor.State.addRecorderTokens(tokens)
-				} else {
-					err = r.store.IncrementUsage(ctx, actor.UserID, tokens, when)
-				}
-				if err != nil {
-					r.logger.Error(
-						"failed to increment subscription quota usage",
-						"user_id", actor.UserID,
-						"interception_id", req.InterceptionID,
-						"tokens", tokens,
-						"error", err,
-					)
-				}
-			}
-		}
+	if req == nil {
+		return r.inner.RecordTokenUsage(ctx, req)
 	}
-	return r.inner.RecordTokenUsage(ctx, req)
-}
-
-// observeTokenUsage converts repeated cumulative provider callbacks into the
-// positive delta for one message. Anthropic streaming, for example, reports
-// output=1 at message_start and output=240 at message_delta; charging both raw
-// values would over-count by one token.
-func (a *interceptorQuotaActor) observeTokenUsage(req *aibrecorder.TokenUsageRecord) quotaUsageCounters {
-	if a == nil || req == nil {
-		return quotaUsageCounters{}
+	raw, ok := r.interceptors.Load(req.InterceptionID)
+	if !ok {
+		return r.inner.RecordTokenUsage(ctx, req)
 	}
+	actor, ok := raw.(*interceptorQuotaActor)
+	if !ok || actor == nil {
+		return r.inner.RecordTokenUsage(ctx, req)
+	}
+	// Serialize observations and confirmations for this request. Quota charging
+	// and durable persistence have independent watermarks.
+	actor.mu.Lock()
+	defer actor.mu.Unlock()
 	key := req.MsgID
 	if key == "" {
 		key = req.InterceptionID
 	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	previous := a.usageByMessage[key]
-	next := previous
-	next.input = maxInt64(next.input, req.Input)
-	next.output = maxInt64(next.output, req.Output)
-	next.cacheRead = maxInt64(next.cacheRead, req.CacheReadInputTokens)
-	next.cacheWrite = maxInt64(next.cacheWrite, req.CacheWriteInputTokens)
-	a.usageByMessage[key] = next
-	return quotaUsageCounters{
-		input:      next.input - previous.input,
-		output:     next.output - previous.output,
-		cacheRead:  next.cacheRead - previous.cacheRead,
-		cacheWrite: next.cacheWrite - previous.cacheWrite,
+	observed := maxUsageCounters(actor.usageByMessage[key], req)
+	quotaDelta := subtractUsage(observed, actor.usageByMessage[key])
+	actor.usageByMessage[key] = observed
+	tokens := quotaTokenTotal(quotaDelta.input, quotaDelta.output, quotaDelta.cacheRead, quotaDelta.cacheWrite)
+	recordCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	if tokens > 0 && actor.UserID != "" && r.store != nil {
+		if actor.State != nil && actor.State.reservation.ID != "" && actor.State.reservation.UserID == actor.UserID {
+			actor.State.addRecorderTokens(tokens)
+		} else if err := r.store.IncrementUsage(recordCtx, actor.UserID, tokens, req.CreatedAt); err != nil {
+			r.logger.Error("failed to increment subscription quota usage", "user_id", actor.UserID, "interception_id", req.InterceptionID, "tokens", tokens, "error", err)
+		}
 	}
+	// Retry the original payload with its original event ID before recording any
+	// later delta. An XADD timeout may have accepted that event before returning.
+	if pending := actor.pendingByMessage[key]; pending != nil {
+		if err := r.persistTokenUsage(recordCtx, actor, key, pending); err != nil {
+			return err
+		}
+	}
+	next := maxUsageCounters(actor.persistedByMessage[key], req)
+	delta := subtractUsage(next, actor.persistedByMessage[key])
+	if quotaTokenTotal(delta.input, delta.output, delta.cacheRead, delta.cacheWrite) == 0 {
+		return nil
+	}
+	normalized := *req
+	normalized.Input, normalized.Output = delta.input, delta.output
+	normalized.CacheReadInputTokens, normalized.CacheWriteInputTokens = delta.cacheRead, delta.cacheWrite
+	pending := &pendingTokenUsage{id: uuid.NewString(), record: normalized, counters: next}
+	actor.pendingByMessage[key] = pending
+	return r.persistTokenUsage(recordCtx, actor, key, pending)
+}
+
+func (r *QuotaRecorder) persistTokenUsage(ctx context.Context, actor *interceptorQuotaActor, key string, pending *pendingTokenUsage) error {
+	if err := r.inner.RecordTokenUsage(usagecontext.WithEventID(ctx, pending.id), &pending.record); err != nil {
+		return err
+	}
+	actor.persistedByMessage[key] = pending.counters
+	delete(actor.pendingByMessage, key)
+	return nil
+}
+
+func maxUsageCounters(previous quotaUsageCounters, req *aibrecorder.TokenUsageRecord) quotaUsageCounters {
+	return quotaUsageCounters{
+		input: maxInt64(previous.input, req.Input), output: maxInt64(previous.output, req.Output),
+		cacheRead: maxInt64(previous.cacheRead, req.CacheReadInputTokens), cacheWrite: maxInt64(previous.cacheWrite, req.CacheWriteInputTokens),
+	}
+}
+
+func subtractUsage(next, previous quotaUsageCounters) quotaUsageCounters {
+	return quotaUsageCounters{input: next.input - previous.input, output: next.output - previous.output,
+		cacheRead: next.cacheRead - previous.cacheRead, cacheWrite: next.cacheWrite - previous.cacheWrite}
 }
 
 func maxInt64(left, right int64) int64 {

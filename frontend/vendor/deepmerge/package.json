@@ -1,0 +1,7 @@
+{
+  "name": "deepmerge",
+  "version": "4.3.1-promptgate.1",
+  "main": "index.cjs",
+  "types": "index.d.ts",
+  "license": "MIT"
+}

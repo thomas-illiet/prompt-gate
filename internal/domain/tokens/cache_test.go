@@ -5,11 +5,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
+
 	"promptgate/backend/internal/domain/auth"
 	"promptgate/backend/internal/platform/configevents"
 	"promptgate/backend/internal/platform/redisstore"
-
-	"github.com/alicebob/miniredis/v2"
 )
 
 func newRedisAuthCacheTestStore(t *testing.T) (*miniredis.Miniredis, *redisstore.Store, *RedisAuthCache) {
@@ -164,5 +164,30 @@ func TestRedisAuthCacheReturnsMissOnRedisError(t *testing.T) {
 	_, _, hit, err := cache.Get(context.Background(), "unavailable-token")
 	if err == nil || hit {
 		t.Fatalf("expected Redis error and cache miss, hit=%v err=%v", hit, err)
+	}
+}
+
+func TestRedisAuthCacheHonorsAccountDeadline(t *testing.T) {
+	server, store, cache := newRedisAuthCacheTestStore(t)
+	ctx := context.Background()
+	principal := testCachedPrincipal("deadline-user")
+	expiry := time.Now().Add(10 * time.Second)
+	principal.User.ExpiresAt = &expiry
+	cache.Set(ctx, 0, "deadline", principal, time.Hour)
+	ttl := server.TTL(redisstore.AuthCacheKey(0, "deadline"))
+	if ttl <= 0 || ttl > 10*time.Second {
+		t.Fatalf("cache outlives account: %s", ttl)
+	}
+	expired := time.Now().Add(-time.Second)
+	principal.User.ExpiresAt = &expired
+	if err := store.SetJSON(ctx, redisstore.AuthCacheKey(0, "legacy"), principal, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, hit, err := cache.Get(ctx, "legacy"); err != nil || hit {
+		t.Fatalf("expired legacy cache accepted: %v %v", hit, err)
+	}
+	cache.Set(ctx, 0, "expired", principal, time.Hour)
+	if server.Exists(redisstore.AuthCacheKey(0, "expired")) {
+		t.Fatal("cached expired account")
 	}
 }

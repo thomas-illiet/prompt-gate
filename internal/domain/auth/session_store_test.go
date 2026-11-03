@@ -2,13 +2,12 @@ package auth
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 
-	"promptgate/backend/internal/platform/redisstore"
-
 	"github.com/alicebob/miniredis/v2"
+
+	"promptgate/backend/internal/platform/redisstore"
 )
 
 type testUserResolver struct {
@@ -159,7 +158,7 @@ func TestRedisSessionStoreDeletesSessionWhenUserMissing(t *testing.T) {
 		t.Fatalf("create session: %v", err)
 	}
 
-	storeB := NewRedisSessionStore(testUserResolver{err: errors.New("missing user")}, time.Hour, redisStore)
+	storeB := NewRedisSessionStore(testUserResolver{err: ErrUserNotFound}, time.Hour, redisStore)
 	if _, ok := storeB.Session(context.Background(), session.ID); ok {
 		t.Fatal("expected missing user to invalidate session")
 	}

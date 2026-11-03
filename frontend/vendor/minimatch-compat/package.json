@@ -1,0 +1,15 @@
+{
+  "name": "minimatch",
+  "version": "11.0.4-promptgate.1",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.js",
+      "require": "./index.cjs"
+    }
+  },
+  "dependencies": {
+    "minimatch-engine": "npm:minimatch@^11.0.4"
+  }
+}

@@ -39,6 +39,7 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
       automountServiceAccountToken: false
       serviceAccountName: {{ include "prompt-gate.serviceAccountName" . }}
       {{- include "prompt-gate.imagePullSecrets" . | nindent 6 }}
@@ -53,6 +54,20 @@ spec:
             - --config
             - /etc/prompt-gate/promptgate.yaml
             - worker
+          ports:
+            - name: health
+              containerPort: {{ include "prompt-gate.healthPort" (dict "root" . "component" "worker") }}
+          livenessProbe:
+            httpGet:
+              path: /live
+              port: health
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: health
+            periodSeconds: 10
           securityContext:
             {{- include "prompt-gate.containerSecurityContext" . | nindent 12 }}
           resources:

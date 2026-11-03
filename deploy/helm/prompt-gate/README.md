@@ -165,8 +165,9 @@ Keep `schedule.replicas: 1` unless the deployment adds an external distributed
 lock. Complete the release migrations before the scheduler starts because these
 jobs use the subscription quota projection, wallet, and ledger tables. With
 Argo CD, keep the migration Job enabled and ordered ahead of the workloads. With
-direct Helm installs, or when `migrate.enabled=false`, run an external migration
-process before starting or upgrading the scheduler.
+direct Helm installs, the Job runs as a pre-install/pre-upgrade hook. When
+`migrate.enabled=false`, run an external migration process before starting or
+upgrading the scheduler.
 
 ## Administration API Key
 
@@ -288,7 +289,7 @@ namespace/pods.
 
 ## Argo CD Ordering
 
-The migration Job is an Argo CD `Sync` hook, not a Helm hook. The default sync
+With `argoCd.enabled=true`, the migration Job is an Argo CD `Sync` hook. The default sync
 waves apply the configuration Secret and ServiceAccount first, run migrations next, then
 roll out workloads and Ingress resources. Hooks are not run during selective
 syncs, so use a full application sync when migrations must run.
@@ -298,3 +299,25 @@ HAProxy stops rewriting it and Prompt Gate starts removing it. Perform that
 upgrade during a short maintenance window after the `v2.1.0` image is
 available, wait for the proxy rollout and full Argo CD sync to become healthy,
 validate `/remote/health`, and only then reopen F5 traffic.
+
+## Direct Helm upgrades and probes
+
+With `argoCd.enabled=false`, migration is a blocking pre-install/pre-upgrade Job
+(weight -10). A generated configuration Secret hook runs first (weight -20), so
+first installs do not depend on regular resources that Helm has not applied yet.
+Existing configuration Secrets must be created externally before the upgrade.
+Successful hook resources are cleaned up; failures keep their diagnostic state
+until the next attempt. Migrations are transactional, serialized by a PostgreSQL
+advisory lock, and journaled in `schema_migrations` to avoid replay.
+
+API readiness checks PostgreSQL and Redis. Proxy `/health` checks the bridge,
+Redis and OPA, while `/live` is independent of external services. Worker and
+scheduler probes check real job progress at ports 8084 and 8085 by default, plus
+PostgreSQL and Redis for readiness. Generated config controls their probe ports;
+when using an external Secret, align `worker.healthPort` and `schedule.healthPort`
+with the Secret's health listen addresses. Scheduler rollouts use Recreate.
+`terminationGracePeriodSeconds` defaults to 180 and must exceed the proxy upstream
+timeout plus 20 seconds to allow requests to drain.
+
+Published release charts embed the release tag as appVersion, and are attached
+to the GitHub release with the binary archives and SHA256SUMS.

@@ -257,9 +257,16 @@ func TestBuildHandlerComposesOptionalLayersAndKeepsHealthIndependent(t *testing.
 		httpmiddleware.NewJSONLineWriter(&debugOutput),
 	)
 
+	for _, path := range []string{"/live", "/remote/live"} {
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("liveness must not depend on external services: %d", rec.Code)
+		}
+	}
 	healthRecorder := httptest.NewRecorder()
 	handler.ServeHTTP(healthRecorder, httptest.NewRequest(http.MethodGet, "/health", nil))
-	if healthRecorder.Code != http.StatusServiceUnavailable || healthRecorder.Body.String() != `{"status":"degraded","dependency":"opa"}` {
+	if healthRecorder.Code != http.StatusServiceUnavailable || !strings.Contains(healthRecorder.Body.String(), "dependencies unavailable") {
 		t.Fatalf("unexpected health response: %d %q", healthRecorder.Code, healthRecorder.Body.String())
 	}
 	if got := healthRecorder.Header().Get("X-Content-Type-Options"); got != "nosniff" {
@@ -267,7 +274,7 @@ func TestBuildHandlerComposesOptionalLayersAndKeepsHealthIndependent(t *testing.
 	}
 	prefixedHealthRecorder := httptest.NewRecorder()
 	handler.ServeHTTP(prefixedHealthRecorder, httptest.NewRequest(http.MethodGet, "/remote/health", nil))
-	if prefixedHealthRecorder.Code != http.StatusServiceUnavailable || prefixedHealthRecorder.Body.String() != `{"status":"degraded","dependency":"opa"}` {
+	if prefixedHealthRecorder.Code != http.StatusServiceUnavailable || !strings.Contains(prefixedHealthRecorder.Body.String(), "dependencies unavailable") {
 		t.Fatalf("unexpected prefixed health response: %d %q", prefixedHealthRecorder.Code, prefixedHealthRecorder.Body.String())
 	}
 

@@ -132,6 +132,9 @@ func TestManualNotificationLifecycle(t *testing.T) {
 	if err := db.Model(&Message{}).Where("id = ?", first.ID).Update("created_at", time.Now().Add(-48*time.Hour)).Error; err != nil {
 		t.Fatal(err)
 	}
+	if err := db.Model(&Delivery{}).Where("message_id = ?", first.ID).Updates(map[string]any{"status": DeliverySent, "sent_at": time.Now().Add(-48 * time.Hour)}).Error; err != nil {
+		t.Fatal(err)
+	}
 	deleted, err := service.Cleanup(context.Background(), 24*time.Hour, time.Now())
 	if err != nil || deleted != 1 {
 		t.Fatalf("cleanup: %d %v", deleted, err)
@@ -179,7 +182,6 @@ func TestRendererUsesDistinctBrandedTemplates(t *testing.T) {
 
 func TestQuotaTransitionAndMonthlyReport(t *testing.T) {
 	service, db := notificationTestService(t)
-	service.SetUsageCostRates(5, 30, 0.02)
 	userID := "44444444-4444-4444-4444-444444444444"
 	if err := db.Create(&testUser{ID: userID, Email: "person@example.com", Name: "Person", PreferredUsername: "person", Type: "user", Role: "user", IsActive: true}).Error; err != nil {
 		t.Fatal(err)

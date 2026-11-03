@@ -10,11 +10,12 @@ import (
 	"strings"
 	"time"
 
-	"promptgate/backend/internal/platform/redisstore"
-
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
+
+	"promptgate/backend/internal/platform/health"
+	"promptgate/backend/internal/platform/redisstore"
 )
 
 var errUsageEventAlreadyProcessed = errors.New("usage event already processed")
@@ -85,6 +86,7 @@ func (w *Worker) Run(ctx context.Context) error {
 	groupReady := false
 
 	for {
+		health.Beat(ctx, "usage", w.opts.BlockTimeout+time.Minute)
 		select {
 		case <-ctx.Done():
 			return nil

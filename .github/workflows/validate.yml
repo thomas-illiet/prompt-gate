@@ -1,0 +1,134 @@
+name: Shared validation
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    env:
+      PROMPTGATE_REQUIRE_INTEGRATION: "1"
+    name: Validate backend
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: promptgate_test
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d promptgate_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v5
+        with:
+          version: v3.22.1
+
+      - name: Check formatting
+        run: make fmt-check
+
+      - name: Vet
+        run: make vet
+
+      - name: Staticcheck
+        run: make staticcheck
+
+      - name: Test with coverage
+        run: make coverage
+
+      - name: Scan Go vulnerabilities
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+
+      - name: Build binary
+        run: make build
+
+      - name: Validate Helm chart rendering
+        run: bash deploy/helm/prompt-gate/tests/render.sh
+
+      - name: Validate OPA example policy
+        run: bash deploy/examples/opa/test.sh
+
+  frontend:
+    name: Validate frontend
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Audit frontend dependencies
+        working-directory: frontend
+        run: npm audit --audit-level=low
+
+      - name: Lint frontend
+        working-directory: frontend
+        run: npm run lint:check
+
+      - name: Typecheck frontend
+        working-directory: frontend
+        run: npm run typecheck
+
+      - name: Test frontend
+        working-directory: frontend
+        run: npm test -- --run
+
+  docker:
+    name: Validate Docker
+    runs-on: ubuntu-latest
+    needs:
+      - backend
+      - frontend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Validate Compose file
+        run: docker compose config --quiet
+
+      - name: Build Docker image
+        run: docker build -t prompt-gate-backend:ci .

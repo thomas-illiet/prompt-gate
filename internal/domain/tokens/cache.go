@@ -77,6 +77,9 @@ func (c *RedisAuthCache) Get(ctx context.Context, tokenHash string) (auth.Princi
 		return auth.Principal{}, 0, false, err
 	}
 	c.SetVersion(generation)
+	if ok && principal.User.AccessExpired(time.Now()) {
+		return auth.Principal{}, generation, false, nil
+	}
 	if ok && (strings.TrimSpace(principal.User.ID) == "" || strings.TrimSpace(principal.CredentialID) == "") {
 		return auth.Principal{}, generation, false, nil
 	}
@@ -92,6 +95,14 @@ func (c *RedisAuthCache) Set(ctx context.Context, generation int64, tokenHash st
 	}
 	if c.ttl > 0 && ttl > c.ttl {
 		ttl = c.ttl
+	}
+	if principal.User.ExpiresAt != nil {
+		if remaining := time.Until(*principal.User.ExpiresAt); remaining < ttl {
+			ttl = remaining
+		}
+		if ttl <= 0 {
+			return
+		}
 	}
 	if err := c.store.SetJSON(ctx, redisstore.AuthCacheKey(generation, tokenHash), principal, ttl); err != nil {
 		c.logger.Warn("auth cache set failed", "error", err)

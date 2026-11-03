@@ -35,7 +35,17 @@ func (p *ProxyRuntime) buildHandler(
 	debugRequestWriter *httpmiddleware.JSONLineWriter,
 ) http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /health", proxyHealth(cfg.OPAEnabled, opaClient))
+	mux.HandleFunc("GET /live", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
+	opaHealth := proxyHealth(cfg.OPAEnabled, opaClient)
+	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+		defer cancel()
+		if p.redis == nil || p.redis.Client() == nil || p.redis.Client().Ping(ctx).Err() != nil || !p.manager.Ready() {
+			http.Error(w, "proxy dependencies unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		opaHealth(w, r.WithContext(ctx))
+	})
 
 	clientIPOptions := clientip.Options{
 		TrustForwardHeaders: cfg.ProxyTrustForwardHeaders,
@@ -103,7 +113,7 @@ func proxyBasePathMiddleware(basePath string, next http.Handler) http.Handler {
 			return
 		}
 
-		if r.URL.Path == "/health" {
+		if r.URL.Path == "/health" || r.URL.Path == "/live" {
 			next.ServeHTTP(w, r)
 			return
 		}

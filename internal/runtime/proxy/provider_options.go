@@ -3,6 +3,7 @@ package runtime
 import (
 	"net/http"
 
+	platformhttp "promptgate/backend/internal/platform/httpclient"
 	"promptgate/backend/internal/platform/proxylimits"
 )
 
@@ -25,6 +26,18 @@ func normalizeProviderRuntimeOptions(opts providerRuntimeOptions) providerRuntim
 	if opts.httpClient == nil {
 		opts.httpClient = defaults.httpClient
 	}
+	client := *opts.httpClient
+	previous := client.CheckRedirect
+	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if err := platformhttp.CheckProviderRedirect(req, via); err != nil {
+			return err
+		}
+		if previous != nil {
+			return previous(req, via)
+		}
+		return nil
+	}
+	opts.httpClient = &client
 	if opts.maxBufferedRequestBytes <= 0 {
 		opts.maxBufferedRequestBytes = defaults.maxBufferedRequestBytes
 	}

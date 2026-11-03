@@ -1,6 +1,8 @@
 import withNuxt from './.nuxt/eslint.config.mjs'
 
 export default withNuxt({
+  ignores: ['vendor/deepmerge/**'],
+}, {
   rules: {
     'vue/valid-v-slot': ['error', { allowModifiers: true }], // allow vuetify slot modifier
     'vue/html-self-closing': ['error', { html: { void: 'any' } }], // not conflict with prettier

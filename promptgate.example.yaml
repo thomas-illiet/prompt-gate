@@ -100,6 +100,7 @@ proxy:
     insecure: false
 
 worker:
+  health_listen_address: ":8084"
   batch_size: 100
   block_timeout: 5s
   pending_idle_timeout: 30s
@@ -118,6 +119,7 @@ worker:
     retry_base: 1m
 
 schedule:
+  health_listen_address: ":8085"
   usage_raw_retention: 2160h
   usage_raw_cleanup_interval: 1h
   subscription_quota_sync_interval: 5m

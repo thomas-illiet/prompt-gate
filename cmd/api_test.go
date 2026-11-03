@@ -10,13 +10,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/glebarez/sqlite"
+	"gorm.io/gorm"
+
 	"promptgate/backend/internal/domain/auth"
 	"promptgate/backend/internal/domain/monitoring"
 	"promptgate/backend/internal/platform/config"
 	"promptgate/backend/internal/runtime/app"
-
-	"github.com/glebarez/sqlite"
-	"gorm.io/gorm"
 )
 
 // TestNewAPIHandlerWiresMonitoringService verifies new API handler wires monitoring service.
@@ -94,6 +94,7 @@ func TestAdminAPIKeyAuthenticatesAdminRoutes(t *testing.T) {
 				"enabled":true
 			}`),
 		)
+		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("X-Admin-API-Key", "wrong-key")
 		req.AddCookie(&http.Cookie{Name: "promptgate_session", Value: adminSession.ID})
 		recorder := httptest.NewRecorder()
@@ -134,6 +135,7 @@ func TestAdminAPIKeyAuthenticatesAdminRoutes(t *testing.T) {
 				"enabled":true
 			}`),
 		)
+		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("X-Admin-API-Key", adminAPIKey)
 		recorder := httptest.NewRecorder()
 
@@ -153,6 +155,7 @@ func TestAdminAPIKeyAuthenticatesAdminRoutes(t *testing.T) {
 
 	t.Run("key is not accepted on non-admin routes", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/me", nil)
+		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("X-Admin-API-Key", adminAPIKey)
 		recorder := httptest.NewRecorder()
 

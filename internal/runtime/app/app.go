@@ -25,6 +25,7 @@ import (
 	"promptgate/backend/internal/domain/users"
 	"promptgate/backend/internal/platform/config"
 	"promptgate/backend/internal/platform/database"
+	"promptgate/backend/internal/platform/health"
 	platformhttp "promptgate/backend/internal/platform/httpclient"
 	"promptgate/backend/internal/platform/redisstore"
 	"promptgate/backend/internal/platform/secrets"
@@ -129,7 +130,6 @@ func newServices(ctx context.Context, cfg serviceConfig, apiCfg *config.APIConfi
 	monitoringService := monitoring.NewService(db)
 	setupGuideService := setupguide.NewService(db)
 	notificationService := notifications.NewService(db, cfg.Notifications.NotificationsEnabled, cfg.FrontendURL)
-	notificationService.SetUsageCostRates(cfg.Usage.Input, cfg.Usage.Output, cfg.Usage.Embedding)
 	userService.SetNotificationService(notificationService)
 	tokenService.SetNotificationService(notificationService)
 	groupService.SetNotificationService(notificationService)
@@ -155,6 +155,7 @@ func newServices(ctx context.Context, cfg serviceConfig, apiCfg *config.APIConfi
 			EmbeddingUSDPer1MTokens: cfg.Usage.Embedding,
 		},
 	}), proxy.WithPriceResolver(pricingService))
+	notificationService.SetUsageCostEstimator(proxyService)
 	slog.Info("initializing redis connection")
 	redisStore, err := redisstore.NewRequired(ctx, cfg.Redis.RedisURL, cfg.Redis.RedisCacheTTL, slog.Default(), redisstore.ClientOptions{
 		PoolSize:     cfg.Redis.RedisPoolSize,
@@ -299,7 +300,7 @@ func (a *App) StartQuotaResetDistribution(ctx context.Context, interval time.Dur
 	}
 
 	go func() {
-		run()
+		health.Run(ctx, "quota-distribution", interval, run)
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		for {
@@ -307,7 +308,7 @@ func (a *App) StartQuotaResetDistribution(ctx context.Context, interval time.Dur
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				run()
+				health.Run(ctx, "quota-distribution", interval, run)
 			}
 		}
 	}()
@@ -341,7 +342,7 @@ func (a *App) StartQuotaStateMaintenance(ctx context.Context, interval time.Dura
 	}
 
 	go func() {
-		run()
+		health.Run(ctx, "quota-maintenance", interval, run)
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		for {
@@ -349,7 +350,7 @@ func (a *App) StartQuotaStateMaintenance(ctx context.Context, interval time.Dura
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				run()
+				health.Run(ctx, "quota-maintenance", interval, run)
 			}
 		}
 	}()
@@ -413,13 +414,13 @@ func (a *App) StartNotificationJobs(ctx context.Context) {
 			slog.Info("generated monthly usage reports", "messages", count)
 		}
 	}
-	go runScheduledNotificationJob(ctx, a.Schedule.NotificationCleanupInterval, cleanup)
-	go runScheduledNotificationJob(ctx, a.Schedule.QuotaNotificationInterval, quota)
-	go runScheduledNotificationJob(ctx, time.Hour, reports)
+	go runScheduledNotificationJob(ctx, "notification-cleanup", a.Schedule.NotificationCleanupInterval, cleanup)
+	go runScheduledNotificationJob(ctx, "quota-notifications", a.Schedule.QuotaNotificationInterval, quota)
+	go runScheduledNotificationJob(ctx, "monthly-reports", time.Hour, reports)
 }
 
-func runScheduledNotificationJob(ctx context.Context, interval time.Duration, run func()) {
-	run()
+func runScheduledNotificationJob(ctx context.Context, name string, interval time.Duration, run func()) {
+	health.Run(ctx, name, interval, run)
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
@@ -427,7 +428,7 @@ func runScheduledNotificationJob(ctx context.Context, interval time.Duration, ru
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			run()
+			health.Run(ctx, name, interval, run)
 		}
 	}
 }

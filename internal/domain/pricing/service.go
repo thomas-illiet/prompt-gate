@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"promptgate/backend/internal/domain/provider"
-
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+
+	"promptgate/backend/internal/domain/provider"
 )
 
 var (
@@ -285,7 +285,9 @@ func (s *Service) ensureConstraints(ctx context.Context) error {
 		`ALTER TABLE usage_prices ADD CONSTRAINT usage_prices_shape_check CHECK ((scope = 'global' AND provider_name = '' AND model = '') OR (scope = 'model' AND provider_name <> '' AND model <> ''))`,
 	}
 	for _, query := range queries {
-		if err := s.db.WithContext(ctx).Exec(query).Error; err != nil && !strings.Contains(err.Error(), "already exists") {
+		// Catch duplicate constraints inside PostgreSQL's subtransaction: merely
+		// ignoring the Go error leaves an enclosing migration transaction aborted.
+		if err := s.db.WithContext(ctx).Exec("DO $$ BEGIN " + query + "; EXCEPTION WHEN duplicate_object THEN NULL; END $$").Error; err != nil {
 			return err
 		}
 	}

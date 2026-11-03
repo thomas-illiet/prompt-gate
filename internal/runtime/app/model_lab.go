@@ -92,7 +92,7 @@ func modelLabTicketMiddleware(
 			}
 
 			user, err := userService.UserByID(ctx, claims.Subject)
-			if err != nil || !user.IsActive || string(user.Role) != claims.Role ||
+			if err != nil || !user.IsActive || user.AccessExpired(time.Now()) || string(user.Role) != claims.Role ||
 				(user.Role != auth.RoleUser && user.Role != auth.RoleAdmin) {
 				writeModelLabProxyError(w, http.StatusForbidden, "model_lab_access_denied")
 				return

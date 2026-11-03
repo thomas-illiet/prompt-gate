@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"net/http"
 	"os"
@@ -85,36 +84,19 @@ func runAPI(configPath string) error {
 		Addr:              cfg.ListenAddress(),
 		Handler:           newAPIHandler(a),
 		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       90 * time.Second,
 	}
-
-	go func() {
-		<-ctx.Done()
-		logger.Info("shutdown signal received, stopping api server")
-
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-
-		if err := server.Shutdown(shutdownCtx); err != nil {
-			logger.Error("failed to shut down server cleanly", "error", err)
-			return
-		}
-
-		logger.Info("api server stopped cleanly")
-	}()
 
 	logger.Info("api server listening", "address", server.Addr)
-
-	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		logger.Error("server stopped unexpectedly", "error", err)
-		return err
-	}
-
-	return nil
+	return serveHTTP(ctx, server, 30*time.Second, server.ListenAndServe)
 }
 
 // newAPIHandler wires runtime app services into the public HTTP API handler.
 func newAPIHandler(a *app.App) http.Handler {
 	return httpapi.NewHandler(httpapi.Dependencies{
+		Redis:         a.Redis,
 		Config:        a.Config,
 		DB:            a.DB,
 		Users:         a.Users,
