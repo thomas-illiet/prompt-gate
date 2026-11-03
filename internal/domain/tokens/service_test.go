@@ -72,6 +72,11 @@ func createUsageTables(t *testing.T, db *gorm.DB) {
 			day date NOT NULL,
 			initiator_id text NOT NULL,
 			requests integer NOT NULL DEFAULT 0,
+			input_tokens integer NOT NULL DEFAULT 0,
+			output_tokens integer NOT NULL DEFAULT 0,
+			cache_read_input_tokens integer NOT NULL DEFAULT 0,
+			cache_write_input_tokens integer NOT NULL DEFAULT 0,
+			total_tokens integer NOT NULL DEFAULT 0,
 			PRIMARY KEY (day, initiator_id)
 		)`,
 	}

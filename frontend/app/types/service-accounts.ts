@@ -17,6 +17,9 @@ export interface ServiceAccount {
   isActive: boolean
   inputTokens: number
   outputTokens: number
+  cacheReadInputTokens: number
+  cacheWriteInputTokens: number
+  totalTokens: number
   createdAt: string
   updatedAt: string
 }

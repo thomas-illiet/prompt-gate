@@ -1508,6 +1508,11 @@ func createSubscriptionUsageTables(t *testing.T, db *gorm.DB) {
 			day date NOT NULL,
 			initiator_id text NOT NULL,
 			requests integer NOT NULL DEFAULT 0,
+			input_tokens integer NOT NULL DEFAULT 0,
+			output_tokens integer NOT NULL DEFAULT 0,
+			cache_read_input_tokens integer NOT NULL DEFAULT 0,
+			cache_write_input_tokens integer NOT NULL DEFAULT 0,
+			total_tokens integer NOT NULL DEFAULT 0,
 			PRIMARY KEY (day, initiator_id)
 		)`,
 	} {
@@ -1532,6 +1537,15 @@ func seedSubscriptionTokenConsumption(t *testing.T, db *gorm.DB, userID, interce
 	).Error; err != nil {
 		t.Fatalf("seed subscription token usage: %v", err)
 	}
+	if err := db.Exec(`INSERT INTO proxy_daily_usage_kpis (day, initiator_id, input_tokens, output_tokens, total_tokens)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(day, initiator_id) DO UPDATE SET
+        input_tokens = input_tokens + excluded.input_tokens,
+        output_tokens = output_tokens + excluded.output_tokens,
+        total_tokens = total_tokens + excluded.total_tokens`, time.Now().UTC().Truncate(24*time.Hour), userID, input, output, input+output).Error; err != nil {
+		t.Fatalf("seed durable token usage: %v", err)
+	}
+
 }
 
 func quotaRequest(userID string) *http.Request {

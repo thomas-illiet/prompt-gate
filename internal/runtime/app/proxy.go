@@ -112,7 +112,7 @@ func NewProxy(ctx context.Context, cfg config.ProxyConfig, logger *slog.Logger, 
 		return nil, fmt.Errorf("warm subscription snapshot: %w", err)
 	}
 
-	redisRecorder := localproxy.NewRedisRecorder(redisStore, logger)
+	redisRecorder := localproxy.NewRedisRecorder(redisStore, logger).WithDurableFallback(db)
 	usageRecorder := localproxy.NewTelemetryRecorder(redisRecorder, cfg.OTel.CapturePrompts)
 	usageRecorder.WithThinkingCapture(cfg.OTel.CaptureThinking)
 	usageRecorder.WithEstimatedCosts(cfg.UsageCost.Input, cfg.UsageCost.Output, cfg.UsageCost.Embedding)

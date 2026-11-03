@@ -19,6 +19,9 @@ const user: AdminUser = {
   lastLoginAt: '2026-01-02T00:00:00Z',
   inputTokens: 123,
   outputTokens: 456,
+  cacheReadInputTokens: 0,
+  cacheWriteInputTokens: 0,
+  totalTokens: 579,
   expiresAt: null,
   createdAt: '2026-01-01T00:00:00Z',
   updatedAt: '2026-01-03T00:00:00Z',
@@ -30,6 +33,8 @@ describe('usersToCsv', () => {
 
     expect(csv).toContain('"ID","Name","Username","Email"')
     expect(csv).toContain('"Access","Platform activity (30d)"')
+    expect(csv).toContain('"Cache read tokens","Cache write tokens","Total tokens (all time)"')
+    expect(csv).toContain('"123","456","0","0","579"')
     expect(csv).toContain('"Lovelace, ""Ada"""')
     expect(csv).toContain('"\'=unsafe"')
     expect(csv).toContain('"Enabled","Active"')

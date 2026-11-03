@@ -22,6 +22,9 @@ const user: AdminUser = {
   lastLoginAt: '2026-01-02T00:00:00Z',
   inputTokens: 123,
   outputTokens: 456,
+  cacheReadInputTokens: 60,
+  cacheWriteInputTokens: 20,
+  totalTokens: 659,
   expiresAt: null,
   createdAt: '2026-01-01T00:00:00Z',
   updatedAt: '2026-01-01T00:00:00Z',
@@ -81,7 +84,7 @@ function mountTable(item: AdminUser = user) {
         AppServerDataTable: {
           props: ['headers', 'items'],
           template:
-            '<div><span v-for="header in headers" :key="header.key" :data-header="header.title" :data-sortable="header.sortable">{{ header.title }}</span><div v-for="item in items" :key="item.id"><slot name="item.name" :item="item" /><slot name="item.email" :item="item" /><slot name="item.isActive" :item="item" /><slot name="item.activeInLast30Days" :item="item" /><slot name="item.actions" :item="item" /></div></div>',
+            '<div><span v-for="header in headers" :key="header.key" :data-header="header.title" :data-sortable="header.sortable">{{ header.title }}</span><div v-for="item in items" :key="item.id"><slot name="item.name" :item="item" /><slot name="item.email" :item="item" /><slot name="item.isActive" :item="item" /><slot name="item.activeInLast30Days" :item="item" /><slot name="item.totalTokens" :item="item" /><slot name="item.actions" :item="item" /></div></div>',
         },
         AppStatusToggleButton: {
           props: ['active', 'activeLabel', 'inactiveLabel'],
@@ -101,6 +104,13 @@ function mountTable(item: AdminUser = user) {
 }
 
 describe('AdminUsersTable', () => {
+  it('shows the durable all-time total including cache and supports sorting it', () => {
+    const wrapper = mountTable()
+    const value = wrapper.get('[title="All-time tokens, including cache reads and writes"]')
+    expect(value.text().replace(/[^0-9]/g, '')).toBe('659')
+    expect(wrapper.get('[data-header="Total tokens (all time)"]').attributes('data-sortable')).toBe('true')
+  })
+
   it('emits create from the primary pre-create action', async () => {
     const wrapper = mountTable()
 

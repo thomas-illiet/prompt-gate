@@ -27,6 +27,9 @@ func (s *Service) attachAdminUserTokenConsumption(ctx context.Context, items []A
 	for i := range items {
 		items[i].InputTokens = consumptionByUserID[items[i].ID].InputTokens
 		items[i].OutputTokens = consumptionByUserID[items[i].ID].OutputTokens
+		items[i].CacheReadInputTokens = consumptionByUserID[items[i].ID].CacheReadInputTokens
+		items[i].CacheWriteInputTokens = consumptionByUserID[items[i].ID].CacheWriteInputTokens
+		items[i].TotalTokens = consumptionByUserID[items[i].ID].TotalTokens
 	}
 	return nil
 }
@@ -79,6 +82,9 @@ func (s *Service) attachServiceAccountTokenConsumption(ctx context.Context, item
 	for i := range items {
 		items[i].InputTokens = consumptionByUserID[items[i].ID].InputTokens
 		items[i].OutputTokens = consumptionByUserID[items[i].ID].OutputTokens
+		items[i].CacheReadInputTokens = consumptionByUserID[items[i].ID].CacheReadInputTokens
+		items[i].CacheWriteInputTokens = consumptionByUserID[items[i].ID].CacheWriteInputTokens
+		items[i].TotalTokens = consumptionByUserID[items[i].ID].TotalTokens
 	}
 	return nil
 }
@@ -89,13 +95,15 @@ func (s *Service) loadTokenConsumption(ctx context.Context, userIDs []string) (m
 	}
 	var rows []tokenConsumption
 	if err := s.db.WithContext(ctx).
-		Table("token_usages").
-		Select(`interceptions.initiator_id AS user_id,
-			COALESCE(SUM(token_usages.input_tokens), 0) AS input_tokens,
-			COALESCE(SUM(token_usages.output_tokens), 0) AS output_tokens`).
-		Joins("JOIN interceptions ON interceptions.id = token_usages.interception_id").
-		Where("interceptions.initiator_id IN ?", userIDs).
-		Group("interceptions.initiator_id").
+		Table("proxy_daily_usage_kpis").
+		Select(`initiator_id AS user_id,
+			COALESCE(SUM(input_tokens), 0) AS input_tokens,
+			COALESCE(SUM(output_tokens), 0) AS output_tokens,
+			COALESCE(SUM(cache_read_input_tokens), 0) AS cache_read_input_tokens,
+			COALESCE(SUM(cache_write_input_tokens), 0) AS cache_write_input_tokens,
+			COALESCE(SUM(total_tokens), 0) AS total_tokens`).
+		Where("initiator_id IN ?", userIDs).
+		Group("initiator_id").
 		Scan(&rows).Error; err != nil {
 		return nil, fmt.Errorf("load token consumption: %w", err)
 	}

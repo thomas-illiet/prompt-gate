@@ -77,7 +77,19 @@ func (r *QuotaRecorder) RecordTokenUsage(ctx context.Context, req *aibrecorder.T
 			if actor == nil {
 				return r.inner.RecordTokenUsage(ctx, req)
 			}
-			tokens := actor.observeTokenUsage(req)
+			delta := actor.observeTokenUsage(req)
+			tokens := quotaTokenTotal(delta.input, delta.output, delta.cacheRead, delta.cacheWrite)
+			if tokens == 0 {
+				return nil
+			}
+			// Forward the same positive deltas to telemetry and durable KPI storage.
+			// Do this before privacy filtering removes provider response identifiers.
+			normalized := *req
+			normalized.Input = delta.input
+			normalized.Output = delta.output
+			normalized.CacheReadInputTokens = delta.cacheRead
+			normalized.CacheWriteInputTokens = delta.cacheWrite
+			req = &normalized
 			if tokens > 0 && actor.UserID != "" && r.store != nil {
 				when := req.CreatedAt
 				if when.IsZero() {
@@ -112,9 +124,9 @@ func (r *QuotaRecorder) RecordTokenUsage(ctx context.Context, req *aibrecorder.T
 // positive delta for one message. Anthropic streaming, for example, reports
 // output=1 at message_start and output=240 at message_delta; charging both raw
 // values would over-count by one token.
-func (a *interceptorQuotaActor) observeTokenUsage(req *aibrecorder.TokenUsageRecord) int64 {
+func (a *interceptorQuotaActor) observeTokenUsage(req *aibrecorder.TokenUsageRecord) quotaUsageCounters {
 	if a == nil || req == nil {
-		return 0
+		return quotaUsageCounters{}
 	}
 	key := req.MsgID
 	if key == "" {
@@ -129,12 +141,12 @@ func (a *interceptorQuotaActor) observeTokenUsage(req *aibrecorder.TokenUsageRec
 	next.cacheRead = maxInt64(next.cacheRead, req.CacheReadInputTokens)
 	next.cacheWrite = maxInt64(next.cacheWrite, req.CacheWriteInputTokens)
 	a.usageByMessage[key] = next
-	return quotaTokenTotal(
-		next.input-previous.input,
-		next.output-previous.output,
-		next.cacheRead-previous.cacheRead,
-		next.cacheWrite-previous.cacheWrite,
-	)
+	return quotaUsageCounters{
+		input:      next.input - previous.input,
+		output:     next.output - previous.output,
+		cacheRead:  next.cacheRead - previous.cacheRead,
+		cacheWrite: next.cacheWrite - previous.cacheWrite,
+	}
 }
 
 func maxInt64(left, right int64) int64 {

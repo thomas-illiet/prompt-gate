@@ -74,6 +74,9 @@ type AdminUser struct {
 	ActiveInLast30Days        bool                     `json:"activeInLast30Days"`
 	InputTokens               int64                    `json:"inputTokens"`
 	OutputTokens              int64                    `json:"outputTokens"`
+	CacheReadInputTokens      int64                    `json:"cacheReadInputTokens"`
+	CacheWriteInputTokens     int64                    `json:"cacheWriteInputTokens"`
+	TotalTokens               int64                    `json:"totalTokens"`
 	ExpiresAt                 *time.Time               `json:"expiresAt"`
 	LastLoginAt               *time.Time               `json:"lastLoginAt"`
 	CreatedAt                 time.Time                `json:"createdAt"`
@@ -111,6 +114,9 @@ type ServiceAccount struct {
 	IsActive                  bool                     `json:"isActive"`
 	InputTokens               int64                    `json:"inputTokens"`
 	OutputTokens              int64                    `json:"outputTokens"`
+	CacheReadInputTokens      int64                    `json:"cacheReadInputTokens"`
+	CacheWriteInputTokens     int64                    `json:"cacheWriteInputTokens"`
+	TotalTokens               int64                    `json:"totalTokens"`
 	CreatedAt                 time.Time                `json:"createdAt"`
 	UpdatedAt                 time.Time                `json:"updatedAt"`
 }
@@ -177,9 +183,12 @@ type Service struct {
 }
 
 type tokenConsumption struct {
-	UserID       string `gorm:"column:user_id"`
-	InputTokens  int64  `gorm:"column:input_tokens"`
-	OutputTokens int64  `gorm:"column:output_tokens"`
+	UserID                string `gorm:"column:user_id"`
+	InputTokens           int64  `gorm:"column:input_tokens"`
+	OutputTokens          int64  `gorm:"column:output_tokens"`
+	CacheReadInputTokens  int64  `gorm:"column:cache_read_input_tokens"`
+	CacheWriteInputTokens int64  `gorm:"column:cache_write_input_tokens"`
+	TotalTokens           int64  `gorm:"column:total_tokens"`
 }
 
 type tokenRevoker interface {
@@ -725,18 +734,18 @@ func normalizeServiceAccountListParams(params *ServiceAccountListParams) {
 
 // userSortNeedsConsumption reports whether sorting requires the token consumption join.
 func userSortNeedsConsumption(sortBy string) bool {
-	return sortBy == "inputTokens" || sortBy == "outputTokens"
+	return sortBy == "inputTokens" || sortBy == "outputTokens" || sortBy == "totalTokens"
 }
 
 // userTokenConsumptionJoin returns the SQL join for user token usage aggregates.
 func userTokenConsumptionJoin() string {
 	return `LEFT JOIN (
-		SELECT interceptions.initiator_id AS user_id,
-			COALESCE(SUM(token_usages.input_tokens), 0) AS input_tokens,
-			COALESCE(SUM(token_usages.output_tokens), 0) AS output_tokens
-		FROM token_usages
-		JOIN interceptions ON interceptions.id = token_usages.interception_id
-		GROUP BY interceptions.initiator_id
+		SELECT initiator_id AS user_id,
+			COALESCE(SUM(input_tokens), 0) AS input_tokens,
+			COALESCE(SUM(output_tokens), 0) AS output_tokens,
+			COALESCE(SUM(total_tokens), 0) AS total_tokens
+		FROM proxy_daily_usage_kpis
+		GROUP BY initiator_id
 	) AS token_consumption ON token_consumption.user_id = users.id`
 }
 
@@ -757,6 +766,7 @@ func applyUserSort(query *gorm.DB, sortBy, sortDir string) (*gorm.DB, error) {
 		"updatedAt":         "users.updated_at",
 		"inputTokens":       "COALESCE(token_consumption.input_tokens, 0)",
 		"outputTokens":      "COALESCE(token_consumption.output_tokens, 0)",
+		"totalTokens":       "COALESCE(token_consumption.total_tokens, 0)",
 		"preferredUsername": "users.preferred_username",
 	}
 
@@ -790,6 +800,7 @@ func applyServiceAccountSort(query *gorm.DB, sortBy, sortDir string) (*gorm.DB, 
 		"updatedAt":    "users.updated_at",
 		"inputTokens":  "COALESCE(token_consumption.input_tokens, 0)",
 		"outputTokens": "COALESCE(token_consumption.output_tokens, 0)",
+		"totalTokens":  "COALESCE(token_consumption.total_tokens, 0)",
 	}
 
 	column, ok := columns[sortBy]

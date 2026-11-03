@@ -403,6 +403,15 @@ not additive. The response has the same `costCoverage` semantics as user and
 service-account statistics. Unknown groups return
 `404 {"error":"group_not_found"}`.
 
+User and service-account responses expose durable all-time `inputTokens`,
+`outputTokens`, `cacheReadInputTokens`, `cacheWriteInputTokens`, and `totalTokens`.
+`totalTokens` includes all four token categories, including embeddings, and
+matches the account dashboard with `window=all`. Raw-event retention does not
+reduce these totals. The input and output fields retain their existing meanings;
+cache tokens are separate. Both account lists support `sortBy=totalTokens`
+before pagination, as well as input/output sorting. The account statistics
+dialog defaults to all time; other dashboard periods remain selectable.
+
 Each item returned by the group list also exposes `inputTokens` and
 `outputTokens`. These are durable all-time totals from the current human and
 service-account members, including inactive accounts. Cache-read and

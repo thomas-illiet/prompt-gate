@@ -1168,6 +1168,9 @@ func (s *RedisStore) SyncQuotaStates(ctx context.Context, service *Service) (int
 	if !s.Enabled() || service == nil {
 		return 0, nil
 	}
+	if err := s.RefreshIfStale(ctx); err != nil {
+		return 0, fmt.Errorf("refresh subscription plans before quota projection: %w", err)
+	}
 	if err := s.pruneDeletedUserQuotaStates(ctx, service); err != nil {
 		return 0, err
 	}

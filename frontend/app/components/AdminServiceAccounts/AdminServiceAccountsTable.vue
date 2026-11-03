@@ -52,6 +52,11 @@ const headers: DataTableHeader[] = [
     key: 'outputTokens',
   }),
   appTableCenteredColumn({
+    title: 'Total tokens (all time)',
+    key: 'totalTokens',
+    sortable: true,
+  }),
+  appTableCenteredColumn({
     title: 'Actions',
     key: 'actions',
     sortable: false,
@@ -218,6 +223,12 @@ function planColor(account: ServiceAccount) {
       <template #item.outputTokens="{ item }">
         <span class="app-table-text">
           {{ formatNumber(item.outputTokens) }}
+        </span>
+      </template>
+
+      <template #item.totalTokens="{ item }">
+        <span title="All-time tokens, including cache reads and writes">
+          {{ formatNumber(item.totalTokens) }}
         </span>
       </template>
 

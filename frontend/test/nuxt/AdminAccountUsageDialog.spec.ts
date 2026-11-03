@@ -89,7 +89,7 @@ describe('AdminAccountUsageDialog', () => {
     })
   })
 
-  it('loads the endpoint with a default 7-day window', () => {
+  it('loads the endpoint with a default all-time window', () => {
     const wrapper = mountDialog()
 
     expect(wrapper.text()).toContain('Account usage statistics')
@@ -100,7 +100,7 @@ describe('AdminAccountUsageDialog', () => {
     expect(toValue(endpoint)).toBe(
       '/api/v1/admin/accounts/account-id/statistics',
     )
-    expect(toValue(window)).toBe('7d')
+    expect(toValue(window)).toBe('all')
   })
 
   it('updates the request window and exposes refresh and close actions', async () => {

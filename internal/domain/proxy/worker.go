@@ -81,10 +81,8 @@ func (w *Worker) Run(ctx context.Context) error {
 	if client == nil {
 		return errors.New("redis store unavailable")
 	}
-	if err := ensureUsageConsumerGroup(ctx, client); err != nil {
-		return err
-	}
 	w.logger.Info("promptgate worker started", "consumer", w.opts.ConsumerName, "batch_size", w.opts.BatchSize)
+	groupReady := false
 
 	for {
 		select {
@@ -93,15 +91,35 @@ func (w *Worker) Run(ctx context.Context) error {
 		default:
 		}
 
+		if err := w.processFallbackBatch(ctx); err != nil {
+			w.logger.Error("failed to process durable usage fallback", "error", err)
+		}
+		if !groupReady {
+			if err := ensureUsageConsumerGroup(ctx, client); err != nil {
+				w.logger.Error("failed to ensure usage consumer group", "error", err)
+				sleepWithContext(ctx, time.Second)
+				continue
+			}
+			w.pendingCursor = "0-0"
+			groupReady = true
+		}
+		block := w.opts.BlockTimeout
 		if messages, err := w.claimPending(ctx, client); err != nil {
 			if ctx.Err() != nil {
 				return nil
 			}
+			if redis.HasErrorPrefix(err, "NOGROUP") {
+				groupReady = false
+				continue
+			}
 			w.logger.Error("failed to claim pending usage events", "error", err)
 			sleepWithContext(ctx, time.Second)
+			continue
 		} else if len(messages) > 0 {
 			w.handleMessages(ctx, client, messages)
-			continue
+			// Always give new events a turn, even while permanent dependency
+			// failures remain pending. Do not block after an active retry batch.
+			block = -1
 		}
 
 		streams, err := client.XReadGroup(ctx, &redis.XReadGroupArgs{
@@ -109,7 +127,7 @@ func (w *Worker) Run(ctx context.Context) error {
 			Consumer: w.opts.ConsumerName,
 			Streams:  []string{UsageEventsStream, ">"},
 			Count:    w.opts.BatchSize,
-			Block:    w.opts.BlockTimeout,
+			Block:    block,
 		}).Result()
 		if errors.Is(err, redis.Nil) {
 			continue
@@ -117,6 +135,10 @@ func (w *Worker) Run(ctx context.Context) error {
 		if err != nil {
 			if ctx.Err() != nil {
 				return nil
+			}
+			if redis.HasErrorPrefix(err, "NOGROUP") {
+				groupReady = false
+				continue
 			}
 			w.logger.Error("failed to read usage events", "error", err)
 			sleepWithContext(ctx, time.Second)
@@ -126,6 +148,51 @@ func (w *Worker) Run(ctx context.Context) error {
 			w.handleMessages(ctx, client, stream.Messages)
 		}
 	}
+}
+
+func (w *Worker) processFallbackBatch(ctx context.Context) error {
+	if w.db == nil {
+		return nil
+	}
+	var pending []PendingUsageEvent
+	// Explicit NULL ordering works with both PostgreSQL and SQLite.
+	if err := w.db.WithContext(ctx).
+		Order("CASE WHEN attempted_at IS NULL THEN 0 ELSE 1 END").
+		Order("attempted_at ASC").Order("created_at ASC").Order("event_id ASC").
+		Limit(int(w.opts.BatchSize)).Find(&pending).Error; err != nil {
+		return err
+	}
+	if len(pending) == 0 {
+		return nil
+	}
+	messages := make([]UsageEventMessage, 0, len(pending))
+	ids := make([]string, 0, len(pending))
+	for _, row := range pending {
+		ids = append(ids, row.EventID)
+		var event UsageEvent
+		if err := json.Unmarshal([]byte(row.Payload), &event); err != nil {
+			w.logger.Error("invalid durable usage event retained", "eventId", row.EventID, "error", err)
+			continue
+		}
+		event.EventID = row.EventID
+		messages = append(messages, UsageEventMessage{Event: event})
+	}
+	results := w.ProcessUsageBatch(ctx, messages)
+	completed := make([]string, 0, len(results))
+	for i, result := range results {
+		if result.Err == nil || errors.Is(result.Err, errUsageEventAlreadyProcessed) {
+			completed = append(completed, messages[i].Event.EventID)
+		} else {
+			w.logger.Warn("durable usage event awaiting retry", "eventId", messages[i].Event.EventID, "error", result.Err)
+		}
+	}
+	if len(completed) > 0 {
+		if err := w.db.WithContext(ctx).Where("event_id IN ?", completed).Delete(&PendingUsageEvent{}).Error; err != nil {
+			return err
+		}
+	}
+	return w.db.WithContext(ctx).Model(&PendingUsageEvent{}).
+		Where("event_id IN ?", ids).Update("attempted_at", time.Now().UTC()).Error
 }
 
 func (w *Worker) claimPending(ctx context.Context, client *redis.Client) ([]redis.XMessage, error) {

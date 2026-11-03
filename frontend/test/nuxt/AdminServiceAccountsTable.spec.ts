@@ -15,6 +15,9 @@ const account: ServiceAccount = {
   isActive: true,
   inputTokens: 1234,
   outputTokens: 5678,
+  cacheReadInputTokens: 60,
+  cacheWriteInputTokens: 20,
+  totalTokens: 6992,
   createdAt: '2026-01-01T00:00:00Z',
   updatedAt: '2026-01-01T00:00:00Z',
 }
@@ -63,9 +66,9 @@ function mountTable() {
           template: '<section><slot name="actions" /><slot /></section>',
         },
         AppServerDataTable: {
-          props: ['items'],
+          props: ['headers', 'items'],
           template:
-            '<div><div v-for="item in items" :key="item.id"><slot name="item.name" :item="item" /><slot name="item.identifier" :item="item" /><slot name="item.actions" :item="item" /></div></div>',
+            '<div><span v-for="header in headers" :key="header.key" :data-header="header.title" :data-sortable="header.sortable">{{ header.title }}</span><div v-for="item in items" :key="item.id"><slot name="item.name" :item="item" /><slot name="item.identifier" :item="item" /><slot name="item.totalTokens" :item="item" /><slot name="item.actions" :item="item" /></div></div>',
         },
         VBtn: { template: '<button><slot /></button>' },
         VChip: { template: '<span><slot /></span>' },
@@ -75,6 +78,13 @@ function mountTable() {
 }
 
 describe('AdminServiceAccountsTable', () => {
+  it('shows the durable all-time total including cache and supports sorting it', () => {
+    const wrapper = mountTable()
+    const value = wrapper.get('[title="All-time tokens, including cache reads and writes"]')
+    expect(value.text().replace(/[^0-9]/g, '')).toBe('6992')
+    expect(wrapper.get('[data-header="Total tokens (all time)"]').attributes('data-sortable')).toBe('true')
+  })
+
   it('exposes an IP addresses row action', async () => {
     const wrapper = mountTable()
     expect(wrapper.get('[data-test="row-action-manageIps"]').text()).toBe(

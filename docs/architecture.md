@@ -192,5 +192,23 @@ independent bound without a global Redis scan. OPA denials expire through
 10. proxy recorder and dashboard KPI tables
 11. destructive removal of retired firewall and MCP schemas
 
+Usage publication normally uses the Redis stream. Failed or ambiguous writes
+are retained in PostgreSQL's `pending_usage_events` table, including when the
+request context has expired. Workers drain this fallback on every processing
+cycle, even while Redis is unavailable. The same event ID is used on both paths,
+so a retry cannot increment the KPI twice. A failure of both stores is returned
+and logged rather than reported as successful recording.
+
+Workers recreate a missing Redis consumer group from the beginning of the
+remaining stream. Pending dependencies do not prevent fresh events or later
+fallback rows from being processed. Metadata-only requests can omit client IP
+without losing accounting, and cumulative provider callbacks are converted to
+positive deltas before quota, telemetry, privacy filtering, and KPI recording.
+
+The fallback table requires the standard migration before rollout. Existing
+Redis entries remain compatible. Already lost events cannot be reconstructed
+from quota counters, and historical cumulative overcounts are not rewritten
+automatically; retained raw records need a separate, reviewed reconciliation.
+
 Run migrations before starting API, proxy, worker, or scheduler processes in a
 new environment.

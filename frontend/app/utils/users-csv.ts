@@ -14,6 +14,9 @@ const USER_CSV_HEADERS = [
   'Last login at',
   'Input tokens',
   'Output tokens',
+  'Cache read tokens',
+  'Cache write tokens',
+  'Total tokens (all time)',
   'Created at',
   'Updated at',
 ]
@@ -33,6 +36,9 @@ export function usersToCsv(users: AdminUser[]) {
     user.lastLoginAt ?? 'Never',
     user.inputTokens,
     user.outputTokens,
+    user.cacheReadInputTokens,
+    user.cacheWriteInputTokens,
+    user.totalTokens,
     user.createdAt,
     user.updatedAt,
   ])

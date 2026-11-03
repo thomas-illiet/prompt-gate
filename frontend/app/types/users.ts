@@ -17,6 +17,9 @@ export interface AdminUser extends Omit<AuthUser, 'lastLoginAt' | 'sub'> {
   note: string
   inputTokens: number
   outputTokens: number
+  cacheReadInputTokens: number
+  cacheWriteInputTokens: number
+  totalTokens: number
   expiresAt: string | null
   createdAt: string
   updatedAt: string

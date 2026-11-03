@@ -101,6 +101,11 @@ func processInterceptionStarted(tx *gorm.DB, payload *InterceptionStartedEvent) 
 }
 
 func upsertAccountIPAddress(tx *gorm.DB, userID, rawIP string, lastSeen time.Time) error {
+	// Metadata-only requests intentionally omit the address. Accounting must
+	// remain independent of optional client metadata.
+	if strings.TrimSpace(rawIP) == "" {
+		return nil
+	}
 	ip := net.ParseIP(strings.TrimSpace(rawIP))
 	if ip == nil {
 		return fmt.Errorf("record account IP address: invalid IP %q", rawIP)

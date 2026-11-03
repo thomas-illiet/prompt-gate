@@ -159,7 +159,7 @@ func TestWorkerDeletesLegacyPromptEvents(t *testing.T) {
 	}
 }
 
-func TestRedisRecorderBestEffortLogsRedisErrors(t *testing.T) {
+func TestRedisRecorderReturnsAndLogsUnrecoverableRedisErrors(t *testing.T) {
 	var logs bytes.Buffer
 	rec := NewRedisRecorder(nil, slog.New(slog.NewTextHandler(&logs, nil)))
 
@@ -170,8 +170,8 @@ func TestRedisRecorderBestEffortLogsRedisErrors(t *testing.T) {
 		Output:         20,
 		Metadata:       aibrecorder.Metadata{},
 	})
-	if err != nil {
-		t.Fatalf("expected best effort nil error, got %v", err)
+	if err == nil {
+		t.Fatal("expected an error when neither Redis nor durable fallback is available")
 	}
 	if !strings.Contains(logs.String(), "level=ERROR") || !strings.Contains(logs.String(), "eventType=token_usage") {
 		t.Fatalf("expected error log for failed enqueue, got %q", logs.String())

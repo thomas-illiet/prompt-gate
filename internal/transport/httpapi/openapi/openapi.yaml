@@ -2704,7 +2704,7 @@ components:
     AdminUser:
       type: object
       additionalProperties: false
-      required: [id, sub, preferredUsername, email, name, type, role, subscriptionPlanId, quotaResetCredits, note, isActive, activeInLast30Days, inputTokens, outputTokens, expiresAt, lastLoginAt, createdAt, updatedAt]
+      required: [id, sub, preferredUsername, email, name, type, role, subscriptionPlanId, quotaResetCredits, note, isActive, activeInLast30Days, inputTokens, outputTokens, cacheReadInputTokens, cacheWriteInputTokens, totalTokens, expiresAt, lastLoginAt, createdAt, updatedAt]
       properties:
         id: { type: string, format: uuid }
         sub: { type: string, nullable: true }
@@ -2736,6 +2736,9 @@ components:
           description: Whether at least one proxy request was recorded from today through 29 days ago, using UTC calendar days.
         inputTokens: { type: integer, format: int64, minimum: 0 }
         outputTokens: { type: integer, format: int64, minimum: 0 }
+        cacheReadInputTokens: { type: integer, format: int64, minimum: 0 }
+        cacheWriteInputTokens: { type: integer, format: int64, minimum: 0 }
+        totalTokens: { type: integer, format: int64, minimum: 0, description: "All-time tokens including cache reads and writes, from durable daily aggregates." }
         expiresAt: { type: string, format: date-time, nullable: true }
         lastLoginAt: { type: string, format: date-time, nullable: true }
         createdAt: { type: string, format: date-time }
@@ -2778,7 +2781,7 @@ components:
     ServiceAccount:
       type: object
       additionalProperties: false
-      required: [id, identifier, name, role, subscriptionPlanId, note, isActive, inputTokens, outputTokens, createdAt, updatedAt]
+      required: [id, identifier, name, role, subscriptionPlanId, note, isActive, inputTokens, outputTokens, cacheReadInputTokens, cacheWriteInputTokens, totalTokens, createdAt, updatedAt]
       properties:
         id: { type: string, format: uuid }
         identifier: { type: string }
@@ -2801,6 +2804,9 @@ components:
         isActive: { type: boolean }
         inputTokens: { type: integer, format: int64, minimum: 0 }
         outputTokens: { type: integer, format: int64, minimum: 0 }
+        cacheReadInputTokens: { type: integer, format: int64, minimum: 0 }
+        cacheWriteInputTokens: { type: integer, format: int64, minimum: 0 }
+        totalTokens: { type: integer, format: int64, minimum: 0, description: "All-time tokens including cache reads and writes, from durable daily aggregates." }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
     ServiceAccountRequest:

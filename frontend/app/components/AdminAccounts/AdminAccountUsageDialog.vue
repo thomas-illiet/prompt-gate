@@ -14,7 +14,7 @@ const props = defineProps<{
 }>()
 
 const isOpen = defineModel<boolean>({ default: false })
-const selectedWindow = shallowRef<UsageWindow>('7d')
+const selectedWindow = shallowRef<UsageWindow>('all')
 const widget = useDashboardWidget<DashboardOverviewResponse>(
   () => props.endpoint,
   selectedWindow,

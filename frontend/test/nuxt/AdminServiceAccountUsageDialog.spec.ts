@@ -13,6 +13,9 @@ const account: ServiceAccount = {
   isActive: true,
   inputTokens: 123,
   outputTokens: 456,
+  cacheReadInputTokens: 0,
+  cacheWriteInputTokens: 0,
+  totalTokens: 579,
   createdAt: '2026-01-01T00:00:00Z',
   updatedAt: '2026-01-01T00:00:00Z',
 }

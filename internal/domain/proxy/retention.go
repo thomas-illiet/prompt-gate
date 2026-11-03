@@ -38,7 +38,9 @@ func (s *Service) DeleteRawUsageBefore(ctx context.Context, cutoff time.Time) (i
 // DeleteProcessedUsageBefore removes idempotency markers older than cutoff.
 // The retention window should exceed the maximum Redis retry/DLQ lifetime.
 func (s *Service) DeleteProcessedUsageBefore(ctx context.Context, cutoff time.Time) (int64, error) {
-	result := s.db.WithContext(ctx).Where("processed_at < ?", cutoff.UTC()).Delete(&ProcessedUsageEvent{})
+	result := s.db.WithContext(ctx).Where("processed_at < ?", cutoff.UTC()).
+		Where("NOT EXISTS (SELECT 1 FROM pending_usage_events WHERE pending_usage_events.event_id = processed_usage_events.event_id)").
+		Delete(&ProcessedUsageEvent{})
 	if result.Error != nil {
 		return 0, fmt.Errorf("delete processed usage markers: %w", result.Error)
 	}

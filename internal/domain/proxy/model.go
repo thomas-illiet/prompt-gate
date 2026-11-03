@@ -106,6 +106,16 @@ type ProcessedUsageEvent struct {
 	ProcessedAt    time.Time `gorm:"not null;index" json:"processedAt"`
 }
 
+// PendingUsageEvent is the durable fallback for a failed Redis publication.
+// Failed attempts move behind untouched entries, so an orphan cannot starve
+// unrelated usage. Rows are removed only after the accounting transaction commits.
+type PendingUsageEvent struct {
+	EventID     string     `gorm:"primaryKey"`
+	Payload     string     `gorm:"type:text;not null"`
+	CreatedAt   time.Time  `gorm:"not null;index"`
+	AttemptedAt *time.Time `gorm:"index"`
+}
+
 // AccountIPAddress tracks the last time an account used one client IP through the proxy.
 type AccountIPAddress struct {
 	UserID           string      `gorm:"type:uuid;primaryKey" json:"-"`

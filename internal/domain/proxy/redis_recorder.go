@@ -3,6 +3,7 @@ package proxy
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -15,13 +16,16 @@ import (
 	aibrecorder "github.com/coder/aibridge/recorder"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 const maxPolicyDenialReasonCharacters = 2048
 
 type RedisRecorder struct {
-	store  *redisstore.Store
-	logger *slog.Logger
+	store    *redisstore.Store
+	logger   *slog.Logger
+	fallback *gorm.DB
 }
 
 // NewRedisRecorder creates a Redis Stream-backed recorder for proxy usage events.
@@ -32,12 +36,19 @@ func NewRedisRecorder(store *redisstore.Store, logger *slog.Logger) *RedisRecord
 	return &RedisRecorder{store: store, logger: logger}
 }
 
+// WithDurableFallback retains events in PostgreSQL when Redis cannot accept
+// them. Configure this before using the recorder concurrently.
+func (r *RedisRecorder) WithDurableFallback(db *gorm.DB) *RedisRecorder {
+	r.fallback = db
+	return r
+}
+
 // RecordInterception enqueues the start of a proxied interaction.
 func (r *RedisRecorder) RecordInterception(ctx context.Context, req *aibrecorder.InterceptionRecord) error {
 	metadata, err := marshalMetadata(req.Metadata)
 	if err != nil {
 		r.logEventError(UsageEventInterceptionStarted, req.ID, "", err)
-		return nil
+		return err
 	}
 	event := newUsageEvent(UsageEventInterceptionStarted)
 	event.InterceptionStarted = &InterceptionStartedEvent{
@@ -119,12 +130,12 @@ func (r *RedisRecorder) RecordToolUsage(ctx context.Context, req *aibrecorder.To
 	metadata, err := marshalMetadata(req.Metadata)
 	if err != nil {
 		r.logEventError(UsageEventToolUsage, req.InterceptionID, "", err)
-		return nil
+		return err
 	}
 	input, err := json.Marshal(req.Args)
 	if err != nil {
 		r.logEventError(UsageEventToolUsage, req.InterceptionID, "", fmt.Errorf("marshal tool input: %w", err))
-		return nil
+		return fmt.Errorf("marshal tool input: %w", err)
 	}
 	var invocationError *string
 	if req.InvocationError != nil {
@@ -160,22 +171,35 @@ func newUsageEvent(eventType UsageEventType) UsageEvent {
 }
 
 func (r *RedisRecorder) enqueue(ctx context.Context, event UsageEvent) error {
-	client := r.store.Client()
-	if client == nil {
-		r.logEventError(event.Type, eventInterceptionID(event), event.EventID, fmt.Errorf("redis store unavailable"))
-		return nil
-	}
 	payload, err := json.Marshal(event)
 	if err != nil {
 		r.logEventError(event.Type, eventInterceptionID(event), event.EventID, fmt.Errorf("marshal usage event: %w", err))
+		return fmt.Errorf("marshal usage event: %w", err)
+	}
+	client := r.store.Client()
+	err = errors.New("redis store unavailable")
+	if client != nil {
+		err = client.XAdd(ctx, &redis.XAddArgs{
+			Stream: UsageEventsStream,
+			Values: map[string]any{UsageEventPayloadField: string(payload)},
+		}).Err()
+	}
+	if err == nil {
 		return nil
 	}
-	if err := client.XAdd(ctx, &redis.XAddArgs{
-		Stream: UsageEventsStream,
-		Values: map[string]any{UsageEventPayloadField: string(payload)},
-	}).Err(); err != nil {
-		r.logEventError(event.Type, eventInterceptionID(event), event.EventID, err)
+	r.logEventError(event.Type, eventInterceptionID(event), event.EventID, err)
+	if r.fallback == nil {
+		return fmt.Errorf("enqueue usage event: %w", err)
 	}
+	// A client cancellation or Redis timeout must not cancel durable recording.
+	// Keep the event ID unchanged: an ambiguous XADD may already have succeeded.
+	fallbackCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	pending := PendingUsageEvent{EventID: event.EventID, Payload: string(payload), CreatedAt: event.CreatedAt}
+	if fallbackErr := r.fallback.WithContext(fallbackCtx).Clauses(clause.OnConflict{DoNothing: true}).Create(&pending).Error; fallbackErr != nil {
+		return errors.Join(fmt.Errorf("enqueue usage event: %w", err), fmt.Errorf("persist usage event fallback: %w", fallbackErr))
+	}
+	r.logger.Warn("usage event retained in PostgreSQL for retry", "eventId", event.EventID, "eventType", event.Type)
 	return nil
 }
 
