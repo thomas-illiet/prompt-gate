@@ -122,6 +122,7 @@ watch(
 
 .model-lab-turn-comparison__grid {
   display: grid;
+  align-items: start;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
   gap: 14px;
 }

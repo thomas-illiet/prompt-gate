@@ -151,7 +151,6 @@ const metrics = computed(() => {
 }
 
 .model-lab-chat-response--compact {
-  height: 100%;
   padding: 14px;
   box-shadow: var(--app-card-shadow-soft);
 }
