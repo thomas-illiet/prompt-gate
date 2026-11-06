@@ -29,8 +29,9 @@ api:
     jwks_url: https://keycloak.example.com/realms/promptgate/protocol/openid-connect/certs
     client_id: promptgate-backend
 proxy:
-  opa:
-    url: http://opa:8181
+  ip_validation:
+    url_template: https://validation.example/ips/{ip}
+    bearer_token: test-service-token
 `
 
 func writeConfig(t *testing.T, contents string) string {
@@ -270,16 +271,18 @@ func TestLoadYAMLOverridesAndLists(t *testing.T) {
     client_secret: oidc-test-secret
 `, 1)
 	contents = strings.Replace(contents, `proxy:
-  opa:
-    url: http://opa:8181
+  ip_validation:
+    url_template: https://validation.example/ips/{ip}
+    bearer_token: test-service-token
 `, `proxy:
   port: ":9090"
   base_path: /remote
   trusted_proxies:
     - 10.0.0.0/8
     - 192.168.0.0/16
-  opa:
-    url: http://opa:8181
+  ip_validation:
+    url_template: https://validation.example/ips/{ip}
+    bearer_token: test-service-token
     timeout: 4s
     cache_ttl: 11m
   otel:
@@ -349,7 +352,7 @@ schedule:
 	if proxy.ConnMaxLifetime != 45*time.Minute || proxy.MaxIdleConnections != 7 || proxy.MaxOpenConnections != 12 {
 		t.Fatalf("unexpected database pool overrides: %#v", proxy.DatabaseURLConfig)
 	}
-	if proxy.OPATimeout != 4*time.Second || proxy.OPACacheTTL != 11*time.Minute || !proxy.OTel.Enabled || !proxy.OTel.Insecure || proxy.OTel.MaxQueueSize != 64 || proxy.OTel.MaxExportBatchSize != 32 {
+	if proxy.IPValidationTimeout != 4*time.Second || proxy.IPValidationCacheTTL != 11*time.Minute || !proxy.OTel.Enabled || !proxy.OTel.Insecure || proxy.OTel.MaxQueueSize != 64 || proxy.OTel.MaxExportBatchSize != 32 {
 		t.Fatalf("unexpected proxy integration overrides: %#v", proxy)
 	}
 	if proxy.UsageCost.Input != 1.25 || proxy.UsageCost.Output != 2.5 || proxy.UsageCost.Embedding != 0.13 {
@@ -425,11 +428,11 @@ func TestLoadConfigStrictYAML(t *testing.T) {
 		{name: "multiple documents", content: validConfigYAML + "\n---\ncommon: {}\n", want: "exactly one YAML document"},
 		{name: "wrong integer type", content: "worker:\n  batch_size: nope\n", want: "worker.batch_size must be an integer"},
 		{name: "wrong string type", content: "common:\n  log:\n    level: false\n", want: "common.log.level must be a string"},
-		{name: "wrong boolean type", content: "proxy:\n  opa:\n    enabled: \"false\"\n", want: "proxy.opa.enabled must be a boolean"},
+		{name: "wrong boolean type", content: "proxy:\n  ip_validation:\n    enabled: \"false\"\n", want: "proxy.ip_validation.enabled must be a boolean"},
 		{name: "wrong duration type", content: "common:\n  session:\n    ttl: 8\n", want: "common.session.ttl must be a duration string"},
 		{name: "wrong number type", content: "common:\n  usage_cost:\n    input: \"5.0\"\n", want: "common.usage_cost.input must be a number"},
 		{name: "null defaulted integer", content: "common:\n  database:\n    max_open_connections: null\n", want: "common.database.max_open_connections must not be null"},
-		{name: "null defaulted boolean", content: "proxy:\n  opa:\n    enabled: null\n", want: "proxy.opa.enabled must not be null"},
+		{name: "null defaulted boolean", content: "proxy:\n  ip_validation:\n    enabled: null\n", want: "proxy.ip_validation.enabled must not be null"},
 		{name: "null defaulted duration", content: "common:\n  session:\n    ttl: null\n", want: "common.session.ttl must not be null"},
 		{name: "OTel CA removed", content: "proxy:\n  otel:\n    ca_file: /tmp/ca.pem\n", want: "field ca_file not found"},
 	}
@@ -527,9 +530,9 @@ func TestLoadProxyValidatesCostsCIDRsAndOTel(t *testing.T) {
 		{name: "base path does not match public URL", content: strings.Replace(strings.Replace(validConfigYAML, "    proxy: https://proxy.example.com\n", "    proxy: https://proxy.example.com/other\n", 1), "proxy:\n", "proxy:\n  base_path: /remote\n", 1), want: "common.public_urls.proxy path must equal proxy.base_path"},
 		{name: "invalid model lab limit", content: strings.Replace(validConfigYAML, "  security:\n", "  model_lab:\n    max_targets: 4\n  security:\n", 1), want: "common.model_lab.max_targets"},
 		{name: "stale catalog shorter than fresh", content: strings.Replace(validConfigYAML, "  security:\n", "  model_lab:\n    catalog_fresh_ttl: 10m\n    catalog_stale_ttl: 5m\n  security:\n", 1), want: "common.model_lab.catalog_stale_ttl"},
-		{name: "invalid OPA URL", content: strings.Replace(validConfigYAML, "url: http://opa:8181", "url: file:///tmp/policy", 1), want: "proxy.opa.url"},
-		{name: "empty OPA policy path", content: strings.Replace(validConfigYAML, "    url: http://opa:8181\n", "    url: http://opa:8181\n    policy_path: \"\"\n", 1), want: "proxy.opa.policy_path"},
-		{name: "zero OPA timeout", content: strings.Replace(validConfigYAML, "    url: http://opa:8181\n", "    url: http://opa:8181\n    timeout: 0s\n", 1), want: "proxy.opa.timeout"},
+		{name: "invalid IPValidation URL", content: strings.Replace(validConfigYAML, "url_template: https://validation.example/ips/{ip}", "url_template: file:///tmp/policy", 1), want: "proxy.ip_validation.url"},
+		{name: "missing validation bearer", content: strings.Replace(validConfigYAML, "bearer_token: test-service-token", "bearer_token: \"\"", 1), want: "proxy.ip_validation.bearer_token"},
+		{name: "zero IPValidation timeout", content: strings.Replace(validConfigYAML, "    url_template: https://validation.example/ips/{ip}\n", "    url_template: https://validation.example/ips/{ip}\n    timeout: 0s\n", 1), want: "proxy.ip_validation.timeout"},
 		{name: "OTel missing endpoint", content: strings.Replace(validConfigYAML, "proxy:\n", "proxy:\n  otel:\n    enabled: true\n", 1), want: "proxy.otel.endpoint"},
 		{name: "OTel HTTP requires insecure", content: strings.Replace(validConfigYAML, "proxy:\n", "proxy:\n  otel:\n    enabled: true\n    endpoint: http://otel.example.com:4318\n", 1), want: "proxy.otel.endpoint must use https"},
 		{name: "OTel batch exceeds queue", content: strings.Replace(validConfigYAML, "proxy:\n", "proxy:\n  otel:\n    enabled: true\n    endpoint: https://otel.example.com:4318\n    max_queue_size: 10\n    max_export_batch_size: 11\n", 1), want: "proxy.otel.max_export_batch_size"},
@@ -545,21 +548,22 @@ func TestLoadProxyValidatesCostsCIDRsAndOTel(t *testing.T) {
 	}
 }
 
-func TestLoadProxyAllowsDisabledOPAWithoutURL(t *testing.T) {
+func TestLoadProxyAllowsDisabledIPValidationWithoutURL(t *testing.T) {
 	content := strings.Replace(validConfigYAML, `proxy:
-  opa:
-    url: http://opa:8181
+  ip_validation:
+    url_template: https://validation.example/ips/{ip}
+    bearer_token: test-service-token
 `, `proxy:
-  opa:
+  ip_validation:
     enabled: false
-    url: ""
+    url_template: ""
 `, 1)
 	cfg, err := LoadProxy(writeConfig(t, content))
 	if err != nil {
-		t.Fatalf("load proxy with OPA disabled: %v", err)
+		t.Fatalf("load proxy with IPValidation disabled: %v", err)
 	}
-	if cfg.OPAEnabled {
-		t.Fatal("expected OPA to remain disabled")
+	if cfg.IPValidationEnabled {
+		t.Fatal("expected IPValidation to remain disabled")
 	}
 }
 

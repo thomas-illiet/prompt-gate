@@ -1,8 +1,8 @@
 # Default values for the Prompt Gate chart.
 #
 # This chart is intended to be used by Argo CD. It deploys only Prompt Gate
-# application processes; PostgreSQL, Redis, Keycloak/OIDC, and TLS certificates
-# must be managed outside this chart.
+# application processes; PostgreSQL, Redis, Keycloak/OIDC, the IP validation
+# service, and TLS certificates must be managed outside this chart.
 #
 # The rendered workloads are Kyverno-friendly by default:
 # - runAsUser/runAsGroup: 1000
@@ -22,7 +22,9 @@ image:
   # Runtime image containing the Prompt Gate backend binary and static frontend.
   repository: ghcr.io/thomas-illiet/prompt-gate
 
-  # Defaults to Chart.appVersion when empty. Prefer immutable tags in prod.
+  # Required for the unreleased source chart: use an image built from this source.
+  # Published release charts default to their matching Chart.appVersion.
+  # Prefer immutable tags in production.
   tag: ""
 
   # Use Always only for mutable tags. IfNotPresent is safer for versioned tags.
@@ -167,10 +169,10 @@ config:
     max_buffered_request_bytes: 8388608
     max_buffered_response_bytes: 16777216
     upstream_timeout: 2m
-    opa:
+    ip_validation:
       enabled: true
-      url: "http://prompt-gate-opa:8181"
-      policy_path: promptgate/proxy/decision
+      url_template: "https://validation.example/ips/{ip}"
+      bearer_token: ""
       timeout: 2s
       cache_ttl: 10m
     otel:

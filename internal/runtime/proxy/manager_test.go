@@ -274,7 +274,6 @@ func TestWatchDoesNotTrustCachedGroupsWithoutAuthoritativeService(t *testing.T) 
 				}},
 			},
 		},
-		UserGroups: map[string][]string{"user-id": {"engineering"}},
 	}
 	if err := store.SetJSON(ctx, redisstore.SnapshotKey(configevents.DomainGroups), snapshot, time.Minute); err != nil {
 		t.Fatalf("cache group snapshot: %v", err)

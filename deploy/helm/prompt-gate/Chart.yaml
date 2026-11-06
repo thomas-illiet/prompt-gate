@@ -3,4 +3,4 @@ name: prompt-gate
 description: Helm chart for Prompt Gate application components.
 type: application
 version: 0.3.0
-appVersion: "v3.4.1"
+appVersion: "unreleased"

@@ -63,6 +63,12 @@ func runMigrate(configPath string) error {
 		logger.Error("failed to initialize postgres connection", "error", err)
 		return err
 	}
+	defer func() {
+		if err := database.Close(db); err != nil {
+			logger.Warn("failed to close postgres", "error", err)
+		}
+	}()
+
 	logger.Info("postgres connection ready")
 
 	if err := migrations.Run(ctx, db); err != nil {

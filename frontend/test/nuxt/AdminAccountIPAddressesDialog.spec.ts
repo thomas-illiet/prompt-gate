@@ -11,6 +11,12 @@ describe('AdminAccountIPAddressesDialog', () => {
         accountName: 'Ada',
         items: [
           {
+            ip: '198.51.100.1',
+            lastSeen: '2026-09-15T09:00:00Z',
+            lastDeniedReason: 'ip_not_allowed',
+            lastDeniedAt: '2026-09-15T09:00:00Z',
+          },
+          {
             ip: '2001:db8::1',
             lastSeen: '2026-09-15T08:00:00Z',
             lastDeniedReason: 'network_not_allowed',
@@ -58,6 +64,7 @@ describe('AdminAccountIPAddressesDialog', () => {
     expect(wrapper.text()).toContain('2001:db8::1')
     expect(wrapper.text()).toContain('Sep 15, 2026')
     expect(wrapper.text()).toContain('network_not_allowed')
+    expect(wrapper.text()).toContain('IP address not authorized')
     expect(wrapper.text()).toContain('—')
 
     const table = wrapper.findComponent({ name: 'AppServerDataTable' })

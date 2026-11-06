@@ -22,7 +22,7 @@ flowchart LR
 
     API -->|sessions, catalogs, tickets, reservations| Redis["Redis"]
     Proxy -->|ticket consumption, leases, quotas, usage| Redis
-    Proxy --> OPA["External OPA"]
+    Proxy -->|API-token IP validation only| IPValidation["External IP service"]
     WorkerJobs --> Redis
     Jobs --> Redis
 
@@ -34,7 +34,7 @@ flowchart LR
 | Command | Responsibility |
 | --- | --- |
 | `promptgate api` | HTTP API, OIDC browser login, sessions, user/admin routes, token creation, Model Lab catalog and ticket issuance, provider configuration, optional static frontend hosting. |
-| `promptgate proxy` | API-token or Model Lab ticket authentication for LLM traffic, external OPA authorization, provider routing, Redis usage event enqueueing, hot reload. |
+| `promptgate proxy` | API-token or Model Lab ticket authentication for LLM traffic, external IP validation for API tokens, provider routing, Redis usage event enqueueing, hot reload. |
 | `promptgate worker` | Redis Stream consumer for proxy usage events, raw usage persistence, and dashboard KPI aggregation. |
 | `promptgate schedule` | Background token and access expiration, monitoring checks, raw usage cleanup, quota projection, monthly reset-credit distribution, and pending-reset reconciliation. |
 | `promptgate migrate` | Ordered migrations for all durable domain models, including subscription and quota-reset state, plus removal of retired schemas. |
@@ -50,7 +50,7 @@ flowchart LR
 | `internal/domain/modellab` | Group-filtered model catalog, one-time browser tickets, text-chat validation, concurrency leases, and metadata-only privacy policy. |
 | `internal/domain/tokens` | Prompt Gate API token creation, validation, revocation, cleanup, Redis auth cache. |
 | `internal/domain/users` | Human users, service accounts, role management, access expiration. |
-| `internal/domain/policy` | OPA client, Redis decision cache, policy middleware, and observability. |
+| `internal/domain/policy` | IP validation client, positive Redis cache, validated-ticket bypass and observability. |
 | `internal/domain/provider` | LLM provider configuration, encrypted API keys, setup helper metadata. |
 | `internal/domain/proxy` | Usage, tool, and interception recording plus dashboards. |
 | `internal/domain/subscriptions` | Subscription plans, rolling quota enforcement, quota projections, and reset-credit wallets. |
@@ -83,7 +83,7 @@ Redis is required by the current runtime configuration. It is used for:
   reservations, and active-stream leases
 - versioned subscription assignments and rolling 5-hour and 7-day quota state
 - quota-reset sequence and cutoff barriers
-- cached OPA deny decisions (allows are always re-evaluated)
+- cached IP authorizations (refusals and errors are never cached)
 - config version counters and hot-reload events
 - proxy usage event stream `promptgate:usage:events`
 
@@ -122,7 +122,7 @@ sequenceDiagram
     participant P as Proxy
     participant R as Redis
     participant D as PostgreSQL
-    participant O as External OPA
+    participant O as External IP service
     participant W as Worker
     participant U as Provider
 
@@ -138,8 +138,15 @@ sequenceDiagram
         P->>R: Acquire account concurrency lease
     end
     P->>P: Resolve client IP; enforce route and method allowlist
-    P->>R: Check cached policy denial
-    P->>O: Evaluate policy unless denied by cache
+    alt Ordinary API token
+        P->>R: Check cached IP authorization
+        opt Cache miss
+            P->>O: GET IP URL with service Bearer
+            O-->>P: 200 allow / 404 deny / other unavailable
+        end
+    else Validated Model Lab ticket
+        Note over P: Bypass IP service and its cache
+    end
     P->>P: Enforce group, provider, and model access snapshot
     P->>R: Enforce effective subscription and rolling quotas
     P->>U: Forward request through AIBridge
@@ -173,8 +180,8 @@ Provider updates trigger a debounced bridge rebuild. Group updates refresh the
 proxy access snapshot. Auth updates bump the token auth cache version, which
 invalidates old cache keys. A separate subscription watcher refreshes plan and
 versioned assignment snapshots; per-user assignment entries expire on a short
-independent bound without a global Redis scan. OPA denials expire through
-`proxy.opa.cache_ttl`; allows are never cached.
+independent bound without a global Redis scan. IP authorizations expire through
+`proxy.ip_validation.cache_ttl`; hits do not refresh expiry and refusals are never cached.
 
 ## Migrations
 

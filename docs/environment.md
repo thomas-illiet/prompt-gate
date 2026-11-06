@@ -37,7 +37,7 @@ Git because it contains credentials.
 | `common.redis.pool_timeout` | Redis runtimes | driver default | Optional positive pool wait timeout. |
 | `common.redis.read_timeout` | Redis runtimes | driver default | Optional positive read timeout. |
 | `common.redis.write_timeout` | Redis runtimes | driver default | Optional positive write timeout. |
-| `common.tls.ca_file` | API, proxy, schedule | empty | Single CA bundle for OIDC, monitoring, providers, and OTEL. |
+| `common.tls.ca_file` | API, proxy, schedule | empty | Single CA bundle for OIDC, monitoring, providers, IP validation, and OTEL. |
 | `common.security.jwt_secret` | API, proxy, schedule | none | Required signing secret of at least 32 characters. |
 | `common.security.secrets_key` | API, proxy, schedule | none | Required base64-encoded 32-byte provider-secret and Model Lab ticket key. |
 | `common.public_urls.frontend` | API, proxy | none | Browser-visible frontend origin; required by API. |
@@ -103,10 +103,53 @@ and `<base_path>/health` exposes the same check through an Ingress. The path in
 `common.public_urls.proxy` must match `proxy.base_path` so generated SDK and
 Model Lab URLs reach the mounted proxy.
 
-`proxy.opa` contains `enabled`, `url`, `policy_path`, `timeout`, and
-`cache_ttl`. The URL is required and must be absolute HTTP(S) when OPA is
-enabled. `cache_ttl` applies only to cached denials; allow decisions are always
-re-evaluated.
+`proxy.ip_validation` contains `enabled` (default `true`), `url_template`,
+`bearer_token`, `timeout` (default `2s`) and `cache_ttl` (default `10m`). When
+active, the URL must be absolute HTTP(S), contain exactly one `{ip}` in its path,
+and have no embedded credentials or fragment. The Bearer must be nonempty,
+contain only non-whitespace ASCII characters, and be supplied without the
+`Bearer ` prefix. Both durations must be positive. Store real values in the
+mounted runtime Secret; the example token must be replaced before deployment.
+
+```yaml
+proxy:
+  ip_validation:
+    enabled: true
+    url_template: "https://validation.example/ips/{ip}"
+    bearer_token: "replace-with-service-token"
+    timeout: 2s
+    cache_ttl: 10m
+```
+
+Only successful IP authorizations are cached, with fixed expiry. Validated
+Model Lab tickets bypass both the validation service and this cache. A value of
+`enabled: false` disables the IP stage; URL/token/duration runtime validation is
+skipped for that stage. Configuration changes require a process restart.
+
+### Migration from OPA
+
+`proxy.opa` and its `policy_path` have been removed without an alias. Replace
+the entire block with `proxy.ip_validation` and supply the service URL/Bearer.
+Every executable reads the same strict YAML schema: coordinate new binaries
+and new configuration for API, proxy, worker, scheduler and migration jobs.
+For Kubernetes, deploy a new immutable/versioned runtime Secret with the new
+release so old pods keep their old document until replaced; do not hot-swap
+one shared file while old executables still use it. Retain the prior binary
+and configuration together if rollback is required.
+
+The source Helm chart requires an explicit `image.tag` built from the matching
+source. Published release charts use the image tag embedded by release
+packaging. Older images, including `v3.4.1`, cannot parse the new block even
+when `proxy.ip_validation.enabled` is `false`.
+
+No SQL migration or Redis flush is needed. Historical denial fields/events
+remain compatible; old decision keys expire naturally. New keys use
+`promptgate:proxy:ip-validation:v1:`. Configure trusted proxy CIDRs before
+validating IPs through an ingress. Verify a known permitted IP, a refused IP,
+and a Model Lab run during rollout, then inspect validation logs and, when
+enabled, exported traces for errors and cache hits. See the
+[observability details](proxy.md#external-ip-validation) for the current
+metrics-export limitation. The service itself is provisioned independently.
 
 `proxy.otel` contains `enabled`, `endpoint`, `api_key`, `project_name`,
 `service_name`, `environment`, the three `capture_*` consent switches,
@@ -140,8 +183,8 @@ restart every affected process after changing it.
 
 - `api`: database, Redis, JWT and secrets keys, public frontend/backend URLs,
   and the three required OIDC fields.
-- `proxy`: database, Redis, JWT and secrets keys, and a public proxy URL; OPA
-  additionally requires its URL when enabled.
+- `proxy`: database, Redis, JWT and secrets keys, and a public proxy URL; IP validation
+  additionally requires its URL template and Bearer when enabled.
 - `schedule`: database, Redis, JWT and secrets keys.
 - `worker`: database and Redis.
 - `migrate`: database only.

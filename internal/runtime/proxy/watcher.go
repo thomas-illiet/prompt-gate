@@ -307,7 +307,6 @@ func (m *Manager) installDenyAllGroups() {
 		KnownProviders: []string{},
 		ProviderTypes:  map[string]localprovider.ProviderType{},
 		Users:          map[string]groups.UserAccess{},
-		UserGroups:     map[string][]string{},
 	}); err != nil {
 		m.opts.Logger.Error("failed to install deny-all group snapshot", "error", err)
 	}

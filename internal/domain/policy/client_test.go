@@ -1,13 +1,14 @@
 package policy
 
 import (
+	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -15,361 +16,379 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	"promptgate/backend/internal/domain/auth"
-	"promptgate/backend/internal/domain/groups"
-	"promptgate/backend/internal/domain/provider"
+	"promptgate/backend/internal/domain/modellab"
 	"promptgate/backend/internal/platform/clientip"
 	"promptgate/backend/internal/platform/redisstore"
+	"promptgate/backend/internal/platform/requestprivacy"
 )
 
 type roundTripperFunc func(*http.Request) (*http.Response, error)
 
 func (fn roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) { return fn(req) }
-
-type recordedDenial struct {
-	accountID string
-	clientIP  string
-	reason    string
-	deniedAt  time.Time
+func response(status int) *http.Response {
+	return &http.Response{StatusCode: status, Body: io.NopCloser(strings.NewReader("not JSON; ignored")), Header: make(http.Header)}
 }
-
-type denialRecorder struct {
-	records []recordedDenial
-}
-
-func (r *denialRecorder) RecordPolicyDenial(_ context.Context, accountID, clientIP, reason string, deniedAt time.Time) error {
-	r.records = append(r.records, recordedDenial{accountID: accountID, clientIP: clientIP, reason: reason, deniedAt: deniedAt})
-	return nil
-}
-
-func response(status int, body string, req *http.Request) *http.Response {
-	return &http.Response{StatusCode: status, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header), Request: req}
-}
-
-func TestClientDecisionContract(t *testing.T) {
-	input := Input{
-		Identity: IdentityInput{ID: "user-id", Type: "user", Role: "admin", Groups: []string{"developers", "platform"}, CredentialID: "key-id", CredentialName: "local"},
-		Request: RequestInput{
-			ClientIP: "192.0.2.10", Method: http.MethodPost, Path: "/openai-main/v1/responses", Host: "proxy.example.com",
-			Provider: "openai-main", ProviderType: "openai", ProviderPath: "/v1/responses",
-		},
-	}
-	client, err := NewClient("http://opa:8181", "promptgate/proxy/decision", &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
-		if req.URL.Path != "/v1/data/promptgate/proxy/decision" {
-			t.Fatalf("unexpected path: %s", req.URL.Path)
-		}
-		if req.Header.Get("Authorization") != "" || req.Header.Get("Content-Type") != "application/json" {
-			t.Fatalf("unexpected OPA request headers: %#v", req.Header)
-		}
-		payload, readErr := io.ReadAll(req.Body)
-		if readErr != nil {
-			t.Fatal(readErr)
-		}
-		if strings.Contains(string(payload), "prompt") || !strings.Contains(string(payload), `"groups":["developers","platform"]`) ||
-			!strings.Contains(string(payload), `"credential_id":"key-id"`) ||
-			!strings.Contains(string(payload), `"provider":"openai-main"`) ||
-			!strings.Contains(string(payload), `"provider_type":"openai"`) ||
-			!strings.Contains(string(payload), `"provider_path":"/v1/responses"`) {
-			t.Fatalf("unexpected OPA payload: %s", payload)
-		}
-		return response(http.StatusOK, `{"result":{"allow":true,"reason":"administrator"}}`, req), nil
-	})})
+func testClient(t *testing.T, transport roundTripperFunc) *Client {
+	t.Helper()
+	client, err := NewClient("https://validation.example/ips/{ip}?scope=proxy", "service-token", &http.Client{Transport: transport})
 	if err != nil {
 		t.Fatal(err)
 	}
-	decision, err := client.Decide(context.Background(), input)
-	if err != nil || !decision.Allow || decision.Reason != "administrator" {
-		t.Fatalf("unexpected decision: %#v, %v", decision, err)
-	}
+	return client
 }
-
-func TestClientReportsTimeout(t *testing.T) {
-	client, _ := NewClient("http://opa:8181", "decision", &http.Client{Transport: roundTripperFunc(func(_ *http.Request) (*http.Response, error) {
-		return nil, context.DeadlineExceeded
-	})})
-	_, err := client.Decide(context.Background(), Input{})
-	if !errors.Is(err, ErrUnavailable) || !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("expected unavailable timeout, got %v", err)
-	}
-}
-
-func TestClientRejectsUnavailableAndInvalidResponses(t *testing.T) {
-	for _, tc := range []struct {
-		name   string
-		status int
-		body   string
-	}{
-		{"non-2xx", http.StatusInternalServerError, `{}`},
-		{"missing result", http.StatusOK, `{}`},
-		{"missing allow", http.StatusOK, `{"result":{"reason":"incomplete"}}`},
-		{"missing reason", http.StatusOK, `{"result":{"allow":false}}`},
-		{"invalid json", http.StatusOK, `{`},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			client, _ := NewClient("http://opa:8181", "decision", &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
-				return response(tc.status, tc.body, req), nil
-			})})
-			_, err := client.Decide(context.Background(), Input{})
-			if !errors.Is(err, ErrUnavailable) {
-				t.Fatalf("expected unavailable error, got %v", err)
-			}
-		})
-	}
-}
-
-func TestClientHonorsCancellation(t *testing.T) {
-	client, _ := NewClient("http://opa:8181", "decision", &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
-		<-req.Context().Done()
-		return nil, req.Context().Err()
-	})})
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	_, err := client.Decide(ctx, Input{})
-	if !errors.Is(err, ErrUnavailable) || !errors.Is(err, context.Canceled) {
-		t.Fatalf("expected unavailable cancellation, got %v", err)
-	}
-}
-
-func TestEvaluatorCachesOnlyDenyUntilTTL(t *testing.T) {
-	for _, allowed := range []bool{true, false} {
-		t.Run(map[bool]string{true: "allow", false: "deny"}[allowed], func(t *testing.T) {
-			server := miniredis.RunT(t)
-			store, err := redisstore.NewRequired(context.Background(), "redis://"+server.Addr()+"/0", time.Minute, nil)
-			if err != nil {
-				t.Fatal(err)
-			}
-			t.Cleanup(func() { _ = store.Close() })
-			var calls atomic.Int32
-			body := `{"result":{"allow":false,"reason":"default_deny"}}`
-			if allowed {
-				body = `{"result":{"allow":true,"reason":"administrator"}}`
-			}
-			client, _ := NewClient("http://opa:8181", "decision", &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
-				calls.Add(1)
-				return response(http.StatusOK, body, req), nil
-			})})
-			evaluator := NewEvaluator(client, store, "decision", 10*time.Minute, nil)
-			input := Input{Identity: IdentityInput{ID: "identity"}, Request: RequestInput{Path: "/v1/responses"}}
-			for range 2 {
-				decision, evalErr := evaluator.Evaluate(context.Background(), input)
-				if evalErr != nil || decision.Allow != allowed {
-					t.Fatalf("unexpected decision %#v: %v", decision, evalErr)
-				}
-			}
-			wantCalls := int32(1)
-			if allowed {
-				wantCalls = 2
-			}
-			if calls.Load() != wantCalls {
-				t.Fatalf("OPA calls before expiry = %d, want %d", calls.Load(), wantCalls)
-			}
-			server.FastForward(10 * time.Minute)
-			if _, evalErr := evaluator.Evaluate(context.Background(), input); evalErr != nil {
-				t.Fatal(evalErr)
-			}
-			wantCalls++
-			if calls.Load() != wantCalls {
-				t.Fatalf("OPA calls after expiry = %d, want %d", calls.Load(), wantCalls)
-			}
-		})
-	}
-}
-
-func TestEvaluatorAllowDoesNotSurvivePolicyRevocation(t *testing.T) {
+func testRedis(t *testing.T) (*miniredis.Miniredis, *redisstore.Store) {
+	t.Helper()
 	server := miniredis.RunT(t)
-	store, err := redisstore.NewRequired(context.Background(), "redis://"+server.Addr()+"/0", time.Minute, nil)
+	store, err := redisstore.NewRequired(context.Background(), "redis://"+server.Addr(), time.Minute, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = store.Close() })
-
-	var allow atomic.Bool
-	allow.Store(true)
-	var calls atomic.Int32
-	client, _ := NewClient("http://opa:8181", "decision", &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
-		calls.Add(1)
-		if allow.Load() {
-			return response(http.StatusOK, `{"result":{"allow":true,"reason":"initial_policy"}}`, req), nil
-		}
-		return response(http.StatusOK, `{"result":{"allow":false,"reason":"revoked"}}`, req), nil
-	})})
-	evaluator := NewEvaluator(client, store, "decision", 10*time.Minute, nil)
-	input := Input{Identity: IdentityInput{ID: "identity"}, Request: RequestInput{Path: "/v1/responses"}}
-
-	first, err := evaluator.Evaluate(context.Background(), input)
-	if err != nil || !first.Allow {
-		t.Fatalf("initial decision = %#v, %v", first, err)
-	}
-	allow.Store(false)
-	second, err := evaluator.Evaluate(context.Background(), input)
-	if err != nil || second.Allow || second.Reason != "revoked" {
-		t.Fatalf("revoked decision = %#v, %v", second, err)
-	}
-	if calls.Load() != 2 {
-		t.Fatalf("OPA calls = %d, want 2 so allow is never cached", calls.Load())
-	}
+	return server, store
 }
 
-func TestEvaluatorFallsBackToOPAWhenRedisFails(t *testing.T) {
-	server := miniredis.RunT(t)
-	store, err := redisstore.NewRequired(context.Background(), "redis://"+server.Addr()+"/0", time.Minute, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	server.Close()
-	client, _ := NewClient("http://opa:8181", "decision", &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
-		return response(http.StatusOK, `{"result":{"allow":true,"reason":"fallback"}}`, req), nil
-	})})
-	decision, err := NewEvaluator(client, store, "decision", time.Minute, nil).Evaluate(context.Background(), Input{})
-	if err != nil || !decision.Allow {
-		t.Fatalf("expected direct OPA fallback, got %#v: %v", decision, err)
-	}
-}
-
-func TestCacheKeySeparatesInputsWithoutPlainIdentity(t *testing.T) {
-	input := Input{Identity: IdentityInput{ID: "sensitive-user-id"}, Request: RequestInput{ClientIP: "10.0.0.1", Method: "POST", Path: "/v1/responses", Host: "proxy"}}
-	first, err := CacheKey("a/b", input)
-	if err != nil {
-		t.Fatal(err)
-	}
-	input.Request.Path = "/v1/chat/completions"
-	second, _ := CacheKey("a/b", input)
-	if first == second || strings.Contains(first, "sensitive-user-id") {
-		t.Fatalf("unexpected cache keys %q %q", first, second)
-	}
-}
-
-func TestCacheKeySeparatesGroupMemberships(t *testing.T) {
-	input := Input{Identity: IdentityInput{ID: "user-id", Groups: []string{"developers"}}}
-	first, err := CacheKey("a/b", input)
-	if err != nil {
-		t.Fatal(err)
-	}
-	input.Identity.Groups = []string{"developers", "platform"}
-	second, err := CacheKey("a/b", input)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if first == second {
-		t.Fatal("expected group membership change to produce a new policy cache key")
-	}
-}
-
-func TestMiddlewareForwardsTechnicalGroupNames(t *testing.T) {
-	store := groups.NewSnapshotStore(nil)
-	if err := store.SetSnapshot(groups.Snapshot{
-		KnownProviders: []string{}, ProviderTypes: map[string]provider.ProviderType{}, Users: map[string]groups.UserAccess{},
-		UserGroups: map[string][]string{
-			"user-id":    {"platform", "developers", "platform"},
-			"service-id": {"automation"},
-		},
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	tests := []struct {
-		name string
-		user auth.UserProfile
-		want []string
-	}{
-		{name: "user", user: auth.UserProfile{ID: "user-id", Type: auth.UserTypeUser, Role: auth.RoleUser}, want: []string{"developers", "platform"}},
-		{name: "service", user: auth.UserProfile{ID: "service-id", Type: auth.UserTypeService, Role: auth.RoleUser}, want: []string{"automation"}},
-		{name: "admin without group", user: auth.UserProfile{ID: "admin-id", Type: auth.UserTypeUser, Role: auth.RoleAdmin}, want: []string{}},
-		{name: "unknown identity", user: auth.UserProfile{ID: "unknown-id", Type: auth.UserTypeUser, Role: auth.RoleUser}, want: []string{}},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			client, _ := NewClient("http://opa:8181", "decision", &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
-				var payload struct {
-					Input Input `json:"input"`
+func TestClientContractAndNormalization(t *testing.T) {
+	for _, tc := range []struct{ input, want string }{
+		{"192.0.2.10", "192.0.2.10"}, {"::ffff:192.0.2.10", "192.0.2.10"}, {"2001:0db8:0000::1", "2001:db8::1"},
+	} {
+		t.Run(tc.input, func(t *testing.T) {
+			client := testClient(t, func(req *http.Request) (*http.Response, error) {
+				if req.Method != http.MethodGet || req.URL.Path != "/ips/"+tc.want || req.URL.RawQuery != "scope=proxy" || req.Body != nil {
+					t.Fatalf("unexpected request: %s %s", req.Method, req.URL)
 				}
-				if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
-					t.Fatal(err)
+				if req.Header.Get("Authorization") != "Bearer service-token" || len(req.Header) != 1 {
+					t.Fatalf("unexpected headers: %#v", req.Header)
 				}
-				if !reflect.DeepEqual(payload.Input.Identity.Groups, tc.want) {
-					t.Fatalf("unexpected groups: got %#v want %#v", payload.Input.Identity.Groups, tc.want)
-				}
-				return response(http.StatusOK, `{"result":{"allow":true,"reason":"test"}}`, req), nil
-			})})
-			handler := Middleware(NewEvaluator(client, nil, "decision", 0, nil), store, nil, nil)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-				w.WriteHeader(http.StatusNoContent)
-			}))
-			req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
-			ctx := auth.ContextWithPrincipal(req.Context(), auth.Principal{User: tc.user})
-			recorder := httptest.NewRecorder()
-			handler.ServeHTTP(recorder, req.WithContext(ctx))
-			if recorder.Code != http.StatusNoContent {
-				t.Fatalf("unexpected status: %d", recorder.Code)
+				return response(200), nil
+			})
+			decision, err := client.Decide(context.Background(), tc.input)
+			if err != nil || !decision.Allow {
+				t.Fatalf("decision=%+v error=%v", decision, err)
 			}
 		})
 	}
 }
 
-func TestMiddlewareMapsDenyAndUnavailable(t *testing.T) {
+func TestClientStatusContract(t *testing.T) {
+	for _, status := range []int{200, 404, 201, 204, 301, 302, 307, 308, 400, 401, 403, 429, 500, 503} {
+		t.Run(fmt.Sprint(status), func(t *testing.T) {
+			client := testClient(t, func(*http.Request) (*http.Response, error) { return response(status), nil })
+			decision, err := client.Decide(context.Background(), "192.0.2.10")
+			switch status {
+			case 200:
+				if err != nil || !decision.Allow {
+					t.Fatalf("%+v %v", decision, err)
+				}
+			case 404:
+				if err != nil || decision.Allow || decision.Reason != DeniedReason {
+					t.Fatalf("%+v %v", decision, err)
+				}
+			default:
+				if !errors.Is(err, ErrUnavailable) || !errors.Is(err, ErrInvalidResponse) {
+					t.Fatalf("unexpected error: %v", err)
+				}
+			}
+		})
+	}
+}
+
+type unreadBody struct{ closed bool }
+
+func (*unreadBody) Read([]byte) (int, error) { panic("response body must not be read") }
+func (b *unreadBody) Close() error           { b.closed = true; return nil }
+func TestClientDoesNotReadResponseBody(t *testing.T) {
+	body := &unreadBody{}
+	client := testClient(t, func(*http.Request) (*http.Response, error) { return &http.Response{StatusCode: 200, Body: body}, nil })
+	decision, err := client.Decide(context.Background(), "192.0.2.10")
+	if err != nil || !decision.Allow || !body.closed {
+		t.Fatalf("%+v %v closed=%v", decision, err, body.closed)
+	}
+}
+
+func TestClientRejectsInvalidIPBeforeNetwork(t *testing.T) {
+	client := testClient(t, func(*http.Request) (*http.Response, error) { t.Fatal("invalid IP reached service"); return nil, nil })
+	for _, ip := range []string{"", "hostname", "192.0.2.1:8080", "192.0.2.1/24", "../admin", "fe80::1%eth0"} {
+		if _, err := client.Decide(context.Background(), ip); !errors.Is(err, ErrInvalidIP) {
+			t.Fatalf("IP %q: %v", ip, err)
+		}
+	}
+}
+
+func TestClientNeverFollowsRedirects(t *testing.T) {
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		http.Redirect(w, r, "/secret-target", http.StatusTemporaryRedirect)
+	}))
+	defer server.Close()
+	original := server.Client()
+	client, err := NewClient(server.URL+"/ips/{ip}", "secret", original)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.Decide(context.Background(), "192.0.2.1")
+	if !errors.Is(err, ErrInvalidResponse) || calls.Load() != 1 || original.CheckRedirect != nil {
+		t.Fatalf("redirect protection failed: calls=%d err=%v", calls.Load(), err)
+	}
+}
+
+func TestClientSanitizesTransportErrorsAndHonorsCancellation(t *testing.T) {
+	for _, cause := range []error{errors.New("secret-token https://secret-host/192.0.2.1"), context.DeadlineExceeded, context.Canceled} {
+		client := testClient(t, func(*http.Request) (*http.Response, error) { return nil, cause })
+		_, err := client.Decide(context.Background(), "192.0.2.1")
+		if !errors.Is(err, ErrUnavailable) || strings.Contains(err.Error(), "secret") || strings.Contains(err.Error(), "192.0.2.1") {
+			t.Fatalf("unsafe error: %v", err)
+		}
+		if cause == context.DeadlineExceeded || cause == context.Canceled {
+			if !errors.Is(err, cause) {
+				t.Fatalf("lost cancellation category: %v", err)
+			}
+		}
+	}
+	client := testClient(t, func(req *http.Request) (*http.Response, error) {
+		<-req.Context().Done()
+		return nil, req.Context().Err()
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+	if _, err := client.Decide(ctx, "192.0.2.1"); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatal(err)
+	}
+}
+
+func TestClientEnforcesConfiguredHTTPTimeout(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Keep the connection open without returning headers. Only the client's
+		// configured timeout should interrupt this otherwise healthy connection.
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+	httpClient := server.Client()
+	httpClient.Timeout = 50 * time.Millisecond
+	client, err := NewClient(server.URL+"/ips/{ip}", "service-token", httpClient)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	decision, err := client.Decide(ctx, "192.0.2.1")
+	if decision.Allow || !errors.Is(err, ErrUnavailable) || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("slow service must fail closed: %+v %v", decision, err)
+	}
+	if ctx.Err() != nil {
+		t.Fatal("request reached the caller deadline instead of the shorter HTTP timeout")
+	}
+}
+
+func TestEvaluatorCachesOnlyAllowsWithFixedExpiry(t *testing.T) {
+	for _, status := range []int{200, 404, 503} {
+		t.Run(fmt.Sprint(status), func(t *testing.T) {
+			server, store := testRedis(t)
+			calls := 0
+			client := testClient(t, func(*http.Request) (*http.Response, error) { calls++; return response(status), nil })
+			evaluator := NewEvaluator(client, store, 10*time.Minute, nil)
+			_, _ = evaluator.Evaluate(context.Background(), "::ffff:192.0.2.1")
+			server.FastForward(9 * time.Minute)
+			_, _ = evaluator.Evaluate(context.Background(), "192.0.2.1")
+			want := 2
+			if status == 200 {
+				want = 1
+			}
+			if calls != want {
+				t.Fatalf("calls=%d want=%d", calls, want)
+			}
+			server.FastForward(time.Minute)
+			_, _ = evaluator.Evaluate(context.Background(), "192.0.2.1")
+			if calls != want+1 {
+				t.Fatal("hit prolonged the cache TTL")
+			}
+			if status != 200 && len(server.Keys()) != 0 {
+				t.Fatal("non-allow cached")
+			}
+		})
+	}
+}
+
+func TestCachedAllowSurvivesOutageOnlyUntilExpiry(t *testing.T) {
+	server, store := testRedis(t)
+	status := 200
+	calls := 0
+	client := testClient(t, func(*http.Request) (*http.Response, error) { calls++; return response(status), nil })
+	evaluator := NewEvaluator(client, store, 10*time.Minute, nil)
+	_, _ = evaluator.Evaluate(context.Background(), "192.0.2.1")
+	status = 503
+	if decision, err := evaluator.Evaluate(context.Background(), "192.0.2.1"); err != nil || !decision.Allow || calls != 1 {
+		t.Fatalf("valid allow lost: %+v %v", decision, err)
+	}
+	server.FastForward(10 * time.Minute)
+	if _, err := evaluator.Evaluate(context.Background(), "192.0.2.1"); !errors.Is(err, ErrUnavailable) {
+		t.Fatal("expired allow survived outage")
+	}
+	status = 404
+	if decision, err := evaluator.Evaluate(context.Background(), "192.0.2.1"); err != nil || decision.Allow {
+		t.Fatal("revoked IP allowed")
+	}
+	status = 200
+	if decision, err := evaluator.Evaluate(context.Background(), "192.0.2.1"); err != nil || !decision.Allow {
+		t.Fatal("refusal was cached")
+	}
+}
+
+func TestCacheIsScopedByIPAndServiceConfiguration(t *testing.T) {
+	server, store := testRedis(t)
+	calls := 0
+	transport := roundTripperFunc(func(*http.Request) (*http.Response, error) { calls++; return response(200), nil })
 	for _, tc := range []struct {
-		name, body, code string
-		status, want     int
+		url, token, ip string
+		ttl            time.Duration
 	}{
-		{"deny", `{"result":{"allow":false,"reason":"default_deny"}}`, "policy_denied", http.StatusOK, http.StatusForbidden},
-		{"allow", `{"result":{"allow":true,"reason":"allowed"}}`, "", http.StatusOK, http.StatusNoContent},
-		{"unavailable", `{}`, "policy_unavailable", http.StatusOK, http.StatusServiceUnavailable},
+		{"https://service/ips/{ip}", "token-a", "192.0.2.1", time.Minute},
+		{"https://service/ips/{ip}", "token-a", "192.0.2.2", time.Minute},
+		{"https://other/ips/{ip}", "token-a", "192.0.2.1", time.Minute},
+		{"https://service/ips/{ip}", "token-b", "192.0.2.1", time.Minute},
+		{"https://service/ips/{ip}", "token-a", "192.0.2.1", 2 * time.Minute},
+	} {
+		client, err := NewClient(tc.url, tc.token, &http.Client{Transport: transport})
+		if err != nil {
+			t.Fatal(err)
+		}
+		evaluator := NewEvaluator(client, store, tc.ttl, nil)
+		if _, err = evaluator.Evaluate(context.Background(), tc.ip); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if calls != 5 || len(server.Keys()) != 5 {
+		t.Fatalf("shared incompatible entries: %d %v", calls, server.Keys())
+	}
+	for _, key := range server.Keys() {
+		if strings.Contains(key, "token-") || strings.Contains(key, "192.0.2") || !strings.HasPrefix(key, "promptgate:proxy:ip-validation:v1:") {
+			t.Fatalf("unsafe cache key: %s", key)
+		}
+	}
+}
+
+func TestEvaluatorIgnoresOldNegativeAndMalformedCache(t *testing.T) {
+	server, store := testRedis(t)
+	calls := 0
+	client := testClient(t, func(*http.Request) (*http.Response, error) { calls++; return response(404), nil })
+	evaluator := NewEvaluator(client, store, time.Minute, nil)
+	if err := server.Set("promptgate:proxy:policy:old", `{"allow":true}`); err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range []string{`{"allow":false}`, `{broken`, `null`} {
+		if err := server.Set(cacheKey(evaluator.cacheScope, "192.0.2.1"), value); err != nil {
+			t.Fatal(err)
+		}
+		decision, err := evaluator.Evaluate(context.Background(), "192.0.2.1")
+		if err != nil || decision.Allow {
+			t.Fatalf("invalid cached decision trusted: %+v %v", decision, err)
+		}
+	}
+	if calls != 3 {
+		t.Fatalf("calls=%d", calls)
+	}
+}
+
+func TestEvaluatorFallsBackOnRedisFailure(t *testing.T) {
+	_, store := testRedis(t)
+	_ = store.Close()
+	calls := 0
+	client := testClient(t, func(*http.Request) (*http.Response, error) { calls++; return response(200), nil })
+	evaluator := NewEvaluator(client, store, time.Minute, nil)
+	for range 2 {
+		if decision, err := evaluator.Evaluate(context.Background(), "192.0.2.1"); err != nil || !decision.Allow {
+			t.Fatalf("fallback: %+v %v", decision, err)
+		}
+	}
+	if calls != 2 {
+		t.Fatalf("calls=%d", calls)
+	}
+}
+
+type recordedDenial struct{ accountID, ip, reason string }
+type denialRecorder struct {
+	records []recordedDenial
+	err     error
+}
+
+func (r *denialRecorder) RecordPolicyDenial(_ context.Context, accountID, ip, reason string, _ time.Time) error {
+	r.records = append(r.records, recordedDenial{accountID, ip, reason})
+	return r.err
+}
+func principalContext() context.Context {
+	return auth.ContextWithPrincipal(clientip.ContextWithClientIP(context.Background(), "192.0.2.1"), auth.Principal{User: auth.UserProfile{ID: "user"}, CredentialID: "model-lab", CredentialName: "Model Lab"})
+}
+func TestMiddlewareUsesOnlyValidatedTicketMarkerForBypass(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		ctx  context.Context
+		want int
+	}{
+		{"ordinary token named Model Lab", principalContext(), 403},
+		{"privacy marker alone", requestprivacy.MarkMetadataOnly(principalContext()), 403},
+		{"validated ticket", modellab.ContextWithValidatedTicket(principalContext()), 204},
+		{"unauthenticated", context.Background(), 500},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			client, _ := NewClient("http://opa:8181", "decision", &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
-				return response(tc.status, tc.body, req), nil
-			})})
-			evaluator := NewEvaluator(client, nil, "decision", 0, nil)
-			denials := &denialRecorder{}
-			handler := Middleware(evaluator, nil, denials, nil)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }))
-			req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
-			ctx := auth.ContextWithPrincipal(req.Context(), auth.Principal{User: auth.UserProfile{ID: "user", Type: auth.UserTypeUser, Role: auth.RoleUser}, CredentialID: "key"})
-			ctx = clientip.ContextWithClientIP(ctx, "10.0.0.1")
-			recorder := httptest.NewRecorder()
-			handler.ServeHTTP(recorder, req.WithContext(ctx))
-			if recorder.Code != tc.want || (tc.code != "" && !strings.Contains(recorder.Body.String(), tc.code)) {
-				t.Fatalf("unexpected response: %d %s", recorder.Code, recorder.Body.String())
+			calls := 0
+			client := testClient(t, func(*http.Request) (*http.Response, error) { calls++; return response(404), nil })
+			recorder := &denialRecorder{}
+			handler := Middleware(NewEvaluator(client, nil, time.Minute, nil), recorder, nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) }))
+			req := httptest.NewRequest(http.MethodPost, "/provider/v1/chat", nil).WithContext(tc.ctx)
+			req.Header.Set("Authorization", "Bearer pgml_forged")
+			req.Header.Set("User-Agent", "PromptGate-ModelLab/1.0")
+			req.Header.Set("X-Model-Lab", "true")
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+			if rec.Code != tc.want {
+				t.Fatalf("status=%d body=%s", rec.Code, rec.Body)
 			}
-			if strings.Contains(recorder.Body.String(), "default_deny") || strings.Contains(recorder.Body.String(), "key") {
-				t.Fatalf("policy response leaked internal details: %s", recorder.Body.String())
+			wantCalls := 0
+			if tc.want == 403 {
+				wantCalls = 1
 			}
-			if tc.name == "deny" {
-				if len(denials.records) != 1 || denials.records[0].accountID != "user" || denials.records[0].clientIP != "10.0.0.1" || denials.records[0].reason != "default_deny" || denials.records[0].deniedAt.IsZero() {
-					t.Fatalf("unexpected denial record: %#v", denials.records)
-				}
-			} else if len(denials.records) != 0 {
-				t.Fatalf("unexpected denial record for %s policy: %#v", tc.name, denials.records)
+			if calls != wantCalls || len(recorder.records) != wantCalls {
+				t.Fatalf("calls=%d denials=%+v", calls, recorder.records)
 			}
 		})
 	}
+	// A bypass must not even dereference an evaluator or its Redis dependency.
+	handler := Middleware(nil, nil, nil)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(204) }))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest("GET", "/", nil).WithContext(modellab.ContextWithValidatedTicket(principalContext())))
+	if rec.Code != 204 {
+		t.Fatal(rec.Code)
+	}
 }
 
-func TestMiddlewareRecordsCachedDenials(t *testing.T) {
-	srv := miniredis.RunT(t)
-	store, err := redisstore.NewRequired(context.Background(), "redis://"+srv.Addr(), time.Minute, nil)
-	if err != nil {
-		t.Fatalf("new redis store: %v", err)
-	}
-	defer store.Close()
-
-	var calls atomic.Int32
-	client, _ := NewClient("http://opa:8181", "decision", &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
-		calls.Add(1)
-		return response(http.StatusOK, `{"result":{"allow":false,"reason":"cached_deny"}}`, req), nil
-	})})
-	denials := &denialRecorder{}
-	handler := Middleware(NewEvaluator(client, store, "decision", time.Minute, nil), nil, denials, nil)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusNoContent)
-	}))
-	for range 2 {
-		req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
-		ctx := auth.ContextWithPrincipal(req.Context(), auth.Principal{User: auth.UserProfile{ID: "user", Type: auth.UserTypeUser, Role: auth.RoleUser}})
-		ctx = clientip.ContextWithClientIP(ctx, "10.0.0.1")
-		recorder := httptest.NewRecorder()
-		handler.ServeHTTP(recorder, req.WithContext(ctx))
-		if recorder.Code != http.StatusForbidden {
-			t.Fatalf("unexpected status: %d", recorder.Code)
-		}
-	}
-	if calls.Load() != 1 || len(denials.records) != 2 {
-		t.Fatalf("expected one OPA call and two denial records, calls=%d records=%#v", calls.Load(), denials.records)
+func TestMiddlewareStatusRecordingAndSafeLogs(t *testing.T) {
+	for _, status := range []int{200, 404, 503} {
+		t.Run(fmt.Sprint(status), func(t *testing.T) {
+			var logs bytes.Buffer
+			logger := slog.New(slog.NewTextHandler(&logs, nil))
+			client := testClient(t, func(*http.Request) (*http.Response, error) { return response(status), nil })
+			recorder := &denialRecorder{err: errors.New("recording unavailable")}
+			handler := Middleware(NewEvaluator(client, nil, time.Minute, logger), recorder, logger)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(204) }))
+			for range 2 {
+				rec := httptest.NewRecorder()
+				handler.ServeHTTP(rec, httptest.NewRequest("GET", "/", nil).WithContext(principalContext()))
+				want := map[int]int{200: 204, 404: 403, 503: 503}[status]
+				if rec.Code != want {
+					t.Fatalf("status=%d", rec.Code)
+				}
+				if status == 404 && strings.TrimSpace(rec.Body.String()) != `{"error":"ip_not_allowed"}` {
+					t.Fatal(rec.Body.String())
+				}
+				if status == 503 && !strings.Contains(rec.Body.String(), "policy_unavailable") {
+					t.Fatal(rec.Body.String())
+				}
+			}
+			if status == 404 && (len(recorder.records) != 2 || recorder.records[0] != (recordedDenial{"user", "192.0.2.1", DeniedReason})) {
+				t.Fatalf("denials=%+v", recorder.records)
+			}
+			if strings.Contains(logs.String(), "service-token") {
+				t.Fatal("Bearer leaked")
+			}
+		})
 	}
 }

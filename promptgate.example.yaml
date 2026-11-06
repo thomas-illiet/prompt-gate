@@ -77,10 +77,10 @@ proxy:
   max_buffered_request_bytes: 8388608
   max_buffered_response_bytes: 16777216
   upstream_timeout: 2m
-  opa:
+  ip_validation:
     enabled: true
-    url: http://localhost:8181
-    policy_path: promptgate/proxy/decision
+    url_template: "https://validation.example/ips/{ip}"
+    bearer_token: "replace-with-service-token"
     timeout: 2s
     cache_ttl: 10m
   otel:

@@ -28,7 +28,6 @@ make staticcheck
 PROMPTGATE_REQUIRE_INTEGRATION=1 make coverage
 go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 bash deploy/helm/prompt-gate/tests/render.sh
-bash deploy/examples/opa/test.sh
 make build
 docker compose config --quiet
 docker build -t prompt-gate-backend:test .
@@ -70,8 +69,8 @@ The release pipeline:
 - checks Go formatting
 - runs `go vet`
 - runs the pinned Staticcheck tool
-- enforces 70% aggregate Go statement coverage and scans Go/npm vulnerabilities
-- validates Helm rendering and the OPA policy and API boundary
+- enforces 80% aggregate Go statement coverage and scans Go/npm vulnerabilities
+- validates Helm rendering and the external IP validation contract, including the Model Lab bypass
 - runs backend tests with Redis, including PostgreSQL-specific migration, bootstrap
   concurrency, and quota-reset coverage against PostgreSQL 18
 - installs frontend dependencies
@@ -83,6 +82,8 @@ The release pipeline:
   Windows AMD64
 - verifies each archive contains the expected binary and `public/index.html`
 - packages a Helm chart with appVersion equal to the release tag
+- requires a matching explicit `image.tag` when rendering the unreleased source
+  chart; release packages retain their versioned image default
 - creates SHA256SUMS for every archive and the chart
 - builds and pushes the Docker image with SBOM and provenance attestations
 - creates a GitHub Release with generated notes and release archives

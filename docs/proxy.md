@@ -34,9 +34,11 @@ flowchart TD
     C --> IP["Resolve client IP through explicit trusted proxies"]
     MLA --> IP
     IP --> E2["Provider route and method allowlist"]
-    E2 --> F["External OPA decision (denials Redis-cached)"]
+    E2 --> VML{"Validated Model Lab ticket?"}
+    VML -->|Yes| I
+    VML -->|No| F["External IP validation (authorizations Redis-cached)"]
     F --> G{"Policy allows?"}
-    G -->|No| H["403 policy_denied or 503 policy_unavailable"]
+    G -->|No| H["403 ip_not_allowed or 503 policy_unavailable"]
     G -->|Yes| I["Access-group provider and model checks"]
     I -->|Denied| I2["403 group_access_denied or group_model_required"]
     I -->|Allowed| J["Atomic rolling-quota reservation"]
@@ -116,7 +118,7 @@ path unchanged and does not need a rewrite rule.
 
 An account can hold at most `common.model_lab.max_concurrent` active Model
 Lab leases. After ticket authentication, the request rejoins the canonical
-client-IP, OPA, group, subscription/quota, AIBridge, provider, and accounting
+client-IP resolution, group, subscription/quota, AIBridge, provider, and accounting
 pipeline. Each target therefore receives an independent authorization and
 quota decision. Redis failure is fail-closed and no provider request is made.
 Individual SSE frames and the cumulative stream are bounded; over-limit streams
@@ -176,21 +178,57 @@ The setup helper returns these base URL patterns:
 Provider names must be lowercase DNS-like names such as `openai-main` or
 `local-ollama`.
 
-## OPA policy behavior
+## External IP validation
 
-The proxy evaluates an external OPA decision after credential authentication
-and before group, quota, and provider processing. Only denied decisions are cached
-in Redis: every allow is re-evaluated so a policy revocation takes effect on the
-next request without waiting for a cache TTL. OPA failures return
-`503 policy_unavailable` on a cache miss; explicit policy denials return
-`403 policy_denied`.
+After API-token authentication and before group, quota and provider processing,
+the proxy sends `GET` to `proxy.ip_validation.url_template`, substituting the
+normalized client IPv4/IPv6 address for `{ip}`. It authenticates with
+`Authorization: Bearer <bearer_token>` from server configuration, never the
+user's credential. No identity, role, groups, route or request body is sent.
+Only status `200` authorizes; `404` returns HTTP `403` with
+`{"error":"ip_not_allowed"}`. All other
+statuses (including redirects), network errors and timeouts return
+`503 policy_unavailable`. Response bodies are ignored and redirects are not
+followed. The default timeout is two seconds; the configured CA is supported.
 
-`proxy.opa.enabled` defaults to `true`. Setting it to `false` is an
-emergency access-release mechanism: the proxy does not initialize or call OPA,
-does not read its decision cache, and does not include OPA in `/health`.
-Authentication, groups, quotas, and provider controls remain active. Disabling
-OPA therefore fails open only for the external policy stage and emits a startup
-warning; restore it to `true` as soon as the incident is resolved.
+Redis stores **only authorizations**, for `proxy.ip_validation.cache_ttl`
+(default `10m`). Hits do not renew expiry. Authorization is shared by IP across
+accounts and routes, but authentication, groups and quotas still run on every
+request. A revocation can take up to one TTL to take effect. Refusals and errors
+are never cached. Redis read/write failures fall back to the external decision;
+a still-valid cached authorization survives an external outage, but expired
+entries are never used. Cache keys include a fingerprint of the URL template,
+Bearer and TTL; old policy entries and other service configurations are ignored.
+
+**Model Lab bypasses only IP validation.** The API issues a short-lived,
+single-use ticket and the browser sends it to the proxy. Only after the proxy
+validates and consumes that ticket, validates the account and acquires its
+concurrency lease does it set an internal bypass marker. HTTP headers, token
+names, token prefixes and the metadata-only privacy flag cannot grant bypass.
+These requests neither call the validation service nor read/write its IP cache;
+ticket Redis, group, model, quota and provider checks remain active.
+
+`proxy.ip_validation.enabled` defaults to `true`. Setting it to `false`
+bypasses external IP validation and its cache, with a startup warning.
+Authentication, groups, quotas and provider controls remain active. `/health`
+checks Redis and bridge readiness without contacting the external validation
+service, regardless of this switch. `/live` remains process-only.
+
+An invalid resolved client IP returns `503 policy_unavailable` before accessing
+the IP cache or service. IPv4-mapped IPv6 addresses use their IPv4 form, so both
+representations share the same authorization.
+
+For diagnostics, `policy.evaluate` spans expose `policy.cache_hit`,
+`policy.allow` and `policy.reason`; service failures are recorded as span errors
+and sanitized logs. Validated Model Lab requests produce no IP-validation span.
+The instruments are `promptgate.policy.events` (with `policy.source` and
+`policy.allow`) and `promptgate.policy.ip_validation.duration` (milliseconds).
+`cache_miss` is an event, not a refusal: count explicit refusals using
+`policy.source=ip_validation` and `policy.allow=false`.
+The current `proxy.otel` integration exports traces only; it does not install
+a metrics exporter or expose a `/metrics` endpoint. The instruments require a
+separate MeterProvider before they can be collected. Use logs and exported
+traces for the current rollout checks; `/health` does not test IP authorization.
 
 By default the proxy uses the TCP remote address. In production, prefer setting
 `proxy.trusted_proxies` to the CIDRs of trusted ingress or reverse
@@ -237,10 +275,10 @@ Usage events are injected into the `promptgate:usage:events` Redis Stream. When
 the worker processes an `interception_started` event, it upserts the
 `account_ip_addresses` row identified by the account and IP. `last_seen` only
 moves forward, including when Redis retries or delivers older events later.
-Requests rejected by authentication, OPA policy, group, or quota checks do not
-create interceptions. Authenticated OPA denials still update the account IP
+Requests rejected by authentication, IP validation, group, or quota checks do not
+create interceptions. Authenticated IP validation refusals still update the account IP
 history with the latest denial reason and timestamp for that account and IP.
-Allowed OPA decision reasons are not persisted.
+New refusals use the stable reason `ip_not_allowed`; historical reasons are preserved.
 
 Model Lab records keep only the accounting metadata needed by these same
 controls: local account ID, provider/model, timestamps, token counts, cost,
@@ -343,7 +381,7 @@ The proxy uses Redis for:
 - access-group and subscription-plan snapshots
 - versioned subscription assignments
 - rolling 5-hour and 7-day quota counters plus quota-reset barriers
-- OPA deny decisions
+- external IP authorizations (API-token traffic only)
 - config version counters
 - config reload pub/sub
 - asynchronous proxy usage and account IP events
@@ -352,7 +390,7 @@ The proxy uses Redis for:
 
 `common.redis.cache_ttl` controls the default TTL for snapshots and cached
 auth records. Cached auth entries also never outlive the token's expiration.
-`proxy.opa.cache_ttl` independently controls cached-denial expiration.
+`proxy.ip_validation.cache_ttl` independently controls cached-authorization expiration; hits do not extend it.
 
 ## Hot Reload
 
@@ -388,7 +426,7 @@ The proxy requires `common.database.url`, `common.redis.url`,
 `common.security.jwt_secret`, `common.security.secrets_key`, and
 `common.public_urls.proxy`.
 
-`proxy.opa.url` is additionally required when `proxy.opa.enabled: true` (the
+`proxy.ip_validation.url_template` and `proxy.ip_validation.bearer_token` are required when `proxy.ip_validation.enabled: true` (the
 default).
 
 At least one supported enabled provider must exist before the proxy can build

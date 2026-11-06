@@ -3,7 +3,6 @@ package groups
 import (
 	"context"
 	"errors"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -183,16 +182,11 @@ func TestSnapshotRequiresModelRegexAndHonorsProviderScope(t *testing.T) {
 	if store.Allows(uuid.NewString(), openai.Name, "") {
 		t.Fatal("expected user without group to be denied")
 	}
-	if got := store.GroupNames(user.ID); !reflect.DeepEqual(got, []string{"engineering"}) {
-		t.Fatalf("unexpected technical group names: %#v", got)
-	}
-	if got := store.GroupNames(uuid.NewString()); got == nil || len(got) != 0 {
-		t.Fatalf("expected an empty group list for an unknown user, got %#v", got)
-	}
+
 }
 
-// TestSnapshotIncludesGroupsWithoutActiveProviders verifies OPA membership data is independent from access grants.
-func TestSnapshotIncludesGroupsWithoutActiveProviders(t *testing.T) {
+// TestSnapshotRejectsDisabledProviders verifies inactive providers grant no access.
+func TestSnapshotRejectsDisabledProviders(t *testing.T) {
 	service, db, user, openai, _ := newGroupTestService(t)
 	ctx := context.Background()
 	group, err := service.CreateGroup(ctx, CreateGroupInput{
@@ -212,9 +206,7 @@ func TestSnapshotIncludesGroupsWithoutActiveProviders(t *testing.T) {
 	if err := store.Refresh(ctx); err != nil {
 		t.Fatalf("refresh snapshot: %v", err)
 	}
-	if got := store.GroupNames(user.ID); !reflect.DeepEqual(got, []string{"dormant"}) {
-		t.Fatalf("expected group without active provider, got %#v", got)
-	}
+
 	if store.AllowsProvider(user.ID, openai.Name) {
 		t.Fatal("disabled provider must remain inaccessible")
 	}

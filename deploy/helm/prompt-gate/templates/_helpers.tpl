@@ -62,7 +62,11 @@ Service account name.
 Runtime image.
 */}}
 {{- define "prompt-gate.image" -}}
-{{- $tag := default .Chart.AppVersion .Values.image.tag -}}
+{{- $tag := trim .Values.image.tag -}}
+{{- if and (eq .Chart.AppVersion "unreleased") (eq $tag "") -}}
+{{- fail "image.tag is required for the unreleased source chart; use an image built from the matching source and runtime YAML schema" -}}
+{{- end -}}
+{{- $tag = default .Chart.AppVersion $tag -}}
 {{- printf "%s:%s" .Values.image.repository $tag -}}
 {{- end -}}
 
@@ -115,6 +119,13 @@ path is equivalent to no application base path.
 {{- $environment := required "config.common.environment must not be empty" $config.common.environment -}}
 {{- if not (has $environment (list "development" "staging" "production")) -}}
 {{- fail "config.common.environment must be one of development, staging, or production" -}}
+{{- end -}}
+{{- if hasKey $config.proxy "opa" -}}
+{{- fail "config.proxy.opa was removed; configure config.proxy.ip_validation instead" -}}
+{{- end -}}
+{{- if and .Values.proxy.enabled $config.proxy.ip_validation.enabled -}}
+{{- $_ := required "config.proxy.ip_validation.url_template is required" $config.proxy.ip_validation.url_template -}}
+{{- $_ := required "config.proxy.ip_validation.bearer_token is required" $config.proxy.ip_validation.bearer_token -}}
 {{- end -}}
 {{- $configuredBasePath := trim (default "" $config.proxy.base_path) -}}
 {{- $configuredProxyURL := trim (default "" $config.common.public_urls.proxy) -}}

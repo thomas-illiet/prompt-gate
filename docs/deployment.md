@@ -48,35 +48,41 @@ Recommended production layout:
 Prompt Gate requires:
 
 - PostgreSQL for durable data
-- Redis for sessions, auth and OPA denial caches, group/provider/subscription
+- Redis for sessions, auth and IP authorization caches, group/provider/subscription
   snapshots, Model Lab catalogs, one-time tickets and concurrency leases,
   rolling quota state and reset barriers, config reload events, and usage event
   streams
-- an independently operated OPA server for every proxy decision
+- an independently operated IP validation service accepting a dedicated Bearer
 - Keycloak or another OIDC-compatible provider
 - one protected YAML file containing the common and per-runtime settings
 
 Allow API replicas to reach each configured provider's model-catalog endpoint;
 Model Lab performs discovery from the API process. Proxy replicas separately
-need provider egress for generation traffic. Apply `common.tls.ca_file` to both
-paths when those endpoints use a private certificate authority.
+need provider egress for generation traffic and access to the IP validation
+service for API-token requests. Apply `common.tls.ca_file` when these endpoints
+use a private certificate authority.
 
 See [YAML configuration](environment.md) for the full configuration
 reference.
 
 ## Deployment Order
 
-1. Provision PostgreSQL, Redis, and OPA.
+1. Provision PostgreSQL, Redis, and the external IP validation service.
 2. Configure the OIDC client and callback URL:
    `https://api.example.com/auth/callback`.
 3. Create `promptgate.yaml`, including database, Redis, signing, encryption,
-   OIDC, administration, and telemetry credentials. Protect the entire file as
-   a secret because every Prompt Gate process receives it.
+   OIDC, administration, telemetry, and the IP validation URL and Bearer.
+   Protect the entire file as a secret because every Prompt Gate process receives it.
 4. Run migrations with `promptgate --config /path/promptgate.yaml migrate`.
 5. Start the API, proxy, workers, and scheduler with the same required
    `--config` option.
-6. Configure providers, users, service accounts, tokens, and the external OPA
-   policy through the admin API or frontend.
+6. Configure providers, users, service accounts and tokens through the admin API
+   or frontend. Verify a permitted IP, a refused IP, and a Model Lab request.
+
+Use binaries and YAML from the same release for every component. For an upgrade
+from OPA, follow the [coordinated configuration migration](environment.md#migration-from-opa)
+before starting the new processes. A successful `/health` response does not
+verify the external IP service.
 
 Model Lab is always enabled for `user` and `admin` roles. Configure its
 browser-visible HTTP(S) proxy URL in `common.public_urls.proxy`. If that URL
@@ -115,9 +121,12 @@ Mount the complete configuration read-only. The same mount works for every
 runtime; only the final command name changes:
 
 ```sh
+# Set PROMPT_GATE_IMAGE to the immutable image tag built with this YAML schema.
+# Images released before the IP-validation change reject proxy.ip_validation.
+: "${PROMPT_GATE_IMAGE:?Set a compatible Prompt Gate image tag}"
 docker run --rm \
   -v /secure/path/promptgate.yaml:/etc/prompt-gate/promptgate.yaml:ro \
-  ghcr.io/thomas-illiet/prompt-gate:v2.1.0 \
+  "$PROMPT_GATE_IMAGE" \
   /app/promptgate --config /etc/prompt-gate/promptgate.yaml migrate
 ```
 
@@ -128,13 +137,13 @@ docker run --rm \
   -p 8080:8080 \
   -v /secure/path/promptgate.yaml:/etc/prompt-gate/promptgate.yaml:ro \
   -v /path/to/custom-ca.pem:/run/secrets/custom-ca.pem:ro \
-  ghcr.io/thomas-illiet/prompt-gate:v2.1.0 \
+  "$PROMPT_GATE_IMAGE" \
   /app/promptgate --config /etc/prompt-gate/promptgate.yaml api
 ```
 
 Set `common.tls.ca_file: /run/secrets/custom-ca.pem` when mounting the optional
-CA bundle. This single CA setting applies to OIDC, monitoring, providers, and
-OTEL.
+CA bundle. This single CA setting applies to OIDC, monitoring, providers,
+external IP validation, and OTEL.
 
 ## Administration API Key
 
@@ -158,7 +167,7 @@ Run the proxy, worker, or scheduler by changing only the last argument:
 docker run --rm \
   -p 8081:8081 \
   -v /secure/path/promptgate.yaml:/etc/prompt-gate/promptgate.yaml:ro \
-  ghcr.io/thomas-illiet/prompt-gate:v2.1.0 \
+  "$PROMPT_GATE_IMAGE" \
   /app/promptgate --config /etc/prompt-gate/promptgate.yaml proxy
 ```
 
@@ -209,7 +218,7 @@ ordinary `Prefix` routes:
 The edge does not use a regular expression or rewrite the URL. Prompt Gate
 derives `proxy.base_path` from `ingress.proxyPath`, validates that the public
 proxy URL has the same path, and removes the prefix inside the proxy before
-authentication, OPA, quota, or provider routing.
+authentication, IP validation, quota, or provider routing.
 
 ```yaml
 ingress:
@@ -295,10 +304,11 @@ the HAProxy namespace and controller pods. `externalTrafficPolicy: Local` is an
 optional source-preservation choice only when the F5/operator topology supports
 it; it does not replace the sanitized forwarding-header contract.
 
-Chart `0.2.x` moves `/remote` removal from HAProxy into Prompt Gate. Upgrade
-from `0.1.x` during a short F5 maintenance window after the selected `v2.1.x`
-image exists: close external traffic, perform a full Argo CD sync, wait for the
-proxy rollout and unified Ingress to become healthy, validate
+Historical routing migration: chart `0.2.x` moved `/remote` removal from HAProxy
+into Prompt Gate. If upgrading from `0.1.x`, use a short F5 maintenance window
+and an image matching the target chart and YAML schema: close external traffic,
+perform a full Argo CD sync, wait for the proxy rollout and unified Ingress to
+become healthy, validate
 `/remote/health` and a provider request, then reopen traffic.
 
 ## Kubernetes NGINX Ingress
@@ -438,15 +448,16 @@ Proxy:
 GET /health
 ```
 
-Returns `200 OK` with `{"status":"ok"}` when the bridge is ready, Redis is
-reachable and OPA is healthy (when enabled). `/live` checks only process liveness.
+Returns `200 OK` with `{"status":"ok"}` when the bridge is ready and Redis is
+reachable. External IP validation is not part of this health probe. `/live`
+checks only process liveness.
 When `proxy.base_path` is `/remote`, `GET /remote/health` reaches the same
 handler through the public Ingress while the direct path remains available to
 Kubernetes probes.
 
 ## Production Notes
 
-- Use immutable version tags such as `v2.1.0` for production deployments.
+- Use an immutable image tag from the same release as the chart and YAML schema.
 - Avoid deploying `latest` to production unless the platform also records the
   resolved image digest.
 - Store all secrets in a secret manager.
@@ -481,8 +492,8 @@ hook. Scheduler updates use Recreate to avoid overlapping scheduler replicas.
 
 API and proxy shutdown wait for active requests. The chart grants 180 seconds;
 keep this greater than the configured proxy upstream timeout plus 20 seconds.
-Proxy `/live` checks the process without depending on OPA; `/health` checks bridge
-readiness, Redis and OPA. API `/health` checks PostgreSQL and Redis.
+Proxy `/live` checks the process; `/health` checks bridge
+readiness and Redis without contacting the external IP service. API `/health` checks PostgreSQL and Redis.
 
 Worker and scheduler diagnostics listen on `:8084` and `:8085` by default through
 `worker.health_listen_address` and `schedule.health_listen_address`. `/live`

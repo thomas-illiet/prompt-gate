@@ -71,7 +71,7 @@ func (r *RedisRecorder) RecordInterception(ctx context.Context, req *aibrecorder
 	return r.enqueue(ctx, event)
 }
 
-// RecordPolicyDenial enqueues the latest authenticated OPA denial for an account IP.
+// RecordPolicyDenial enqueues the latest authenticated IP validation denial for an account IP.
 func (r *RedisRecorder) RecordPolicyDenial(ctx context.Context, accountID, clientIP, reason string, deniedAt time.Time) error {
 	if requestprivacy.IsMetadataOnly(ctx) {
 		return nil

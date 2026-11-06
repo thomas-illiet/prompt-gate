@@ -74,9 +74,6 @@ jobs:
       - name: Validate Helm chart rendering
         run: bash deploy/helm/prompt-gate/tests/render.sh
 
-      - name: Validate OPA example policy
-        run: bash deploy/examples/opa/test.sh
-
   frontend:
     name: Validate frontend
     runs-on: ubuntu-latest

@@ -258,6 +258,9 @@ func (s *Service) AssignUserPlan(ctx context.Context, userID string, planID *str
 	if err := s.assignPlan(ctx, userID, auth.UserTypeUser, planID); err != nil {
 		return users.AdminUser{}, err
 	}
+	// The assignment is committed. Invalidate caches before loading response-only
+	// projections, whose failure must not leave the old plan enforced by proxies.
+	s.notifier.Notify(ctx, configevents.DomainSubscriptions)
 	item, err := users.NewService(s.db).GetUser(ctx, userID)
 	if err != nil {
 		return users.AdminUser{}, fmt.Errorf("load assigned user: %w", err)
@@ -266,7 +269,6 @@ func (s *Service) AssignUserPlan(ctx context.Context, userID string, planID *str
 	if err := s.DecorateAdminUsers(ctx, items); err != nil {
 		return users.AdminUser{}, err
 	}
-	s.notifier.Notify(ctx, configevents.DomainSubscriptions)
 	return items[0], nil
 }
 
@@ -274,6 +276,7 @@ func (s *Service) AssignServiceAccountPlan(ctx context.Context, userID string, p
 	if err := s.assignPlan(ctx, userID, auth.UserTypeService, planID); err != nil {
 		return users.ServiceAccount{}, err
 	}
+	s.notifier.Notify(ctx, configevents.DomainSubscriptions)
 	item, err := users.NewService(s.db).GetServiceAccount(ctx, userID)
 	if err != nil {
 		return users.ServiceAccount{}, fmt.Errorf("load assigned service account: %w", err)
@@ -282,7 +285,6 @@ func (s *Service) AssignServiceAccountPlan(ctx context.Context, userID string, p
 	if err := s.DecorateServiceAccounts(ctx, items); err != nil {
 		return users.ServiceAccount{}, err
 	}
-	s.notifier.Notify(ctx, configevents.DomainSubscriptions)
 	return items[0], nil
 }
 

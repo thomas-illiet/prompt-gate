@@ -178,25 +178,25 @@ type oidcFileConfig struct {
 }
 
 type proxyFileConfig struct {
-	Port                     portValue      `yaml:"port"`
-	BasePath                 string         `yaml:"base_path"`
-	TrustForwardHeaders      bool           `yaml:"trust_forward_headers"`
-	TrustedProxies           []string       `yaml:"trusted_proxies"`
-	ClientIPDebug            bool           `yaml:"client_ip_debug"`
-	DebugRequests            bool           `yaml:"debug_requests"`
-	MaxBufferedRequestBytes  int64          `yaml:"max_buffered_request_bytes"`
-	MaxBufferedResponseBytes int64          `yaml:"max_buffered_response_bytes"`
-	UpstreamTimeout          durationValue  `yaml:"upstream_timeout"`
-	OPA                      opaFileConfig  `yaml:"opa"`
-	OTel                     otelFileConfig `yaml:"otel"`
+	Port                     portValue              `yaml:"port"`
+	BasePath                 string                 `yaml:"base_path"`
+	TrustForwardHeaders      bool                   `yaml:"trust_forward_headers"`
+	TrustedProxies           []string               `yaml:"trusted_proxies"`
+	ClientIPDebug            bool                   `yaml:"client_ip_debug"`
+	DebugRequests            bool                   `yaml:"debug_requests"`
+	MaxBufferedRequestBytes  int64                  `yaml:"max_buffered_request_bytes"`
+	MaxBufferedResponseBytes int64                  `yaml:"max_buffered_response_bytes"`
+	UpstreamTimeout          durationValue          `yaml:"upstream_timeout"`
+	IPValidation             ipValidationFileConfig `yaml:"ip_validation"`
+	OTel                     otelFileConfig         `yaml:"otel"`
 }
 
-type opaFileConfig struct {
-	Enabled    bool          `yaml:"enabled"`
-	URL        string        `yaml:"url"`
-	PolicyPath string        `yaml:"policy_path"`
-	Timeout    durationValue `yaml:"timeout"`
-	CacheTTL   durationValue `yaml:"cache_ttl"`
+type ipValidationFileConfig struct {
+	Enabled     bool          `yaml:"enabled"`
+	URLTemplate string        `yaml:"url_template"`
+	BearerToken string        `yaml:"bearer_token"`
+	Timeout     durationValue `yaml:"timeout"`
+	CacheTTL    durationValue `yaml:"cache_ttl"`
 }
 
 type otelFileConfig struct {
@@ -419,11 +419,10 @@ func defaultFileConfig() fileConfig {
 			MaxBufferedRequestBytes:  proxylimits.DefaultMaxBufferedRequestBytes,
 			MaxBufferedResponseBytes: proxylimits.DefaultMaxBufferedResponseBytes,
 			UpstreamTimeout:          duration(proxylimits.DefaultUpstreamTimeout),
-			OPA: opaFileConfig{
-				Enabled:    true,
-				PolicyPath: "promptgate/proxy/decision",
-				Timeout:    duration(2 * time.Second),
-				CacheTTL:   duration(10 * time.Minute),
+			IPValidation: ipValidationFileConfig{
+				Enabled:  true,
+				Timeout:  duration(2 * time.Second),
+				CacheTTL: duration(10 * time.Minute),
 			},
 			OTel: otelFileConfig{
 				ProjectName:        "prompt-gate",

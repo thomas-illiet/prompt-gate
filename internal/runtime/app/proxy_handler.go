@@ -28,7 +28,6 @@ func (p *ProxyRuntime) buildHandler(
 	userService *users.Service,
 	authCache tokens.AuthCache,
 	policyEvaluator *policy.Evaluator,
-	opaClient *policy.Client,
 	accessSnapshot *groups.SnapshotStore,
 	denialRecorder policy.DenialRecorder,
 	modelLabService *modellab.Service,
@@ -36,7 +35,6 @@ func (p *ProxyRuntime) buildHandler(
 ) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /live", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusOK) })
-	opaHealth := proxyHealth(cfg.OPAEnabled, opaClient)
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 		defer cancel()
@@ -44,7 +42,8 @@ func (p *ProxyRuntime) buildHandler(
 			http.Error(w, "proxy dependencies unavailable", http.StatusServiceUnavailable)
 			return
 		}
-		opaHealth(w, r.WithContext(ctx))
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
 
 	clientIPOptions := clientip.Options{
@@ -66,8 +65,8 @@ func (p *ProxyRuntime) buildHandler(
 		),
 	)
 	protectedHandler = stripModelLabClientHeaders(protectedHandler)
-	if cfg.OPAEnabled {
-		protectedHandler = policy.Middleware(policyEvaluator, accessSnapshot, denialRecorder, p.logger)(protectedHandler)
+	if cfg.IPValidationEnabled {
+		protectedHandler = policy.Middleware(policyEvaluator, denialRecorder, p.logger)(protectedHandler)
 	}
 	protectedHandler = proxyruntime.MethodGuardMiddlewareWithOptions(proxyruntime.MethodGuardOptions{
 		MaxBufferedRequestBytes: cfg.ProxyMaxBufferedRequestBytes,
@@ -194,26 +193,6 @@ func hexNibble(value byte) (byte, bool) {
 		return value - 'A' + 10, true
 	default:
 		return 0, false
-	}
-}
-
-func proxyHealth(opaEnabled bool, opaClient *policy.Client) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		if opaEnabled {
-			if opaClient == nil {
-				w.WriteHeader(http.StatusServiceUnavailable)
-				_, _ = w.Write([]byte(`{"status":"degraded","dependency":"opa"}`))
-				return
-			}
-			if err := opaClient.Health(r.Context()); err != nil {
-				w.WriteHeader(http.StatusServiceUnavailable)
-				_, _ = w.Write([]byte(`{"status":"degraded","dependency":"opa"}`))
-				return
-			}
-		}
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	}
 }
 

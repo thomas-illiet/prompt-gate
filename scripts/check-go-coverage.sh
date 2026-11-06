@@ -4,7 +4,7 @@ set -euo pipefail
 
 go_binary="${GO:-go}"
 package_list="${GO_PACKAGES:-./...}"
-minimum="${COVERAGE_MIN:-70}"
+minimum="${COVERAGE_MIN:-80}"
 profile="${COVERAGE_PROFILE:-}"
 remove_profile=false
 

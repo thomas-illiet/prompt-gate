@@ -7,10 +7,12 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	cdrslog "cdr.dev/slog/v3"
 	"go.opentelemetry.io/otel"
+	"gorm.io/gorm"
 
 	"promptgate/backend/internal/domain/groups"
 	"promptgate/backend/internal/domain/modellab"
@@ -39,6 +41,9 @@ type ProxyRuntime struct {
 	redis             *redisstore.Store
 	logger            *slog.Logger
 	telemetry         *telemetry.Provider
+	db                *gorm.DB
+	closeOnce         sync.Once
+	closeErr          error
 }
 
 // NewProxy initializes a proxy runtime from typed configuration.
@@ -64,6 +69,11 @@ func NewProxy(ctx context.Context, cfg config.ProxyConfig, logger *slog.Logger, 
 	if err != nil {
 		return nil, fmt.Errorf("initialize postgres: %w", err)
 	}
+	defer func() {
+		if !telemetryReady {
+			_ = database.Close(db)
+		}
+	}()
 
 	secretCipher, err := secrets.NewCipher(cfg.SecretsKey)
 	if err != nil {
@@ -129,24 +139,24 @@ func NewProxy(ctx context.Context, cfg config.ProxyConfig, logger *slog.Logger, 
 	authCache := tokens.NewRedisAuthCache(redisStore, cfg.RedisCacheTTL, logger)
 	authCache.SyncVersion(ctx)
 	accessSnapshot := groups.NewSnapshotStore(groupService)
-	var opaClient *policy.Client
+	var ipClient *policy.Client
 	var policyEvaluator *policy.Evaluator
-	if cfg.OPAEnabled {
-		opaHTTPClient := &http.Client{Timeout: cfg.OPATimeout}
-		customOPAHTTPClient, opaErr := platformhttp.NewWithCAFile(cfg.CAFile, cfg.OPATimeout)
-		if opaErr != nil {
-			return nil, fmt.Errorf("initialize OPA CA HTTP client: %w", opaErr)
+	if cfg.IPValidationEnabled {
+		ipHTTPClient := &http.Client{Timeout: cfg.IPValidationTimeout}
+		customIPHTTPClient, ipErr := platformhttp.NewWithCAFile(cfg.CAFile, cfg.IPValidationTimeout)
+		if ipErr != nil {
+			return nil, fmt.Errorf("initialize IP validation CA HTTP client: %w", ipErr)
 		}
-		if customOPAHTTPClient != nil {
-			opaHTTPClient = customOPAHTTPClient
+		if customIPHTTPClient != nil {
+			ipHTTPClient = customIPHTTPClient
 		}
-		opaClient, opaErr = policy.NewClient(cfg.OPAURL, cfg.OPAPolicyPath, opaHTTPClient)
-		if opaErr != nil {
-			return nil, fmt.Errorf("initialize OPA client: %w", opaErr)
+		ipClient, ipErr = policy.NewClient(cfg.IPValidationURLTemplate, cfg.IPValidationBearerToken, ipHTTPClient)
+		if ipErr != nil {
+			return nil, fmt.Errorf("initialize IP validation client: %w", ipErr)
 		}
-		policyEvaluator = policy.NewEvaluator(opaClient, redisStore, cfg.OPAPolicyPath, cfg.OPACacheTTL, logger)
+		policyEvaluator = policy.NewEvaluator(ipClient, redisStore, cfg.IPValidationCacheTTL, logger)
 	} else {
-		logger.Warn("OPA authorization disabled; authenticated requests bypass external policy enforcement")
+		logger.Warn("IP validation disabled; authenticated requests bypass external IP validation")
 	}
 	manager, err := proxyruntime.NewManager(ctx, proxyruntime.Options{
 		Providers:                providerService,
@@ -167,6 +177,7 @@ func NewProxy(ctx context.Context, cfg config.ProxyConfig, logger *slog.Logger, 
 	}
 
 	runtime := &ProxyRuntime{
+		db:                db,
 		manager:           manager,
 		subscriptionStore: subscriptionStore,
 		redis:             redisStore,
@@ -178,7 +189,7 @@ func NewProxy(ctx context.Context, cfg config.ProxyConfig, logger *slog.Logger, 
 		debugRequestWriter = httpmiddleware.NewJSONLineWriter(os.Stdout)
 		_ = debugRequestWriter.WriteStartupWarning()
 	}
-	runtime.Handler = runtime.buildHandler(cfg, tokenService, userService, authCache, policyEvaluator, opaClient, accessSnapshot, redisRecorder, modelLabService, debugRequestWriter)
+	runtime.Handler = runtime.buildHandler(cfg, tokenService, userService, authCache, policyEvaluator, accessSnapshot, redisRecorder, modelLabService, debugRequestWriter)
 	success = true
 	telemetryReady = true
 	return runtime, nil
@@ -195,7 +206,10 @@ func (p *ProxyRuntime) Reload(ctx context.Context) error {
 	return p.manager.Reload(ctx)
 }
 
-// Close releases the proxy bridge and Redis connection.
+// Close releases the proxy bridge, connections and telemetry exporter once.
 func (p *ProxyRuntime) Close(ctx context.Context) error {
-	return errors.Join(p.manager.Shutdown(ctx), p.redis.Close(), p.telemetry.Shutdown(ctx))
+	p.closeOnce.Do(func() {
+		p.closeErr = errors.Join(p.manager.Shutdown(ctx), p.redis.Close(), p.telemetry.Shutdown(ctx), database.Close(p.db))
+	})
+	return p.closeErr
 }

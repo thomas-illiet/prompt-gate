@@ -80,19 +80,19 @@ No. The proxy removes Prompt Gate authentication details before forwarding the r
 
 ## 20. What is a service account?
 
-A service account is a non-human identity intended for applications, automations, and shared integrations. It can have its own virtual keys and subscription plan without depending on an employee's personal account. Its proxy access is decided by the external OPA policy.
+A service account is a non-human identity intended for applications, automations, and shared integrations. It can have its own virtual keys and subscription plan without depending on an employee's personal account. Its proxy requests require an authorized IP as well as the usual group and quota permissions.
 
 ## 21. How is proxy access authorized?
 
-Prompt Gate sends a minimal identity and request context to an external OPA server. OPA is the sole policy engine and can evaluate roles, identity type, route, method, host, and client IP. Decisions are cached in Redis for the configured TTL.
+For ordinary API tokens, Prompt Gate sends only the client IP to an external service using a dedicated Bearer. A 200 response authorizes the IP and a 404 refuses it. Authorizations alone are cached for ten minutes by default. Model Lab uses a short-lived, single-use ticket issued by the API; once fully validated by the proxy, that ticket bypasses IP validation and its cache. Account, group and quota controls still apply.
 
-## 22. Why was my request rejected with `policy_denied` or `policy_unavailable`?
+## 22. Why was my request rejected with `ip_not_allowed` or `policy_unavailable`?
 
-`policy_denied` means OPA explicitly refused the request. `policy_unavailable` means no valid decision could be obtained from either Redis or OPA. The policy reason is retained in server observability but is intentionally not returned to the client.
+`ip_not_allowed` means the IP service returned 404. The proxy responds with HTTP 403 and `{"error":"ip_not_allowed"}`. `policy_unavailable` means there was no cached authorization and IP validation failed or returned an unexpected status; the proxy responds with HTTP 503. Model Lab tickets bypass this IP check.
 
 ## 23. Do I need to restart my client when a provider or rule changes?
 
-Usually not. Prompt Gate dynamically reloads providers, access groups, subscription plans and assignments, and authentication state. OPA policy changes take effect after an existing cached decision expires, at most 10 minutes with the default configuration.
+Usually not. Prompt Gate dynamically reloads providers, access groups, subscription plans and assignments, and authentication state. IP revocations take effect after an existing cached authorization expires, at most 10 minutes with the default configuration. Refused IPs are checked again on every request. Server URL, Bearer and TTL configuration changes require a restart.
 
 ## 24. How can I tell whether a service is unavailable or degraded?
 
@@ -100,7 +100,7 @@ The monitoring view displays the current state of monitored services, their late
 
 ## 25. What can an administrator manage in Prompt Gate?
 
-An administrator can pre-create users, manage roles and access expiration dates, offer quota-reset credits, and manage service accounts, keys, providers, access groups, subscription plans, quotas, setup guides, FAQ entries, and monitored services. OPA policies are operated independently. Administrators can also access global usage statistics and the interactive API documentation, whose Try it out requests affect the current environment.
+An administrator can pre-create users, manage roles and access expiration dates, offer quota-reset credits, and manage service accounts, keys, providers, access groups, subscription plans, quotas, setup guides, FAQ entries, and monitored services. The IP service and its allowlist are operated independently; its connection settings remain in server configuration. Administrators can also access global usage statistics and the interactive API documentation, whose Try it out requests affect the current environment.
 
 ## 26. How are provider secrets protected?
 
@@ -112,4 +112,4 @@ First, verify that your key is active and that neither its expiration nor your q
 
 ## 28. Where can I find additional help?
 
-Start with the setup page for examples tailored to the available providers, then review your profile, access groups, quotas, and monitoring status. Contact your organization's Prompt Gate administrator to request changes to permissions, subscription plans, OPA policy, or providers.
+Start with the setup page for examples tailored to the available providers, then review your profile, access groups, quotas, and monitoring status. Contact your organization's Prompt Gate administrator to request changes to permissions, subscription plans, IP authorization, or providers.

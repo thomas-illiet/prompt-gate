@@ -190,7 +190,6 @@ func TestNewManagerIgnoresStaleRedisSnapshotsAtStartup(t *testing.T) {
 				}},
 			},
 		},
-		UserGroups: map[string][]string{fixture.userID: {"stale-group"}},
 	}
 	if err := fixture.store.SetJSON(ctx, redisstore.SnapshotKey(configevents.DomainGroups), staleGroups, time.Minute); err != nil {
 		t.Fatalf("cache stale group snapshot: %v", err)

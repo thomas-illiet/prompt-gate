@@ -29,9 +29,13 @@ const isOpen = defineModel<boolean>({ default: false })
 const headers: DataTableHeader[] = [
   { title: 'IP address', key: 'ip' },
   appTableCenteredColumn({ title: 'Last seen', key: 'lastSeen' }),
-  appTableCenteredColumn({ title: 'Last OPA denial', key: 'lastDeniedAt' }),
+  appTableCenteredColumn({ title: 'Last access denial', key: 'lastDeniedAt' }),
   { title: 'Reason', key: 'lastDeniedReason' },
 ]
+
+function denialReason(reason: string | null) {
+  return reason === 'ip_not_allowed' ? 'IP address not authorized' : reason || '—'
+}
 
 const subtitle = computed(() => {
   if (props.total === 0) return 'No proxy IP addresses recorded.'
@@ -108,7 +112,7 @@ const subtitle = computed(() => {
         <AppEmptyState
           compact
           icon="mdi-ip-off-outline"
-          text="An address will appear after this account completes a proxy request."
+          text="An address appears after proxy activity or an IP access refusal."
           title="No IP addresses"
         />
       </template>
@@ -126,7 +130,7 @@ const subtitle = computed(() => {
         </div>
       </template>
       <template #item.lastDeniedReason="{ item }">
-        <span class="app-table-text admin-account-ips-dialog__reason">{{ item.lastDeniedReason || '—' }}</span>
+        <span class="app-table-text admin-account-ips-dialog__reason">{{ denialReason(item.lastDeniedReason) }}</span>
       </template>
     </AppServerDataTable>
 

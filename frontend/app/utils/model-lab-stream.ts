@@ -178,7 +178,7 @@ function isTerminalModelLabSSEFrame(
 
 function streamErrorMessage(status: number) {
   if (status === 401) return 'This run ticket expired or was already used.'
-  if (status === 403) return 'Policy or group access denied this model.'
+  if (status === 403) return 'Access to this model was denied. Check your account and access groups.'
   if (status === 429) return 'Your quota or parallel run limit was reached.'
   if (status === 502 || status === 503) {
     return 'The model provider is temporarily unavailable.'

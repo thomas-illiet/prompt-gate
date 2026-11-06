@@ -70,12 +70,9 @@ func runAPI(configPath string) error {
 		logger.Error("failed to initialize application", "error", err)
 		return err
 	}
-	if a.Validator != nil {
-		defer a.Validator.Close()
-	}
 	defer func() {
-		if err := a.Redis.Close(); err != nil {
-			logger.Warn("failed to close redis", "error", err)
+		if err := a.Close(); err != nil {
+			logger.Warn("failed to close application", "error", err)
 		}
 	}()
 	a.StartSubscriptionWatcher(ctx)

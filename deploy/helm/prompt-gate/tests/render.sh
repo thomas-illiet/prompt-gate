@@ -7,6 +7,8 @@ tmp_dir="$(mktemp -d)"
 trap 'rm -rf "${tmp_dir}"' EXIT
 
 required_values=(
+  --set-string image.tag=ip-validation-test
+  --set-string config.proxy.ip_validation.bearer_token=test-service-token
   --set-string config.common.database.url=postgres://user:pass@db/promptgate
   --set-string config.common.redis.url=redis://redis:6379
   --set-string config.common.security.jwt_secret=abcdefghijklmnopqrstuvwxyz012345
@@ -43,6 +45,21 @@ assert_ingress_route() {
 
 helm lint "${chart_dir}" --strict "${required_values[@]}"
 
+missing_image="${tmp_dir}/missing-image.txt"
+if helm template audit "${chart_dir}" "${required_values[@]}" \
+  --set-string image.tag= >"${missing_image}" 2>&1; then
+  echo "expected the unreleased source chart to require a matching image tag" >&2
+  exit 1
+fi
+assert_contains "${missing_image}" 'image.tag is required for the unreleased source chart'
+
+# Release packaging pins appVersion to the released binary, so no override is needed.
+helm package "${chart_dir}" --app-version v0.0.0-test --version 0.0.0-test --destination "${tmp_dir}" >/dev/null
+release_render="${tmp_dir}/release.yaml"
+helm template audit "${tmp_dir}/prompt-gate-0.0.0-test.tgz" "${required_values[@]}" \
+  --set-string image.tag= >"${release_render}"
+assert_contains "${release_render}" 'image: "ghcr.io/thomas-illiet/prompt-gate:v0.0.0-test"'
+
 default_render="${tmp_dir}/default.yaml"
 helm template audit "${chart_dir}" "${required_values[@]}" >"${default_render}"
 assert_contains "${default_render}" 'kind: Secret'
@@ -54,10 +71,29 @@ assert_contains "${default_render}" 'base_path: /remote'
 assert_contains "${default_render}" 'proxy: https://promptgate.example.com/remote'
 assert_contains "${default_render}" '/etc/prompt-gate/promptgate.yaml'
 assert_contains "${default_render}" 'defaultMode: 0440'
+if [[ "$(grep -c 'image: "ghcr.io/thomas-illiet/prompt-gate:ip-validation-test"' "${default_render}")" -ne 5 ]]; then
+  echo "expected every runtime, including migrations, to use the selected image" >&2
+  exit 1
+fi
 if grep -Eq -- '^kind: ConfigMap$|envFrom:|PROMPTGATE_' "${default_render}"; then
   echo "runtime configuration must be mounted as YAML without PROMPTGATE_* environment variables" >&2
   exit 1
 fi
+
+assert_contains "${default_render}" 'ip_validation:'
+assert_contains "${default_render}" 'url_template: https://validation.example/ips/{ip}'
+assert_contains "${default_render}" 'bearer_token: test-service-token'
+missing_validation_token="${tmp_dir}/missing-validation-token.txt"
+if helm template audit "${chart_dir}" "${required_values[@]}" \
+  --set-string config.proxy.ip_validation.bearer_token= >"${missing_validation_token}" 2>&1; then
+  echo "expected enabled IP validation without a token to fail rendering" >&2
+  exit 1
+fi
+assert_contains "${missing_validation_token}" 'config.proxy.ip_validation.bearer_token is required'
+disabled_validation="${tmp_dir}/disabled-validation.yaml"
+helm template audit "${chart_dir}" "${required_values[@]}" \
+  --set config.proxy.ip_validation.enabled=false \
+  --set-string config.proxy.ip_validation.bearer_token= >"${disabled_validation}"
 
 invalid_environment="${tmp_dir}/invalid-environment.txt"
 if helm template audit "${chart_dir}" "${required_values[@]}" \
@@ -191,6 +227,7 @@ assert_contains "${external_root_render}" 'proxy: https://proxy.example.test/'
 
 external_render="${tmp_dir}/external-secret.yaml"
 helm template audit "${chart_dir}" \
+  --set-string image.tag=ip-validation-test \
   --set-string configSecret.existingSecret=promptgate-runtime-config \
   --set ingress.enabled=false \
   --set-string configSecret.rolloutToken=rotation-2 >"${external_render}"
@@ -214,7 +251,7 @@ assert_contains "${helm_render}" 'path: /live'
 assert_contains "${helm_render}" 'path: /ready'
 assert_contains "${helm_render}" 'terminationGracePeriodSeconds: 180'
 assert_contains "${helm_render}" 'type: Recreate'
-helm template audit "${chart_dir}" --set argoCd.enabled=false --set-string configSecret.existingSecret=existing --set worker.healthPort=9084 >"${helm_render}"
+helm template audit "${chart_dir}" --set-string image.tag=ip-validation-test --set argoCd.enabled=false --set-string configSecret.existingSecret=existing --set worker.healthPort=9084 >"${helm_render}"
 assert_contains "${helm_render}" 'secretName: existing'
 assert_contains "${helm_render}" 'containerPort: 9084'
 if grep -Fq -- 'secretName: audit-prompt-gate-migrate-config' "${helm_render}"; then

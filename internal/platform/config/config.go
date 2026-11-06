@@ -132,11 +132,11 @@ type ProxyRuntimeConfig struct {
 	ProxyMaxBufferedRequestBytes  int64
 	ProxyMaxBufferedResponseBytes int64
 	ProxyUpstreamTimeout          time.Duration
-	OPAEnabled                    bool
-	OPAURL                        string
-	OPAPolicyPath                 string
-	OPATimeout                    time.Duration
-	OPACacheTTL                   time.Duration
+	IPValidationEnabled           bool
+	IPValidationURLTemplate       string
+	IPValidationBearerToken       string
+	IPValidationTimeout           time.Duration
+	IPValidationCacheTTL          time.Duration
 }
 
 // WorkerRuntimeConfig contains Redis stream worker settings.

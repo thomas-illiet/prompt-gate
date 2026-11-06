@@ -72,6 +72,12 @@ func runWorker(configPath string) error {
 		return err
 	}
 
+	defer func() {
+		if err := database.Close(db); err != nil {
+			logger.Warn("failed to close postgres", "error", err)
+		}
+	}()
+
 	logger.Info("initializing redis connection")
 	redisStore, err := redisstore.NewRequired(ctx, cfg.RedisURL, cfg.RedisCacheTTL, logger, redisstore.ClientOptions{
 		PoolSize:     cfg.RedisPoolSize,

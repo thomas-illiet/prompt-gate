@@ -534,4 +534,8 @@ Middleware failures use a simple JSON error shape:
 
 Examples include `missing_auth_credentials`, `invalid_token`,
 `invalid_admin_api_key`, `account_inactive`, `account_role_none`,
-`insufficient_role`, `policy_denied`, and `policy_unavailable`.
+`insufficient_role`, `ip_not_allowed`, and `policy_unavailable`.
+
+The proxy returns HTTP `403` with `{"error":"ip_not_allowed"}` when the
+external IP service refuses the client IP. Validation failures return HTTP
+`503` with `{"error":"policy_unavailable"}`.

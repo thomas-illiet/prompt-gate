@@ -5,7 +5,7 @@
 Prompt Gate is the Go service layer for Prompt Gate, a control plane
 for safely exposing LLM providers to teams. It combines browser login, role
 management, API token issuance, a provider-aware LLM proxy,
-external OPA policy checks, usage recording, quota enforcement, and scheduled
+external IP validation, usage recording, quota enforcement, and scheduled
 maintenance jobs. An optional durable SMTP outbox notifies users about
 onboarding, quotas, reset credits, access groups, virtual keys, and monthly
 usage while exposing delivery operations to administrators.
@@ -13,7 +13,7 @@ usage while exposing delivery operations to administrators.
 Model Lab is a chat-first workspace backed by the group-filtered model catalog.
 Users can run one model or select a second model for a side-by-side response;
 only the primary response continues into the next turn. Short-lived,
-single-use browser tickets keep every run on the existing OPA, group, quota,
+single-use browser tickets keep every run on the existing group, quota,
 provider, and accounting path. Prompt and response content is excluded from
 Prompt Gate persistence and telemetry for these runs.
 
@@ -27,7 +27,7 @@ binary:
 - `api` runs the HTTP API, OIDC login flow, admin endpoints, and
   optional static frontend hosting.
 - `proxy` runs the LLM proxy that validates Prompt Gate API tokens or Model Lab
-  tickets, evaluates external OPA policy, routes to configured providers, and
+  tickets, validates API-token client IPs, routes to configured providers, and
   enqueues usage.
 - `worker` consumes proxy usage events, stores raw operational usage data, and
   updates dashboard KPI aggregates.
@@ -41,6 +41,15 @@ binary:
 The fastest local path is Docker Compose. It starts PostgreSQL, Redis,
 Keycloak, migrations, the API, the proxy, the worker, the scheduler, and a seeded
 local Ollama provider.
+
+Before starting, edit `proxy.ip_validation` in
+`deploy/config/promptgate.compose.yaml` with the URL and Bearer of your external
+IP service. Compose does not provide that service. The supplied
+`validation.example` address and token are placeholders: API-token proxy
+requests return `503 policy_unavailable` until a working service is configured.
+For an isolated local demo without that service, explicitly set
+`proxy.ip_validation.enabled: false`; this disables IP validation for all API
+tokens in that demo. Validated Model Lab tickets already bypass the IP stage.
 
 ```sh
 docker compose up --build
@@ -58,6 +67,7 @@ For source-based development:
 
 ```sh
 cp promptgate.example.yaml promptgate.yaml
+# Configure dependencies and proxy.ip_validation in promptgate.yaml before starting.
 make deps
 make test
 make migrate
@@ -80,6 +90,7 @@ make run-all
 - PostgreSQL
 - Redis
 - Keycloak or another OIDC-compatible identity provider
+- An external IP validation service and its dedicated Bearer when IP validation is enabled
 - Docker for container builds and local Compose
 
 ## Main Commands
@@ -133,13 +144,15 @@ flowchart LR
     Proxy --> Providers["OpenAI, Anthropic, Ollama"]
 ```
 
-### External policy enforcement
+### External IP validation
 
-Proxy requests, including Model Lab runs, are authorized by an external OPA
-server. A deny-by-default Kubernetes example is available under
-`deploy/examples/opa`. OPA is enabled by default and can be bypassed during an
-access incident with `proxy.opa.enabled: false`; authentication, groups, and
-quotas remain active.
+API-token proxy requests are checked with a Bearer-authenticated GET to an
+external IP service: `200` authorizes and `404` refuses. Only authorizations
+are Redis-cached for ten minutes by default. Validated single-use Model Lab
+tickets bypass this IP stage; authentication, groups and quotas remain active.
+Configure `proxy.ip_validation` in the server YAML/Secret, or explicitly set
+`enabled: false` for an access incident. See the [configuration and migration
+guide](docs/environment.md#proxy-settings) and [proxy behavior](docs/proxy.md#external-ip-validation).
 
 ## Screenshots
 
@@ -173,7 +186,7 @@ durable top tool-call rankings and the annual activity heatmap.
 ![Prompt Gate Model Lab showing a chat and side-by-side model responses](docs/assets/screenshots/model-lab.jpg)
 
 The ephemeral chat workspace runs one primary model or two selected models side
-by side while preserving the normal policy, quota, and accounting controls.
+by side while preserving the normal group, quota, and accounting controls.
 
 #### Virtual keys
 

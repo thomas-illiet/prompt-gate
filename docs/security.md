@@ -185,7 +185,7 @@ different from the ticket, and values outside configured bounds. Text chat
 history must alternate strictly between `user` and `assistant`, start with
 `user`, and end with the current `user` message. The request-size limit covers
 the complete serialized history. The proxy re-encodes the validated message
-list, reloads the account, and runs the normal client-IP, OPA, group, quota,
+list, reloads the account, and runs the normal group, quota,
 provider, and accounting controls. A Redis lease limits concurrent streams per
 account and expires automatically after a crashed request.
 
@@ -210,34 +210,38 @@ tables, traces, browser storage, URLs, and returned errors.
 ## Service Accounts
 
 Service accounts are stored as users with type `service`. They can receive
-Prompt Gate API tokens and are evaluated by the external OPA policy.
+Prompt Gate API tokens and are subject to external IP validation.
 
 Service account identifiers must be lowercase alphanumeric with dashes or
 underscores and have a maximum length of 64 characters.
 
-## External OPA policy
+## External IP validation
 
-After API-token or Model Lab ticket authentication, the proxy sends OPA only
-stable identity IDs, role/type, sorted technical access-group names in
-`input.identity.groups`,
-virtual-key metadata, resolved client IP, method, host, the full routed path,
-and structured provider routing fields. `input.request.provider` is the route's
-provider name, `provider_type` is its configured protocol (`openai`, `ollama`,
-or `anthropic`), and `provider_path` is relative to the provider prefix. For
-example, `/openai-main/v1/responses` is represented with provider
-`openai-main` and provider path `/v1/responses`.
-Tokens, tickets, personal profile fields, headers, and request bodies are never
-sent.
-OPA is the sole policy source and the supplied example denies by default.
-Prompt Gate caches only OPA denials; positive decisions are always re-evaluated,
-so an allow cannot outlive a policy or data revocation. The Kubernetes example
-also loads a `system.authz` policy before startup and exposes only the exact
-decision and health endpoints; policy/data mutation routes are denied and a
-NetworkPolicy limits callers to proxy pods.
-`proxy.opa.enabled: false` is an emergency fail-open switch for this policy
-stage. It must be time-bounded and operationally monitored because every
-authenticated request then bypasses OPA; group, quota, and provider controls
-still apply.
+API-token traffic, including service accounts, is checked against an external
+IP service. The proxy sends only a normalized IP in a configured GET URL and a
+server-configured Bearer token. A `200` authorizes; a `404` returns HTTP `403`
+with `{"error":"ip_not_allowed"}`. Any other status or transport failure
+closes access with `503 policy_unavailable`.
+Redirects are never followed and response bodies are ignored. Use HTTPS and
+`common.tls.ca_file` when your service uses a private certificate authority.
+
+Only positive authorizations are cached, for ten minutes by default with a
+fixed expiration. Revocation may therefore take up to the configured TTL.
+Refusals are retried on the next request. Changing the URL, Bearer or TTL
+isolates the cache from previous configuration; no secret is stored in key
+names or logs. The Bearer remains in the server YAML/Kubernetes Secret and is
+never sent to the frontend or the model provider.
+
+Validated Model Lab tickets bypass this IP stage and its cache. The internal
+marker is installed only after signature, expiry, request binding, one-time
+consumption, current account checks and concurrency admission succeed. Token
+names, HTTP metadata and the privacy flag never trigger it. Short-lived ordinary
+API tokens still require IP validation. Groups, quotas, routing and accounting
+remain enforced for both authentication paths.
+
+`proxy.ip_validation.enabled: false` explicitly bypasses the IP stage, emits a
+startup warning and leaves all other controls active. The proxy health probe
+checks Redis and bridge readiness, not the external validation service.
 
 The proxy normally uses the TCP remote address. In production, prefer
 `proxy.trusted_proxies` with explicit ingress or reverse-proxy CIDRs
@@ -291,7 +295,7 @@ manually exposed through CORS.
   rolling quotas, Model Lab tickets and leases, and asynchronous usage events.
 - Prefer explicit `proxy.trusted_proxies` CIDRs over global
   forwarded-header trust.
-- Review OPA rules for service accounts before issuing long-lived tokens.
+- Review the IP allowlist for service accounts before issuing long-lived tokens.
 - Restrict the administration API key to trusted CLI and server workloads, and
   restart or roll out every API replica after rotating it.
 

@@ -110,7 +110,7 @@ func modelLabTicketMiddleware(
 
 			prepareModelLabProxyRequest(r, normalized, claims.Protocol)
 			principal := auth.Principal{User: user, CredentialID: "model-lab", CredentialName: "Model Lab"}
-			r = r.WithContext(auth.ContextWithPrincipal(r.Context(), principal))
+			r = r.WithContext(modellab.ContextWithValidatedTicket(auth.ContextWithPrincipal(r.Context(), principal)))
 
 			response := &modelLabResponseWriter{
 				ResponseWriter: w,
@@ -156,7 +156,7 @@ func prepareModelLabProxyRequest(r *http.Request, body []byte, protocol modellab
 }
 
 // stripModelLabClientHeaders keeps forwarding metadata available to client-IP
-// and OPA checks, then removes it before groups, AIBridge, and the provider.
+// resolution, then removes it before groups, AIBridge, and the provider.
 func stripModelLabClientHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if requestprivacy.IsMetadataOnly(r.Context()) {

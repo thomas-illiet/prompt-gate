@@ -48,6 +48,8 @@ type modelLabProxyFixture struct {
 	service *modellab.Service
 	userID  string
 	users   *users.Service
+	store   *redisstore.Store
+	clock   *time.Time
 }
 
 func newModelLabProxyFixture(t *testing.T) modelLabProxyFixture {
@@ -91,6 +93,7 @@ func newModelLabProxyFixture(t *testing.T) modelLabProxyFixture {
 		t.Fatalf("create user: %v", err)
 	}
 
+	clock := time.Now().UTC()
 	service, err := modellab.NewService(
 		modelLabProxyProviderRepository{record: provider.Provider{
 			ID:        uuid.New(),
@@ -106,6 +109,7 @@ func newModelLabProxyFixture(t *testing.T) modelLabProxyFixture {
 			TicketSecret:    "0123456789abcdef0123456789abcdef",
 			ProxyBaseURL:    "https://proxy.example.test",
 			TicketTTL:       time.Minute,
+			Now:             func() time.Time { return clock },
 			LeaseTTL:        time.Minute,
 			MaxTargets:      3,
 			MaxConcurrent:   3,
@@ -129,6 +133,8 @@ func newModelLabProxyFixture(t *testing.T) modelLabProxyFixture {
 		service: service,
 		userID:  record.ID,
 		users:   userService,
+		store:   store,
+		clock:   &clock,
 	}
 }
 
@@ -191,6 +197,9 @@ func TestModelLabTicketMiddlewareAuthenticatesNormalizesAndRejectsReplay(t *test
 	var calls atomic.Int64
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
+		if !modellab.HasValidatedTicket(r.Context()) {
+			t.Fatal("missing validated-ticket marker")
+		}
 		if !requestprivacy.IsMetadataOnly(r.Context()) {
 			t.Fatal("expected metadata-only request context")
 		}

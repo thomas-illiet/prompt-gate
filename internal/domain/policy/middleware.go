@@ -5,11 +5,10 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
-	"strings"
 	"time"
 
 	"promptgate/backend/internal/domain/auth"
-	"promptgate/backend/internal/domain/groups"
+	"promptgate/backend/internal/domain/modellab"
 	"promptgate/backend/internal/platform/clientip"
 	"promptgate/backend/internal/platform/requestprivacy"
 )
@@ -20,7 +19,7 @@ type DenialRecorder interface {
 	RecordPolicyDenial(ctx context.Context, accountID, clientIP, reason string, deniedAt time.Time) error
 }
 
-func Middleware(evaluator *Evaluator, snapshot *groups.SnapshotStore, denialRecorder DenialRecorder, logger *slog.Logger) func(http.Handler) http.Handler {
+func Middleware(evaluator *Evaluator, denialRecorder DenialRecorder, logger *slog.Logger) func(http.Handler) http.Handler {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -31,23 +30,12 @@ func Middleware(evaluator *Evaluator, snapshot *groups.SnapshotStore, denialReco
 				writeJSON(w, http.StatusInternalServerError, "missing_authenticated_user")
 				return
 			}
-			groupNames := []string{}
-			if snapshot != nil {
-				groupNames = snapshot.GroupNames(principal.User.ID)
+			if modellab.HasValidatedTicket(r.Context()) {
+				next.ServeHTTP(w, r)
+				return
 			}
-			providerName, providerType, providerPath := policyRequestTarget(r.URL.Path, snapshot)
-			input := Input{
-				Identity: IdentityInput{
-					ID: principal.User.ID, Type: string(principal.User.Type), Role: string(principal.User.Role),
-					Groups:       groupNames,
-					CredentialID: principal.CredentialID, CredentialName: principal.CredentialName,
-				},
-				Request: RequestInput{
-					ClientIP: clientip.FromContext(r.Context()), Method: r.Method, Path: r.URL.Path, Host: r.Host,
-					Provider: providerName, ProviderType: providerType, ProviderPath: providerPath,
-				},
-			}
-			decision, err := evaluator.Evaluate(r.Context(), input)
+			ip := clientip.FromContext(r.Context())
+			decision, err := evaluator.Evaluate(r.Context(), ip)
 			if err != nil {
 				if requestprivacy.IsMetadataOnly(r.Context()) {
 					logger.Error("policy decision unavailable", "privacy_mode", "metadata_only")
@@ -64,35 +52,16 @@ func Middleware(evaluator *Evaluator, snapshot *groups.SnapshotStore, denialReco
 					logger.Warn("request denied by policy", "reason", decision.Reason)
 				}
 				if denialRecorder != nil {
-					if err := denialRecorder.RecordPolicyDenial(r.Context(), principal.User.ID, input.Request.ClientIP, decision.Reason, time.Now().UTC()); err != nil {
+					if err := denialRecorder.RecordPolicyDenial(r.Context(), principal.User.ID, ip, decision.Reason, time.Now().UTC()); err != nil {
 						logger.Error("failed to record policy denial", "error", err)
 					}
 				}
-				writeJSON(w, http.StatusForbidden, "policy_denied")
+				writeJSON(w, http.StatusForbidden, DeniedReason)
 				return
 			}
 			next.ServeHTTP(w, r)
 		})
 	}
-}
-
-func policyRequestTarget(path string, snapshot *groups.SnapshotStore) (name, providerType, relativePath string) {
-	trimmed := strings.TrimPrefix(path, "/")
-	name, suffix, found := strings.Cut(trimmed, "/")
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return "", "", "/"
-	}
-	relativePath = "/"
-	if found && suffix != "" {
-		relativePath += strings.TrimPrefix(suffix, "/")
-	}
-	if snapshot != nil {
-		if value, ok := snapshot.ProviderType(name); ok {
-			providerType = string(value)
-		}
-	}
-	return name, providerType, relativePath
 }
 
 func writeJSON(w http.ResponseWriter, status int, code string) {

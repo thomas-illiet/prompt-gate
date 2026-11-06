@@ -107,6 +107,8 @@ jobs:
               '  .\promptgate.exe --config promptgate.yaml api' \
               "" \
               "The binary still requires PostgreSQL, Redis, and OIDC/Keycloak configuration." \
+              "Before starting the proxy, configure proxy.ip_validation with the external service URL and Bearer." \
+              "Use matching binaries and YAML for every runtime; older OPA configuration is no longer accepted." \
               > "${package_path}/README.txt"
           }
 

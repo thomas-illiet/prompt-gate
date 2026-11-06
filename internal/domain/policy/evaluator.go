@@ -4,9 +4,9 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"log/slog"
+	"strconv"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -20,7 +20,7 @@ import (
 type Evaluator struct {
 	client     *Client
 	redis      *redisstore.Store
-	policyPath string
+	cacheScope string
 	cacheTTL   time.Duration
 	logger     *slog.Logger
 	tracer     trace.Tracer
@@ -28,39 +28,37 @@ type Evaluator struct {
 	duration   metric.Float64Histogram
 }
 
-func NewEvaluator(client *Client, redis *redisstore.Store, policyPath string, cacheTTL time.Duration, logger *slog.Logger) *Evaluator {
+func NewEvaluator(client *Client, redis *redisstore.Store, cacheTTL time.Duration, logger *slog.Logger) *Evaluator {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	meter := otel.Meter("promptgate-policy")
 	events, _ := meter.Int64Counter("promptgate.policy.events")
-	duration, _ := meter.Float64Histogram("promptgate.policy.opa.duration", metric.WithUnit("ms"))
+	duration, _ := meter.Float64Histogram("promptgate.policy.ip_validation.duration", metric.WithUnit("ms"))
+	scope := sha256.Sum256([]byte(client.urlTemplate + "\x00" + client.bearerToken + "\x00" + strconv.FormatInt(int64(cacheTTL), 10)))
 	return &Evaluator{
-		client: client, redis: redis, policyPath: policyPath, cacheTTL: cacheTTL, logger: logger,
+		client: client, redis: redis, cacheScope: hex.EncodeToString(scope[:]),
+		cacheTTL: cacheTTL, logger: logger,
 		tracer: otel.Tracer("promptgate-policy"), events: events, duration: duration,
 	}
 }
 
-func (e *Evaluator) Evaluate(ctx context.Context, input Input) (Decision, error) {
+func (e *Evaluator) Evaluate(ctx context.Context, clientIP string) (Decision, error) {
 	ctx, span := e.tracer.Start(ctx, "policy.evaluate")
 	defer span.End()
-	key, err := CacheKey(e.policyPath, input)
+	ip, err := normalizeIP(clientIP)
 	if err != nil {
 		return Decision{}, err
 	}
+	key := cacheKey(e.cacheScope, ip)
 	var cached Decision
 	if e.redis != nil {
 		if ok, cacheErr := e.redis.GetJSON(ctx, key, &cached); cacheErr == nil && ok {
-			// Positive decisions are deliberately never trusted from cache. OPA's
-			// policy/data APIs do not provide a durable revision in this contract,
-			// so an allow cache entry could otherwise survive an emergency revoke
-			// for the entire TTL. Denials are safe to cache because staleness only
-			// keeps access closed.
-			if !cached.Allow {
-				e.record(ctx, "cache_hit", false)
-				span.SetAttributes(attribute.Bool("policy.cache_hit", true), attribute.Bool("policy.allow", false), attribute.String("policy.reason", cached.Reason))
-				e.logger.Info("policy decision", "source", "cache", "allow", false, "reason", cached.Reason)
-				return cached, nil
+			// Hits never refresh the TTL. Only explicit positive entries are trusted.
+			if cached.Allow {
+				e.record(ctx, "cache_hit", true)
+				span.SetAttributes(attribute.Bool("policy.cache_hit", true), attribute.Bool("policy.allow", true))
+				return Decision{Allow: true}, nil
 			}
 		} else if cacheErr != nil {
 			e.logger.Warn("policy cache read failed", "error", cacheErr)
@@ -68,7 +66,7 @@ func (e *Evaluator) Evaluate(ctx context.Context, input Input) (Decision, error)
 	}
 	e.record(ctx, "cache_miss", false)
 	start := time.Now()
-	decision, err := e.client.Decide(ctx, input)
+	decision, err := e.client.Decide(ctx, ip)
 	e.duration.Record(ctx, float64(time.Since(start).Microseconds())/1000)
 	if err != nil {
 		outcome := "unavailable"
@@ -82,10 +80,10 @@ func (e *Evaluator) Evaluate(ctx context.Context, input Input) (Decision, error)
 		span.RecordError(err)
 		return Decision{}, err
 	}
-	e.record(ctx, "opa", decision.Allow)
+	e.record(ctx, "ip_validation", decision.Allow)
 	span.SetAttributes(attribute.Bool("policy.cache_hit", false), attribute.Bool("policy.allow", decision.Allow), attribute.String("policy.reason", decision.Reason))
-	e.logger.Info("policy decision", "source", "opa", "allow", decision.Allow, "reason", decision.Reason)
-	if e.redis != nil && !decision.Allow {
+	e.logger.Info("policy decision", "source", "ip_validation", "allow", decision.Allow, "reason", decision.Reason)
+	if e.redis != nil && decision.Allow {
 		if cacheErr := e.redis.SetJSON(ctx, key, decision, e.cacheTTL); cacheErr != nil {
 			e.logger.Warn("policy cache write failed", "error", cacheErr)
 		}
@@ -100,14 +98,7 @@ func (e *Evaluator) record(ctx context.Context, source string, allowed bool) {
 	))
 }
 
-func CacheKey(policyPath string, input Input) (string, error) {
-	payload, err := json.Marshal(struct {
-		PolicyPath string `json:"policy_path"`
-		Input      Input  `json:"input"`
-	}{PolicyPath: policyPath, Input: input})
-	if err != nil {
-		return "", err
-	}
-	sum := sha256.Sum256(payload)
-	return "promptgate:proxy:policy:" + hex.EncodeToString(sum[:]), nil
+func cacheKey(scope, clientIP string) string {
+	sum := sha256.Sum256([]byte(scope + "\x00" + clientIP))
+	return "promptgate:proxy:ip-validation:v1:" + hex.EncodeToString(sum[:])
 }

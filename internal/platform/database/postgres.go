@@ -43,7 +43,7 @@ func resolvePoolOptions(configured PoolOptions) PoolOptions {
 
 // OpenPostgres opens and verifies a PostgreSQL connection with sensible pool settings.
 func OpenPostgres(ctx context.Context, databaseURL string, poolOptions ...PoolOptions) (*gorm.DB, error) {
-	db, err := gorm.Open(postgres.Open(databaseURL), &gorm.Config{})
+	db, err := gorm.Open(postgres.Open(databaseURL), &gorm.Config{DisableAutomaticPing: true})
 	if err != nil {
 		return nil, fmt.Errorf("open postgres connection: %w", err)
 	}
@@ -64,8 +64,21 @@ func OpenPostgres(ctx context.Context, databaseURL string, poolOptions ...PoolOp
 	sqlDB.SetMaxOpenConns(options.MaxOpenConns)
 
 	if err := sqlDB.PingContext(ctx); err != nil {
+		_ = sqlDB.Close()
 		return nil, fmt.Errorf("ping postgres: %w", err)
 	}
 
 	return db, nil
+}
+
+// Close releases the pool owned by a runtime or command.
+func Close(db *gorm.DB) error {
+	if db == nil {
+		return nil
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		return err
+	}
+	return sqlDB.Close()
 }

@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -55,6 +56,9 @@ type App struct {
 	QuotaRedis    *subscriptions.RedisStore
 
 	subscriptionWatcherOnce sync.Once
+	closeOnce               sync.Once
+	closeErr                error
+	cancel                  context.CancelFunc
 }
 
 type serviceConfig struct {
@@ -104,6 +108,13 @@ func NewSchedule(ctx context.Context, cfg config.ScheduleConfig) (*App, error) {
 }
 
 func newServices(ctx context.Context, cfg serviceConfig, apiCfg *config.APIConfig) (*App, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	initialized := false
+	defer func() {
+		if !initialized {
+			cancel()
+		}
+	}()
 	slog.Info("initializing postgres connection")
 	db, err := database.OpenPostgres(ctx, cfg.Database.DatabaseURL, database.PoolOptions{
 		ConnMaxLifetime: cfg.Database.ConnMaxLifetime,
@@ -114,6 +125,11 @@ func newServices(ctx context.Context, cfg serviceConfig, apiCfg *config.APIConfi
 		return nil, err
 	}
 	slog.Info("postgres connection ready")
+	defer func() {
+		if !initialized {
+			_ = database.Close(db)
+		}
+	}()
 
 	userService := users.NewService(db)
 	tokenService := tokens.NewService(db, cfg.Secrets.JWTSecret)
@@ -168,7 +184,6 @@ func newServices(ctx context.Context, cfg serviceConfig, apiCfg *config.APIConfi
 		return nil, fmt.Errorf("initialize redis: %w", err)
 	}
 	var validator *auth.Validator
-	initialized := false
 	defer func() {
 		if initialized {
 			return
@@ -242,6 +257,7 @@ func newServices(ctx context.Context, cfg serviceConfig, apiCfg *config.APIConfi
 	}
 
 	application := &App{
+		cancel:        cancel,
 		DB:            db,
 		Users:         userService,
 		Tokens:        tokenService,
@@ -263,6 +279,23 @@ func newServices(ctx context.Context, cfg serviceConfig, apiCfg *config.APIConfi
 	}
 	initialized = true
 	return application, nil
+}
+
+// Close releases owned connections after the caller has stopped serving requests.
+func (a *App) Close() error {
+	if a == nil {
+		return nil
+	}
+	a.closeOnce.Do(func() {
+		if a.cancel != nil {
+			a.cancel()
+		}
+		if a.Validator != nil {
+			a.Validator.Close()
+		}
+		a.closeErr = errors.Join(a.Redis.Close(), database.Close(a.DB))
+	})
+	return a.closeErr
 }
 
 // StartSubscriptionWatcher keeps the process-local subscription assignment

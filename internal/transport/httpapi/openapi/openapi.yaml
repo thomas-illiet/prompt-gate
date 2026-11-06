@@ -3730,8 +3730,15 @@ components:
       properties:
         ip: { type: string }
         lastSeen: { type: string, format: date-time }
-        lastDeniedReason: { type: string, nullable: true }
-        lastDeniedAt: { type: string, format: date-time, nullable: true }
+        lastDeniedReason:
+          type: string
+          nullable: true
+          description: Latest access refusal reason. New IP validation refusals use ip_not_allowed; historical reasons are preserved.
+        lastDeniedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Time of the latest recorded access refusal for this account and IP, not its current authorization status.
     AccountIPAddressList:
       type: object
       additionalProperties: false

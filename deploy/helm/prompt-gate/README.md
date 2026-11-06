@@ -1,8 +1,13 @@
 # Prompt Gate Helm Chart
 
 This chart is designed to be rendered by Argo CD and deploys only the Prompt
-Gate application components. PostgreSQL, Redis, and OIDC/Keycloak must already
-exist outside the chart.
+Gate application components. PostgreSQL, Redis, OIDC/Keycloak, and the external
+IP validation service must already exist outside the chart.
+
+The source chart is marked `unreleased` and requires an explicit `image.tag`
+built from the matching source. It must not use an older published binary with
+the new YAML schema. Packaged release charts automatically select their release
+image via `appVersion`.
 
 Set `config.common.environment` to `development`, `staging`, or `production`
 for every release. Prompt Gate displays it on the login page and in the
@@ -10,6 +15,11 @@ authenticated shell. The chart default is `production`; override it explicitly
 for development and staging releases.
 
 ## Argo CD Application Example
+
+This example uses a separately provisioned runtime Secret. Replace the image
+tag with an immutable tag built from the same revision as the chart, and create
+the Secret with the new YAML before syncing. When using chart-managed values
+instead, supply all runtime credentials, including the IP-service Bearer.
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -27,6 +37,11 @@ spec:
       releaseName: prompt-gate
       valueFiles:
         - values.yaml
+      valuesObject:
+        image:
+          tag: "replace-with-matching-build-tag"
+        configSecret:
+          existingSecret: prompt-gate-config
   destination:
     server: https://kubernetes.default.svc
     namespace: prompt-gate
@@ -294,11 +309,11 @@ waves apply the configuration Secret and ServiceAccount first, run migrations ne
 roll out workloads and Ingress resources. Hooks are not run during selective
 syncs, so use a full application sync when migrations must run.
 
-Upgrading from chart `0.1.x` to `0.2.x` changes where `/remote` is removed:
-HAProxy stops rewriting it and Prompt Gate starts removing it. Perform that
-upgrade during a short maintenance window after the `v2.1.0` image is
-available, wait for the proxy rollout and full Argo CD sync to become healthy,
-validate `/remote/health`, and only then reopen F5 traffic.
+Historical routing migration: chart `0.2.x` moved `/remote` removal from HAProxy
+into Prompt Gate. If upgrading from `0.1.x`, use a short maintenance window and
+an image matching the target chart and YAML schema. Wait for the proxy rollout
+and full Argo CD sync to become healthy, validate `/remote/health` and an
+API-token provider request, and only then reopen F5 traffic.
 
 ## Direct Helm upgrades and probes
 
@@ -310,8 +325,9 @@ Successful hook resources are cleaned up; failures keep their diagnostic state
 until the next attempt. Migrations are transactional, serialized by a PostgreSQL
 advisory lock, and journaled in `schema_migrations` to avoid replay.
 
-API readiness checks PostgreSQL and Redis. Proxy `/health` checks the bridge,
-Redis and OPA, while `/live` is independent of external services. Worker and
+API readiness checks PostgreSQL and Redis. Proxy `/health` checks the bridge and
+Redis without contacting the external IP service; `/live` is independent of
+external services. Worker and
 scheduler probes check real job progress at ports 8084 and 8085 by default, plus
 PostgreSQL and Redis for readiness. Generated config controls their probe ports;
 when using an external Secret, align `worker.healthPort` and `schedule.healthPort`
@@ -321,3 +337,20 @@ timeout plus 20 seconds to allow requests to drain.
 
 Published release charts embed the release tag as appVersion, and are attached
 to the GitHub release with the binary archives and SHA256SUMS.
+
+## External IP validation
+
+Set `config.proxy.ip_validation.url_template` to the HTTP(S) endpoint containing
+`{ip}` in its path, and supply `config.proxy.ip_validation.bearer_token` through
+your secret-managed values. With `configSecret.existingSecret`, put these fields
+under `proxy.ip_validation` in the external YAML; the chart cannot inspect it.
+Rendering a chart-managed configuration with an enabled proxy requires a
+nonempty Bearer. The server enforces URL and duration validation.
+The default timeout is `2s`, and only authorizations are cached for `10m` without
+renewal on cache hits. Validated Model Lab tickets bypass this check and cache.
+`enabled: false` explicitly bypasses it for all authenticated proxy requests.
+
+For upgrades from the removed OPA integration, replace the `proxy.opa` block
+in every runtime document and deploy matching binaries and configuration.
+Prefer a versioned runtime Secret during rolling upgrades; update API, proxy,
+worker, scheduler and migration jobs together. See [migration details](../../../docs/environment.md#migration-from-opa).

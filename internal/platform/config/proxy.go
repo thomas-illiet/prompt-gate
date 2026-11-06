@@ -5,6 +5,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	platformhttp "promptgate/backend/internal/platform/httpclient"
 )
 
 // LoadProxy reads the LLM proxy configuration from a strict YAML file.
@@ -44,11 +46,11 @@ func LoadProxy(configPath string) (ProxyConfig, error) {
 			ProxyMaxBufferedRequestBytes:  file.Proxy.MaxBufferedRequestBytes,
 			ProxyMaxBufferedResponseBytes: file.Proxy.MaxBufferedResponseBytes,
 			ProxyUpstreamTimeout:          time.Duration(file.Proxy.UpstreamTimeout),
-			OPAEnabled:                    file.Proxy.OPA.Enabled,
-			OPAURL:                        strings.TrimRight(strings.TrimSpace(file.Proxy.OPA.URL), "/"),
-			OPAPolicyPath:                 strings.Trim(strings.TrimSpace(file.Proxy.OPA.PolicyPath), "/"),
-			OPATimeout:                    time.Duration(file.Proxy.OPA.Timeout),
-			OPACacheTTL:                   time.Duration(file.Proxy.OPA.CacheTTL),
+			IPValidationEnabled:           file.Proxy.IPValidation.Enabled,
+			IPValidationURLTemplate:       strings.TrimSpace(file.Proxy.IPValidation.URLTemplate),
+			IPValidationBearerToken:       strings.TrimSpace(file.Proxy.IPValidation.BearerToken),
+			IPValidationTimeout:           time.Duration(file.Proxy.IPValidation.Timeout),
+			IPValidationCacheTTL:          time.Duration(file.Proxy.IPValidation.CacheTTL),
 		},
 		ModelLab: file.modelLabConfig(),
 		OTel: OTelConfig{
@@ -124,23 +126,16 @@ func LoadProxy(configPath string) (ProxyConfig, error) {
 	if cfg.ProxyUpstreamTimeout <= 0 {
 		return ProxyConfig{}, errors.New("proxy.upstream_timeout must be greater than zero")
 	}
-	if cfg.OPAEnabled {
-		if cfg.OPAURL == "" {
-			return ProxyConfig{}, errors.New("proxy.opa.url is required when proxy.opa.enabled is true")
-		}
-		opaURL, err := url.Parse(cfg.OPAURL)
-		if err != nil || opaURL.Host == "" || (opaURL.Scheme != "https" && opaURL.Scheme != "http") {
-			return ProxyConfig{}, errors.New("proxy.opa.url must be an absolute HTTP(S) URL")
-		}
-		if cfg.OPAPolicyPath == "" {
-			return ProxyConfig{}, errors.New("proxy.opa.policy_path must not be empty")
+	if cfg.IPValidationEnabled {
+		if err := platformhttp.ValidateIPValidation(cfg.IPValidationURLTemplate, cfg.IPValidationBearerToken); err != nil {
+			return ProxyConfig{}, err
 		}
 	}
 	positiveDurations := []positiveDuration{{"common.proxy_reload_debounce", cfg.ProxyReloadDebounce}}
-	if cfg.OPAEnabled {
+	if cfg.IPValidationEnabled {
 		positiveDurations = append(positiveDurations,
-			positiveDuration{"proxy.opa.timeout", cfg.OPATimeout},
-			positiveDuration{"proxy.opa.cache_ttl", cfg.OPACacheTTL},
+			positiveDuration{"proxy.ip_validation.timeout", cfg.IPValidationTimeout},
+			positiveDuration{"proxy.ip_validation.cache_ttl", cfg.IPValidationCacheTTL},
 		)
 	}
 	if err := validatePositiveDurations(positiveDurations...); err != nil {

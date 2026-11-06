@@ -2,17 +2,22 @@ package app
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 
+	cdrslog "cdr.dev/slog/v3"
+	"github.com/alicebob/miniredis/v2"
 	"promptgate/backend/internal/domain/policy"
+	"promptgate/backend/internal/domain/provider"
 	"promptgate/backend/internal/platform/config"
+	"promptgate/backend/internal/platform/redisstore"
+	proxyruntime "promptgate/backend/internal/runtime/proxy"
 	httpmiddleware "promptgate/backend/internal/transport/httpmiddleware"
 )
 
@@ -175,52 +180,6 @@ func TestProxyBasePathMiddlewareEmptyLeavesRequestUntouched(t *testing.T) {
 	}
 }
 
-func TestProxyHealth(t *testing.T) {
-	var status atomic.Int32
-	status.Store(http.StatusOK)
-	client, err := policy.NewClient("http://opa:8181", "promptgate/proxy/decision", &http.Client{Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
-		return &http.Response{StatusCode: int(status.Load()), Body: io.NopCloser(strings.NewReader(`{}`)), Header: make(http.Header), Request: req}, nil
-	})})
-	if err != nil {
-		t.Fatalf("new OPA client: %v", err)
-	}
-	recorder := httptest.NewRecorder()
-	proxyHealth(true, client).ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/health", nil))
-
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", recorder.Code)
-	}
-	if recorder.Header().Get("Content-Type") != "application/json" {
-		t.Fatalf("unexpected content type: %q", recorder.Header().Get("Content-Type"))
-	}
-	if recorder.Body.String() != `{"status":"ok"}` {
-		t.Fatalf("unexpected body: %q", recorder.Body.String())
-	}
-
-	status.Store(http.StatusServiceUnavailable)
-	recorder = httptest.NewRecorder()
-	proxyHealth(true, client).ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/health", nil))
-	if recorder.Code != http.StatusServiceUnavailable || recorder.Body.String() != `{"status":"degraded","dependency":"opa"}` {
-		t.Fatalf("unexpected degraded health: %d %q", recorder.Code, recorder.Body.String())
-	}
-
-	status.Store(http.StatusOK)
-	recorder = httptest.NewRecorder()
-	proxyHealth(true, client).ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/health", nil))
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("expected recovered health, got %d", recorder.Code)
-	}
-}
-
-func TestProxyHealthSkipsOPAWhenDisabled(t *testing.T) {
-	recorder := httptest.NewRecorder()
-	proxyHealth(false, nil).ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/health", nil))
-
-	if recorder.Code != http.StatusOK || recorder.Body.String() != `{"status":"ok"}` {
-		t.Fatalf("unexpected disabled OPA health: %d %q", recorder.Code, recorder.Body.String())
-	}
-}
-
 func TestBuildHandlerComposesOptionalLayersAndKeepsHealthIndependent(t *testing.T) {
 	var debugOutput bytes.Buffer
 	runtime := &ProxyRuntime{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
@@ -233,7 +192,7 @@ func TestBuildHandlerComposesOptionalLayersAndKeepsHealthIndependent(t *testing.
 			ProxyMaxBufferedRequestBytes:  1 << 20,
 			ProxyMaxBufferedResponseBytes: 1 << 20,
 			ProxyUpstreamTimeout:          time.Second,
-			OPAEnabled:                    true,
+			IPValidationEnabled:           true,
 		},
 		ModelLab: config.ModelLabConfig{
 			MaxPromptBytes:  1024,
@@ -246,7 +205,6 @@ func TestBuildHandlerComposesOptionalLayersAndKeepsHealthIndependent(t *testing.
 	}
 	handler := runtime.buildHandler(
 		cfg,
-		nil,
 		nil,
 		nil,
 		nil,
@@ -316,3 +274,52 @@ func TestBuildHandlerComposesOptionalLayersAndKeepsHealthIndependent(t *testing.
 type roundTripperFunc func(*http.Request) (*http.Response, error)
 
 func (fn roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) { return fn(req) }
+
+func TestHealthyProxyDoesNotProbeIPValidation(t *testing.T) {
+	ctx := context.Background()
+	server := miniredis.RunT(t)
+	store, err := redisstore.NewRequired(ctx, "redis://"+server.Addr(), time.Minute, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	fixture := newModelLabProxyFixture(t)
+	providers := provider.NewService(fixture.db, nil)
+	if err := providers.AutoMigrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := providers.CreateProvider(ctx, provider.CreateProviderInput{Name: "test", Type: provider.ProviderTypeOpenAI, BaseURL: "http://127.0.0.1:1/v1", Enabled: true}); err != nil {
+		t.Fatal(err)
+	}
+	manager, err := proxyruntime.NewManager(ctx, proxyruntime.Options{
+		Providers:    providers,
+		BridgeLogger: cdrslog.Make(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer manager.Shutdown(ctx)
+	runtime := &ProxyRuntime{redis: store, manager: manager, logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	client, err := policy.NewClient("https://validation.example/ips/{ip}", "secret", &http.Client{Transport: roundTripperFunc(func(*http.Request) (*http.Response, error) {
+		t.Error("health reached external IP service")
+		return nil, context.DeadlineExceeded
+	})})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.ProxyConfig{ProxyRuntimeConfig: config.ProxyRuntimeConfig{IPValidationEnabled: true, ProxyBasePath: "/remote"}}
+	handler := runtime.buildHandler(cfg, nil, nil, nil, policy.NewEvaluator(client, store, time.Minute, nil), nil, nil, nil, nil)
+	for _, path := range []string{"/health", "/remote/health", "/live"} {
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, httptest.NewRequest("GET", path, nil))
+		if rec.Code != 200 {
+			t.Fatalf("healthy proxy unavailable at %s: %d %s", path, rec.Code, rec.Body)
+		}
+	}
+	_ = store.Close()
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest("GET", "/health", nil))
+	if rec.Code != 503 {
+		t.Fatal("Redis failure must still degrade health")
+	}
+}
