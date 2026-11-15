@@ -12,7 +12,7 @@ COPY frontend/ ./
 ENV NUXT_PUBLIC_API_BASE_URL=
 RUN npm run generate
 
-FROM golang:1.26.10-bookworm AS builder
+FROM golang:1.26.11-bookworm AS builder
 
 WORKDIR /src
 
