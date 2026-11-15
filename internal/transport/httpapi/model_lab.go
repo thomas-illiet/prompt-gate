@@ -16,17 +16,16 @@ import (
 func (s server) handleModelLabCatalog(w http.ResponseWriter, r *http.Request) {
 	r = r.WithContext(requestprivacy.MarkMetadataOnly(r.Context()))
 	setModelLabNoStore(w)
-	user, access, ok := s.modelLabRequestAccess(w, r)
+	_, access, ok := s.modelLabRequestAccess(w, r)
 	if !ok {
 		return
 	}
 
-	catalog, err := s.modelLab.Catalog(r.Context(), modelLabAccessFilter(access))
+	catalog, err := s.modelLab.Catalog(r.Context(), modellab.AccessFilterForGroups(access))
 	if err != nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "model_lab_catalog_unavailable"})
 		return
 	}
-	_ = user
 	writeJSON(w, http.StatusOK, catalog)
 }
 
@@ -66,7 +65,7 @@ func (s server) handleIssueModelLabTickets(w http.ResponseWriter, r *http.Reques
 		string(user.Role),
 		origin,
 		input,
-		modelLabAccessFilter(access),
+		modellab.AccessFilterForGroups(access),
 	)
 	if err != nil {
 		writeModelLabIssueError(w, err)
@@ -95,20 +94,6 @@ func (s server) modelLabRequestAccess(w http.ResponseWriter, r *http.Request) (a
 		return auth.UserProfile{}, groups.UserAccess{}, false
 	}
 	return user, access, true
-}
-
-func modelLabAccessFilter(access groups.UserAccess) modellab.AccessFilter {
-	providers := make(map[string]struct{}, len(access.Providers))
-	for _, name := range access.Providers {
-		providers[name] = struct{}{}
-	}
-	return modellab.AccessFilter{
-		ProviderAllowed: func(providerName string) bool {
-			_, ok := providers[providerName]
-			return ok
-		},
-		ModelAllowed: access.Allows,
-	}
 }
 
 func writeModelLabIssueError(w http.ResponseWriter, err error) {

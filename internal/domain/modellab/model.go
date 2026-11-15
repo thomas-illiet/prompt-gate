@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"promptgate/backend/internal/domain/groups"
 	"promptgate/backend/internal/domain/pricing"
 	"promptgate/backend/internal/domain/provider"
 
@@ -115,6 +116,21 @@ type ObservedAvailability struct {
 type AccessFilter struct {
 	ProviderAllowed func(providerName string) bool
 	ModelAllowed    func(providerName, model string) bool
+}
+
+// AccessFilterForGroups restricts discovery and model selection to a user's group grants.
+func AccessFilterForGroups(access groups.UserAccess) AccessFilter {
+	providers := make(map[string]struct{}, len(access.Providers))
+	for _, name := range access.Providers {
+		providers[name] = struct{}{}
+	}
+	return AccessFilter{
+		ProviderAllowed: func(providerName string) bool {
+			_, ok := providers[providerName]
+			return ok
+		},
+		ModelAllowed: access.Allows,
+	}
 }
 
 func (f AccessFilter) allowsProvider(providerName string) bool {

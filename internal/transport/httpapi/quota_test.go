@@ -12,8 +12,10 @@ import (
 	"promptgate/backend/internal/domain/auth"
 	"promptgate/backend/internal/domain/subscriptions"
 	"promptgate/backend/internal/domain/users"
+	"promptgate/backend/internal/platform/config"
 	"promptgate/backend/internal/platform/configevents"
 	"promptgate/backend/internal/platform/redisstore"
+	middleware "promptgate/backend/internal/transport/httpmiddleware"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/glebarez/sqlite"
@@ -85,6 +87,21 @@ func TestHandleCurrentUserQuotaRefreshesChangedAssignmentImmediately(t *testing.
 	t.Cleanup(func() { _ = redisBackend.Close() })
 	quotaStore := subscriptions.NewRedisStore(redisBackend, service, time.Minute, nil)
 	quotaStore.SyncVersion(ctx)
+	const adminKey = "test-quota-admin-key"
+	cfg := config.APIConfig{APIHTTPConfig: config.APIHTTPConfig{AdminAPIKey: adminKey}}
+	userService := users.NewService(db)
+	handler := NewHandler(Dependencies{Config: cfg, Users: userService, QuotaRedis: quotaStore})
+	readAdminQuota := func(id string, wantStatus int) *httptest.ResponseRecorder {
+		t.Helper()
+		request := httptest.NewRequest(http.MethodGet, "/api/v1/admin/users/"+id+"/quota", nil)
+		request.Header.Set(middleware.AdminAPIKeyHeader, adminKey)
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != wantStatus {
+			t.Fatalf("admin quota status = %d, want %d: %s", response.Code, wantStatus, response.Body)
+		}
+		return response
+	}
 
 	initial, err := quotaStore.CurrentQuota(ctx, user.ID, time.Now().UTC())
 	if err != nil {
@@ -93,6 +110,10 @@ func TestHandleCurrentUserQuotaRefreshesChangedAssignmentImmediately(t *testing.
 	if initial.Plan == nil || initial.Plan.ID != unlimited.ID || initial.Quota5HTokens != nil {
 		t.Fatalf("expected cached unlimited plan, got %#v", initial)
 	}
+	unlimitedResponse := readAdminQuota(user.ID, http.StatusOK)
+	if !strings.Contains(unlimitedResponse.Body.String(), `"quota5hTokens":null`) {
+		t.Fatalf("admin quota should be unlimited: %s", unlimitedResponse.Body)
+	}
 
 	if err := db.Model(&users.User{}).
 		Where("id = ?", user.ID).
@@ -100,6 +121,9 @@ func TestHandleCurrentUserQuotaRefreshesChangedAssignmentImmediately(t *testing.
 		t.Fatalf("assign limited plan: %v", err)
 	}
 	redisBackend.Notify(ctx, configevents.DomainSubscriptions)
+	if err := quotaStore.IncrementUsage(ctx, user.ID, 24, time.Now()); err != nil {
+		t.Fatalf("record quota usage: %v", err)
+	}
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/me/quota", nil)
 	req = req.WithContext(auth.ContextWithUser(req.Context(), profile))
@@ -109,13 +133,27 @@ func TestHandleCurrentUserQuotaRefreshesChangedAssignmentImmediately(t *testing.
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", recorder.Code, recorder.Body.String())
 	}
+	personalQuota := recorder.Body.String()
 	var current subscriptions.QuotaStatus
-	if err := json.NewDecoder(recorder.Body).Decode(&current); err != nil {
+	if err := json.Unmarshal([]byte(personalQuota), &current); err != nil {
 		t.Fatalf("decode current quota: %v", err)
 	}
 	if current.Plan == nil || current.Plan.ID != limited.ID ||
 		current.Quota5HTokens == nil || *current.Quota5HTokens != quota ||
 		current.Quota7DTokens == nil || *current.Quota7DTokens != quota {
 		t.Fatalf("expected limited plan on the first API read, got %#v", current)
+	}
+	adminQuota := readAdminQuota(user.ID, http.StatusOK)
+	if adminQuota.Body.String() != personalQuota || current.Used5HTokens != 24 || current.Used7DTokens != 24 {
+		t.Fatalf("admin quota = %s, personal quota = %s", adminQuota.Body, personalQuota)
+	}
+
+	withoutPlan, err := userService.CreateUser(ctx, "without-plan")
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := readAdminQuota(withoutPlan.ID, http.StatusOK)
+	if !strings.Contains(response.Body.String(), `"hasSubscription":false`) {
+		t.Fatalf("admin quota should report no subscription: %s", response.Body)
 	}
 }

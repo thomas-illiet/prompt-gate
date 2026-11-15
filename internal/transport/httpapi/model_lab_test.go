@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -15,8 +16,10 @@ import (
 	"promptgate/backend/internal/domain/groups"
 	"promptgate/backend/internal/domain/modellab"
 	"promptgate/backend/internal/domain/provider"
+	"promptgate/backend/internal/domain/users"
 	"promptgate/backend/internal/platform/config"
 	"promptgate/backend/internal/platform/redisstore"
+	middleware "promptgate/backend/internal/transport/httpmiddleware"
 
 	"github.com/alicebob/miniredis/v2"
 )
@@ -24,6 +27,8 @@ import (
 type httpModelLabFixture struct {
 	server         server
 	profile        auth.UserProfile
+	users          *users.Service
+	deniedProvider string
 	allowedCalls   *atomic.Int64
 	deniedCalls    *atomic.Int64
 	frontendOrigin string
@@ -65,14 +70,15 @@ func newHTTPModelLabFixture(t *testing.T) httpModelLabFixture {
 	if err != nil {
 		t.Fatalf("create allowed provider: %v", err)
 	}
-	if _, err := providerService.CreateProvider(ctx, provider.CreateProviderInput{
-		Name:        "openai-denied",
-		DisplayName: "OpenAI Denied",
-		Type:        provider.ProviderTypeOpenAI,
-		BaseURL:     upstream.URL + "/denied/v1",
+	denied, err := providerService.CreateProvider(ctx, provider.CreateProviderInput{
+		Name:        "anthropic-other",
+		DisplayName: "Anthropic Other",
+		Type:        provider.ProviderTypeAnthropic,
+		BaseURL:     upstream.URL + "/denied",
 		APIKey:      "denied-provider-secret",
 		Enabled:     true,
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatalf("create denied provider: %v", err)
 	}
 
@@ -118,9 +124,83 @@ func newHTTPModelLabFixture(t *testing.T) httpModelLabFixture {
 			modelLab: modelLabService,
 		},
 		profile:        profile,
+		users:          users.NewService(db),
+		deniedProvider: denied.ID.String(),
 		allowedCalls:   allowedCalls,
 		deniedCalls:    deniedCalls,
 		frontendOrigin: frontendOrigin,
+	}
+}
+
+func TestAdminUserModelsUseTargetGroupGrants(t *testing.T) {
+	fixture := newHTTPModelLabFixture(t)
+	ctx := context.Background()
+	other, err := fixture.users.CreateUser(ctx, "other-user")
+	if err != nil {
+		t.Fatal(err)
+	}
+	group, err := fixture.server.groups.CreateGroup(ctx, groups.CreateGroupInput{
+		Name:          "other-models",
+		DisplayName:   "Other models",
+		ProviderIDs:   []string{fixture.deniedProvider},
+		ModelPatterns: []string{"^secret-model$"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.server.groups.AddMember(ctx, group.ID.String(), other.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	const (
+		adminKey = "test-admin-key"
+		cookie   = "test-session"
+	)
+	sessions := auth.NewSessionStore(nil, time.Hour)
+	session, err := sessions.CreateSession(fixture.profile, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := fixture.server.config
+	cfg.AdminAPIKey = adminKey
+	cfg.SessionCookieName = cookie
+	handler := NewHandler(Dependencies{
+		Config: cfg, Sessions: sessions, Users: fixture.users,
+		Groups: fixture.server.groups, ModelLab: fixture.server.modelLab,
+	})
+
+	readCatalog := func(path string, asAdmin bool) []modellab.CatalogProvider {
+		t.Helper()
+		request := httptest.NewRequest(http.MethodGet, path, nil)
+		if asAdmin {
+			request.Header.Set(middleware.AdminAPIKeyHeader, adminKey)
+		} else {
+			request.AddCookie(&http.Cookie{Name: cookie, Value: session.ID})
+		}
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, request)
+		if recorder.Code != http.StatusOK || recorder.Header().Get("Cache-Control") != "private, no-store" {
+			t.Fatalf("%s: status=%d headers=%v body=%s", path, recorder.Code, recorder.Header(), recorder.Body)
+		}
+		var catalog modellab.CatalogResponse
+		if err := json.NewDecoder(recorder.Body).Decode(&catalog); err != nil {
+			t.Fatal(err)
+		}
+		return catalog.Providers
+	}
+	personal := readCatalog("/api/v1/me/models", false)
+	first := readCatalog("/api/v1/admin/users/"+fixture.profile.ID+"/models", true)
+	if !reflect.DeepEqual(first, personal) || len(first) != 1 ||
+		first[0].Name != "openai-allowed" || len(first[0].Models) != 1 || first[0].Models[0].ID != "gpt-5" {
+		t.Fatalf("admin catalog = %+v, personal = %+v", first, personal)
+	}
+	second := readCatalog("/api/v1/admin/users/"+other.ID+"/models", true)
+	if len(second) != 1 || second[0].Name != "anthropic-other" ||
+		len(second[0].Models) != 1 || second[0].Models[0].ID != "secret-model" {
+		t.Fatalf("catalog for other account = %+v", second)
+	}
+	if fixture.allowedCalls.Load() != 1 || fixture.deniedCalls.Load() != 1 {
+		t.Fatalf("unexpected provider calls: first=%d other=%d", fixture.allowedCalls.Load(), fixture.deniedCalls.Load())
 	}
 }
 

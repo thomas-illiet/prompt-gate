@@ -27,6 +27,10 @@ func (fn quotaStateCleanerFunc) DeleteUserQuotaState(ctx context.Context, userID
 	return fn(ctx, userID)
 }
 
+func (quotaStateCleanerFunc) ReadCurrentQuota(context.Context, string) (subscriptions.QuotaStatus, error) {
+	return subscriptions.QuotaStatus{}, errors.New("unexpected quota read during account deletion")
+}
+
 // newUsersTestHandler creates an admin handler wired to an in-memory users service.
 func newUsersTestHandler(t *testing.T) (*Handler, *users.Service) {
 	t.Helper()

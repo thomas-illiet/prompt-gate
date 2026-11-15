@@ -261,6 +261,8 @@ key, including its stored hash.
 | `POST` | `/api/v1/admin/users` | Pre-create a human user from an exact OIDC `preferred_username`. |
 | `GET` | `/api/v1/admin/users/{id}` | Get one user. |
 | `GET` | `/api/v1/admin/users/{id}/statistics` | Get aggregated usage totals, duration, and daily activity for one human user. |
+| `GET` | `/api/v1/admin/users/{id}/quota` | Get the effective plan and live 5-hour and 7-day quota windows in the same format as `/api/v1/me/quota`. |
+| `GET` | `/api/v1/admin/users/{id}/models` | Get the Model Lab catalog filtered by the target user's group grants, with the same response format as `/api/v1/me/models`. |
 | `PATCH` | `/api/v1/admin/users/{id}` | Update role, active state, or access expiration. |
 | `PATCH` | `/api/v1/admin/users/{id}/note` | Update the private administration note. |
 | `DELETE` | `/api/v1/admin/users/{id}` | Attempt to delete one local user and its current access data. A later OIDC sign-in can provision a new account under the normal first-user bootstrap rules. |
@@ -271,6 +273,13 @@ key, including its stored hash.
 | `PUT` | `/api/v1/admin/users/{id}/groups` | Replace the user's access groups. |
 | `PUT` | `/api/v1/admin/users/{id}/subscription-plan` | Assign or clear the user's subscription plan. |
 | `POST` | `/api/v1/admin/users/{id}/quota-resets` | Offer exactly one reset credit to a human account. Requires a non-blank `Idempotency-Key` of at most 512 characters. |
+
+The quota and models endpoints use the target human user's internal UUID.
+Both return `404 user_not_found` for an unknown user or a service account.
+The quota is read from Redis and returns `hasSubscription: false` when no
+effective plan applies. The model catalog uses the target user's group grants
+across all supported providers. A user without grants receives an empty
+`providers` array.
 
 The first user created by an OIDC login in an otherwise empty database is
 assigned role `admin`. Later OIDC users, and all administratively pre-created

@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"promptgate/backend/internal/domain/auth"
+	"promptgate/backend/internal/domain/users"
 	"promptgate/backend/internal/platform/config"
 	"promptgate/backend/internal/transport/httpapi/admin"
 	"promptgate/backend/internal/transport/httpmiddleware"
@@ -27,10 +29,10 @@ func TestRouteInventoryIsCompleteAndUnique(t *testing.T) {
 		{name: "limited", routes: limitedRoutes(srv), want: 16},
 		{name: "user", routes: userRoutes(srv), want: 5},
 		{name: "model-lab", routes: userModelLabRoutes(srv), want: 2},
-		{name: "admin", routes: adminRoutes(adminHandler, openAPIHandler), want: 99},
+		{name: "admin", routes: adminRoutes(adminHandler, openAPIHandler), want: 101},
 	}
 
-	seen := make(map[string]string, 130)
+	seen := make(map[string]string, 132)
 	for _, group := range groups {
 		if len(group.routes) != group.want {
 			t.Errorf("%s routes: got %d, want %d", group.name, len(group.routes), group.want)
@@ -50,8 +52,8 @@ func TestRouteInventoryIsCompleteAndUnique(t *testing.T) {
 		}
 	}
 
-	if len(seen) != 130 {
-		t.Errorf("route inventory: got %d routes, want 130", len(seen))
+	if len(seen) != 132 {
+		t.Errorf("route inventory: got %d routes, want 132", len(seen))
 	}
 	for _, removed := range []string{
 		"GET /api/v1/me/prompts",
@@ -90,13 +92,14 @@ func TestRemovedMCPRoutesReturnNotFound(t *testing.T) {
 	}
 }
 
-func TestQuotaResetTrackingRoutesRequireAdminAccess(t *testing.T) {
+func TestQuotaAndUserCatalogRoutesRequireAdminAccess(t *testing.T) {
 	const (
 		cookieName = "quota_reset_session"
 		adminKey   = "quota-reset-admin-key"
 	)
 	sessions := auth.NewSessionStore(nil, time.Hour)
 	limitedSession := createOpenAPITestSession(t, sessions, auth.RoleLimited)
+	userSession := createOpenAPITestSession(t, sessions, auth.RoleUser)
 	adminSession := createOpenAPITestSession(t, sessions, auth.RoleAdmin)
 	cfg := config.APIConfig{
 		SessionConfig: config.SessionConfig{SessionCookieName: cookieName},
@@ -105,13 +108,15 @@ func TestQuotaResetTrackingRoutesRequireAdminAccess(t *testing.T) {
 	mux := http.NewServeMux()
 	registerRoutes(
 		mux,
-		adminQuotaResetRoutes(admin.NewHandler(admin.Dependencies{})),
+		adminRoutes(admin.NewHandler(admin.Dependencies{}), func(http.ResponseWriter, *http.Request) {}),
 		adminAccessMiddlewares(sessions, cfg)...,
 	)
 
 	for _, path := range []string{
 		"/api/v1/admin/quota-resets/quota-states",
 		"/api/v1/admin/quota-resets/events",
+		"/api/v1/admin/users/11111111-1111-1111-1111-111111111111/quota",
+		"/api/v1/admin/users/11111111-1111-1111-1111-111111111111/models",
 	} {
 		for _, test := range []struct {
 			name       string
@@ -121,6 +126,7 @@ func TestQuotaResetTrackingRoutesRequireAdminAccess(t *testing.T) {
 		}{
 			{name: "missing credentials", wantStatus: http.StatusUnauthorized},
 			{name: "limited session", sessionID: limitedSession.ID, wantStatus: http.StatusForbidden},
+			{name: "user session", sessionID: userSession.ID, wantStatus: http.StatusForbidden},
 			{name: "admin session", sessionID: adminSession.ID, wantStatus: http.StatusInternalServerError},
 			{name: "admin API key", adminKey: adminKey, wantStatus: http.StatusInternalServerError},
 		} {
@@ -138,6 +144,32 @@ func TestQuotaResetTrackingRoutesRequireAdminAccess(t *testing.T) {
 					t.Fatalf("expected %d, got %d: %s", test.wantStatus, recorder.Code, recorder.Body.String())
 				}
 			})
+		}
+	}
+}
+
+func TestAdminUserQuotaAndModelsRequireHumanTarget(t *testing.T) {
+	_, _, db := newHTTPSetupServices(t)
+	userService := users.NewService(db)
+	serviceAccount, err := userService.CreateServiceAccount(context.Background(), users.ServiceAccountInput{
+		Identifier: "test-service", Name: "Test service",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	const adminKey = "test-admin-key"
+	cfg := config.APIConfig{APIHTTPConfig: config.APIHTTPConfig{AdminAPIKey: adminKey}}
+	handler := NewHandler(Dependencies{Config: cfg, Users: userService})
+
+	for _, id := range []string{"invalid-id", "22222222-2222-2222-2222-222222222222", serviceAccount.ID} {
+		for _, endpoint := range []string{"models", "quota"} {
+			request := httptest.NewRequest(http.MethodGet, "/api/v1/admin/users/"+id+"/"+endpoint, nil)
+			request.Header.Set(middleware.AdminAPIKeyHeader, adminKey)
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, request)
+			if recorder.Code != http.StatusNotFound || !strings.Contains(recorder.Body.String(), "user_not_found") {
+				t.Fatalf("%s: expected user_not_found, got status=%d body=%s", request.URL.Path, recorder.Code, recorder.Body)
+			}
 		}
 	}
 }

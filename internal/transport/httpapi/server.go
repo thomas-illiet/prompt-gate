@@ -72,6 +72,7 @@ func NewHandler(deps Dependencies) http.Handler {
 		Tokens:        deps.Tokens,
 		FAQ:           deps.FAQ,
 		Groups:        deps.Groups,
+		ModelLab:      deps.ModelLab,
 		Providers:     deps.Providers,
 		Monitoring:    deps.Monitoring,
 		Notifications: deps.Notifications,

@@ -521,6 +521,35 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/users/{id}/quota:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      tags: [Users]
+      operationId: getAdminUserQuota
+      summary: Get the live quota for a human user
+      description: Returns the effective subscription and live 5-hour and 7-day quota windows for the user identified by id.
+      responses:
+        '200': { $ref: '#/components/responses/QuotaStatusResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/users/{id}/models:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      tags: [Users]
+      operationId: getAdminUserModels
+      summary: Get the Model Lab catalog for a human user
+      description: Returns provider/model pairs authorized by the target user's access groups using the same catalog as /api/v1/me/models.
+      responses:
+        '200': { $ref: '#/components/responses/ModelLabCatalogResponse' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/InternalError' }
+        default: { $ref: '#/components/responses/InternalError' }
   /api/v1/admin/users/{id}/ips:
     parameters:
       - $ref: '#/components/parameters/ID'

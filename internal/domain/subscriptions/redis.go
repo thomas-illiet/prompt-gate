@@ -636,6 +636,14 @@ func (s *RedisStore) warmSnapshotLocked(ctx context.Context) error {
 	return s.store.SetJSON(ctx, redisstore.SnapshotKey(configevents.DomainSubscriptions), snapshot, s.ttl)
 }
 
+// ReadCurrentQuota refreshes subscription assignments before reading the live quota.
+func (s *RedisStore) ReadCurrentQuota(ctx context.Context, userID string) (QuotaStatus, error) {
+	if err := s.RefreshIfStale(ctx); err != nil {
+		return QuotaStatus{}, err
+	}
+	return s.CurrentQuota(ctx, userID, time.Now().UTC())
+}
+
 func (s *RedisStore) CurrentQuota(ctx context.Context, userID string, now time.Time) (QuotaStatus, error) {
 	status, _, err := s.currentQuota(ctx, userID, now)
 	return status, err

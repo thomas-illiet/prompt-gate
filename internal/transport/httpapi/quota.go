@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"net/http"
-	"time"
 
 	"promptgate/backend/internal/domain/auth"
 )
@@ -17,11 +16,7 @@ func (s server) handleCurrentUserQuota(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "subscription quota service unavailable"})
 		return
 	}
-	if err := s.quotaRedis.RefreshIfStale(r.Context()); err != nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "load_subscription_quota_failed"})
-		return
-	}
-	status, err := s.quotaRedis.CurrentQuota(r.Context(), user.ID, time.Now().UTC())
+	status, err := s.quotaRedis.ReadCurrentQuota(r.Context(), user.ID)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "load_subscription_quota_failed"})
 		return

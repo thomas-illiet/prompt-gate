@@ -14,7 +14,7 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 )
 
-const expectedOperationCount = 125
+const expectedOperationCount = 127
 
 var expectedTagOrder = []string{
 	"Deployment",

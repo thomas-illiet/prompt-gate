@@ -7,7 +7,7 @@ import (
 )
 
 func adminRoutes(handler *admin.Handler, openAPIHandler http.HandlerFunc) []routeDefinition {
-	routes := make([]routeDefinition, 0, 99)
+	routes := make([]routeDefinition, 0, 101)
 	routes = append(routes, adminUserRoutes(handler)...)
 	routes = append(routes, adminDashboardRoutes(handler)...)
 	routes = append(routes, adminQuotaResetRoutes(handler)...)
@@ -54,6 +54,8 @@ func adminUserRoutes(handler *admin.Handler) []routeDefinition {
 		{pattern: "POST /api/v1/admin/users", handler: handler.HandleAdminCreateUser},
 		{pattern: "GET /api/v1/admin/users/{id}", handler: handler.HandleAdminGetUser},
 		{pattern: "GET /api/v1/admin/users/{id}/statistics", handler: handler.HandleAdminUserStatistics},
+		{pattern: "GET /api/v1/admin/users/{id}/quota", handler: handler.HandleAdminUserQuota},
+		{pattern: "GET /api/v1/admin/users/{id}/models", handler: handler.HandleAdminUserModels},
 		{pattern: "GET /api/v1/admin/users/{id}/ips", handler: handler.HandleAdminListUserIPAddresses},
 		{pattern: "DELETE /api/v1/admin/users/{id}/ips", handler: handler.HandleAdminClearUserIPAddresses},
 		{pattern: "PATCH /api/v1/admin/users/{id}", handler: handler.HandleAdminUpdateUser},

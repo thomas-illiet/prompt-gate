@@ -11,6 +11,7 @@ import (
 
 	"promptgate/backend/internal/domain/faq"
 	"promptgate/backend/internal/domain/groups"
+	"promptgate/backend/internal/domain/modellab"
 	"promptgate/backend/internal/domain/monitoring"
 	"promptgate/backend/internal/domain/notifications"
 	"promptgate/backend/internal/domain/pricing"
@@ -23,8 +24,9 @@ import (
 	middleware "promptgate/backend/internal/transport/httpmiddleware"
 )
 
-type quotaStateCleaner interface {
+type quotaStore interface {
 	DeleteUserQuotaState(context.Context, string) error
+	ReadCurrentQuota(context.Context, string) (subscriptions.QuotaStatus, error)
 }
 
 // Handler handles admin-only HTTP routes for user and token management.
@@ -33,13 +35,14 @@ type Handler struct {
 	tokens        *tokens.Service
 	faq           *faq.Service
 	groups        *groups.Service
+	modelLab      *modellab.Service
 	providers     *provider.Service
 	monitoring    *monitoring.Service
 	notifications *notifications.Service
 	pricing       *pricing.Service
 	proxy         *proxy.Service
 	subscriptions *subscriptions.Service
-	quotaRedis    quotaStateCleaner
+	quotaRedis    quotaStore
 	setupGuides   *setupguide.Service
 }
 
@@ -70,6 +73,7 @@ type Dependencies struct {
 	Tokens        *tokens.Service
 	FAQ           *faq.Service
 	Groups        *groups.Service
+	ModelLab      *modellab.Service
 	Providers     *provider.Service
 	Monitoring    *monitoring.Service
 	Notifications *notifications.Service
@@ -82,20 +86,24 @@ type Dependencies struct {
 
 // NewHandler returns an admin Handler wired to explicitly typed dependencies.
 func NewHandler(deps Dependencies) *Handler {
-	return &Handler{
+	handler := &Handler{
 		users:         deps.Users,
 		tokens:        deps.Tokens,
 		faq:           deps.FAQ,
 		groups:        deps.Groups,
+		modelLab:      deps.ModelLab,
 		providers:     deps.Providers,
 		monitoring:    deps.Monitoring,
 		notifications: deps.Notifications,
 		pricing:       deps.Pricing,
 		proxy:         deps.Proxy,
 		subscriptions: deps.Subscriptions,
-		quotaRedis:    deps.QuotaRedis,
 		setupGuides:   deps.SetupGuides,
 	}
+	if deps.QuotaRedis != nil {
+		handler.quotaRedis = deps.QuotaRedis
+	}
+	return handler
 }
 
 func (h *Handler) cleanupDeletedQuotaState(ctx context.Context, userID string) {
