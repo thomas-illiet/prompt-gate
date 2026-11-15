@@ -45,7 +45,7 @@ func TestValidatedModelLabSkipsIPServiceAndCache(t *testing.T) {
 			}
 			evaluator := policy.NewEvaluator(client, store, time.Minute, nil)
 			reached := 0
-			next := tokens.MiddlewareWithOptions(tokens.MiddlewareOptions{})(clientip.Middleware(false)(policy.Middleware(evaluator, nil, nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			next := tokens.MiddlewareWithOptions(tokens.MiddlewareOptions{})(clientip.Middleware(false)(policy.Middleware(evaluator, nil, nil, nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				reached++
 				if !modellab.HasValidatedTicket(r.Context()) {
 					t.Fatal("missing marker")
@@ -105,7 +105,7 @@ func TestInvalidModelLabCannotReachIPBypass(t *testing.T) {
 				}
 			}
 			called := false
-			next := policy.Middleware(nil, nil, nil)(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { called = true }))
+			next := policy.Middleware(nil, nil, nil, nil)(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { called = true }))
 			rec := fixture.serve(ticket, origin, modelLabTestPayload, next)
 			if rec.Code != want || called {
 				t.Fatalf("invalid ticket reached bypass: status=%d expected=%d body=%s", rec.Code, want, rec.Body)
@@ -146,7 +146,7 @@ func TestModelLabBypassPreservesGroupsAndQuotas(t *testing.T) {
 				t.Fatal(err)
 			}
 			reached := false
-			next := policy.Middleware(nil, nil, nil)(groups.Middleware(access, nil)(subscriptions.Middleware(quotaStore, nil)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { reached = true; w.WriteHeader(204) }))))
+			next := policy.Middleware(nil, nil, nil, nil)(groups.Middleware(access, nil)(subscriptions.Middleware(quotaStore, nil)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { reached = true; w.WriteHeader(204) }))))
 			rec := fixture.serve(fixture.issueTicket(t), fixture.origin, modelLabTestPayload, next)
 			want := map[string]int{"group denied": 403, "quota exhausted": 429, "allowed": 204}[name]
 			if rec.Code != want || reached != (name == "allowed") {
@@ -181,7 +181,7 @@ func TestOrdinaryRequestWithModelLabHeadersStillRequiresIPValidation(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	checked := policy.Middleware(policy.NewEvaluator(client, nil, time.Minute, nil), nil, nil)(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { t.Fatal("ordinary token bypassed refusal") }))
+	checked := policy.Middleware(policy.NewEvaluator(client, nil, time.Minute, nil), nil, nil, nil)(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { t.Fatal("ordinary token bypassed refusal") }))
 	handler := modelLabTicketMiddleware(fixture.config, fixture.service, fixture.users)(tokens.MiddlewareWithOptions(tokens.MiddlewareOptions{TokenService: tokenService, UserResolver: fixture.users})(clientip.Middleware(false)(checked)))
 	req := httptest.NewRequest("POST", "/openai-test/v1/chat/completions", strings.NewReader(modelLabTestPayload))
 	req.Header.Set("Authorization", "Bearer "+issued.Token)

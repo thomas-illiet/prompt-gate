@@ -7,6 +7,7 @@ import type { AppRowAction } from '../../app/types/row-actions'
 import type { AdminUser } from '../../app/types/users'
 
 const user: AdminUser = {
+  bypassIpValidation: false,
   activeInLast30Days: true,
   quotaResetCredits: 1,
   type: 'user',
@@ -97,6 +98,13 @@ function mountTable(item: AdminUser = user) {
           template:
             '<button :disabled="disabled" :data-loading="loading" @click="$emit(\'click\', $event)"><slot /></button>',
         },
+        VTooltip: {
+          template: '<slot name="activator" :props="{}" />',
+        },
+        VIcon: {
+          props: ['icon', 'color'],
+          template: '<i :data-icon="icon" :data-color="color" />',
+        },
         VChip: { template: '<span><slot /></span>' },
       },
     },
@@ -104,6 +112,20 @@ function mountTable(item: AdminUser = user) {
 }
 
 describe('AdminUsersTable', () => {
+  it('marks only accounts with a stored IP bypass', async () => {
+    const wrapper = mountTable({ ...user, bypassIpValidation: true })
+    const warning = '[aria-label="IP validation bypass enabled"]'
+    expect(
+      wrapper
+        .get(warning)
+        .get('[data-icon="mdi-alert"]')
+        .attributes('data-color'),
+    ).toBe('error')
+
+    await wrapper.setProps({ items: [user] })
+    expect(wrapper.find(warning).exists()).toBe(false)
+  })
+
   it('shows the durable all-time total including cache and supports sorting it', () => {
     const wrapper = mountTable()
     const value = wrapper.get('[title="All-time tokens, including cache reads and writes"]')

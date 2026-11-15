@@ -29,10 +29,10 @@ func TestRouteInventoryIsCompleteAndUnique(t *testing.T) {
 		{name: "limited", routes: limitedRoutes(srv), want: 16},
 		{name: "user", routes: userRoutes(srv), want: 5},
 		{name: "model-lab", routes: userModelLabRoutes(srv), want: 2},
-		{name: "admin", routes: adminRoutes(adminHandler, openAPIHandler), want: 101},
+		{name: "admin", routes: adminRoutes(adminHandler, openAPIHandler), want: 103},
 	}
 
-	seen := make(map[string]string, 132)
+	seen := make(map[string]string, 134)
 	for _, group := range groups {
 		if len(group.routes) != group.want {
 			t.Errorf("%s routes: got %d, want %d", group.name, len(group.routes), group.want)
@@ -52,8 +52,8 @@ func TestRouteInventoryIsCompleteAndUnique(t *testing.T) {
 		}
 	}
 
-	if len(seen) != 132 {
-		t.Errorf("route inventory: got %d routes, want 132", len(seen))
+	if len(seen) != 134 {
+		t.Errorf("route inventory: got %d routes, want 134", len(seen))
 	}
 	for _, removed := range []string{
 		"GET /api/v1/me/prompts",
@@ -144,6 +144,44 @@ func TestQuotaAndUserCatalogRoutesRequireAdminAccess(t *testing.T) {
 					t.Fatalf("expected %d, got %d: %s", test.wantStatus, recorder.Code, recorder.Body.String())
 				}
 			})
+		}
+	}
+}
+
+func TestAdminUserIPValidationBypassRequiresAdminAccess(t *testing.T) {
+	const cookieName = "ip_bypass_session"
+	const adminKey = "ip-bypass-admin-key"
+	sessions := auth.NewSessionStore(nil, time.Hour)
+	user := createOpenAPITestSession(t, sessions, auth.RoleUser)
+	adminUser := createOpenAPITestSession(t, sessions, auth.RoleAdmin)
+	cfg := config.APIConfig{
+		SessionConfig: config.SessionConfig{SessionCookieName: cookieName},
+		APIHTTPConfig: config.APIHTTPConfig{AdminAPIKey: adminKey},
+	}
+	mux := http.NewServeMux()
+	registerRoutes(mux, adminRoutes(admin.NewHandler(admin.Dependencies{}), func(http.ResponseWriter, *http.Request) {}), adminAccessMiddlewares(sessions, cfg)...)
+
+	for _, test := range []struct {
+		sessionID string
+		apiKey    string
+		want      int
+	}{
+		{"", "", http.StatusUnauthorized},
+		{user.ID, "", http.StatusForbidden},
+		{adminUser.ID, "", http.StatusBadRequest},
+		{"", adminKey, http.StatusBadRequest},
+	} {
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/admin/users/11111111-1111-4111-8111-111111111111/ip-validation-bypass", strings.NewReader(`{}`))
+		if test.sessionID != "" {
+			req.AddCookie(&http.Cookie{Name: cookieName, Value: test.sessionID})
+		}
+		if test.apiKey != "" {
+			req.Header.Set(middleware.AdminAPIKeyHeader, test.apiKey)
+		}
+		rec := httptest.NewRecorder()
+		mux.ServeHTTP(rec, req)
+		if rec.Code != test.want {
+			t.Fatalf("expected %d, got %d: %s", test.want, rec.Code, rec.Body)
 		}
 	}
 }

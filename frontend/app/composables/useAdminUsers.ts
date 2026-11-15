@@ -18,6 +18,7 @@ import type {
   CreateUserPayload,
   UpdateUserAccessPayload,
   UpdateUserPayload,
+  UserIPValidationFilter,
   UserListResponse,
   UserRoleFilter,
   UserStatusFilter,
@@ -41,6 +42,7 @@ import { downloadUsersCsv } from '~/utils/users-csv'
 import { createIdempotencyKey } from '~/utils/idempotency'
 
 const ERROR_MESSAGES = {
+  ip_validation_bypass_update_failed: 'Unable to update IP validation.',
   invalid_expiration: 'Expiration date must be in the future.',
   invalid_preferred_username: 'User UID is required.',
   invalid_note: 'Notes must be 2,000 characters or fewer.',
@@ -77,6 +79,7 @@ export function useAdminUsers() {
 
   const role = shallowRef<UserRoleFilter>('all')
   const status = shallowRef<UserStatusFilter>('all')
+  const ipValidation = shallowRef<UserIPValidationFilter>('all')
   const saving = shallowRef(false)
   const exporting = shallowRef(false)
   const selectedUser = shallowRef<AdminUser | null>(null)
@@ -114,6 +117,8 @@ export function useAdminUsers() {
     params: () => ({
       role: role.value !== 'all' ? role.value : undefined,
       status: status.value !== 'all' ? status.value : undefined,
+      bypassIpValidation:
+        ipValidation.value !== 'all' ? ipValidation.value : undefined,
     }),
     toErrorMessage: toAdminUserErrorMessage,
   })
@@ -140,6 +145,11 @@ export function useAdminUsers() {
   // setStatus updates the status filter and resets pagination.
   function setStatus(value: UserStatusFilter) {
     status.value = value
+    queryList.setPage(1)
+  }
+
+  function setIPValidation(value: UserIPValidationFilter) {
+    ipValidation.value = value
     queryList.setPage(1)
   }
 
@@ -182,6 +192,8 @@ export function useAdminUsers() {
         if (normalizedSearch) params.set('search', normalizedSearch)
         if (role.value !== 'all') params.set('role', role.value)
         if (status.value !== 'all') params.set('status', status.value)
+        if (ipValidation.value !== 'all')
+          params.set('bypassIpValidation', ipValidation.value)
 
         const response = await apiFetch<UserListResponse>(
           withApiQuery(adminUsersPath, params),
@@ -227,6 +239,7 @@ export function useAdminUsers() {
         selectedUser.value = createdUser
         role.value = 'all'
         status.value = 'all'
+        ipValidation.value = 'all'
         queryList.setSearch(createdUser.preferredUsername)
         return createdUser
       },
@@ -399,6 +412,41 @@ export function useAdminUsers() {
     tokenSortBy.value = sortBy
     tokenSortDir.value = sortDir
     tokenPage.value = 1
+  }
+
+  async function setIPValidationBypass(userId: string, enabled: boolean) {
+    return await runApiMutation(
+      {
+        loading: saving,
+        successMessage: enabled
+          ? 'IP validation bypass enabled.'
+          : 'IP validation bypass removed.',
+        toErrorMessage: toAdminUserErrorMessage,
+      },
+      async () => {
+        const update = await apiJson<Pick<AdminUser, 'bypassIpValidation'>>(
+          adminUserPath(userId, 'ip-validation-bypass'),
+          { bypassIpValidation: enabled },
+          { method: 'PUT' },
+        )
+        if (selectedUser.value?.id === userId) {
+          selectedUser.value = { ...selectedUser.value, ...update }
+        }
+        const leavesFilter =
+          ipValidation.value !== 'all' &&
+          ipValidation.value !== String(update.bypassIpValidation)
+        if (
+          leavesFilter &&
+          queryList.items.value.length === 1 &&
+          queryList.page.value > 1
+        ) {
+          queryList.setPage(queryList.page.value - 1)
+        } else {
+          await queryList.reload()
+        }
+        return update
+      },
+    )
   }
 
   // updateUser patches a user and reconciles current-user access changes.
@@ -649,6 +697,7 @@ export function useAdminUsers() {
     ipSortBy,
     ipSortDir,
     ipTotal,
+    ipValidation,
     loadTokens,
     loadGroups,
     loadIPAddresses,
@@ -672,6 +721,8 @@ export function useAdminUsers() {
     setIPPage,
     setIPPageSize,
     setIPSort,
+    setIPValidation,
+    setIPValidationBypass,
     setTokenPage,
     setTokenPageSize,
     setTokenSort,

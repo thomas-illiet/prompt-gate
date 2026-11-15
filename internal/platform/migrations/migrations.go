@@ -28,6 +28,15 @@ type schemaMigration struct {
 	AppliedAt time.Time `gorm:"not null"`
 }
 
+var schemaMigrations = []struct {
+	version int64
+	name    string
+	run     func(context.Context, *gorm.DB) error
+}{
+	{1, "release_baseline", migrateBaseline},
+	{2, "user_ip_validation_bypass", migrateUserIPValidationBypass},
+}
+
 // Run serializes schema changes and records them in the same transaction as
 // their DDL/data changes. Failed migrations can be retried without a false mark.
 func Run(ctx context.Context, db *gorm.DB) error {
@@ -40,18 +49,35 @@ func Run(ctx context.Context, db *gorm.DB) error {
 		if err := tx.AutoMigrate(&schemaMigration{}); err != nil {
 			return err
 		}
-		var applied int64
-		if err := tx.Model(&schemaMigration{}).Where("version = ?", 1).Count(&applied).Error; err != nil {
-			return err
+		for _, migration := range schemaMigrations {
+			var applied int64
+			if err := tx.Model(&schemaMigration{}).Where("version = ?", migration.version).Count(&applied).Error; err != nil {
+				return err
+			}
+			if applied > 0 {
+				continue
+			}
+			if err := migration.run(ctx, tx); err != nil {
+				return fmt.Errorf("migration %d (%s): %w", migration.version, migration.name, err)
+			}
+			if err := tx.Create(&schemaMigration{
+				Version: migration.version, Name: migration.name, AppliedAt: time.Now().UTC(),
+			}).Error; err != nil {
+				return err
+			}
 		}
-		if applied > 0 {
-			return nil
-		}
-		if err := migrateBaseline(ctx, tx); err != nil {
-			return err
-		}
-		return tx.Create(&schemaMigration{Version: 1, Name: "release_baseline", AppliedAt: time.Now().UTC()}).Error
+		return nil
 	})
+}
+
+func migrateUserIPValidationBypass(ctx context.Context, db *gorm.DB) error {
+	db = db.WithContext(ctx)
+	if !db.Migrator().HasColumn(&users.User{}, "BypassIPValidation") {
+		if err := db.Migrator().AddColumn(&users.User{}, "BypassIPValidation"); err != nil {
+			return err
+		}
+	}
+	return db.AutoMigrate(&users.IPValidationBypassEvent{})
 }
 
 func migrateBaseline(ctx context.Context, db *gorm.DB) error {

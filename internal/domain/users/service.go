@@ -51,6 +51,7 @@ type User struct {
 	SubscriptionPlanID *string       `gorm:"column:subscription_plan_id;type:uuid;index"`
 	Note               string        `gorm:"type:text;not null;default:''"`
 	IsActive           bool          `gorm:"not null;default:true;index"`
+	BypassIPValidation bool          `gorm:"column:bypass_ip_validation;not null;default:false"`
 	ExpiresAt          *time.Time    `gorm:"column:expires_at;index"`
 	LastLoginAt        *time.Time    `gorm:"column:last_login_at;index"`
 	CreatedAt          time.Time
@@ -72,6 +73,7 @@ type AdminUser struct {
 	QuotaResetCredits         int                      `json:"quotaResetCredits"`
 	Note                      string                   `json:"note"`
 	IsActive                  bool                     `json:"isActive"`
+	BypassIPValidation        bool                     `json:"bypassIpValidation"`
 	ActiveInLast30Days        bool                     `json:"activeInLast30Days"`
 	InputTokens               int64                    `json:"inputTokens"`
 	OutputTokens              int64                    `json:"outputTokens"`
@@ -85,14 +87,15 @@ type AdminUser struct {
 }
 
 type ListParams struct {
-	Page     int
-	PageSize int
-	Search   string
-	SortBy   string
-	SortDir  string
-	Type     auth.UserType
-	Role     auth.AppRole
-	Status   string
+	BypassIPValidation *bool
+	Page               int
+	PageSize           int
+	Search             string
+	SortBy             string
+	SortDir            string
+	Type               auth.UserType
+	Role               auth.AppRole
+	Status             string
 }
 
 type ListResult struct {
@@ -454,6 +457,10 @@ func (s *Service) ListUsers(ctx context.Context, params ListParams) (ListResult,
 		query = query.Where("is_active = ?", false)
 	}
 
+	if params.BypassIPValidation != nil {
+		query = query.Where("users.bypass_ip_validation = ?", *params.BypassIPValidation)
+	}
+
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
 		return ListResult{}, fmt.Errorf("count users: %w", err)
@@ -502,7 +509,7 @@ func (s *Service) UpdateUser(ctx context.Context, id string, input UpdateUserInp
 
 	var record User
 	err := s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
 			Where("id = ? AND type = ?", id, auth.UserTypeUser).
 			First(&record).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -517,7 +524,9 @@ func (s *Service) UpdateUser(ctx context.Context, id string, input UpdateUserInp
 		record.IsActive = input.IsActive
 		record.ExpiresAt = input.ExpiresAt
 
-		if err := tx.Save(&record).Error; err != nil {
+		if err := tx.Model(&record).Updates(map[string]any{
+			"role": record.Role, "is_active": record.IsActive, "expires_at": record.ExpiresAt,
+		}).Error; err != nil {
 			return fmt.Errorf("update user: %w", err)
 		}
 
@@ -564,7 +573,7 @@ func (s *Service) UpdateUserNote(ctx context.Context, id string, input UpdateAcc
 	}
 
 	record.Note = note
-	if err := s.db.WithContext(ctx).Save(&record).Error; err != nil {
+	if err := s.db.WithContext(ctx).Model(&record).Update("note", note).Error; err != nil {
 		return AdminUser{}, fmt.Errorf("update user note: %w", err)
 	}
 

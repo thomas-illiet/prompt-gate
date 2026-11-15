@@ -33,6 +33,7 @@ const userToDelete = shallowRef<AdminUser | null>(null)
 const tokenUser = shallowRef<AdminUser | null>(null)
 const groupsUser = shallowRef<AdminUser | null>(null)
 const noteDialog = useTargetDialog<AdminUser>()
+const ipBypassDialog = useTargetDialog<AdminUser>()
 const statusDialog = useTargetDialog<AdminUser>()
 const tokenRevokeDialog = useTargetDialog<UserToken>()
 const usageDialog = useTargetDialog<AdminUser>()
@@ -149,6 +150,25 @@ async function saveUserAccess(payload: {
 
   await adminUsers.updateUserAccess(adminUsers.selectedUser.value.id, payload)
   editDialogOpen.value = false
+}
+
+async function setIPValidationBypass(enabled: boolean) {
+  const user = adminUsers.selectedUser.value
+  if (!user) return
+
+  if (enabled) {
+    ipBypassDialog.open(user)
+  } else {
+    await adminUsers.setIPValidationBypass(user.id, false)
+  }
+}
+
+async function confirmIPValidationBypass() {
+  const user = ipBypassDialog.target.value
+  if (!user) return
+
+  await adminUsers.setIPValidationBypass(user.id, true)
+  ipBypassDialog.close()
 }
 
 // openDeleteDialog stores the user targeted for deletion.
@@ -359,9 +379,11 @@ async function confirmQuotaResetGrant() {
 
       <v-col cols="12">
         <AdminUsersFilters
+          :ip-validation="adminUsers.ipValidation.value"
           :role="adminUsers.role.value"
           :search="adminUsers.search.value"
           :status="adminUsers.status.value"
+          @update:ip-validation="adminUsers.setIPValidation"
           @update:role="adminUsers.setRole"
           @update:search="adminUsers.setSearch"
           @update:status="adminUsers.setStatus"
@@ -440,6 +462,7 @@ async function confirmQuotaResetGrant() {
       :subscription-plans="adminSubscriptions.plans.value"
       :user="adminUsers.selectedUser.value"
       @save="saveUserAccess"
+      @set-ip-validation-bypass="setIPValidationBypass"
     />
     <AdminUserDeleteDialog
       v-model="deleteDialogOpen"
@@ -516,6 +539,16 @@ async function confirmQuotaResetGrant() {
       @update:page="updateIPPage"
       @update:page-size="updateIPPageSize"
       @update:sort="updateIPSort"
+    />
+    <AppConfirmDialog
+      v-model="ipBypassDialog.isOpen.value"
+      confirm-color="error"
+      confirm-label="Enable bypass"
+      :loading="adminUsers.saving.value"
+      :message="`Allow all virtual keys for ${ipBypassDialog.target.value ? displayUser(ipBypassDialog.target.value) : 'this user'} to be used from an IP address outside the allowlist?`"
+      title="Bypass IP validation"
+      @cancel="ipBypassDialog.close"
+      @confirm="confirmIPValidationBypass"
     />
     <AppConfirmDialog
       v-model="quotaResetDialog.isOpen.value"

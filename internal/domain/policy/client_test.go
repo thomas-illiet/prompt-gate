@@ -333,7 +333,7 @@ func TestMiddlewareUsesOnlyValidatedTicketMarkerForBypass(t *testing.T) {
 			calls := 0
 			client := testClient(t, func(*http.Request) (*http.Response, error) { calls++; return response(404), nil })
 			recorder := &denialRecorder{}
-			handler := Middleware(NewEvaluator(client, nil, time.Minute, nil), recorder, nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) }))
+			handler := Middleware(NewEvaluator(client, nil, time.Minute, nil), recorder, nil, nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(204) }))
 			req := httptest.NewRequest(http.MethodPost, "/provider/v1/chat", nil).WithContext(tc.ctx)
 			req.Header.Set("Authorization", "Bearer pgml_forged")
 			req.Header.Set("User-Agent", "PromptGate-ModelLab/1.0")
@@ -353,7 +353,7 @@ func TestMiddlewareUsesOnlyValidatedTicketMarkerForBypass(t *testing.T) {
 		})
 	}
 	// A bypass must not even dereference an evaluator or its Redis dependency.
-	handler := Middleware(nil, nil, nil)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(204) }))
+	handler := Middleware(nil, nil, nil, nil)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(204) }))
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, httptest.NewRequest("GET", "/", nil).WithContext(modellab.ContextWithValidatedTicket(principalContext())))
 	if rec.Code != 204 {
@@ -368,7 +368,7 @@ func TestMiddlewareStatusRecordingAndSafeLogs(t *testing.T) {
 			logger := slog.New(slog.NewTextHandler(&logs, nil))
 			client := testClient(t, func(*http.Request) (*http.Response, error) { return response(status), nil })
 			recorder := &denialRecorder{err: errors.New("recording unavailable")}
-			handler := Middleware(NewEvaluator(client, nil, time.Minute, logger), recorder, logger)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(204) }))
+			handler := Middleware(NewEvaluator(client, nil, time.Minute, logger), recorder, nil, logger)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(204) }))
 			for range 2 {
 				rec := httptest.NewRecorder()
 				handler.ServeHTTP(rec, httptest.NewRequest("GET", "/", nil).WithContext(principalContext()))

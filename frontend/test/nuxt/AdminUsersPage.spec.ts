@@ -15,6 +15,7 @@ mockNuxtImport('useAdminSubscriptions', () => useAdminSubscriptionsMock)
 mockNuxtImport('useAdminUsers', () => useAdminUsersMock)
 
 const user: AdminUser = {
+  bypassIpValidation: false,
   activeInLast30Days: true,
   quotaResetCredits: 1,
   type: 'user',
@@ -57,6 +58,7 @@ function createAdminUsersMock() {
     ipSortBy: shallowRef('lastSeen'),
     ipSortDir: shallowRef<'asc' | 'desc'>('desc'),
     ipTotal: shallowRef(0),
+    ipValidation: shallowRef('all'),
     listError: shallowRef(null),
     loadGroups: vi.fn(),
     loadIPAddresses: vi.fn().mockResolvedValue([]),
@@ -76,6 +78,8 @@ function createAdminUsersMock() {
     setIPPage: vi.fn(),
     setIPPageSize: vi.fn(),
     setIPSort: vi.fn(),
+    setIPValidation: vi.fn(),
+    setIPValidationBypass: vi.fn(),
     setPage: vi.fn(),
     setPageSize: vi.fn(),
     setRole: vi.fn(),
@@ -113,6 +117,7 @@ const UsersTableStub = defineComponent({
   },
   emits: [
     'create',
+    'edit',
     'export',
     'manageIps',
     'manageTokens',
@@ -124,6 +129,7 @@ const UsersTableStub = defineComponent({
       <button data-test="open-create-user" @click="$emit('create')">
         Pre-create user
       </button>
+      <button data-test="edit-user" @click="$emit('edit', items[0])">Edit</button>
       <button data-test="export-users" @click="$emit('export')">
         Export CSV
       </button>
@@ -172,9 +178,13 @@ const CreateDialogStub = defineComponent({
 
 const EditDialogStub = defineComponent({
   props: { modelValue: Boolean },
-  emits: ['save', 'update:modelValue'],
-  template:
-    '<section v-if="modelValue" data-test="edit-user-dialog">Edit access</section>',
+  emits: ['save', 'setIpValidationBypass', 'update:modelValue'],
+  template: `
+    <section v-if="modelValue" data-test="edit-user-dialog">
+      <button data-test="enable-bypass" @click="$emit('setIpValidationBypass', true)">Enable</button>
+      <button data-test="remove-bypass" @click="$emit('setIpValidationBypass', false)">Remove</button>
+    </section>
+  `,
 })
 
 const ConfirmDialogStub = defineComponent({
@@ -280,7 +290,7 @@ function mountPage() {
   })
 }
 
-describe('Admin users page usage statistics dialog', () => {
+describe('Admin users page', () => {
   beforeEach(() => {
     usageDialogMounts = 0
     useAdminUsersMock.mockReset()
@@ -290,6 +300,32 @@ describe('Admin users page usage statistics dialog', () => {
       loadAllPlans: vi.fn(),
       plans: shallowRef([]),
     })
+  })
+
+  it('confirms activation and removes the bypass directly', async () => {
+    const adminUsers = createAdminUsersMock()
+    adminUsers.loadUser.mockImplementation(async () => {
+      adminUsers.selectedUser.value = user
+      return user
+    })
+    useAdminUsersMock.mockReturnValue(adminUsers)
+    const wrapper = mountPage()
+
+    await wrapper.get('[data-test="edit-user"]').trigger('click')
+    await wrapper.get('[data-test="enable-bypass"]').trigger('click')
+    expect(adminUsers.setIPValidationBypass).not.toHaveBeenCalled()
+    expect(wrapper.get('[data-test="confirm-dialog"]').text()).toContain(
+      'outside the allowlist',
+    )
+
+    await wrapper.get('[data-test="confirm-action"]').trigger('click')
+    expect(adminUsers.setIPValidationBypass).toHaveBeenCalledWith(user.id, true)
+
+    await wrapper.get('[data-test="remove-bypass"]').trigger('click')
+    expect(adminUsers.setIPValidationBypass).toHaveBeenCalledWith(
+      user.id,
+      false,
+    )
   })
 
   it('opens the IP addresses dialog from the table action', async () => {

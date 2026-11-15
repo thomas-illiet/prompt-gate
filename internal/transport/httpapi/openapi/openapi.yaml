@@ -440,6 +440,10 @@ paths:
         - $ref: '#/components/parameters/Search'
         - $ref: '#/components/parameters/UserRole'
         - $ref: '#/components/parameters/AccountStatus'
+        - name: bypassIpValidation
+          in: query
+          description: Filter by the stored IP validation exception.
+          schema: { type: boolean }
         - $ref: '#/components/parameters/SortBy'
         - $ref: '#/components/parameters/SortDir'
       responses:
@@ -575,6 +579,30 @@ paths:
       summary: Clear observed client IP addresses for a human user
       responses:
         '204': { $ref: '#/components/responses/NoContent' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/users/{id}/ip-validation-bypass:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    put:
+      tags: [Users]
+      operationId: setAdminUserIPValidationBypass
+      summary: Set the IP validation exception for a human user
+      description: Applies to all virtual keys of the user when proxy IP validation is enabled.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UserIPValidationBypass' }
+      responses:
+        '200':
+          description: The stored IP validation exception
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserIPValidationBypass' }
+        '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -1160,6 +1188,28 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { $ref: '#/components/responses/Conflict' }
+        default: { $ref: '#/components/responses/InternalError' }
+  /api/v1/admin/subscriptions/{id}/members:
+    parameters:
+      - $ref: '#/components/parameters/ID'
+    get:
+      tags: [Subscriptions]
+      operationId: listAdminSubscriptionPlanMembers
+      summary: List the accounts using a subscription plan
+      description: Includes directly assigned accounts and accounts inheriting this plan when it is the default.
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Search'
+      responses:
+        '200':
+          description: Paginated subscription plan members.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SubscriptionPlanMemberList' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
         default: { $ref: '#/components/responses/InternalError' }
   /api/v1/admin/subscriptions/{id}/default:
     parameters:
@@ -2733,7 +2783,7 @@ components:
     AdminUser:
       type: object
       additionalProperties: false
-      required: [id, sub, preferredUsername, email, name, type, role, subscriptionPlanId, quotaResetCredits, note, isActive, activeInLast30Days, inputTokens, outputTokens, cacheReadInputTokens, cacheWriteInputTokens, totalTokens, expiresAt, lastLoginAt, createdAt, updatedAt]
+      required: [id, sub, preferredUsername, email, name, type, role, subscriptionPlanId, quotaResetCredits, note, isActive, bypassIpValidation, activeInLast30Days, inputTokens, outputTokens, cacheReadInputTokens, cacheWriteInputTokens, totalTokens, expiresAt, lastLoginAt, createdAt, updatedAt]
       properties:
         id: { type: string, format: uuid }
         sub: { type: string, nullable: true }
@@ -2760,6 +2810,7 @@ components:
         quotaResetCredits: { type: integer, minimum: 0, maximum: 2 }
         note: { type: string }
         isActive: { type: boolean }
+        bypassIpValidation: { type: boolean }
         activeInLast30Days:
           type: boolean
           description: Whether at least one proxy request was recorded from today through 29 days ago, using UTC calendar days.
@@ -2783,6 +2834,12 @@ components:
         page: { type: integer, minimum: 1 }
         pageSize: { type: integer, minimum: 1, maximum: 100 }
         total: { type: integer, format: int64, minimum: 0 }
+    UserIPValidationBypass:
+      type: object
+      additionalProperties: false
+      required: [bypassIpValidation]
+      properties:
+        bypassIpValidation: { type: boolean }
     UpdateUserRequest:
       type: object
       additionalProperties: false
@@ -3217,6 +3274,28 @@ components:
         items:
           type: array
           items: { $ref: '#/components/schemas/SubscriptionPlan' }
+        page: { type: integer, minimum: 1 }
+        pageSize: { type: integer, minimum: 1, maximum: 100 }
+        total: { type: integer, format: int64, minimum: 0 }
+    SubscriptionPlanMember:
+      type: object
+      additionalProperties: false
+      required: [id, name, preferredUsername, email, type, inherited]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        preferredUsername: { type: string, minLength: 1, pattern: '\S' }
+        email: { type: string }
+        type: { $ref: '#/components/schemas/UserType' }
+        inherited: { type: boolean }
+    SubscriptionPlanMemberList:
+      type: object
+      additionalProperties: false
+      required: [items, page, pageSize, total]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/SubscriptionPlanMember' }
         page: { type: integer, minimum: 1 }
         pageSize: { type: integer, minimum: 1, maximum: 100 }
         total: { type: integer, format: int64, minimum: 0 }

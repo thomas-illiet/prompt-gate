@@ -5,6 +5,7 @@ import AdminUserDeleteDialog from '../../app/components/AdminUsers/AdminUserDele
 import type { AdminUser } from '../../app/types/users'
 
 const user: AdminUser = {
+  bypassIpValidation: false,
   id: 'user-id',
   sub: 'oidc-subject',
   preferredUsername: 'alice',

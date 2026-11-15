@@ -6,6 +6,7 @@ import type { UserToken } from '../../app/types/user-service'
 import type { AdminUser } from '../../app/types/users'
 
 const user: AdminUser = {
+  bypassIpValidation: false,
   activeInLast30Days: true,
   quotaResetCredits: 1,
   type: 'user',

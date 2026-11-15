@@ -6,6 +6,7 @@ import AdminUsersFilters from '../../app/components/AdminUsers/AdminUsersFilters
 function mountFilters() {
   return mount(AdminUsersFilters, {
     props: {
+      ipValidation: 'all',
       role: 'all',
       search: '',
       status: 'all',
@@ -40,6 +41,17 @@ function mountFilters() {
 }
 
 describe('AdminUsersFilters', () => {
+  it('emits both IP validation exception filters', async () => {
+    const wrapper = mountFilters()
+    await wrapper.get('[data-test="IP validation-true"]').trigger('click')
+    await wrapper.get('[data-test="IP validation-false"]').trigger('click')
+
+    expect(wrapper.emitted('update:ipValidation')).toEqual([
+      ['true'],
+      ['false'],
+    ])
+  })
+
   it('labels administrative state as access while preserving API filter values', async () => {
     const wrapper = mountFilters()
 

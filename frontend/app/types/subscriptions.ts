@@ -21,6 +21,15 @@ export interface SubscriptionPlanListResponse {
   total: number
 }
 
+export interface SubscriptionPlanMember {
+  id: string
+  name: string
+  preferredUsername: string
+  email: string
+  type: 'user' | 'service'
+  inherited: boolean
+}
+
 export interface SubscriptionPlanPayload {
   name: string
   description: string

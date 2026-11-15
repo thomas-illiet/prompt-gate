@@ -238,7 +238,7 @@ const rowActions: AppRowAction<AdminUser>[] = [
       default-sort-dir="desc"
       empty-icon="mdi-account-group-outline"
       empty-title="No users found"
-      empty-text="Try adjusting the search, role, or access filters."
+      empty-text="Try adjusting the current filters."
       :headers="headers"
       :items="props.items"
       :loading="props.loading"
@@ -256,9 +256,27 @@ const rowActions: AppRowAction<AdminUser>[] = [
     >
       <template #item.name="{ item }">
         <div class="admin-users-table__identity-cell">
-          <span class="app-table-text app-table-text--strong">
-            {{ displayName(item) }}
-          </span>
+          <div class="admin-users-table__name">
+            <span class="app-table-text app-table-text--strong">
+              {{ displayName(item) }}
+            </span>
+            <v-tooltip
+              v-if="item.bypassIpValidation"
+              text="IP validation bypass enabled"
+              location="top"
+            >
+              <template #activator="{ props: tooltipProps }">
+                <span
+                  v-bind="tooltipProps"
+                  tabindex="0"
+                  role="img"
+                  aria-label="IP validation bypass enabled"
+                >
+                  <v-icon icon="mdi-alert" color="error" size="small" />
+                </span>
+              </template>
+            </v-tooltip>
+          </div>
           <span class="app-table-text app-table-text--muted">
             {{ displayUsername(item) }}
           </span>
@@ -350,6 +368,13 @@ const rowActions: AppRowAction<AdminUser>[] = [
 </template>
 
 <style scoped>
+.admin-users-table__name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
 .admin-users-table__identity-cell {
   display: grid;
   min-width: 0;

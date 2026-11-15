@@ -55,6 +55,7 @@ function apiError(code: string) {
 }
 
 const user: AdminUser = {
+  bypassIpValidation: false,
   activeInLast30Days: true,
   quotaResetCredits: 1,
   type: 'user',
@@ -231,6 +232,24 @@ describe('useAdminUsers', () => {
         expect.stringContaining('search=Alice.Example'),
       )
     })
+  })
+
+  it('applies the IP bypass filter to pagination and CSV export', async () => {
+    apiFetch.mockResolvedValue(userResponse([]))
+    const adminUsers = useAdminUsers()
+    await vi.waitFor(() => expect(adminUsers.loading.value).toBe(false))
+    adminUsers.setPage(2)
+    adminUsers.setIPValidation('true')
+    await vi.waitFor(() => {
+      expect(apiFetch).toHaveBeenCalledWith(
+        '/api/v1/admin/users?page=1&pageSize=10&sortBy=lastLoginAt&sortDir=desc&bypassIpValidation=true',
+      )
+    })
+
+    await adminUsers.exportUsers()
+    expect(apiFetch).toHaveBeenCalledWith(
+      '/api/v1/admin/users?page=1&pageSize=100&sortBy=lastLoginAt&sortDir=desc&bypassIpValidation=true',
+    )
   })
 
   it('exports all users matching the active filters across pages', async () => {

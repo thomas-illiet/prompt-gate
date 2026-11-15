@@ -66,7 +66,7 @@ func (p *ProxyRuntime) buildHandler(
 	)
 	protectedHandler = stripModelLabClientHeaders(protectedHandler)
 	if cfg.IPValidationEnabled {
-		protectedHandler = policy.Middleware(policyEvaluator, denialRecorder, p.logger)(protectedHandler)
+		protectedHandler = policy.Middleware(policyEvaluator, denialRecorder, userService, p.logger)(protectedHandler)
 	}
 	protectedHandler = proxyruntime.MethodGuardMiddlewareWithOptions(proxyruntime.MethodGuardOptions{
 		MaxBufferedRequestBytes: cfg.ProxyMaxBufferedRequestBytes,

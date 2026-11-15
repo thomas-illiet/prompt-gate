@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"promptgate/backend/internal/domain/auth"
 	"promptgate/backend/internal/domain/subscriptions"
 	"promptgate/backend/internal/domain/users"
 
@@ -56,6 +57,70 @@ func createSubscriptionPlanThroughHandler(t *testing.T, handler *Handler, body s
 		t.Fatalf("decode created subscription plan: %v", err)
 	}
 	return plan
+}
+
+func TestAdminListSubscriptionPlanMembers(t *testing.T) {
+	handler, service, userService := newSubscriptionsTestHandler(t)
+	ctx := context.Background()
+	starter := createSubscriptionPlanThroughHandler(t, handler, `{"name":"Starter","isDefault":true}`)
+	pro := createSubscriptionPlanThroughHandler(t, handler, `{"name":"Pro"}`)
+	user, err := userService.CreateUser(ctx, "alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := userService.CreateUser(ctx, "bea")
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker, err := userService.CreateServiceAccount(ctx, users.ServiceAccountInput{
+		Identifier: "worker", Name: "Build worker", IsActive: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.AssignServiceAccountPlan(ctx, worker.ID, &starter.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.AssignUserPlan(ctx, other.ID, &pro.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	list := func(planID, query string) subscriptions.PlanMemberListResult {
+		t.Helper()
+		recorder := httptest.NewRecorder()
+		handler.HandleAdminListSubscriptionPlanMembers(recorder, subscriptionRequest(http.MethodGet,
+			"/api/v1/admin/subscriptions/"+planID+"/members"+query, "", planID))
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("list plan members: %d %s", recorder.Code, recorder.Body.String())
+		}
+		var result subscriptions.PlanMemberListResult
+		if err := json.NewDecoder(recorder.Body).Decode(&result); err != nil {
+			t.Fatal(err)
+		}
+		return result
+	}
+
+	first := list(starter.ID, "?pageSize=1")
+	if first.Total != 2 || len(first.Items) != 1 || first.Items[0].ID != user.ID || !first.Items[0].Inherited {
+		t.Fatalf("unexpected first page: %#v", first)
+	}
+	second := list(starter.ID, "?page=2&pageSize=1")
+	if second.Page != 2 || second.Total != 2 || len(second.Items) != 1 ||
+		second.Items[0].ID != worker.ID || second.Items[0].Inherited || second.Items[0].Type != auth.UserTypeService {
+		t.Fatalf("unexpected second page: %#v", second)
+	}
+	if filtered := list(starter.ID, "?search=WORKER"); filtered.Total != 1 || len(filtered.Items) != 1 || filtered.Items[0].ID != worker.ID {
+		t.Fatalf("unexpected search results: %#v", filtered)
+	}
+	if direct := list(pro.ID, ""); direct.Total != 1 || len(direct.Items) != 1 || direct.Items[0].ID != other.ID || direct.Items[0].Inherited {
+		t.Fatalf("unexpected non-default members: %#v", direct)
+	}
+	if _, err := service.SetDefaultPlan(ctx, pro.ID); err != nil {
+		t.Fatal(err)
+	}
+	if previous := list(starter.ID, ""); previous.Total != 1 || len(previous.Items) != 1 || previous.Items[0].ID != worker.ID {
+		t.Fatalf("unexpected previous default members: %#v", previous)
+	}
 }
 
 func TestAdminSubscriptionPlanCRUDAndAssignments(t *testing.T) {

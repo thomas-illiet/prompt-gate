@@ -257,13 +257,14 @@ key, including its stored hash.
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/api/v1/admin/users/{id}/ips` | List client IP addresses observed for a user, paginated and sortable by `ip` or `lastSeen`. |
-| `GET` | `/api/v1/admin/users` | List users with pagination, filters, usage totals, and sorting. |
+| `GET` | `/api/v1/admin/users` | List users with pagination, usage totals, sorting, and filters including `bypassIpValidation=true` or `bypassIpValidation=false`. |
 | `POST` | `/api/v1/admin/users` | Pre-create a human user from an exact OIDC `preferred_username`. |
 | `GET` | `/api/v1/admin/users/{id}` | Get one user. |
 | `GET` | `/api/v1/admin/users/{id}/statistics` | Get aggregated usage totals, duration, and daily activity for one human user. |
 | `GET` | `/api/v1/admin/users/{id}/quota` | Get the effective plan and live 5-hour and 7-day quota windows in the same format as `/api/v1/me/quota`. |
 | `GET` | `/api/v1/admin/users/{id}/models` | Get the Model Lab catalog filtered by the target user's group grants, with the same response format as `/api/v1/me/models`. |
 | `PATCH` | `/api/v1/admin/users/{id}` | Update role, active state, or access expiration. |
+| `PUT` | `/api/v1/admin/users/{id}/ip-validation-bypass` | Set and return the stored IP validation exception using `{"bypassIpValidation": true}` or `false`. |
 | `PATCH` | `/api/v1/admin/users/{id}/note` | Update the private administration note. |
 | `DELETE` | `/api/v1/admin/users/{id}` | Attempt to delete one local user and its current access data. A later OIDC sign-in can provision a new account under the normal first-user bootstrap rules. |
 | `GET` | `/api/v1/admin/users/{id}/tokens` | List a user's tokens. |
@@ -385,6 +386,7 @@ statistics. Unknown service accounts and human-user IDs both return
 | `GET` | `/api/v1/admin/subscriptions` | List subscription plans and assignment counts. |
 | `POST` | `/api/v1/admin/subscriptions` | Create a subscription plan. |
 | `GET` | `/api/v1/admin/subscriptions/{id}` | Get one subscription plan. |
+| `GET` | `/api/v1/admin/subscriptions/{id}/members` | Search and paginate users and service accounts assigned directly or inheriting the default plan. |
 | `PATCH` | `/api/v1/admin/subscriptions/{id}` | Update limits, display metadata, or enabled state. |
 | `PUT` | `/api/v1/admin/subscriptions/{id}/default` | Make a plan the default inherited plan. |
 | `DELETE` | `/api/v1/admin/subscriptions/{id}` | Delete an unreferenced subscription plan. |

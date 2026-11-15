@@ -59,6 +59,19 @@ func (h *Handler) HandleAdminGetSubscriptionPlan(w http.ResponseWriter, r *http.
 	writeJSON(w, http.StatusOK, plan)
 }
 
+func (h *Handler) HandleAdminListSubscriptionPlanMembers(w http.ResponseWriter, r *http.Request) {
+	if h.subscriptions == nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "subscriptions service unavailable"})
+		return
+	}
+	params := parseListQuery(r, "", "")
+	result, err := h.subscriptions.ListPlanMembers(r.Context(), r.PathValue("id"), params.Page, params.PageSize, r.URL.Query().Get("search"))
+	if writeSubscriptionPlanError(w, err) {
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
 func (h *Handler) HandleAdminUpdateSubscriptionPlan(w http.ResponseWriter, r *http.Request) {
 	if h.subscriptions == nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "subscriptions service unavailable"})

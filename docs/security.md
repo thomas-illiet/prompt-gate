@@ -217,8 +217,8 @@ underscores and have a maximum length of 64 characters.
 
 ## External IP validation
 
-API-token traffic, including service accounts, is checked against an external
-IP service. The proxy sends only a normalized IP in a configured GET URL and a
+By default, API-token traffic is checked against an external IP service.
+Service accounts always follow this check when IP validation is enabled. The proxy sends only a normalized IP in a configured GET URL and a
 server-configured Bearer token. A `200` authorizes; a `404` returns HTTP `403`
 with `{"error":"ip_not_allowed"}`. Any other status or transport failure
 closes access with `503 policy_unavailable`.
@@ -236,8 +236,21 @@ Validated Model Lab tickets bypass this IP stage and its cache. The internal
 marker is installed only after signature, expiry, request binding, one-time
 consumption, current account checks and concurrency admission succeed. Token
 names, HTTP metadata and the privacy flag never trigger it. Short-lived ordinary
-API tokens still require IP validation. Groups, quotas, routing and accounting
-remain enforced for both authentication paths.
+API tokens follow the account IP validation rules below. Groups, quotas,
+routing and accounting remain enforced for both authentication paths.
+
+An administrator can enable **Bypass IP validation** for an individual human
+account under **Admin → Users**. The exception defaults to off and applies to all
+of that account's authenticated virtual keys. The warning triangle and the **IP
+validation** filter show the stored setting. Changes are recorded in
+`ip_validation_bypass_events` with the previous and new values and the admin
+authentication type. For an admin session, the event also records the actor ID.
+
+The proxy checks the current account exception in PostgreSQL on each eligible
+request, without using the authentication cache for this decision. Removing
+the exception restores IP validation for subsequent requests across proxy
+replicas. Requests admitted earlier can finish. A lookup failure uses normal
+IP validation, and an exception never creates a shared IP allow-cache entry.
 
 `proxy.ip_validation.enabled: false` explicitly bypasses the IP stage, emits a
 startup warning and leaves all other controls active. The proxy health probe

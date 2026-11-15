@@ -22,6 +22,7 @@ const emit = defineEmits<{
   edit: [plan: SubscriptionPlan]
   refresh: []
   setDefault: [plan: SubscriptionPlan]
+  viewMembers: [plan: SubscriptionPlan]
   'update:page': [value: number]
   'update:page-size': [value: number]
   'update:sort': [sortBy: string, sortDir: 'asc' | 'desc']
@@ -64,6 +65,12 @@ const summaryLabel = computed(() => {
 })
 
 const rowActions: AppRowAction<SubscriptionPlan>[] = [
+  {
+    icon: 'mdi-account-multiple-outline',
+    key: 'members',
+    onSelect: (plan) => emit('viewMembers', plan),
+    title: 'View members',
+  },
   {
     icon: 'mdi-pencil-outline',
     key: 'edit',

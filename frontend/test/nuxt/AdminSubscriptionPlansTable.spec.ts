@@ -33,14 +33,18 @@ function mountTable(items: SubscriptionPlan[] = [plan]) {
     },
     global: {
       stubs: {
-        AppRowActionMenu: { template: '<div />' },
+        AppRowActionMenu: {
+          props: ['actions', 'item'],
+          template:
+            '<div><button v-for="action in actions" :key="action.key" :data-test="action.key" @click="action.onSelect(item)">{{ action.title }}</button></div>',
+        },
         AppSectionCard: {
           template: '<section><slot name="actions" /><slot /></section>',
         },
         AppServerDataTable: {
           props: ['items'],
           template:
-            '<div><div v-for="item in items" :key="item.id"><slot name="item.assignedAccountsCount" :item="item" /></div></div>',
+            '<div><div v-for="item in items" :key="item.id"><slot name="item.assignedAccountsCount" :item="item" /><slot name="item.actions" :item="item" /></div></div>',
         },
         VBtn: { template: '<button><slot /></button>' },
       },
@@ -49,6 +53,14 @@ function mountTable(items: SubscriptionPlan[] = [plan]) {
 }
 
 describe('AdminSubscriptionPlansTable', () => {
+  it('opens the members view for the selected plan', async () => {
+    const wrapper = mountTable()
+
+    await wrapper.get('[data-test="members"]').trigger('click')
+
+    expect(wrapper.emitted('viewMembers')).toEqual([[plan]])
+  })
+
   it('shows assigned account counts for each plan', () => {
     const wrapper = mountTable()
 

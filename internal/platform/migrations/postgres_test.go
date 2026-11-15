@@ -69,7 +69,7 @@ func TestPostgresMigrationSerializesAndDoesNotReplayBaseline(t *testing.T) {
 		}
 	}
 	var count int64
-	if err := db.Model(&schemaMigration{}).Count(&count).Error; err != nil || count != 1 {
+	if err := db.Model(&schemaMigration{}).Count(&count).Error; err != nil || count != 2 {
 		t.Fatalf("migration count %d: %v", count, err)
 	}
 	// Recreating a retired table makes accidental replay observable.
@@ -85,6 +85,29 @@ func TestPostgresMigrationSerializesAndDoesNotReplayBaseline(t *testing.T) {
 	var sentinel string
 	if err := db.Table("release_sentinel").Select("value").Scan(&sentinel).Error; err != nil || sentinel != "preserved" {
 		t.Fatalf("data changed: %q %v", sentinel, err)
+	}
+}
+
+func TestPostgresUserIPValidationBypassUpgradesExistingAccounts(t *testing.T) {
+	db := migrationPostgres(t)
+	ctx := context.Background()
+	if err := db.AutoMigrate(&schemaMigration{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&schemaMigration{Version: 1, Name: "release_baseline", AppliedAt: time.Now()}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`CREATE TABLE users (id uuid PRIMARY KEY, type text NOT NULL);
+		INSERT INTO users (id, type) VALUES ('11111111-1111-4111-8111-111111111111', 'user'),
+		('22222222-2222-4222-8222-222222222222', 'service')`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := Run(ctx, db); err != nil {
+		t.Fatal(err)
+	}
+	var defaults int64
+	if err := db.Table("users").Where("bypass_ip_validation = false").Count(&defaults).Error; err != nil || defaults != 2 {
+		t.Fatalf("expected two protected accounts after migration: count=%d err=%v", defaults, err)
 	}
 }
 

@@ -19,7 +19,12 @@ type DenialRecorder interface {
 	RecordPolicyDenial(ctx context.Context, accountID, clientIP, reason string, deniedAt time.Time) error
 }
 
-func Middleware(evaluator *Evaluator, denialRecorder DenialRecorder, logger *slog.Logger) func(http.Handler) http.Handler {
+// UserBypassResolver reads the current IP validation exception for an authenticated account.
+type UserBypassResolver interface {
+	CanBypassIPValidation(ctx context.Context, id string) (bool, error)
+}
+
+func Middleware(evaluator *Evaluator, denialRecorder DenialRecorder, userBypass UserBypassResolver, logger *slog.Logger) func(http.Handler) http.Handler {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -33,6 +38,17 @@ func Middleware(evaluator *Evaluator, denialRecorder DenialRecorder, logger *slo
 			if modellab.HasValidatedTicket(r.Context()) {
 				next.ServeHTTP(w, r)
 				return
+			}
+			if userBypass != nil && principal.User.Type == auth.UserTypeUser {
+				bypass, err := userBypass.CanBypassIPValidation(r.Context(), principal.User.ID)
+				if err != nil {
+					evaluator.record(r.Context(), "user_bypass_unavailable", false)
+					logger.Warn("user IP validation bypass lookup failed")
+				} else if bypass {
+					evaluator.record(r.Context(), "user_bypass", true)
+					next.ServeHTTP(w, r)
+					return
+				}
 			}
 			ip := clientip.FromContext(r.Context())
 			decision, err := evaluator.Evaluate(r.Context(), ip)

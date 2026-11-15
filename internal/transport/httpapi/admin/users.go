@@ -80,6 +80,16 @@ func (h *Handler) HandleAdminListUsers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var bypassIPValidation *bool
+	if values, exists := query["bypassIpValidation"]; exists {
+		if len(values) != 1 || (values[0] != "true" && values[0] != "false") {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_ip_validation_bypass_filter"})
+			return
+		}
+		enabled := values[0] == "true"
+		bypassIPValidation = &enabled
+	}
+
 	page := parsePositiveInt(query.Get("page"), defaultUsersPage)
 	pageSize := parsePositiveInt(query.Get("pageSize"), defaultUsersPageSize)
 	if pageSize > maxUsersPageSize {
@@ -95,14 +105,15 @@ func (h *Handler) HandleAdminListUsers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result, err := h.users.ListUsers(r.Context(), users.ListParams{
-		Page:     page,
-		PageSize: pageSize,
-		Search:   query.Get("search"),
-		SortBy:   sortBy,
-		SortDir:  sortDir,
-		Type:     auth.UserTypeUser,
-		Role:     role,
-		Status:   status,
+		Page:               page,
+		PageSize:           pageSize,
+		Search:             query.Get("search"),
+		SortBy:             sortBy,
+		SortDir:            sortDir,
+		Type:               auth.UserTypeUser,
+		Role:               role,
+		Status:             status,
+		BypassIPValidation: bypassIPValidation,
 	})
 	if err != nil {
 		if errors.Is(err, users.ErrInvalidSort) {

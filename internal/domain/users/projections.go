@@ -44,6 +44,7 @@ func (u *User) adminUser() AdminUser {
 		Type:               u.Type,
 		Role:               u.Role,
 		SubscriptionPlanID: u.SubscriptionPlanID,
+		BypassIPValidation: u.BypassIPValidation,
 		Note:               u.Note,
 		IsActive:           u.IsActive,
 		ExpiresAt:          u.ExpiresAt,

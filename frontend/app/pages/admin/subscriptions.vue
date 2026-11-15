@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import AdminSubscriptionPlanDialog from '~/components/AdminSubscriptions/AdminSubscriptionPlanDialog.vue'
+import AdminSubscriptionPlanMembersDialog from '~/components/AdminSubscriptions/AdminSubscriptionPlanMembersDialog.vue'
 import AdminSubscriptionPlansTable from '~/components/AdminSubscriptions/AdminSubscriptionPlansTable.vue'
 import type {
   SubscriptionPlan,
@@ -18,6 +19,13 @@ const adminSubscriptions = useAdminSubscriptions()
 const planDialogOpen = shallowRef(false)
 const deleteDialog = useTargetDialog<SubscriptionPlan>()
 const defaultDialog = useTargetDialog<SubscriptionPlan>()
+const membersDialog = useTargetDialog<SubscriptionPlan>()
+
+function updateMembersDialogOpen(open: boolean) {
+  if (!open) {
+    membersDialog.close()
+  }
+}
 
 const totalLabel = computed(() => {
   if (adminSubscriptions.loading.value) {
@@ -107,6 +115,7 @@ async function confirmDefault() {
           @edit="openEditDialog"
           @refresh="adminSubscriptions.reload"
           @set-default="defaultDialog.open"
+          @view-members="membersDialog.open"
           @update:page="adminSubscriptions.setPage"
           @update:page-size="adminSubscriptions.setPageSize"
           @update:sort="adminSubscriptions.setSort"
@@ -119,6 +128,14 @@ async function confirmDefault() {
       :loading="adminSubscriptions.saving.value"
       :plan="adminSubscriptions.selectedPlan.value"
       @save="savePlan"
+    />
+
+    <AdminSubscriptionPlanMembersDialog
+      v-if="membersDialog.target.value"
+      :key="membersDialog.target.value.id"
+      :model-value="membersDialog.isOpen.value"
+      :plan="membersDialog.target.value"
+      @update:model-value="updateMembersDialogOpen"
     />
 
     <AppConfirmDialog

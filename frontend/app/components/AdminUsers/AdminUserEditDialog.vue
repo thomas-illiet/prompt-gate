@@ -12,6 +12,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
+  setIpValidationBypass: [enabled: boolean]
   save: [payload: UpdateUserAccessPayload]
 }>()
 
@@ -50,12 +51,19 @@ const displayUsername = computed(
 const displaySubject = computed(() => props.user?.sub || 'Not linked')
 
 watch(
-  () => props.user,
-  (user) => {
-    selectedRole.value = user?.role ?? 'none'
-    selectedPlanId.value = user?.subscriptionPlanId ?? null
-    isActive.value = user?.isActive ?? true
-    expiresAt.value = toDateTimeLocalValue(user?.expiresAt)
+  [
+    isOpen,
+    () => props.user?.id,
+    () => props.user?.role,
+    () => props.user?.subscriptionPlanId,
+    () => props.user?.isActive,
+    () => props.user?.expiresAt,
+  ],
+  ([, , role, subscriptionPlanId, active, expiration]) => {
+    selectedRole.value = role ?? 'none'
+    selectedPlanId.value = subscriptionPlanId ?? null
+    isActive.value = active ?? true
+    expiresAt.value = toDateTimeLocalValue(expiration)
   },
   { immediate: true },
 )
@@ -207,6 +215,18 @@ function toISOStringOrNull(value: string) {
                 type="datetime-local"
               />
             </label>
+          </v-col>
+          <v-col cols="12">
+            <v-switch
+              :model-value="props.user.bypassIpValidation"
+              :disabled="props.loading"
+              color="error"
+              inset
+              label="Bypass IP validation"
+              @update:model-value="
+                emit('setIpValidationBypass', $event === true)
+              "
+            />
           </v-col>
         </v-row>
 

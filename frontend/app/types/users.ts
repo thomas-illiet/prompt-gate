@@ -8,6 +8,7 @@ export interface AdminUser extends Omit<AuthUser, 'lastLoginAt' | 'sub'> {
   type: 'user'
   sub: string | null
   lastLoginAt: string | null
+  bypassIpValidation: boolean
   activeInLast30Days: boolean
   quotaResetCredits: number
   subscriptionPlanId: string | null
@@ -45,6 +46,8 @@ export interface UpdateUserPayload {
 export interface UpdateUserAccessPayload extends UpdateUserPayload {
   subscriptionPlanId: string | null
 }
+
+export type UserIPValidationFilter = 'all' | 'true' | 'false'
 
 export type UserRoleFilter = 'all' | AppRole
 export type UserStatusFilter = 'all' | 'active' | 'inactive'

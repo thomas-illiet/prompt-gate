@@ -5,6 +5,7 @@ import AdminUserEditDialog from '../../app/components/AdminUsers/AdminUserEditDi
 import type { AdminUser } from '../../app/types/users'
 
 const pendingUser: AdminUser = {
+  bypassIpValidation: false,
   activeInLast30Days: false,
   quotaResetCredits: 0,
   type: 'user',

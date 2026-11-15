@@ -477,9 +477,10 @@ Related docs:
 
 ## Migration and shutdown guarantees
 
-`migrate` takes a PostgreSQL advisory transaction lock, applies the baseline once,
-and records it in `schema_migrations` in the same transaction. Existing databases
-are adopted on their first run; later runs do not repeat data/schema rewrites.
+`migrate` takes a PostgreSQL advisory transaction lock, applies pending numbered
+migrations in order, and records them in `schema_migrations` in the same
+transaction. Existing databases are adopted on their first run. Later runs
+apply only pending migrations.
 Future schema changes must use a new numbered migration rather than editing an
 already applied baseline. Back up the database before upgrading; image rollback
 does not reverse schema migrations.
